@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 class SpeechInputResult {
@@ -38,15 +39,33 @@ abstract interface class SpeechInput {
   Future<void> cancel();
 }
 
+abstract interface class OnDeviceSpeechSupport {
+  Future<bool> isSupported();
+}
+
+class PlatformOnDeviceSpeechSupport implements OnDeviceSpeechSupport {
+  static const _channel = MethodChannel('com.keinstn.drover/speech');
+
+  @override
+  Future<bool> isSupported() async {
+    return await _channel.invokeMethod<bool>('supportsOnDeviceRecognition') ??
+        false;
+  }
+}
+
 /// Adapts speech_to_text's app-wide singleton to [SpeechInput].
 ///
 /// The plugin only supports one initialized instance, so this controller is
 /// created by [DroverApp] and shared by all agent screens.
 class SpeechInputController implements SpeechInput {
-  SpeechInputController({SpeechToText? speech})
-    : _speech = speech ?? SpeechToText();
+  SpeechInputController({
+    SpeechToText? speech,
+    OnDeviceSpeechSupport? onDeviceSupport,
+  }) : _speech = speech ?? SpeechToText(),
+       _onDeviceSupport = onDeviceSupport ?? PlatformOnDeviceSpeechSupport();
 
   final SpeechToText _speech;
+  final OnDeviceSpeechSupport _onDeviceSupport;
   Future<bool>? _initialization;
   SpeechInputResultListener? _onResult;
   SpeechInputStatusListener? _onStatus;
@@ -63,6 +82,19 @@ class SpeechInputController implements SpeechInput {
     _onResult = onResult;
     _onStatus = onStatus;
     _onError = onError;
+
+    final supportsOnDevice = await _supportsOnDeviceRecognition();
+    if (!supportsOnDevice) {
+      if (request == _request) _clearListeners();
+      return const SpeechInputStartResult.failed(
+        'On-device speech recognition is unavailable on this device.',
+      );
+    }
+    if (request != _request) {
+      return const SpeechInputStartResult.failed(
+        'Speech recognition was canceled.',
+      );
+    }
 
     final available = await _initialize();
     if (!available) {
@@ -120,6 +152,14 @@ class SpeechInputController implements SpeechInput {
         'On-device speech recognition is unavailable: '
         '$error$cancellationDetails',
       );
+    }
+  }
+
+  Future<bool> _supportsOnDeviceRecognition() async {
+    try {
+      return await _onDeviceSupport.isSupported();
+    } catch (_) {
+      return false;
     }
   }
 

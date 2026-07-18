@@ -50,15 +50,53 @@ class FakeSpeechToText extends SpeechToText {
   }
 }
 
+class FakeOnDeviceSpeechSupport implements OnDeviceSpeechSupport {
+  FakeOnDeviceSpeechSupport(this.supported);
+
+  final bool supported;
+
+  @override
+  Future<bool> isSupported() async => supported;
+}
+
 void main() {
   void ignoreResult(SpeechInputResult _) {}
   void ignoreStatus(SpeechInputStatus _) {}
   void ignoreError(String _) {}
 
+  SpeechInputController createInput(FakeSpeechToText speech) {
+    return SpeechInputController(
+      speech: speech,
+      onDeviceSupport: FakeOnDeviceSpeechSupport(true),
+    );
+  }
+
+  test(
+    'does not initialize when on-device recognition is unsupported',
+    () async {
+      final speech = FakeSpeechToText();
+      final input = SpeechInputController(
+        speech: speech,
+        onDeviceSupport: FakeOnDeviceSpeechSupport(false),
+      );
+
+      final result = await input.start(
+        onResult: ignoreResult,
+        onStatus: ignoreStatus,
+        onError: ignoreError,
+      );
+
+      expect(result.started, isFalse);
+      expect(result.errorMessage, contains('unavailable on this device'));
+      expect(speech.initializeCalls, 0);
+      expect(speech.listenCalls, 0);
+    },
+  );
+
   test('retries initialization after an unavailable result', () async {
     final speech = FakeSpeechToText()
       ..initializationResults.addAll([Future.value(false), Future.value(true)]);
-    final input = SpeechInputController(speech: speech);
+    final input = createInput(speech);
 
     final first = await input.start(
       onResult: ignoreResult,
@@ -83,7 +121,7 @@ void main() {
       final initialization = Completer<bool>();
       final speech = FakeSpeechToText()
         ..initializationResults.add(initialization.future);
-      final input = SpeechInputController(speech: speech);
+      final input = createInput(speech);
 
       final starting = input.start(
         onResult: ignoreResult,
@@ -104,7 +142,7 @@ void main() {
     final speech = FakeSpeechToText()
       ..initializationResults.add(Future.value(true))
       ..listenError = StateError('on-device recognition unavailable');
-    final input = SpeechInputController(speech: speech);
+    final input = createInput(speech);
 
     final result = await input.start(
       onResult: ignoreResult,
