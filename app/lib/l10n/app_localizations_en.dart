@@ -166,4 +166,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String launchUnnamedWorkspace(String id) {
     return 'Unnamed workspace ($id)';
   }
+
+  @override
+  String get launchBrowseDir => 'Browse';
+
+  @override
+  String get dirPickerTitle => 'Select directory';
+
+  @override
+  String get dirPickerUse => 'Use this directory';
+
+  @override
+  String get dirPickerParent => 'Parent directory';
+
+  @override
+  String get dirPickerShowHidden => 'Show hidden folders';
+
+  @override
+  String get dirPickerEmpty => 'No subfolders';
 }

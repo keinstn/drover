@@ -5,6 +5,7 @@ import '../herdr/herdr_client.dart';
 import '../models/agent_preset.dart';
 import '../models/workspace_info.dart';
 import '../utils/path.dart';
+import 'directory_picker_sheet.dart';
 
 enum _WorkspaceMode { newWorkspace, existing }
 
@@ -272,6 +273,24 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
     );
   }
 
+  Future<void> _browseCwd() async {
+    final picked = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => DirectoryPickerSheet(
+          client: widget.client,
+          initialPath: _cwdController.text.trim(),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (picked != null && picked.isNotEmpty) {
+      setState(() {
+        _cwdController.text = picked;
+        _syncDefaultNames();
+      });
+    }
+  }
+
   Widget _buildCwdSection() {
     final l10n = AppLocalizations.of(context)!;
     return Column(
@@ -305,6 +324,13 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
             border: const OutlineInputBorder(),
           ),
           onChanged: (_) => setState(_syncDefaultNames),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          key: const ValueKey('cwd_browse_button'),
+          onPressed: _busy ? null : _browseCwd,
+          icon: const Icon(Icons.folder_open),
+          label: Text(l10n.launchBrowseDir),
         ),
       ],
     );

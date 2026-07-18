@@ -1,3 +1,5 @@
+import '../models/remote_dir_entry.dart';
+
 class CommandResult {
   const CommandResult({
     required this.exitCode,
@@ -16,6 +18,14 @@ abstract class CommandRunner {
   /// Upload [bytes] to [remotePath] on the host, creating or truncating the
   /// file. The transport carries file uploads (SFTP) in addition to commands.
   Future<void> uploadFile(String remotePath, List<int> bytes);
+
+  /// List the entries of the directory at [path]. The transport carries this
+  /// (SFTP) in addition to commands.
+  Future<List<RemoteDirEntry>> listDirectory(String path);
+
+  /// Resolve [path] to an absolute path (realpath). Used to turn '.' into
+  /// the home dir.
+  Future<String> resolvePath(String path);
 
   Future<void> dispose();
 }

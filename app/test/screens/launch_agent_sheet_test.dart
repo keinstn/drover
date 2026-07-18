@@ -1,14 +1,22 @@
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
+import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/screens/launch_agent_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class FakeCommandRunner implements CommandRunner {
-  FakeCommandRunner(this._response);
+  FakeCommandRunner(
+    this._response, {
+    Future<List<RemoteDirEntry>> Function(String path)? listDirectory,
+    Future<String> Function(String path)? resolvePath,
+  }) : _listDirectory = listDirectory ?? ((_) async => []),
+       _resolvePath = resolvePath ?? ((path) async => path);
 
   final CommandResult Function(String command) _response;
+  final Future<List<RemoteDirEntry>> Function(String path) _listDirectory;
+  final Future<String> Function(String path) _resolvePath;
   final commands = <String>[];
 
   @override
@@ -19,6 +27,13 @@ class FakeCommandRunner implements CommandRunner {
 
   @override
   Future<void> uploadFile(String remotePath, List<int> bytes) async {}
+
+  @override
+  Future<List<RemoteDirEntry>> listDirectory(String path) =>
+      _listDirectory(path);
+
+  @override
+  Future<String> resolvePath(String path) => _resolvePath(path);
 
   @override
   Future<void> dispose() async {}
@@ -323,5 +338,48 @@ void main() {
 
     expect(find.text('Project (wA)'), findsOneWidget);
     expect(find.text('Project (wB)'), findsOneWidget);
+  });
+
+  testWidgets('browsing and selecting a directory populates the cwd field', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(
+      _response,
+      resolvePath: (path) async => path == '.' ? '/home/dev' : path,
+      listDirectory: (path) async {
+        if (path == '/home/dev') {
+          return [const RemoteDirEntry(name: 'proj', isDirectory: true)];
+        }
+        return [];
+      },
+    );
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: LaunchAgentSheet(client: client, existingCwds: const []),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('cwd_browse_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('/home/dev'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('dir_entry_proj')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('/home/dev/proj'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('dir_picker_select')));
+    await tester.pumpAndSettle();
+
+    final cwdField = tester.widget<TextField>(
+      find.byKey(const ValueKey('cwd_field')),
+    );
+    expect(cwdField.controller!.text, '/home/dev/proj');
   });
 }

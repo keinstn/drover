@@ -73,5 +73,12 @@
     "placeholders": {
       "id": { "type": "String" }
     }
-  }
+  },
+  "launchBrowseDir": "Browse",
+
+  "dirPickerTitle": "Select directory",
+  "dirPickerUse": "Use this directory",
+  "dirPickerParent": "Parent directory",
+  "dirPickerShowHidden": "Show hidden folders",
+  "dirPickerEmpty": "No subfolders"
 }

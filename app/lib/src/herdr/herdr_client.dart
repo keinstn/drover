@@ -4,6 +4,7 @@ import '../image/image_input.dart';
 import '../models/agent_info.dart';
 import '../models/agent_preset.dart';
 import '../models/host_config.dart';
+import '../models/remote_dir_entry.dart';
 import '../models/workspace_info.dart';
 import 'command_runner.dart';
 
@@ -270,4 +271,15 @@ class HerdrClient {
       ...argv,
     ]);
   }
+
+  /// List the entries of the directory at [path]. Raw transport/SFTP
+  /// capability (like [sendImages]' uploads), not a herdr JSON-envelope
+  /// command.
+  Future<List<RemoteDirEntry>> listDirectory(String path) =>
+      _runner.listDirectory(path);
+
+  /// Resolve [path] to an absolute path on the host. Raw transport/SFTP
+  /// capability (like [sendImages]' uploads), not a herdr JSON-envelope
+  /// command.
+  Future<String> resolvePath(String path) => _runner.resolvePath(path);
 }
