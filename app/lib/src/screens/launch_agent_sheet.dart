@@ -30,7 +30,9 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   AgentPreset? _selectedPreset;
   final _cwdController = TextEditingController();
   final _nameController = TextEditingController();
+  final _workspaceNameController = TextEditingController();
   bool _nameEdited = false;
+  bool _workspaceNameEdited = false;
   _WorkspaceMode _mode = _WorkspaceMode.newWorkspace;
   String? _selectedWorkspaceId;
   bool _busy = false;
@@ -46,6 +48,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   void dispose() {
     _cwdController.dispose();
     _nameController.dispose();
+    _workspaceNameController.dispose();
     super.dispose();
   }
 
@@ -77,6 +80,16 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
     _nameController.text = _defaultName();
   }
 
+  void _syncDefaultWorkspaceName() {
+    if (_workspaceNameEdited) return;
+    _workspaceNameController.text = lastPathSegment(_cwdController.text.trim());
+  }
+
+  void _syncDefaultNames() {
+    _syncDefaultName();
+    _syncDefaultWorkspaceName();
+  }
+
   void _loadWorkspaces() {
     final future = widget.client.listWorkspaces();
     _workspacesFuture = future;
@@ -93,6 +106,10 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
     if (_busy) return false;
     if (_selectedPreset == null) return false;
     if (_cwdController.text.trim().isEmpty) return false;
+    if (_mode == _WorkspaceMode.newWorkspace &&
+        _workspaceNameController.text.trim().isEmpty) {
+      return false;
+    }
     if (_mode == _WorkspaceMode.existing && _selectedWorkspaceId == null) {
       return false;
     }
@@ -117,7 +134,10 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
           ? preset.bin
           : _nameController.text.trim();
       final wsId = _mode == _WorkspaceMode.newWorkspace
-          ? await widget.client.createWorkspace(label: name, cwd: cwd)
+          ? await widget.client.createWorkspace(
+              label: _workspaceNameController.text.trim(),
+              cwd: cwd,
+            )
           : _selectedWorkspaceId!;
       try {
         await widget.client.startAgent(
@@ -265,7 +285,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                       ? null
                       : () => setState(() {
                           _cwdController.text = cwd;
-                          _syncDefaultName();
+                          _syncDefaultNames();
                         }),
                 ),
             ],
@@ -280,7 +300,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
             labelText: 'Working directory',
             border: OutlineInputBorder(),
           ),
-          onChanged: (_) => setState(_syncDefaultName),
+          onChanged: (_) => setState(_syncDefaultNames),
         ),
       ],
     );
@@ -335,6 +355,22 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
             title: const Text('Existing workspace'),
             value: _WorkspaceMode.existing,
           ),
+          if (_mode == _WorkspaceMode.newWorkspace) ...[
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('workspace_name_field'),
+              controller: _workspaceNameController,
+              enabled: !_busy,
+              decoration: const InputDecoration(
+                labelText: 'Workspace name',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (_) {
+                _workspaceNameEdited = true;
+                setState(() {});
+              },
+            ),
+          ],
           if (_mode == _WorkspaceMode.existing) ...[
             const SizedBox(height: 12),
             _buildWorkspaceDropdown(),
@@ -380,6 +416,13 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         if (workspaces.isEmpty) {
           return const Text('No existing workspaces');
         }
+        final labelCounts = <String, int>{};
+        for (final workspace in workspaces) {
+          final label = workspace.label.trim();
+          if (label.isNotEmpty) {
+            labelCounts.update(label, (count) => count + 1, ifAbsent: () => 1);
+          }
+        }
         return DropdownButton<String>(
           key: const ValueKey('ws_dropdown'),
           isExpanded: true,
@@ -389,7 +432,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
             for (final ws in workspaces)
               DropdownMenuItem(
                 value: ws.workspaceId,
-                child: Text('${ws.label} (${ws.workspaceId})'),
+                child: Text(_workspaceDisplayLabel(ws, labelCounts)),
               ),
           ],
           onChanged: _busy
@@ -398,5 +441,19 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         );
       },
     );
+  }
+
+  String _workspaceDisplayLabel(
+    WorkspaceInfo workspace,
+    Map<String, int> labelCounts,
+  ) {
+    final label = workspace.label.trim();
+    if (label.isEmpty) {
+      return 'Unnamed workspace (${workspace.workspaceId})';
+    }
+    if (labelCounts[label]! > 1) {
+      return '$label (${workspace.workspaceId})';
+    }
+    return label;
   }
 }

@@ -36,10 +36,28 @@ CommandResult _response(String command) {
       '{"workspace_id":"wZ","label":"proj"}}}',
     );
   }
+  if (command.contains("'workspace' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"workspaces":['
+      '{"workspace_id":"wA","label":"Project A"},'
+      '{"workspace_id":"wB","label":"Project B"}]}}',
+    );
+  }
   if (command.contains("'agent' 'start'")) {
     return ok('{"id":"1","result":{"type":"agent_started"}}');
   }
   throw StateError('unexpected command: $command');
+}
+
+CommandResult _responseWithDuplicateWorkspaceLabels(String command) {
+  if (command.contains("'workspace' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"workspaces":['
+      '{"workspace_id":"wA","label":"Project"},'
+      '{"workspace_id":"wB","label":"Project"}]}}',
+    );
+  }
+  return _response(command);
 }
 
 /// Pushes [LaunchAgentSheet] as a route and captures its pop value.
@@ -131,9 +149,7 @@ void main() {
     },
   );
 
-  testWidgets('default agent name combines preset bin and cwd segment', (
-    tester,
-  ) async {
+  testWidgets('new workspace name defaults to the cwd segment', (tester) async {
     final runner = FakeCommandRunner(_response);
     final client = HerdrClient(runner);
 
@@ -151,6 +167,10 @@ void main() {
       find.byKey(const ValueKey('agent_name_field')),
     );
     expect(nameField.controller!.text, 'claude-proj');
+    final workspaceNameField = tester.widget<TextField>(
+      find.byKey(const ValueKey('workspace_name_field')),
+    );
+    expect(workspaceNameField.controller!.text, 'proj');
 
     await tester.tap(find.byKey(const ValueKey('launch_button')));
     await tester.pumpAndSettle();
@@ -161,7 +181,38 @@ void main() {
     final startCommand = runner.commands.firstWhere(
       (c) => c.contains("'agent' 'start'"),
     );
-    expect(createCommand, contains("'claude-proj'"));
+    expect(createCommand, contains("'proj'"));
+    expect(startCommand, contains("'claude-proj'"));
+  });
+
+  testWidgets('editing the workspace name does not change the agent name', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_response);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(MaterialApp(home: _Harness(client: client)));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('cwd_field')),
+      '/tmp/proj',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('workspace_name_field')),
+      'Shared project',
+    );
+    await tester.tap(find.byKey(const ValueKey('launch_button')));
+    await tester.pumpAndSettle();
+
+    final createCommand = runner.commands.firstWhere(
+      (c) => c.contains("'workspace' 'create'"),
+    );
+    final startCommand = runner.commands.firstWhere(
+      (c) => c.contains("'agent' 'start'"),
+    );
+    expect(createCommand, contains("'Shared project'"));
     expect(startCommand, contains("'claude-proj'"));
   });
 
@@ -193,5 +244,53 @@ void main() {
     );
     expect(startCommand, contains("'myagent'"));
     expect(startCommand, isNot(contains("'claude-proj'")));
+  });
+
+  testWidgets('hides IDs for uniquely named existing workspaces', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_response);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LaunchAgentSheet(client: client, existingCwds: const []),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ws_mode_existing')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ws_dropdown')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Project A'), findsOneWidget);
+    expect(find.text('Project B'), findsOneWidget);
+    expect(find.text('Project A (wA)'), findsNothing);
+    expect(find.text('Project B (wB)'), findsNothing);
+  });
+
+  testWidgets('shows IDs to distinguish duplicate workspace names', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_responseWithDuplicateWorkspaceLabels);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LaunchAgentSheet(client: client, existingCwds: const []),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ws_mode_existing')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ws_dropdown')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Project (wA)'), findsOneWidget);
+    expect(find.text('Project (wB)'), findsOneWidget);
   });
 }
