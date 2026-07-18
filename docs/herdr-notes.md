@@ -57,6 +57,8 @@ Observed against **herdr 0.7.1** unless noted otherwise.
   foreground poll.
 - `agent wait` works as a long-poll, returning ~120ms on a state change rather
   than only at timeout.
-
-See the README's **Stage 0 spike** section for the full measurement write-up
-(chat-formatting gap, end-to-end permission-prompt answering).
+- `agent read`'s raw output carries turn markers (`❯` user turn, `⏺` assistant
+  turn/action, `✻ Worked for Ns` meta footer) plus a trailing `-- INSERT -- ...`
+  mode line that is TUI chrome and should be stripped — enough for a turn-split
+  chat view. Numbered/lettered permission prompts parse into tappable buttons,
+  and an end-to-end answer (task → `blocked` → `send "1"` → `idle`) works.

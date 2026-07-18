@@ -5,11 +5,11 @@ global `~/.claude/CLAUDE.md` rules — those still apply.
 
 ## Repo layout
 
-- `app/` — the Flutter app (iOS/macOS) plus `app/tool/spike.dart`, the Stage 0 SSH spike.
+- `app/` — the Flutter app (iOS/macOS) plus `app/tool/spike.dart`, a CLI probe for the SSH/herdr path.
+- `plugin/` — the Herdr → ntfy push-notification plugin.
 
-See `README.md` for the PoC plan and Stage 0 measurement results,
-`docs/herdr-notes.md` for herdr CLI behaviours/gotchas drover relies on, and
-`~/Projects/ideas/drover.md` for the product proposal.
+See `README.md` for the concept and layout, and `docs/herdr-notes.md` for herdr
+CLI behaviours/gotchas drover relies on.
 
 ## One-time host setup
 

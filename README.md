@@ -1,113 +1,61 @@
 # Drover
 
-Remote control for your Herdr agents — a Flutter app PoC for supervising
-Herdr-managed AI agents from your phone.
+Drive your [Herdr](https://herdr.dev) AI agents from your phone — a Flutter app
+(iOS/macOS) that turns Herdr-managed coding agents into something you can
+supervise and steer on the go.
 
-Proposal: `~/Projects/ideas/drover.md` (feasibility, differentiation, the
-moshi problem, push design)
+## Concept
+
+Drover builds on Herdr to bring **AI-agent development to your phone**. The goal
+is a genuine mobile agent-development experience — not a mobile terminal.
+
+A terminal app like moshi can give you a shell on your machine, but it hands you
+raw TUI chrome and a keyboard. Drover instead speaks the agent's language: it
+renders a running agent's session as a readable chat, surfaces permission
+prompts as tappable buttons, lets you switch modes and dictate follow-ups by
+voice, and pings you the moment an agent needs you — the things a plain mobile
+terminal can't offer.
+
+## How it works
+
+Drover connects to a Herdr host over SSH and drives the `herdr` CLI. There is no
+server to run — your phone talks directly to the machine your agents live on.
+
+- **See your herds and agents** with live status (idle / blocked / done).
+- **Read the transcript as chat** — turn-split and colorized from the agent's
+  raw output, with TUI chrome stripped.
+- **Answer permission prompts as buttons** instead of typing into a raw pane.
+- **Steer the agent** — cycle its mode, send follow-ups, and dictate by voice.
+- **Get pushed when it matters** — a Herdr plugin notifies your phone (via
+  [ntfy](https://ntfy.sh)) when an agent goes `blocked` or `done`, so you don't
+  have to keep the app open.
 
 ## Repo layout
 
 ```
 drover/
-├── README.md    # this file
-└── app/         # the Flutter project (fvm-pinned)
-    ├── lib/      # app source (Stage 1+)
-    └── tool/     # tool/spike.dart — Stage 0 spike
+├── app/       # the Flutter app (fvm-pinned; iOS/macOS)
+│   ├── lib/   # app source
+│   └── tool/  # tool/spike.dart — SSH/herdr CLI probe used during bring-up
+├── plugin/    # Herdr → ntfy push-notification plugin
+└── docs/      # herdr-notes.md — herdr CLI behaviours & gotchas drover relies on
 ```
 
-All `flutter`/`dart` commands run from `app/`.
+## Getting started
 
-## PoC plan (3 stages)
+You need a Herdr host reachable over SSH with key-based auth (on macOS: System
+Settings → Sharing → Remote Login), plus Flutter via `fvm`. One-time host setup
+and the full command reference live in [`CLAUDE.md`](CLAUDE.md).
 
-| Stage | What | Goal |
-|---|---|---|
-| **0. Spike** | `app/tool/spike.dart` (dartssh2 CLI) | Settle the 4 unknowns below with no UI |
-| **1. Foreground MVP** | 3 screens: host setup / herd list / agent view | Dogfood on iPhone (foreground only, local notifications) |
-| **2. Push** | Herdr plugin event hook → ntfy → APNs | Go/no-go decided after Stage 1 dogfooding |
-
-**Dogfooding success metric (doubles as the kill criterion)**: over a week of
-real work, count whether an agent going `blocked` makes you open **Drover
-instead of moshi**.
-
-## Stage 0 spike
-
-Prerequisite: the target host has sshd enabled (on this Mac: System Settings
-→ Sharing → Remote Login) and key-based auth working.
-
-`just spike <args>` runs any of these from the repo root; shown here as raw
-`fvm dart run` invocations since that's exactly what was measured.
-
-```bash
-cd app
-
-# List agents and their status
-fvm dart run tool/spike.dart --host <mac-hostname>.local agents
-
-# Raw output read (the most important measurement: the chat-formatting gap)
-fvm dart run tool/spike.dart --host <host> read <pane|name> --lines 120
-
-# Send text + Enter (can we answer y/n/1/2 permission prompts?)
-fvm dart run tool/spike.dart --host <host> send <pane|name> "y"
-
-# Long-poll a status change (a precursor to push-within-session)
-fvm dart run tool/spike.dart --host <host> watch <pane|name> --status blocked
-
-# Latency measurement (basis for a polling interval)
-fvm dart run tool/spike.dart --host <host> bench 10
-```
-
-### The 4 unknowns this measures
-
-1. How readable is `agent read`'s raw output? → decides Stage 1's display approach
-2. Can `agent send` + Enter answer permission prompts? → the precondition for supervising
-3. Connection/command latency → basis for a polling interval
-4. Is `agent wait` usable as a long-poll? → whether polling can be reduced
-
-### Known CLI constraints & host behaviours
-
-Herdr CLI constraints, gotchas, and measurements drover relies on live in
-[`docs/herdr-notes.md`](docs/herdr-notes.md) — add new dogfooding findings
-there.
-
-### Results (2026-07-18, localhost loopback, herdr 0.7.1, Claude Code agent)
-
-1. **Chat-formatting gap — better than expected.** Claude Code's raw output
-   already carries turn markers: `❯ ...` for a sent user turn, `⏺ ...` for an
-   assistant turn/action, `✻ Worked for Ns` as a meta/status footer, and a
-   trailing `-- INSERT -- ⏵⏵ auto mode on...` mode line that's TUI chrome and
-   should be stripped from any rendered view. A turn-splitting parser keyed on
-   `❯`/`⏺` is enough for a first chat view. This is agent-specific — Codex,
-   Copilot CLI, etc. will need their own parsing rules later, mirroring
-   Herdr's own per-agent detection manifests.
-2. **Permission prompts can be answered end-to-end.** Confirmed on a
-   disposable pane: sent a task → `agent wait --status blocked` returned in
-   **121ms** with the prompt text (`Do you want to proceed? ❯ 1. Yes / 2. Yes,
-   always / 3. No`) → `agent send "1"` selected it → `agent wait --status
-   idle` returned in **122ms** → the file the task asked for was actually
-   created. Numbered/lettered prompts can be parsed from `read` output and
-   rendered as tappable buttons instead of a raw text field.
-   - **Caveat found**: a send immediately after `agent start` (during the
-     splash screen) was silently dropped even though `agent_status` already
-     read `idle`. Stage 1 should confirm the send landed (e.g. re-check pane
-     content shortly after) rather than trust `idle` alone right after launch.
-3. **Latency is comfortable.** `agent list` over loopback: 99–122ms
-   (avg 103ms) across 8 runs. This is a **lower bound** — a real remote host
-   over a mobile network will be higher and more variable — but it's enough
-   headroom to support a 1–2s foreground poll interval.
-4. **`agent wait` works as a long-poll**, returning in ~120ms on state change
-   rather than only at timeout. Good precursor for reducing polling once
-   Stage 2 push exists.
-
-## Development
-
-One-time host setup and the full command reference live in `CLAUDE.md`. Day to
-day, a `justfile` wraps the common recipes (`just` to list them):
+A `justfile` wraps the common recipes (`just` to list them):
 
 ```bash
 just get                    # pub get
-just check                  # analyze + test
+just check                  # analyze + test + plugin tests
 just run -d macos           # fast iteration during development
-just run -d <iphone>        # dogfooding on a real device (free Apple ID: signing expires after 7 days)
-just spike --host <host> agents
+just run -d <iphone>        # on a real device (free Apple ID: signing expires after 7 days)
+just spike --host <host> agents   # probe a host from the CLI, no UI
 ```
+
+Push notifications are optional and set up separately — see
+[`plugin/README.md`](plugin/README.md).
