@@ -174,6 +174,11 @@ class HerdrClient {
       paths.add(path);
     }
 
+    // Mark the .drover dir git-ignored so uploaded images can't be accidentally
+    // committed when cwd is a git repo. '*' ignores the dir's whole contents,
+    // including this .gitignore itself.
+    await _runner.uploadFile('$dir/.gitignore', utf8.encode('*\n'));
+
     final trimmed = caption.trim();
     final text = trimmed.isEmpty
         ? paths.join('\n')

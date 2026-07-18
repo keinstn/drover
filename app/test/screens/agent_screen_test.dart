@@ -576,11 +576,18 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(runner.uploads, hasLength(2));
-    for (final upload in runner.uploads) {
+    final imageUploads = runner.uploads
+        .where((u) => !u.path.endsWith('.gitignore'))
+        .toList();
+    expect(imageUploads, hasLength(2));
+    for (final upload in imageUploads) {
       expect(upload.path, startsWith('/tmp/proj/.drover/'));
       expect(upload.bytes, _tinyPng);
     }
+    expect(
+      runner.uploads.any((u) => u.path == '/tmp/proj/.drover/.gitignore'),
+      isTrue,
+    );
     expect(
       runner.commands.where((c) => c.contains("'agent' 'send'")).length,
       1,
