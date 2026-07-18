@@ -143,7 +143,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
               ),
               const SizedBox(height: 16),
               _buildPresetSection(),
-              if (_selectedPreset?.bin == 'claude') ...[
+              if (_selectedPreset?.isClaude ?? false) ...[
                 const SizedBox(height: 16),
                 _buildPermissionModeSection(),
               ],
@@ -212,7 +212,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
             if (_busy) return;
             setState(() {
               _selectedPreset = value;
-              if (value?.bin != 'claude') {
+              if (!(value?.isClaude ?? false)) {
                 _permissionMode = ClaudePermissionMode.defaultMode;
               }
             });

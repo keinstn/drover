@@ -20,7 +20,7 @@ enum ClaudePermissionMode {
 /// Non-Claude presets and [ClaudePermissionMode.defaultMode] pass [preset]'s
 /// argv through unchanged.
 List<String> launchArgv(AgentPreset preset, ClaudePermissionMode mode) {
-  if (preset.bin != 'claude' || mode.flag == null) {
+  if (!preset.isClaude || mode.flag == null) {
     return preset.argv;
   }
   return [...preset.argv, '--permission-mode', mode.flag!];

@@ -12,6 +12,10 @@ class AgentPreset {
   final String label;
   final String bin;
   final List<String> argv;
+
+  /// Whether this is the Claude Code preset — the one agent that takes a
+  /// `--permission-mode` launch flag (see [ClaudePermissionMode]).
+  bool get isClaude => bin == 'claude';
 }
 
 const kAgentPresets = <AgentPreset>[
