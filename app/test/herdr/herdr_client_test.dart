@@ -9,11 +9,17 @@ class FakeCommandRunner implements CommandRunner {
 
   final CommandResult Function(String command) _response;
   final commands = <String>[];
+  final uploads = <({String path, List<int> bytes})>[];
 
   @override
   Future<CommandResult> run(String command) async {
     commands.add(command);
     return _response(command);
+  }
+
+  @override
+  Future<void> uploadFile(String remotePath, List<int> bytes) async {
+    uploads.add((path: remotePath, bytes: bytes));
   }
 
   @override
@@ -160,6 +166,43 @@ void main() {
         "~/.local/bin/herdr 'agent' 'send' 'wB:p4' 'go'",
         "~/.local/bin/herdr 'pane' 'send-keys' 'wB:p4' 'enter'",
       ]);
+    });
+  });
+
+  group('HerdrClient.sendImage', () {
+    test('uploads bytes and prompts with caption and path', () async {
+      final runner = FakeCommandRunner((_) => ok('{"id":"1","result":{}}'));
+      final client = HerdrClient(runner);
+      const agent = AgentInfo(
+        paneId: 'wB:p1',
+        workspaceId: 'wB',
+        tabId: 'wB:t1',
+        agent: 'claude',
+        status: AgentStatus.idle,
+        cwd: '/tmp/proj',
+        focused: false,
+      );
+
+      final path = await client.sendImage(
+        agent,
+        bytes: [1, 2, 3],
+        extension: 'png',
+        caption: 'look at this',
+        timestampMs: 42,
+      );
+
+      expect(path, '/tmp/proj/.drover/img-42.png');
+      expect(runner.uploads.single.path, '/tmp/proj/.drover/img-42.png');
+      expect(runner.uploads.single.bytes, [1, 2, 3]);
+      expect(
+        runner.commands,
+        containsAllInOrder([
+          "mkdir -p '/tmp/proj/.drover'",
+          "~/.local/bin/herdr 'agent' 'send' 'wB:p1' "
+              "'look at this\n/tmp/proj/.drover/img-42.png'",
+          "~/.local/bin/herdr 'pane' 'send-keys' 'wB:p1' 'enter'",
+        ]),
+      );
     });
   });
 

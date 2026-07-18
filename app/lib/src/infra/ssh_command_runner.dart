@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
 
@@ -31,10 +32,7 @@ class SshCommandRunner implements CommandRunner {
     final client = SSHClient(
       socket,
       username: _config.user,
-      identities: SSHKeyPair.fromPem(
-        _config.privateKeyPem,
-        _config.passphrase,
-      ),
+      identities: SSHKeyPair.fromPem(_config.privateKeyPem, _config.passphrase),
     );
     await client.authenticated;
     return client;
@@ -73,6 +71,28 @@ class SshCommandRunner implements CommandRunner {
   Future<CommandResult> run(String command) async {
     final client = await _ensureClient();
     return _execute(client, command);
+  }
+
+  @override
+  Future<void> uploadFile(String remotePath, List<int> bytes) async {
+    final client = await _ensureClient();
+    final sftp = await client.sftp();
+    try {
+      final file = await sftp.open(
+        remotePath,
+        mode:
+            SftpFileOpenMode.create |
+            SftpFileOpenMode.write |
+            SftpFileOpenMode.truncate,
+      );
+      try {
+        await file.writeBytes(Uint8List.fromList(bytes));
+      } finally {
+        await file.close();
+      }
+    } finally {
+      sftp.close();
+    }
   }
 
   @override

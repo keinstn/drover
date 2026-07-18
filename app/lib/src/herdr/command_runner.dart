@@ -12,6 +12,11 @@ class CommandResult {
 
 abstract class CommandRunner {
   Future<CommandResult> run(String command);
+
+  /// Upload [bytes] to [remotePath] on the host, creating or truncating the
+  /// file. The transport carries file uploads (SFTP) in addition to commands.
+  Future<void> uploadFile(String remotePath, List<int> bytes);
+
   Future<void> dispose();
 }
 

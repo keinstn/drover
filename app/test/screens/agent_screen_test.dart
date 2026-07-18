@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
+import 'package:drover/src/image/image_input.dart';
 import 'package:drover/src/screens/agent_screen.dart';
 import 'package:drover/src/speech/speech_input.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +13,7 @@ class FakeCommandRunner implements CommandRunner {
 
   final CommandResult Function(String command) _response;
   final commands = <String>[];
+  final uploads = <({String path, List<int> bytes})>[];
 
   @override
   Future<CommandResult> run(String command) async {
@@ -18,7 +22,28 @@ class FakeCommandRunner implements CommandRunner {
   }
 
   @override
+  Future<void> uploadFile(String remotePath, List<int> bytes) async {
+    uploads.add((path: remotePath, bytes: bytes));
+  }
+
+  @override
   Future<void> dispose() async {}
+}
+
+/// A valid 1x1 PNG so the composer's `Image.memory` preview can decode it in
+/// widget tests (arbitrary bytes would throw during paint).
+final _tinyPng = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
+);
+
+class FakeImagePicker implements ImagePickerPort {
+  FakeImagePicker({PickedImage? result})
+    : result = result ?? PickedImage(bytes: _tinyPng, extension: 'png');
+
+  PickedImage? result;
+
+  @override
+  Future<PickedImage?> pickImage() async => result;
 }
 
 class FakeSpeechInput implements SpeechInput {
@@ -477,5 +502,149 @@ void main() {
     await tester.pumpWidget(const SizedBox());
 
     expect(speech.cancelCalls, 1);
+  });
+
+  testWidgets('stages a picked image without sending it', (tester) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+    final imagePicker = FakeImagePicker();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          imagePicker: imagePicker,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+    await tester.pump();
+    await tester.pump();
+
+    // Picking stages the image (a removable preview appears) but sends nothing.
+    expect(find.byKey(const ValueKey('remove_image_button')), findsOneWidget);
+    expect(runner.uploads, isEmpty);
+    expect(runner.commands.any((c) => c.contains("'agent' 'send'")), isFalse);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('sends the staged image and text together on send', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+    final imagePicker = FakeImagePicker();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          imagePicker: imagePicker,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), 'look at this');
+    await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+    await tester.pump();
+    await tester.pump();
+    expect(runner.uploads, isEmpty); // still staged, not sent
+
+    await tester.tap(find.byKey(const ValueKey('send_message_button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(runner.uploads, hasLength(1));
+    expect(runner.uploads.single.path, startsWith('/tmp/proj/.drover/'));
+    expect(runner.uploads.single.bytes, _tinyPng);
+    expect(
+      runner.commands.any(
+        (c) =>
+            c.contains("'agent' 'send'") &&
+            c.contains('.drover') &&
+            c.contains('look at this'),
+      ),
+      isTrue,
+    );
+    expect(
+      runner.commands.any(
+        (c) => c.contains('send-keys') && c.contains("'enter'"),
+      ),
+      isTrue,
+    );
+    // The staged image is cleared after a successful send.
+    expect(find.byKey(const ValueKey('remove_image_button')), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('removing the staged image clears it without sending', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+    final imagePicker = FakeImagePicker();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          imagePicker: imagePicker,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('remove_image_button')));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('remove_image_button')), findsNothing);
+    expect(runner.uploads, isEmpty);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('cancelling the image picker stages nothing', (tester) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+    final imagePicker = FakeImagePicker()..result = null;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          imagePicker: imagePicker,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('remove_image_button')), findsNothing);
+    expect(runner.uploads, isEmpty);
+
+    await tester.pumpWidget(const SizedBox());
   });
 }

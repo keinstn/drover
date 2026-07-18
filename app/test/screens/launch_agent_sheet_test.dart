@@ -17,6 +17,9 @@ class FakeCommandRunner implements CommandRunner {
   }
 
   @override
+  Future<void> uploadFile(String remotePath, List<int> bytes) async {}
+
+  @override
   Future<void> dispose() async {}
 }
 
