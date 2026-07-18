@@ -7,6 +7,7 @@ import '../herdr/ansi_text.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/pane_text.dart';
 import '../models/agent_info.dart';
+import '../widgets/top_toast.dart';
 import 'herd_screen.dart' show statusColor;
 
 // The transcript renders on a fixed dark surface regardless of app theme:
@@ -146,9 +147,7 @@ class _AgentScreenState extends State<AgentScreen> {
       return true;
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.toString())));
+        showTopToast(context, e.toString());
       }
       return false;
     } finally {

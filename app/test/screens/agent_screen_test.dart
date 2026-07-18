@@ -165,7 +165,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('please continue'), findsOneWidget);
-    expect(find.byType(SnackBar), findsOneWidget);
+    expect(find.textContaining('boom'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

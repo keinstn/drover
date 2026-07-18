@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../herdr/herdr_client.dart';
 import '../models/agent_info.dart';
 import '../utils/path.dart';
+import '../widgets/top_toast.dart';
 import 'agent_screen.dart';
 import 'launch_agent_sheet.dart';
 
@@ -148,9 +149,7 @@ class _HerdScreenState extends State<HerdScreen> {
           agent.status == AgentStatus.blocked) {
         HapticFeedback.heavyImpact();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('${agent.name ?? agent.agent} is blocked')),
-          );
+          showTopToast(context, '${agent.name ?? agent.agent} is blocked');
         }
       }
       _previousStatus[agent.paneId] = agent.status;
@@ -214,9 +213,7 @@ class _HerdScreenState extends State<HerdScreen> {
       await _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.toString())));
+        showTopToast(context, e.toString());
       }
     } finally {
       if (mounted) {
