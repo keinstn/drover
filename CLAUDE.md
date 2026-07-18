@@ -44,3 +44,12 @@ fvm flutter run
 fvm flutter gen-l10n # regenerate localizations after editing lib/l10n/*.arb
 fvm dart run tool/spike.dart --host <host> agents
 ```
+
+## UI previews
+
+`just preview` boots a screen straight into a stubbed herdr backend (no SSH
+host needed) so you can screenshot/inspect UI on a simulator. Pick a scenario
+via `--dart-define=SCENARIO=idle|blocked` (default `idle`). The harness lives
+in `app/lib/previews/` and `app/lib/src/dev/stub_herdr.dart`, and shares
+`droverTheme` and l10n with production. To preview another screen or add a
+scenario, add an entrypoint under `lib/previews/` reusing `StubCommandRunner`.
