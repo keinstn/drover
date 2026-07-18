@@ -34,6 +34,21 @@ Observed against **herdr 0.7.1** unless noted otherwise.
   reports detection-hook install state, and an agent can be running while its
   integration reads "not installed". To decide what can be launched, probe the
   host PATH (`command -v <bin>`) instead.
+- **`pane send-keys <pane> shift+tab` does not cycle a Claude Code agent's
+  mode.** (2026-07-18, herdr issue #1561) herdr encodes the `shift+tab` token
+  as a plain Tab byte (0x09), identical to `tab` — not the backtab sequence
+  Claude Code needs. Verified by capturing the bytes herdr writes to the PTY.
+  **Workaround:** send the raw backtab escape sequence `ESC [ Z` (bytes
+  `1b 5b 5a`) via `pane send-text` instead. Verified end-to-end: it cycles a
+  live Claude Code agent's mode exactly like a physical shift+tab. The cycle
+  order is: manual → accept edits → plan → auto → (back to manual). Caveat 1:
+  `accept edits` and `auto` are two distinct positions in the cycle, but
+  drover's `parseAgentMode` collapses both into `AgentMode.autoAccept` — a
+  future "set to a specific mode" feature (read current mode, then cycle N
+  times) would need those two distinguished. Caveat 2: `bypass` is not part
+  of the shift+tab cycle (it's only reachable via
+  `--dangerously-skip-permissions` at launch), so it cannot be reached by
+  cycling.
 
 ## Measurements (Stage 0, 2026-07-18, localhost loopback, Claude Code agent)
 
