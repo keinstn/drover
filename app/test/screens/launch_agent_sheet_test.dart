@@ -127,4 +127,68 @@ void main() {
       expect(state.poppedValue, true);
     },
   );
+
+  testWidgets('default agent name combines preset bin and cwd segment', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_response);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(MaterialApp(home: _Harness(client: client)));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('cwd_field')),
+      '/tmp/proj',
+    );
+    await tester.pump();
+
+    final nameField = tester.widget<TextField>(
+      find.byKey(const ValueKey('agent_name_field')),
+    );
+    expect(nameField.controller!.text, 'claude-proj');
+
+    await tester.tap(find.byKey(const ValueKey('launch_button')));
+    await tester.pumpAndSettle();
+
+    final createCommand = runner.commands.firstWhere(
+      (c) => c.contains("'workspace' 'create'"),
+    );
+    final startCommand = runner.commands.firstWhere(
+      (c) => c.contains("'agent' 'start'"),
+    );
+    expect(createCommand, contains("'claude-proj'"));
+    expect(startCommand, contains("'claude-proj'"));
+  });
+
+  testWidgets('editing the agent name overrides the default', (tester) async {
+    final runner = FakeCommandRunner(_response);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(MaterialApp(home: _Harness(client: client)));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('cwd_field')),
+      '/tmp/proj',
+    );
+    await tester.pump();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('agent_name_field')),
+      'myagent',
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('launch_button')));
+    await tester.pumpAndSettle();
+
+    final startCommand = runner.commands.firstWhere(
+      (c) => c.contains("'agent' 'start'"),
+    );
+    expect(startCommand, contains("'myagent'"));
+    expect(startCommand, isNot(contains("'claude-proj'")));
+  });
 }
