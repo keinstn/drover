@@ -504,7 +504,9 @@ void main() {
     expect(speech.cancelCalls, 1);
   });
 
-  testWidgets('stages a picked image without sending it', (tester) async {
+  testWidgets('stages multiple picked images without sending them', (
+    tester,
+  ) async {
     final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);
     final imagePicker = FakeImagePicker();
@@ -525,16 +527,22 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('attach_image_button')));
     await tester.pump();
     await tester.pump();
+    imagePicker.result = PickedImage(bytes: _tinyPng, extension: 'jpg');
+    await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+    await tester.pump();
+    await tester.pump();
 
-    // Picking stages the image (a removable preview appears) but sends nothing.
-    expect(find.byKey(const ValueKey('remove_image_button')), findsOneWidget);
+    // Picking stages both images (two removable previews appear) but sends
+    // nothing.
+    expect(find.byKey(const ValueKey('remove_image_button_0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('remove_image_button_1')), findsOneWidget);
     expect(runner.uploads, isEmpty);
     expect(runner.commands.any((c) => c.contains("'agent' 'send'")), isFalse);
 
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('sends the staged image and text together on send', (
+  testWidgets('sends the staged images and text together on send', (
     tester,
   ) async {
     final runner = FakeCommandRunner(_respond);
@@ -558,15 +566,25 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('attach_image_button')));
     await tester.pump();
     await tester.pump();
+    imagePicker.result = PickedImage(bytes: _tinyPng, extension: 'jpg');
+    await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+    await tester.pump();
+    await tester.pump();
     expect(runner.uploads, isEmpty); // still staged, not sent
 
     await tester.tap(find.byKey(const ValueKey('send_message_button')));
     await tester.pump();
     await tester.pump();
 
-    expect(runner.uploads, hasLength(1));
-    expect(runner.uploads.single.path, startsWith('/tmp/proj/.drover/'));
-    expect(runner.uploads.single.bytes, _tinyPng);
+    expect(runner.uploads, hasLength(2));
+    for (final upload in runner.uploads) {
+      expect(upload.path, startsWith('/tmp/proj/.drover/'));
+      expect(upload.bytes, _tinyPng);
+    }
+    expect(
+      runner.commands.where((c) => c.contains("'agent' 'send'")).length,
+      1,
+    );
     expect(
       runner.commands.any(
         (c) =>
@@ -582,13 +600,13 @@ void main() {
       ),
       isTrue,
     );
-    // The staged image is cleared after a successful send.
-    expect(find.byKey(const ValueKey('remove_image_button')), findsNothing);
+    // The staged images are cleared after a successful send.
+    expect(find.byKey(const ValueKey('remove_image_button_0')), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('removing the staged image clears it without sending', (
+  testWidgets('removing one staged image leaves the other and sends nothing', (
     tester,
   ) async {
     final runner = FakeCommandRunner(_respond);
@@ -611,11 +629,18 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('attach_image_button')));
     await tester.pump();
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('remove_image_button')));
+    imagePicker.result = PickedImage(bytes: _tinyPng, extension: 'jpg');
+    await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+    await tester.pump();
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('remove_image_button')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('remove_image_button_0')));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('remove_image_button_0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('remove_image_button_1')), findsNothing);
     expect(runner.uploads, isEmpty);
+    expect(runner.commands.any((c) => c.contains("'agent' 'send'")), isFalse);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -642,7 +667,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('remove_image_button')), findsNothing);
+    expect(find.byKey(const ValueKey('remove_image_button_0')), findsNothing);
     expect(runner.uploads, isEmpty);
 
     await tester.pumpWidget(const SizedBox());
