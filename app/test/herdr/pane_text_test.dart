@@ -103,6 +103,20 @@ void main() {
       expect(parseAgentMode(chromeFixture), AgentMode.autoAccept);
     });
 
+    test('reads auto-accept from the "accept edits" wording', () {
+      expect(
+        parseAgentMode('body\n  ⏵⏵ accept edits on (shift+tab to cycle)'),
+        AgentMode.autoAccept,
+      );
+    });
+
+    test('maps the default "manual mode" line to normal', () {
+      expect(
+        parseAgentMode('body\n  -- INSERT -- ⏸ manual mode on'),
+        AgentMode.normal,
+      );
+    });
+
     test('reads plan mode', () {
       expect(
         parseAgentMode('body\n  ⏸ plan mode on (shift+tab to cycle)'),

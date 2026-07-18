@@ -24,6 +24,12 @@ enum AgentMode {
 /// Reads the current [AgentMode] from the trailing mode line of [text] (e.g.
 /// `-- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle)`). Returns null when no
 /// mode line is present. Expects plain text — strip ANSI first.
+///
+/// Matching is by wording because the `⏵⏵`/`⏸` glyphs alone don't disambiguate
+/// (`⏵⏵` fronts both auto-accept and bypass; `⏸` fronts both plan and the
+/// default "manual" mode). Claude Code has phrased auto-accept as both
+/// `auto mode on` and `accept edits on`, so both are matched; anything else on
+/// a recognized mode line (e.g. `manual mode on`) is the default [normal].
 AgentMode? parseAgentMode(String text) {
   final lines = text.split('\n');
   final start = lines.length > 6 ? lines.length - 6 : 0;
@@ -32,9 +38,11 @@ AgentMode? parseAgentMode(String text) {
     final isModeLine =
         lower.contains('-- insert --') || _modeLine.hasMatch(lines[i]);
     if (!isModeLine) continue;
-    if (lower.contains('plan mode')) return AgentMode.plan;
+    if (lower.contains('plan')) return AgentMode.plan;
     if (lower.contains('bypass')) return AgentMode.bypass;
-    if (lower.contains('auto')) return AgentMode.autoAccept;
+    if (lower.contains('auto') || lower.contains('accept')) {
+      return AgentMode.autoAccept;
+    }
     return AgentMode.normal;
   }
   return null;
