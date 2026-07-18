@@ -12,8 +12,12 @@ import 'herd_screen.dart' show statusColor;
 
 // The transcript renders on a fixed dark surface regardless of app theme:
 // agent output carries absolute (truecolor) colours picked for a dark
-// terminal, so a dark panel keeps them faithful and legible.
-const _transcriptBg = Color(0xFF1B1B1F);
+// terminal, so a dark panel keeps them faithful and legible. The colour
+// matches the panel background several agent CLIs (e.g. Copilot CLI) send
+// explicitly via SGR 48;2;20;27;34 — box-drawing "rounding" glyphs are
+// coloured to blend into that exact background, so drifting from it turns
+// those glyphs into visible mismatched bars.
+const _transcriptBg = Color(0xFF141B22);
 const _transcriptFg = Color(0xFFE4E4E7);
 
 /// Detail screen for a single agent's pane: a live transcript, quick actions,
