@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -70,6 +72,7 @@ class SpeechInputController implements SpeechInput {
   SpeechInputResultListener? _onResult;
   SpeechInputStatusListener? _onStatus;
   SpeechInputErrorListener? _onError;
+  Timer? _listenerCleanup;
   int _request = 0;
 
   @override
@@ -79,6 +82,8 @@ class SpeechInputController implements SpeechInput {
     required SpeechInputErrorListener onError,
   }) async {
     final request = ++_request;
+    _listenerCleanup?.cancel();
+    _listenerCleanup = null;
     _onResult = onResult;
     _onStatus = onStatus;
     _onError = onError;
@@ -182,7 +187,11 @@ class SpeechInputController implements SpeechInput {
             break;
           case SpeechToText.doneStatus:
             _onStatus?.call(SpeechInputStatus.done);
-            _clearListeners();
+            final request = _request;
+            _listenerCleanup?.cancel();
+            _listenerCleanup = Timer(const Duration(milliseconds: 250), () {
+              if (request == _request) _clearListeners();
+            });
             break;
         }
       },
@@ -213,6 +222,8 @@ class SpeechInputController implements SpeechInput {
   }
 
   void _clearListeners() {
+    _listenerCleanup?.cancel();
+    _listenerCleanup = null;
     _onResult = null;
     _onStatus = null;
     _onError = null;

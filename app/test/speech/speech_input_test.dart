@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:drover/src/speech/speech_input.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 class FakeSpeechToText extends SpeechToText {
@@ -22,6 +23,8 @@ class FakeSpeechToText extends SpeechToText {
     List<SpeechConfigOption>? options,
   }) {
     initializeCalls++;
+    errorListener = onError;
+    statusListener = onStatus;
     return initializationResults.removeAt(0);
   }
 
@@ -47,6 +50,14 @@ class FakeSpeechToText extends SpeechToText {
   @override
   Future<void> cancel() async {
     cancelCalls++;
+  }
+
+  void emitError(String message) {
+    errorListener?.call(SpeechRecognitionError(message, true));
+  }
+
+  void emitStatus(String status) {
+    statusListener?.call(status);
   }
 }
 
@@ -153,5 +164,22 @@ void main() {
     expect(result.started, isFalse);
     expect(result.errorMessage, contains('on-device recognition unavailable'));
     expect(speech.cancelCalls, 1);
+  });
+
+  test('delivers a terminal error received immediately after done', () async {
+    final speech = FakeSpeechToText()
+      ..initializationResults.add(Future.value(true));
+    final input = createInput(speech);
+    final errors = <String>[];
+
+    await input.start(
+      onResult: ignoreResult,
+      onStatus: ignoreStatus,
+      onError: errors.add,
+    );
+    speech.emitStatus(SpeechToText.doneStatus);
+    speech.emitError('error_missing_assets');
+
+    expect(errors, ['Speech recognition failed: error_missing_assets']);
   });
 }
