@@ -148,6 +148,31 @@ class HerdrClient {
     await sendKeys(paneId, 'enter');
   }
 
+  /// Upload [bytes] as an image into [agent]'s working directory and prompt
+  /// the agent to read it by its absolute path. Placing the file under the
+  /// agent's cwd keeps Claude Code's file read from triggering an
+  /// out-of-workspace permission prompt (reads within the workspace are
+  /// allowed). [caption], if non-empty, is sent on the line above the path.
+  /// Returns the remote path. [timestampMs] is injectable only so tests get
+  /// a deterministic filename.
+  Future<String> sendImage(
+    AgentInfo agent, {
+    required List<int> bytes,
+    required String extension,
+    String caption = '',
+    int? timestampMs,
+  }) async {
+    final dir = '${agent.cwd}/.drover';
+    final path =
+        '$dir/img-${timestampMs ?? DateTime.now().millisecondsSinceEpoch}.$extension';
+    await _runner.run('mkdir -p ${shQuote(dir)}');
+    await _runner.uploadFile(path, bytes);
+    final trimmed = caption.trim();
+    final text = trimmed.isEmpty ? path : '${caption.trimRight()}\n$path';
+    await prompt(agent.paneId, text);
+    return path;
+  }
+
   /// Probe the host PATH for which of [presets] are installed, returning the
   /// subset whose [AgentPreset.bin] resolves. Runs a single read-only
   /// `command -v` sweep under a login shell — this is a raw host probe, NOT a

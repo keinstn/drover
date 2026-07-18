@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
+import 'package:drover/src/image/image_input.dart';
 import 'package:drover/src/screens/agent_screen.dart';
 import 'package:drover/src/speech/speech_input.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +13,7 @@ class FakeCommandRunner implements CommandRunner {
 
   final CommandResult Function(String command) _response;
   final commands = <String>[];
+  final uploads = <({String path, List<int> bytes})>[];
 
   @override
   Future<CommandResult> run(String command) async {
@@ -18,7 +22,24 @@ class FakeCommandRunner implements CommandRunner {
   }
 
   @override
+  Future<void> uploadFile(String remotePath, List<int> bytes) async {
+    uploads.add((path: remotePath, bytes: bytes));
+  }
+
+  @override
   Future<void> dispose() async {}
+}
+
+class FakeImagePicker implements ImagePickerPort {
+  FakeImagePicker({PickedImage? result})
+    : result =
+          result ??
+          PickedImage(bytes: Uint8List.fromList([1, 2, 3]), extension: 'png');
+
+  PickedImage? result;
+
+  @override
+  Future<PickedImage?> pickImage() async => result;
 }
 
 class FakeSpeechInput implements SpeechInput {
@@ -477,5 +498,73 @@ void main() {
     await tester.pumpWidget(const SizedBox());
 
     expect(speech.cancelCalls, 1);
+  });
+
+  testWidgets('sends a picked image', (tester) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+    final imagePicker = FakeImagePicker();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          imagePicker: imagePicker,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(runner.uploads, hasLength(1));
+    expect(runner.uploads.single.path, startsWith('/tmp/proj/.drover/'));
+    expect(runner.uploads.single.bytes, [1, 2, 3]);
+    expect(
+      runner.commands.any(
+        (c) => c.contains("'agent' 'send'") && c.contains('.drover'),
+      ),
+      isTrue,
+    );
+    expect(
+      runner.commands.any(
+        (c) => c.contains('send-keys') && c.contains("'enter'"),
+      ),
+      isTrue,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('cancelling the image picker sends nothing', (tester) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+    final imagePicker = FakeImagePicker()..result = null;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          imagePicker: imagePicker,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(runner.uploads, isEmpty);
+
+    await tester.pumpWidget(const SizedBox());
   });
 }

@@ -49,6 +49,20 @@ Observed against **herdr 0.7.1** unless noted otherwise.
   of the shift+tab cycle (it's only reachable via
   `--dangerously-skip-permissions` at launch), so it cannot be reached by
   cycling.
+- **The agent input channel is text-only — images go via SFTP + a path
+  reference.** (2026-07-18) `agent send` / `pane send-text` / `pane send-keys`
+  carry only text or key events; there is no attachment/image-injection
+  command, and a terminal clipboard-image paste can't be synthesised over them.
+  drover sends an image by SFTP-uploading it to the host (dartssh2
+  `SftpClient`) into the target agent's cwd (`<cwd>/.drover/`), then sending the
+  file's absolute path as an ordinary prompt. Verified end-to-end against a
+  Claude Code agent: a spike placed an image with a known token/colour under the
+  agent's cwd and sent the path — the agent read it with its Read tool and
+  reported the token and colour back, confirming it saw the actual pixels.
+  Keeping the upload inside the agent's cwd avoids Claude Code's
+  out-of-workspace read permission prompt. Path-reading is **agent-specific**
+  (this is Claude Code's behaviour; Codex/Copilot CLI etc. will need their own
+  rule), so drover's image input is Claude-Code-only for now.
 
 ## Measurements (Stage 0, 2026-07-18, localhost loopback, Claude Code agent)
 

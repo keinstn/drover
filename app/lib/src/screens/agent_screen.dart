@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../herdr/ansi_text.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/pane_text.dart';
+import '../image/image_input.dart';
 import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
 import '../widgets/top_toast.dart';
@@ -27,6 +28,7 @@ class AgentScreen extends StatefulWidget {
     this.initialAgent,
     this.initialWorkspaceLabel,
     this.speechInput,
+    this.imagePicker,
     this.pollInterval = const Duration(seconds: 2),
   });
 
@@ -35,6 +37,7 @@ class AgentScreen extends StatefulWidget {
   final AgentInfo? initialAgent;
   final String? initialWorkspaceLabel;
   final SpeechInput? speechInput;
+  final ImagePickerPort? imagePicker;
   final Duration pollInterval;
 
   @override
@@ -57,6 +60,7 @@ class _AgentScreenState extends State<AgentScreen> {
   final _scrollController = ScrollController();
   final _messageController = TextEditingController();
   late final SpeechInput _speechInput;
+  late final ImagePickerPort _imagePicker;
   var _dictationSession = 0;
   var _draftBeforeDictation = '';
 
@@ -64,6 +68,7 @@ class _AgentScreenState extends State<AgentScreen> {
   void initState() {
     super.initState();
     _speechInput = widget.speechInput ?? SpeechInputController();
+    _imagePicker = widget.imagePicker ?? SystemImagePicker();
     _agent = widget.initialAgent;
     _workspaceLabel = widget.initialWorkspaceLabel;
     _load();
@@ -172,6 +177,31 @@ class _AgentScreenState extends State<AgentScreen> {
     final text = _messageController.text;
     if (text.trim().isEmpty) return;
     final ok = await _send(() => widget.client.prompt(widget.paneId, text));
+    if (ok) {
+      _messageController.clear();
+      HapticFeedback.lightImpact();
+    }
+  }
+
+  Future<void> _attachImage() async {
+    final agent = _agent;
+    if (agent == null || _sending || _dictationStarting || _dictating) return;
+    final PickedImage? picked;
+    try {
+      picked = await _imagePicker.pickImage();
+    } catch (e) {
+      if (mounted) showTopToast(context, e.toString());
+      return;
+    }
+    if (picked == null) return; // user cancelled
+    final ok = await _send(
+      () => widget.client.sendImage(
+        agent,
+        bytes: picked!.bytes,
+        extension: picked.extension,
+        caption: _messageController.text,
+      ),
+    );
     if (ok) {
       _messageController.clear();
       HapticFeedback.lightImpact();
@@ -325,6 +355,7 @@ class _AgentScreenState extends State<AgentScreen> {
             dictationStarting: _dictationStarting,
             dictating: _dictating,
             onDictation: _toggleDictation,
+            onAttach: _attachImage,
             onSend: _sendMessage,
           ),
         ],
@@ -510,6 +541,7 @@ class _Composer extends StatelessWidget {
     required this.dictationStarting,
     required this.dictating,
     required this.onDictation,
+    required this.onAttach,
     required this.onSend,
   });
 
@@ -518,6 +550,7 @@ class _Composer extends StatelessWidget {
   final bool dictationStarting;
   final bool dictating;
   final VoidCallback onDictation;
+  final VoidCallback onAttach;
   final VoidCallback onSend;
 
   @override
@@ -552,6 +585,11 @@ class _Composer extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
+          _AttachButton(
+            sending: sending || dictationStarting || dictating,
+            onPressed: onAttach,
+          ),
+          const SizedBox(width: 8),
           _MicrophoneButton(
             starting: dictationStarting,
             dictating: dictating,
@@ -563,6 +601,33 @@ class _Composer extends StatelessWidget {
             onSend: onSend,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AttachButton extends StatelessWidget {
+  const _AttachButton({required this.sending, required this.onPressed});
+
+  final bool sending;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: Tooltip(
+        message: 'Attach image',
+        child: OutlinedButton(
+          key: const ValueKey('attach_image_button'),
+          onPressed: sending ? null : onPressed,
+          style: OutlinedButton.styleFrom(
+            shape: const CircleBorder(),
+            padding: EdgeInsets.zero,
+          ),
+          child: const Icon(Icons.add_photo_alternate, size: 20),
+        ),
       ),
     );
   }
