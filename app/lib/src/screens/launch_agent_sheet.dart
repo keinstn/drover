@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../herdr/herdr_client.dart';
 import '../models/agent_preset.dart';
 import '../models/workspace_info.dart';
@@ -167,6 +168,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -176,7 +178,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Launch agent',
+                l10n.commonLaunchAgent,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 16),
@@ -206,7 +208,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                           width: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Launch'),
+                      : Text(l10n.launchButton),
                 ),
               ),
             ],
@@ -217,6 +219,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   }
 
   Widget _buildPresetSection() {
+    final l10n = AppLocalizations.of(context)!;
     return FutureBuilder<List<AgentPreset>>(
       future: _presetsFuture,
       builder: (context, snapshot) {
@@ -233,14 +236,14 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
               ),
               TextButton(
                 onPressed: () => setState(_detectAgents),
-                child: const Text('Retry'),
+                child: Text(l10n.commonRetry),
               ),
             ],
           );
         }
         final presets = snapshot.data ?? [];
         if (presets.isEmpty) {
-          return const Text('No launchable agents found on the host');
+          return Text(l10n.launchNoAgents);
         }
         return RadioGroup<AgentPreset>(
           groupValue: _selectedPreset,
@@ -270,6 +273,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   }
 
   Widget _buildCwdSection() {
+    final l10n = AppLocalizations.of(context)!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -296,9 +300,9 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
           key: const ValueKey('cwd_field'),
           controller: _cwdController,
           enabled: !_busy,
-          decoration: const InputDecoration(
-            labelText: 'Working directory',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: l10n.launchWorkingDir,
+            border: const OutlineInputBorder(),
           ),
           onChanged: (_) => setState(_syncDefaultNames),
         ),
@@ -307,13 +311,14 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   }
 
   Widget _buildNameSection() {
+    final l10n = AppLocalizations.of(context)!;
     return TextField(
       key: const ValueKey('agent_name_field'),
       controller: _nameController,
       enabled: !_busy,
-      decoration: const InputDecoration(
-        labelText: 'Agent name',
-        border: OutlineInputBorder(),
+      decoration: InputDecoration(
+        labelText: l10n.launchAgentName,
+        border: const OutlineInputBorder(),
       ),
       onChanged: (_) {
         _nameEdited = true;
@@ -333,6 +338,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   }
 
   Widget _buildWorkspaceSection() {
+    final l10n = AppLocalizations.of(context)!;
     return RadioGroup<_WorkspaceMode>(
       groupValue: _mode,
       onChanged: (value) {
@@ -345,14 +351,14 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
             key: const ValueKey('ws_mode_new'),
             dense: true,
             contentPadding: EdgeInsets.zero,
-            title: const Text('New workspace'),
+            title: Text(l10n.launchNewWorkspace),
             value: _WorkspaceMode.newWorkspace,
           ),
           RadioListTile<_WorkspaceMode>(
             key: const ValueKey('ws_mode_existing'),
             dense: true,
             contentPadding: EdgeInsets.zero,
-            title: const Text('Existing workspace'),
+            title: Text(l10n.launchExistingWorkspace),
             value: _WorkspaceMode.existing,
           ),
           if (_mode == _WorkspaceMode.newWorkspace) ...[
@@ -361,9 +367,9 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
               key: const ValueKey('workspace_name_field'),
               controller: _workspaceNameController,
               enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'Workspace name',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.launchWorkspaceName,
+                border: const OutlineInputBorder(),
               ),
               onChanged: (_) {
                 _workspaceNameEdited = true;
@@ -381,6 +387,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   }
 
   Widget _buildWorkspaceDropdown() {
+    final l10n = AppLocalizations.of(context)!;
     return FutureBuilder<List<WorkspaceInfo>>(
       future: _workspacesFuture,
       builder: (context, snapshot) {
@@ -399,13 +406,13 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                 children: [
                   TextButton(
                     onPressed: () => setState(_loadWorkspaces),
-                    child: const Text('Retry'),
+                    child: Text(l10n.commonRetry),
                   ),
                   TextButton(
                     onPressed: () => setState(() {
                       _mode = _WorkspaceMode.newWorkspace;
                     }),
-                    child: const Text('Use new workspace instead'),
+                    child: Text(l10n.launchUseNewWorkspace),
                   ),
                 ],
               ),
@@ -414,7 +421,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         }
         final workspaces = snapshot.data ?? [];
         if (workspaces.isEmpty) {
-          return const Text('No existing workspaces');
+          return Text(l10n.launchNoExistingWorkspaces);
         }
         final labelCounts = <String, int>{};
         for (final workspace in workspaces) {
@@ -426,13 +433,13 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         return DropdownButton<String>(
           key: const ValueKey('ws_dropdown'),
           isExpanded: true,
-          hint: const Text('Select workspace'),
+          hint: Text(l10n.launchSelectWorkspace),
           value: _selectedWorkspaceId,
           items: [
             for (final ws in workspaces)
               DropdownMenuItem(
                 value: ws.workspaceId,
-                child: Text(_workspaceDisplayLabel(ws, labelCounts)),
+                child: Text(_workspaceDisplayLabel(ws, labelCounts, l10n)),
               ),
           ],
           onChanged: _busy
@@ -446,10 +453,11 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   String _workspaceDisplayLabel(
     WorkspaceInfo workspace,
     Map<String, int> labelCounts,
+    AppLocalizations l10n,
   ) {
     final label = workspace.label.trim();
     if (label.isEmpty) {
-      return 'Unnamed workspace (${workspace.workspaceId})';
+      return l10n.launchUnnamedWorkspace(workspace.workspaceId);
     }
     if (labelCounts[label]! > 1) {
       return '$label (${workspace.workspaceId})';

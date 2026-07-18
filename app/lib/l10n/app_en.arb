@@ -23,5 +23,55 @@
     "placeholders": {
       "count": { "type": "int" }
     }
+  },
+
+  "commonRetry": "Retry",
+  "commonStop": "Stop",
+  "commonLaunchAgent": "Launch agent",
+
+  "agentStatusIdle": "idle",
+  "agentStatusWorking": "working",
+  "agentStatusBlocked": "blocked",
+  "agentStatusDone": "done",
+  "agentStatusUnknown": "unknown",
+
+  "agentComposerHint": "Message agent…",
+  "agentCycleModeTooltip": "Cycle agent mode (shift+tab)",
+  "agentRemoveImage": "Remove image",
+  "agentAttachImage": "Attach image",
+  "agentStopDictation": "Stop dictation",
+  "agentDictateMessage": "Dictate message",
+
+  "herdAgentBlocked": "{name} is blocked",
+  "@herdAgentBlocked": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "herdStopDialogTitle": "Stop agent?",
+  "herdStopDialogBody": "{name} ({paneId}) will be stopped. Any current work will be interrupted.",
+  "@herdStopDialogBody": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "paneId": { "type": "String" }
+    }
+  },
+  "herdNoAgents": "No agents found",
+
+  "launchButton": "Launch",
+  "launchNoAgents": "No launchable agents found on the host",
+  "launchWorkingDir": "Working directory",
+  "launchAgentName": "Agent name",
+  "launchNewWorkspace": "New workspace",
+  "launchExistingWorkspace": "Existing workspace",
+  "launchWorkspaceName": "Workspace name",
+  "launchUseNewWorkspace": "Use new workspace instead",
+  "launchNoExistingWorkspaces": "No existing workspaces",
+  "launchSelectWorkspace": "Select workspace",
+  "launchUnnamedWorkspace": "Unnamed workspace ({id})",
+  "@launchUnnamedWorkspace": {
+    "placeholders": {
+      "id": { "type": "String" }
+    }
   }
 }

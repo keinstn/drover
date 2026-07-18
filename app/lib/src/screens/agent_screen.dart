@@ -4,9 +4,11 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../herdr/ansi_text.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/pane_text.dart';
+import '../i18n/status_label.dart';
 import '../image/image_input.dart';
 import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
@@ -313,6 +315,7 @@ class _AgentScreenState extends State<AgentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final agent = _agent;
     final displayName = agent?.name ?? agent?.agent ?? widget.paneId;
     final workspaceLabel = _workspaceLabel ?? agent?.workspaceId;
@@ -339,7 +342,9 @@ class _AgentScreenState extends State<AgentScreen> {
                       color: statusColor(agent.status),
                       size: 12,
                     ),
-                    label: Text('${agent.status.name} · $workspaceLabel'),
+                    label: Text(
+                      '${agentStatusLabel(l10n, agent.status)} · $workspaceLabel',
+                    ),
                   ),
               ],
             ),
@@ -354,7 +359,7 @@ class _AgentScreenState extends State<AgentScreen> {
               actions: [
                 TextButton(
                   onPressed: _retryWorkspaceLabel,
-                  child: const Text('Retry'),
+                  child: Text(l10n.commonRetry),
                 ),
               ],
             ),
@@ -549,6 +554,7 @@ class _Composer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
     final mode = this.mode;
     return Padding(
@@ -587,12 +593,12 @@ class _Composer extends StatelessWidget {
               maxLines: 8,
               textInputAction: TextInputAction.newline,
               style: const TextStyle(fontSize: 15),
-              decoration: const InputDecoration(
-                hintText: 'Message agent…',
+              decoration: InputDecoration(
+                hintText: l10n.agentComposerHint,
                 isCollapsed: true,
                 filled: false,
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 4),
+                contentPadding: const EdgeInsets.symmetric(vertical: 4),
               ),
             ),
             const SizedBox(height: 4),
@@ -601,7 +607,7 @@ class _Composer extends StatelessWidget {
                 children: [
                   Flexible(
                     child: Tooltip(
-                      message: 'Cycle agent mode (shift+tab)',
+                      message: l10n.agentCycleModeTooltip,
                       child: ActionChip(
                         avatar: Icon(
                           Icons.tune,
@@ -685,6 +691,7 @@ class _PendingImagePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return SizedBox(
       width: 52,
       height: 52,
@@ -712,7 +719,7 @@ class _PendingImagePreview extends StatelessWidget {
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints.tightFor(width: 22, height: 22),
-              tooltip: 'Remove image',
+              tooltip: l10n.agentRemoveImage,
               icon: const Icon(Icons.cancel, size: 18),
               onPressed: onRemove,
             ),
@@ -731,11 +738,12 @@ class _AttachButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return SizedBox(
       width: 48,
       height: 48,
       child: Tooltip(
-        message: 'Attach image',
+        message: l10n.agentAttachImage,
         child: OutlinedButton(
           key: const ValueKey('attach_image_button'),
           onPressed: sending ? null : onPressed,
@@ -763,12 +771,13 @@ class _MicrophoneButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final enabled = !starting;
     return SizedBox(
       width: 48,
       height: 48,
       child: Tooltip(
-        message: dictating ? 'Stop dictation' : 'Dictate message',
+        message: dictating ? l10n.agentStopDictation : l10n.agentDictateMessage,
         child: OutlinedButton(
           onPressed: enabled ? onPressed : null,
           style: OutlinedButton.styleFrom(

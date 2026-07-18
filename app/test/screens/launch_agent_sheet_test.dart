@@ -1,3 +1,4 @@
+import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/screens/launch_agent_sheet.dart';
@@ -103,6 +104,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: LaunchAgentSheet(client: client, existingCwds: const []),
         ),
@@ -120,7 +123,13 @@ void main() {
       final runner = FakeCommandRunner(_response);
       final client = HerdrClient(runner);
 
-      await tester.pumpWidget(MaterialApp(home: _Harness(client: client)));
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: _Harness(client: client),
+        ),
+      );
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
@@ -153,7 +162,13 @@ void main() {
     final runner = FakeCommandRunner(_response);
     final client = HerdrClient(runner);
 
-    await tester.pumpWidget(MaterialApp(home: _Harness(client: client)));
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: _Harness(client: client),
+      ),
+    );
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
@@ -191,7 +206,13 @@ void main() {
     final runner = FakeCommandRunner(_response);
     final client = HerdrClient(runner);
 
-    await tester.pumpWidget(MaterialApp(home: _Harness(client: client)));
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: _Harness(client: client),
+      ),
+    );
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
@@ -220,7 +241,13 @@ void main() {
     final runner = FakeCommandRunner(_response);
     final client = HerdrClient(runner);
 
-    await tester.pumpWidget(MaterialApp(home: _Harness(client: client)));
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: _Harness(client: client),
+      ),
+    );
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
@@ -254,6 +281,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: LaunchAgentSheet(client: client, existingCwds: const []),
         ),
@@ -279,6 +308,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: LaunchAgentSheet(client: client, existingCwds: const []),
         ),
