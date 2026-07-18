@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "app/**"
+      - "plugin/**"
+      - "justfile"
       - ".github/workflows/ci.yml"
 
 jobs:
@@ -30,3 +32,11 @@ jobs:
 
       - name: Test
         run: flutter test
+
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Plugin tests
+        run: sh plugin/test/notify_test.sh

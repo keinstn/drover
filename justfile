@@ -31,6 +31,12 @@ run *args:
 spike *args:
     fvm dart run tool/spike.dart {{args}}
 
+# --- Plugin (herdr → ntfy push notifications, plugin/) ---
+
+# Run the herdr→ntfy plugin shell tests.
+plugin-test:
+    sh plugin/test/notify_test.sh
+
 # --- Aggregate ---
 
-check: analyze test
+check: analyze test plugin-test
