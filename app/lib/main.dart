@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:marionette_flutter/marionette_flutter.dart';
 
 import 'src/herdr/herdr_client.dart';
 import 'src/infra/host_store.dart';
@@ -9,7 +11,11 @@ import 'src/screens/herd_screen.dart';
 import 'src/screens/host_setup_screen.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  if (kDebugMode) {
+    MarionetteBinding.ensureInitialized();
+  } else {
+    WidgetsFlutterBinding.ensureInitialized();
+  }
   final store = HostStore(
     storage: const FlutterSecureStorage(
       mOptions: MacOsOptions(usesDataProtectionKeychain: false),

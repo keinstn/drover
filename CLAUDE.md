@@ -19,6 +19,18 @@ See `README.md` for the PoC plan and Stage 0 measurement results,
   inspect/tap/screenshot the running app via the Dart VM service): `dart pub global
   activate marionette_mcp`, then ensure `~/.pub-cache/bin` is on PATH.
 
+## Marionette MCP
+
+Register the server with Claude Code once:
+
+```sh
+claude mcp add --transport stdio marionette -- marionette_mcp
+```
+
+To control a local app, start it in debug mode, then copy the `ws://.../ws`
+Dart VM service URI printed by `flutter run`. Call `marionette-connect` with
+that URI before using its inspection or interaction tools.
+
 ## Key commands
 
 A `justfile` wraps the app commands below (`just` to list recipes).
