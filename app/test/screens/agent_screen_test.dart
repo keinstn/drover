@@ -170,7 +170,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('shows the current mode as a read-only badge (no shift+tab)', (
+  testWidgets('shows the current mode as a tappable chip that cycles it', (
     tester,
   ) async {
     final runner = FakeCommandRunner(_respondIdleWithMode);
@@ -188,20 +188,26 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // Mode shows as a non-interactive Chip; y/n are gone; Enter/Esc remain.
-    expect(find.widgetWithText(Chip, 'auto-accept'), findsOneWidget);
+    // Mode shows as an ActionChip; y/n are gone; Enter/Esc remain.
+    expect(find.widgetWithText(ActionChip, 'auto-accept'), findsOneWidget);
     expect(find.widgetWithText(ActionChip, 'y'), findsNothing);
     expect(find.widgetWithText(ActionChip, 'n'), findsNothing);
     expect(find.widgetWithText(ActionChip, 'Enter'), findsOneWidget);
     expect(find.widgetWithText(ActionChip, 'Esc'), findsOneWidget);
 
-    // The badge is display-only: tapping it sends nothing (cycling via
-    // shift+tab is blocked by herdr issue #1561).
-    await tester.tap(find.widgetWithText(Chip, 'auto-accept'));
+    // Tapping the mode chip cycles it by sending the raw backtab escape
+    // sequence via `pane send-text` (herdr's `send-keys shift+tab` mis-encodes
+    // it — see herdr issue #1561).
+    await tester.tap(find.widgetWithText(ActionChip, 'auto-accept'));
     await tester.pump();
     await tester.pump();
 
-    expect(runner.commands.any((c) => c.contains('shift+tab')), isFalse);
+    expect(
+      runner.commands.any(
+        (c) => c.contains("'pane' 'send-text'") && c.contains('\u001b[Z'),
+      ),
+      isTrue,
+    );
 
     await tester.pumpWidget(const SizedBox());
   });

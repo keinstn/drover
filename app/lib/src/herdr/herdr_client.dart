@@ -129,6 +129,15 @@ class HerdrClient {
     await _runOk(['pane', 'send-keys', paneId, key]);
   }
 
+  /// Cycle the agent's interaction mode — the runtime equivalent of pressing
+  /// shift+tab. herdr's `pane send-keys shift+tab` mis-encodes to a plain Tab
+  /// for kitty-keyboard agents like Claude Code (herdr issue #1561), so send the
+  /// raw backtab escape sequence (ESC [ Z) via `pane send-text`, which is
+  /// verified to cycle the mode end-to-end.
+  Future<void> cycleMode(String paneId) async {
+    await _runOk(['pane', 'send-text', paneId, '\u001b[Z']);
+  }
+
   /// Stop the agent running in [paneId] by closing its pane.
   Future<void> closeAgent(String paneId) async {
     await _run(['pane', 'close', paneId]);

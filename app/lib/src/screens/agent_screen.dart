@@ -354,14 +354,14 @@ Color _modeColor(AgentMode mode) {
   }
 }
 
-/// A read-only mode indicator (shown when the agent reports one) plus the
-/// common Enter/Esc keys.
+/// A mode indicator (shown when the agent reports one) plus the common
+/// Enter/Esc keys.
 ///
-/// The mode is display-only: cycling it from the app would mean sending
-/// shift+tab, which herdr's CLI mis-encodes for kitty-keyboard agents like
-/// Claude Code, so it never reaches the agent. See herdr issue #1561. Choosing
-/// a mode at launch (`claude --permission-mode …`) is the interim path and
-/// belongs to the agent-launch flow, not here.
+/// The mode chip is tappable: tapping it cycles the agent's mode by sending
+/// the raw backtab escape sequence via `client.cycleMode`, since herdr's
+/// `send-keys shift+tab` mis-encodes it for kitty-keyboard agents like Claude
+/// Code (see herdr issue #1561). This can only cycle through modes, not jump
+/// to a specific one.
 class _ActionBar extends StatelessWidget {
   const _ActionBar({
     required this.mode,
@@ -387,12 +387,15 @@ class _ActionBar extends StatelessWidget {
           if (mode != null)
             Flexible(
               child: Tooltip(
-                message: 'Agent mode',
-                child: Chip(
+                message: 'Cycle agent mode (shift+tab)',
+                child: ActionChip(
                   avatar: Icon(Icons.tune, size: 18, color: _modeColor(mode)),
                   label: Text(mode.label, overflow: TextOverflow.ellipsis),
                   side: BorderSide(color: _modeColor(mode)),
                   visualDensity: VisualDensity.compact,
+                  onPressed: sending
+                      ? null
+                      : () => onSend(() => client.cycleMode(paneId)),
                 ),
               ),
             ),
