@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../herdr/herdr_client.dart';
 import '../models/agent_preset.dart';
+import '../models/claude_permission_mode.dart';
 import '../models/workspace_info.dart';
 import '../utils/path.dart';
 
@@ -28,6 +29,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   Future<List<WorkspaceInfo>>? _workspacesFuture;
 
   AgentPreset? _selectedPreset;
+  ClaudePermissionMode _permissionMode = ClaudePermissionMode.defaultMode;
   final _cwdController = TextEditingController();
   _WorkspaceMode _mode = _WorkspaceMode.newWorkspace;
   String? _selectedWorkspaceId;
@@ -102,7 +104,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
       try {
         await widget.client.startAgent(
           name: name,
-          argv: preset.argv,
+          argv: launchArgv(preset, _permissionMode),
           cwd: cwd,
           workspaceId: wsId,
         );
@@ -141,6 +143,10 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
               ),
               const SizedBox(height: 16),
               _buildPresetSection(),
+              if (_selectedPreset?.bin == 'claude') ...[
+                const SizedBox(height: 16),
+                _buildPermissionModeSection(),
+              ],
               const SizedBox(height: 16),
               _buildCwdSection(),
               const SizedBox(height: 16),
@@ -204,7 +210,12 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
           groupValue: _selectedPreset,
           onChanged: (value) {
             if (_busy) return;
-            setState(() => _selectedPreset = value);
+            setState(() {
+              _selectedPreset = value;
+              if (value?.bin != 'claude') {
+                _permissionMode = ClaudePermissionMode.defaultMode;
+              }
+            });
           },
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,6 +232,30 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildPermissionModeSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Permission mode'),
+        DropdownButton<ClaudePermissionMode>(
+          key: const ValueKey('permission_mode_dropdown'),
+          value: _permissionMode,
+          items: [
+            for (final mode in ClaudePermissionMode.values)
+              DropdownMenuItem(value: mode, child: Text(mode.label)),
+          ],
+          onChanged: _busy
+              ? null
+              : (value) {
+                  if (value != null) {
+                    setState(() => _permissionMode = value);
+                  }
+                },
+        ),
+      ],
     );
   }
 
