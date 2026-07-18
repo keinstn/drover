@@ -24,7 +24,10 @@ class HerdrClient {
   final CommandRunner _runner;
   final String herdrBin;
 
-  Future<Map<String, dynamic>> _run(List<String> args) async {
+  /// Runs a herdr command and returns its raw result, throwing a transport
+  /// [HerdrException] on a spawn failure or a non-zero exit (herdr prints an
+  /// error envelope to stderr and exits non-zero on failure).
+  Future<CommandResult> _exec(List<String> args) async {
     final command = buildHerdrCommand(herdrBin, args);
     final CommandResult result;
     try {
@@ -40,6 +43,16 @@ class HerdrClient {
             '${result.stderr}',
       );
     }
+    return result;
+  }
+
+  /// Runs a command whose success carries no body (herdr's "ok" responses,
+  /// e.g. `pane send-keys`, print nothing on stdout). Exit-code checking in
+  /// [_exec] is the only success signal.
+  Future<void> _runOk(List<String> args) => _exec(args);
+
+  Future<Map<String, dynamic>> _run(List<String> args) async {
+    final result = await _exec(args);
 
     final Map<String, dynamic> envelope;
     try {
@@ -87,6 +100,8 @@ class HerdrClient {
     return AgentInfo.fromJson(agent);
   }
 
+  /// Reads the recent transcript for [target] as ANSI-coloured text (SGR
+  /// escapes only, from the `recent` source).
   Future<String> readAgent(String target, {int lines = 120}) async {
     final result = await _run([
       'agent',
@@ -97,7 +112,7 @@ class HerdrClient {
       '--lines',
       '$lines',
       '--format',
-      'text',
+      'ansi',
     ]);
     final read = result['read'];
     if (read is! Map<String, dynamic> || read['text'] is! String) {
@@ -111,7 +126,7 @@ class HerdrClient {
   }
 
   Future<void> sendKeys(String paneId, String key) async {
-    await _run(['pane', 'send-keys', paneId, key]);
+    await _runOk(['pane', 'send-keys', paneId, key]);
   }
 
   /// Stop the agent running in [paneId] by closing its pane.

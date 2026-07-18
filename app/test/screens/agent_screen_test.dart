@@ -61,6 +61,27 @@ CommandResult _respond(String command) {
   return ok('{"id":"1","result":{}}');
 }
 
+const _idleWithMode =
+    'Working on the task…\n'
+    '  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle)\n';
+
+CommandResult _respondIdleWithMode(String command) {
+  if (command.contains("'agent' 'get'")) {
+    return ok(
+      '{"id":"1","result":{"agent":{"agent":"claude",'
+      '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
+      '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+      '"name":"Agent Three"}}}',
+    );
+  }
+  if (command.contains("'agent' 'read'")) {
+    return ok(
+      '{"id":"1","result":{"read":{"text":${_jsonEncode(_idleWithMode)}}}}',
+    );
+  }
+  return ok('{"id":"1","result":{}}');
+}
+
 String _jsonEncode(String s) {
   final escaped = s
       .replaceAll(r'\', r'\\')
@@ -145,6 +166,42 @@ void main() {
 
     expect(find.text('please continue'), findsOneWidget);
     expect(find.byType(SnackBar), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('shows the current mode as a read-only badge (no shift+tab)', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_respondIdleWithMode);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // Mode shows as a non-interactive Chip; y/n are gone; Enter/Esc remain.
+    expect(find.widgetWithText(Chip, 'auto-accept'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'y'), findsNothing);
+    expect(find.widgetWithText(ActionChip, 'n'), findsNothing);
+    expect(find.widgetWithText(ActionChip, 'Enter'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'Esc'), findsOneWidget);
+
+    // The badge is display-only: tapping it sends nothing (cycling via
+    // shift+tab is blocked by herdr issue #1561).
+    await tester.tap(find.widgetWithText(Chip, 'auto-accept'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(runner.commands.any((c) => c.contains('shift+tab')), isFalse);
 
     await tester.pumpWidget(const SizedBox());
   });

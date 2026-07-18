@@ -114,7 +114,7 @@ void main() {
       expect(
         runner.commands.single,
         "~/.local/bin/herdr 'agent' 'read' 'wB:p4' '--source' 'recent' "
-        "'--lines' '50' '--format' 'text'",
+        "'--lines' '50' '--format' 'ansi'",
       );
     });
   });
@@ -132,20 +132,26 @@ void main() {
       );
     });
 
-    test('sendKeys builds the pane send-keys command', () async {
-      final runner = FakeCommandRunner((_) => ok('{"id":"1","result":{}}'));
+    test('sendKeys tolerates herdr\'s empty ok response', () async {
+      // `pane send-keys` prints nothing on success (exit 0, empty stdout); the
+      // client must not treat that as an unparseable response.
+      final runner = FakeCommandRunner((_) => ok(''));
       final client = HerdrClient(runner);
 
-      await client.sendKeys('wB:p4', 'enter');
+      await client.sendKeys('wB:p4', 'shift+tab');
 
       expect(
         runner.commands.single,
-        "~/.local/bin/herdr 'pane' 'send-keys' 'wB:p4' 'enter'",
+        "~/.local/bin/herdr 'pane' 'send-keys' 'wB:p4' 'shift+tab'",
       );
     });
 
     test('prompt sends text then enter', () async {
-      final runner = FakeCommandRunner((_) => ok('{"id":"1","result":{}}'));
+      // agent send returns an envelope; pane send-keys returns empty stdout.
+      final runner = FakeCommandRunner(
+        (c) =>
+            c.contains("'send-keys'") ? ok('') : ok('{"id":"1","result":{}}'),
+      );
       final client = HerdrClient(runner);
 
       await client.prompt('wB:p4', 'go');
