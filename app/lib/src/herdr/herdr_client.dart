@@ -114,6 +114,11 @@ class HerdrClient {
     await _run(['pane', 'send-keys', paneId, key]);
   }
 
+  /// Stop the agent running in [paneId] by closing its pane.
+  Future<void> closeAgent(String paneId) async {
+    await _run(['pane', 'close', paneId]);
+  }
+
   Future<void> prompt(String paneId, String text) async {
     await sendText(paneId, text);
     await sendKeys(paneId, 'enter');
