@@ -38,6 +38,13 @@ const _readText =
     ' Esc to cancel · Tab to amend · ctrl+e to explain\n';
 
 CommandResult _respond(String command) {
+  if (command.contains("'workspace' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"workspaces":['
+      '{"workspace_id":"wB","label":"Project B"}'
+      ']}}',
+    );
+  }
   if (command.contains("'agent' 'get'")) {
     return ok(
       '{"id":"1","result":{"agent":{"agent":"claude",'
@@ -47,7 +54,9 @@ CommandResult _respond(String command) {
     );
   }
   if (command.contains("'agent' 'read'")) {
-    return ok('{"id":"1","result":{"read":{"text":${_jsonEncode(_readText)}}}}');
+    return ok(
+      '{"id":"1","result":{"read":{"text":${_jsonEncode(_readText)}}}}',
+    );
   }
   return ok('{"id":"1","result":{}}');
 }
@@ -81,6 +90,8 @@ void main() {
 
     expect(find.widgetWithText(FilledButton, '1. Yes'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '3. No'), findsOneWidget);
+    expect(find.text('blocked · Project B'), findsOneWidget);
+    expect(find.textContaining('p1'), findsNothing);
 
     await tester.tap(find.widgetWithText(FilledButton, '1. Yes'));
     await tester.pump();
@@ -107,11 +118,7 @@ void main() {
   ) async {
     CommandResult respondFailingSend(String command) {
       if (command.contains("'agent' 'send'")) {
-        return const CommandResult(
-          exitCode: 1,
-          stdout: '',
-          stderr: 'boom',
-        );
+        return const CommandResult(exitCode: 1, stdout: '', stderr: 'boom');
       }
       return _respond(command);
     }

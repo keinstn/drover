@@ -36,11 +36,23 @@ const _listEnvelope =
     '"workspace_id":"wB","name":"Agent Three"}'
     ']}}';
 
+CommandResult _respond(String command) {
+  if (command.contains("'workspace' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"workspaces":['
+      '{"workspace_id":"wA","label":"Project A"},'
+      '{"workspace_id":"wB","label":"Project B"}'
+      ']}}',
+    );
+  }
+  return ok(_listEnvelope);
+}
+
 void main() {
   testWidgets('shows agents grouped by workspace, blocked above idle', (
     tester,
   ) async {
-    final runner = FakeCommandRunner((_) => ok(_listEnvelope));
+    final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);
 
     await tester.pumpWidget(
@@ -58,18 +70,28 @@ void main() {
     expect(find.textContaining('Agent One'), findsOneWidget);
     expect(find.textContaining('Agent Two'), findsOneWidget);
     expect(find.textContaining('Agent Three'), findsOneWidget);
-    expect(find.text('wA'), findsOneWidget);
-    expect(find.text('wB'), findsOneWidget);
+    expect(find.text('Project A'), findsOneWidget);
+    expect(find.text('Project B'), findsOneWidget);
+    expect(find.text('wA'), findsNothing);
+    expect(find.text('wB'), findsNothing);
+    expect(find.textContaining('p1'), findsNothing);
+    expect(find.textContaining('p2'), findsNothing);
 
     final blockedTop = tester.getTopLeft(find.textContaining('Agent Two')).dy;
     final idleTop = tester.getTopLeft(find.textContaining('Agent One')).dy;
     expect(blockedTop, lessThan(idleTop));
 
+    await tester.tap(find.text('Agent Three'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('working · Project B'), findsOneWidget);
+    expect(find.textContaining('p1'), findsNothing);
+
     await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('shows the launch-agent FAB', (tester) async {
-    final runner = FakeCommandRunner((_) => ok(_listEnvelope));
+    final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);
 
     await tester.pumpWidget(

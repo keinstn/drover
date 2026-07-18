@@ -53,14 +53,19 @@ class HerdScreen extends StatefulWidget {
 class _HerdScreenState extends State<HerdScreen> {
   List<AgentInfo> _agents = [];
   String? _error;
+  String? _workspaceLabelsError;
   bool _loading = false;
+  bool _workspaceLabelsLoading = false;
+  bool _workspaceLabelsFailed = false;
   Timer? _timer;
   final _previousStatus = <String, AgentStatus>{};
+  Map<String, String> _workspaceLabels = {};
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadWorkspaceLabels();
     _timer = Timer.periodic(widget.pollInterval, (_) => _load());
   }
 
@@ -81,6 +86,12 @@ class _HerdScreenState extends State<HerdScreen> {
         _agents = agents;
         _error = null;
       });
+      if (!_workspaceLabelsFailed &&
+          agents.any(
+            (agent) => !_workspaceLabels.containsKey(agent.workspaceId),
+          )) {
+        _loadWorkspaceLabels();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -88,6 +99,44 @@ class _HerdScreenState extends State<HerdScreen> {
       _loading = false;
     }
   }
+
+  Future<void> _loadWorkspaceLabels() async {
+    if (_workspaceLabelsLoading) return;
+    _workspaceLabelsLoading = true;
+    try {
+      final workspaces = await widget.client.listWorkspaces();
+      if (!mounted) return;
+      setState(() {
+        _workspaceLabelsFailed = false;
+        _workspaceLabelsError = null;
+        _workspaceLabels = {
+          for (final workspace in workspaces)
+            workspace.workspaceId: workspace.label.isEmpty
+                ? workspace.workspaceId
+                : workspace.label,
+        };
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _workspaceLabelsFailed = true;
+        _workspaceLabelsError = e.toString();
+      });
+    } finally {
+      _workspaceLabelsLoading = false;
+    }
+  }
+
+  void _retryWorkspaceLabels() {
+    setState(() {
+      _workspaceLabelsFailed = false;
+      _workspaceLabelsError = null;
+    });
+    _loadWorkspaceLabels();
+  }
+
+  String _workspaceLabel(String workspaceId) =>
+      _workspaceLabels[workspaceId] ?? workspaceId;
 
   void _checkBlockedTransitions(List<AgentInfo> agents) {
     for (final agent in agents) {
@@ -173,6 +222,16 @@ class _HerdScreenState extends State<HerdScreen> {
                 TextButton(onPressed: _load, child: const Text('Retry')),
               ],
             ),
+          if (_workspaceLabelsError != null)
+            MaterialBanner(
+              content: Text(_workspaceLabelsError!),
+              actions: [
+                TextButton(
+                  onPressed: _retryWorkspaceLabels,
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
           Expanded(
             child: groups.isEmpty
                 ? const Center(child: Text('No agents found'))
@@ -182,7 +241,7 @@ class _HerdScreenState extends State<HerdScreen> {
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
                           child: Text(
-                            entry.key,
+                            _workspaceLabel(entry.key),
                             style: Theme.of(context).textTheme.titleSmall,
                           ),
                         ),
@@ -196,6 +255,8 @@ class _HerdScreenState extends State<HerdScreen> {
                                     client: widget.client,
                                     paneId: agent.paneId,
                                     initialAgent: agent,
+                                    initialWorkspaceLabel:
+                                        _workspaceLabels[agent.workspaceId],
                                   ),
                                 ),
                               );
@@ -238,7 +299,7 @@ class _AgentTile extends StatelessWidget {
           ),
         ],
       ),
-      title: Text('${agent.name ?? agent.agent} · ${agent.paneId}'),
+      title: Text(agent.name ?? agent.agent),
       subtitle: Text(lastPathSegment(cwd)),
       onTap: onTap,
     );
