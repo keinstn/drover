@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "marionette": {
+      "command": "marionette_mcp",
+      "args": []
+    },
+    "dart": {
+      "command": "dart",
+      "args": ["mcp-server"]
+    }
+  }
+}

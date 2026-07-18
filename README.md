@@ -35,6 +35,9 @@ instead of moshi**.
 Prerequisite: the target host has sshd enabled (on this Mac: System Settings
 → Sharing → Remote Login) and key-based auth working.
 
+`just spike <args>` runs any of these from the repo root; shown here as raw
+`fvm dart run` invocations since that's exactly what was measured.
+
 ```bash
 cd app
 
@@ -99,8 +102,13 @@ fvm dart run tool/spike.dart --host <host> bench 10
 
 ## Development
 
+One-time host setup and the full command reference live in `CLAUDE.md`. Day to
+day, a `justfile` wraps the common recipes (`just` to list them):
+
 ```bash
-cd app
-fvm flutter run -d macos    # fast iteration during development
-fvm flutter run -d <iphone> # dogfooding on a real device (free Apple ID: signing expires after 7 days)
+just get                    # pub get
+just check                  # analyze + test
+just run -d macos           # fast iteration during development
+just run -d <iphone>        # dogfooding on a real device (free Apple ID: signing expires after 7 days)
+just spike --host <host> agents
 ```
