@@ -40,6 +40,20 @@ Set `NTFY_TOPIC` to a long, random string — treat it like a shared secret.
 Install the [ntfy app](https://ntfy.sh/#subscribe) (iOS/Android) and
 subscribe to the same topic you set above.
 
+## Verify your setup
+
+Send a real test push without waiting for a real agent to go blocked or done:
+
+```sh
+sh send-test-notification.sh   # or: just plugin-send-test
+```
+
+This is the only real check: ntfy accepts a publish to any topic string
+whether or not your phone is subscribed to it, so a typo'd topic sends
+"successfully" here but never arrives on your phone. If nothing shows up,
+double-check the topic in your config matches your phone's subscription
+exactly.
+
 ## Security note
 
 Anyone who knows a public `ntfy.sh` topic name can subscribe and read its
@@ -52,5 +66,7 @@ at it.
 Notifies only on `pane.agent_status_changed` events where `agent_status` is
 `blocked` (priority `high`, tag `warning`) or `done` (priority `default`, tag
 `white_check_mark`). All other statuses (`working`, `idle`, `unknown`) are
-ignored. Failures (missing config, network errors, herdr enrichment errors)
-are swallowed silently — the hook always exits 0.
+ignored. The hook always exits 0 — missing config and herdr enrichment
+errors are silently non-actionable — but a real transport failure (DNS,
+timeout, connection refused) surfaces in `herdr plugin log list`'s captured
+stderr for that run, since that one is worth debugging.

@@ -37,6 +37,10 @@ spike *args:
 plugin-test:
     sh plugin/test/notify_test.sh
 
+# Send a real test push to your configured ntfy topic (check your phone).
+plugin-send-test:
+    sh plugin/send-test-notification.sh
+
 # --- Aggregate ---
 
 check: analyze test plugin-test
