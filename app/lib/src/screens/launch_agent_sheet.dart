@@ -29,6 +29,8 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
 
   AgentPreset? _selectedPreset;
   final _cwdController = TextEditingController();
+  final _nameController = TextEditingController();
+  bool _nameEdited = false;
   _WorkspaceMode _mode = _WorkspaceMode.newWorkspace;
   String? _selectedWorkspaceId;
   bool _busy = false;
@@ -43,6 +45,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   @override
   void dispose() {
     _cwdController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
@@ -52,10 +55,26 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
     future.then((presets) {
       if (!mounted) return;
       if (_selectedPreset == null && presets.isNotEmpty) {
-        setState(() => _selectedPreset = presets.first);
+        setState(() {
+          _selectedPreset = presets.first;
+          _syncDefaultName();
+        });
       }
     }, onError: (_) {}); // FutureBuilder renders the error; swallow here to
     // avoid an unhandled rejection
+  }
+
+  String _defaultName() {
+    final seg = lastPathSegment(_cwdController.text.trim());
+    final bin = _selectedPreset?.bin;
+    if (bin == null) return seg;
+    if (seg.isEmpty) return bin;
+    return '$bin-$seg';
+  }
+
+  void _syncDefaultName() {
+    if (_nameEdited) return;
+    _nameController.text = _defaultName();
   }
 
   void _loadWorkspaces() {
@@ -94,8 +113,9 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
       _launchError = null;
     });
     try {
-      final seg = lastPathSegment(cwd);
-      final name = seg.isEmpty ? preset.bin : seg;
+      final name = _nameController.text.trim().isEmpty
+          ? preset.bin
+          : _nameController.text.trim();
       final wsId = _mode == _WorkspaceMode.newWorkspace
           ? await widget.client.createWorkspace(label: name, cwd: cwd)
           : _selectedWorkspaceId!;
@@ -143,6 +163,8 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
               _buildPresetSection(),
               const SizedBox(height: 16),
               _buildCwdSection(),
+              const SizedBox(height: 16),
+              _buildNameSection(),
               const SizedBox(height: 16),
               _buildWorkspaceSection(),
               if (_launchError != null) ...[
@@ -204,7 +226,10 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
           groupValue: _selectedPreset,
           onChanged: (value) {
             if (_busy) return;
-            setState(() => _selectedPreset = value);
+            setState(() {
+              _selectedPreset = value;
+              _syncDefaultName();
+            });
           },
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -238,7 +263,10 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                   label: Text(lastPathSegment(cwd)),
                   onPressed: _busy
                       ? null
-                      : () => setState(() => _cwdController.text = cwd),
+                      : () => setState(() {
+                          _cwdController.text = cwd;
+                          _syncDefaultName();
+                        }),
                 ),
             ],
           ),
@@ -252,9 +280,25 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
             labelText: 'Working directory',
             border: OutlineInputBorder(),
           ),
-          onChanged: (_) => setState(() {}),
+          onChanged: (_) => setState(_syncDefaultName),
         ),
       ],
+    );
+  }
+
+  Widget _buildNameSection() {
+    return TextField(
+      key: const ValueKey('agent_name_field'),
+      controller: _nameController,
+      enabled: !_busy,
+      decoration: const InputDecoration(
+        labelText: 'Agent name',
+        border: OutlineInputBorder(),
+      ),
+      onChanged: (_) {
+        _nameEdited = true;
+        setState(() {});
+      },
     );
   }
 
