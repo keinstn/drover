@@ -596,15 +596,9 @@ class _Composer extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _AttachButton(
-                  sending: sending || dictationStarting || dictating,
-                  onPressed: onAttach,
-                ),
-                if (mode != null) ...[
-                  const SizedBox(width: 8),
+            if (mode != null) ...[
+              Row(
+                children: [
                   Flexible(
                     child: Tooltip(
                       message: 'Cycle agent mode (shift+tab)',
@@ -627,6 +621,16 @@ class _Composer extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+            ],
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _AttachButton(
+                  sending: sending || dictationStarting || dictating,
+                  onPressed: onAttach,
+                ),
                 const SizedBox(width: 8),
                 ActionChip(
                   label: const Text('Enter'),
