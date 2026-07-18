@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +18,10 @@ import 'herd_screen.dart' show statusColor;
 // terminal, so a dark panel keeps them faithful and legible.
 const _transcriptBg = Color(0xFF1B1B1F);
 const _transcriptFg = Color(0xFFE4E4E7);
+
+const _tailLines = 120; // lines fetched on the live poll / first load
+const _lineStep = 240; // extra lines added per pull-to-load-more
+const _maxLines = 2000; // ceiling — herdr's `recent` buffer is finite
 
 /// Detail screen for a single agent's pane: a live transcript, quick actions,
 /// and a message composer.
@@ -57,6 +62,7 @@ class _AgentScreenState extends State<AgentScreen> {
   String? _workspaceLabelError;
   PickedImage? _pendingImage;
   Timer? _timer;
+  int _lines = _tailLines;
 
   final _scrollController = ScrollController();
   final _messageController = TextEditingController();
@@ -124,13 +130,17 @@ class _AgentScreenState extends State<AgentScreen> {
     _loadWorkspaceLabel();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool loadMore = false}) async {
     if (_loading) return;
     _loading = true;
-    final stickToBottom = _firstLoad || _wasAtBottom;
+    final stickToBottom = !loadMore && (_firstLoad || _wasAtBottom);
+    final anchorFromBottom = loadMore && _scrollController.hasClients
+        ? _scrollController.position.maxScrollExtent -
+              _scrollController.position.pixels
+        : null;
     try {
       final agent = await widget.client.getAgent(widget.paneId);
-      final text = await widget.client.readAgent(widget.paneId, lines: 120);
+      final text = await widget.client.readAgent(widget.paneId, lines: _lines);
       if (!mounted) return;
       setState(() {
         _agent = agent;
@@ -147,6 +157,14 @@ class _AgentScreenState extends State<AgentScreen> {
           if (!_scrollController.hasClients) return;
           _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
         });
+      } else if (anchorFromBottom != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_scrollController.hasClients) return;
+          final target =
+              (_scrollController.position.maxScrollExtent - anchorFromBottom)
+                  .clamp(0.0, _scrollController.position.maxScrollExtent);
+          _scrollController.jumpTo(target);
+        });
       }
     } catch (_) {
       // Keep last known state on read/poll errors; the transcript stays
@@ -154,6 +172,12 @@ class _AgentScreenState extends State<AgentScreen> {
     } finally {
       _loading = false;
     }
+  }
+
+  Future<void> _loadMore() async {
+    if (_lines >= _maxLines) return;
+    setState(() => _lines = min(_maxLines, _lines + _lineStep));
+    await _load(loadMore: true);
   }
 
   Future<bool> _send(Future<void> Function() action) async {
@@ -337,10 +361,15 @@ class _AgentScreenState extends State<AgentScreen> {
             child: Container(
               width: double.infinity,
               color: _transcriptBg,
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-                child: _Transcript(ansiText: stripTuiChrome(_text)),
+              child: RefreshIndicator(
+                onRefresh: _loadMore,
+                child: SingleChildScrollView(
+                  key: const ValueKey('transcript_scroll'),
+                  controller: _scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+                  child: _Transcript(ansiText: stripTuiChrome(_text)),
+                ),
               ),
             ),
           ),
