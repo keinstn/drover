@@ -647,4 +647,55 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('pulling down at the top loads more transcript lines', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      runner.commands.any(
+        (c) => c.contains("'agent' 'read'") && c.contains("'120'"),
+      ),
+      isTrue,
+    );
+
+    // The transcript starts scrolled to the bottom (the live tail). Scroll it
+    // to the top first (a separate gesture), then pull further down to
+    // trigger the pull-to-load-more.
+    await tester.drag(
+      find.byKey(const ValueKey('transcript_scroll')),
+      const Offset(0, 1000),
+    );
+    await tester.pump();
+
+    await tester.fling(
+      find.byKey(const ValueKey('transcript_scroll')),
+      const Offset(0, 300),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      runner.commands.any(
+        (c) => c.contains("'agent' 'read'") && c.contains("'360'"),
+      ),
+      isTrue,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
 }
