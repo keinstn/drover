@@ -39,6 +39,14 @@ void main() {
       );
     });
 
+    test('strips chrome even when the lines carry ANSI styling', () {
+      const ansiChrome =
+          'body\n'
+          '\x1B[38;2;136;136;136m─────────────────\x1B[0m\n'
+          '  \x1B[2m-- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle)\x1B[0m';
+      expect(stripTuiChrome(ansiChrome), 'body');
+    });
+
     test('strips a bare empty prompt line', () {
       expect(stripTuiChrome('some output\n❯ '), 'some output');
     });
@@ -87,6 +95,34 @@ void main() {
 
     test('returns null when numbering skips', () {
       expect(parsePromptOptions('Proceed?\n1. Yes\n3. No'), isNull);
+    });
+  });
+
+  group('parseAgentMode', () {
+    test('reads auto-accept from the mode line', () {
+      expect(parseAgentMode(chromeFixture), AgentMode.autoAccept);
+    });
+
+    test('reads plan mode', () {
+      expect(
+        parseAgentMode('body\n  ⏸ plan mode on (shift+tab to cycle)'),
+        AgentMode.plan,
+      );
+    });
+
+    test('reads bypass permissions mode', () {
+      expect(
+        parseAgentMode('body\n  ⏵⏵ bypass permissions on (shift+tab to cycle)'),
+        AgentMode.bypass,
+      );
+    });
+
+    test('falls back to normal for a bare insert line', () {
+      expect(parseAgentMode('body\n  -- INSERT --'), AgentMode.normal);
+    });
+
+    test('returns null when there is no mode line', () {
+      expect(parseAgentMode(permissionPromptFixture), isNull);
     });
   });
 }
