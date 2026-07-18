@@ -227,7 +227,7 @@ void main() {
     await tester.pump();
 
     await tester.enterText(find.byType(TextField), 'please continue');
-    await tester.tap(find.byIcon(Icons.send));
+    await tester.tap(find.byKey(const ValueKey('send_message_button')));
     await tester.pump();
     await tester.pump();
 

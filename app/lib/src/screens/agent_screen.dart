@@ -381,13 +381,6 @@ class _AgentScreenState extends State<AgentScreen> {
               client: widget.client,
               paneId: widget.paneId,
             ),
-          _ActionBar(
-            mode: mode,
-            sending: _sending,
-            onSend: _send,
-            client: widget.client,
-            paneId: widget.paneId,
-          ),
           _Composer(
             controller: _messageController,
             sending: _sending,
@@ -398,6 +391,10 @@ class _AgentScreenState extends State<AgentScreen> {
             onDictation: _toggleDictation,
             onAttach: _attachImage,
             onSend: _sendMessage,
+            mode: mode,
+            onAction: _send,
+            client: widget.client,
+            paneId: widget.paneId,
           ),
         ],
       ),
@@ -510,71 +507,6 @@ Color _modeColor(AgentMode mode) {
   }
 }
 
-/// A mode indicator (shown when the agent reports one) plus the common
-/// Enter/Esc keys.
-///
-/// The mode chip is tappable: tapping it cycles the agent's mode by sending
-/// the raw backtab escape sequence via `client.cycleMode`, since herdr's
-/// `send-keys shift+tab` mis-encodes it for kitty-keyboard agents like Claude
-/// Code (see herdr issue #1561). This can only cycle through modes, not jump
-/// to a specific one.
-class _ActionBar extends StatelessWidget {
-  const _ActionBar({
-    required this.mode,
-    required this.sending,
-    required this.onSend,
-    required this.client,
-    required this.paneId,
-  });
-
-  final AgentMode? mode;
-  final bool sending;
-  final Future<bool> Function(Future<void> Function()) onSend;
-  final HerdrClient client;
-  final String paneId;
-
-  @override
-  Widget build(BuildContext context) {
-    final mode = this.mode;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Row(
-        children: [
-          if (mode != null)
-            Flexible(
-              child: Tooltip(
-                message: 'Cycle agent mode (shift+tab)',
-                child: ActionChip(
-                  avatar: Icon(Icons.tune, size: 18, color: _modeColor(mode)),
-                  label: Text(mode.label, overflow: TextOverflow.ellipsis),
-                  side: BorderSide(color: _modeColor(mode)),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: sending
-                      ? null
-                      : () => onSend(() => client.cycleMode(paneId)),
-                ),
-              ),
-            ),
-          const Spacer(),
-          ActionChip(
-            label: const Text('Enter'),
-            onPressed: sending
-                ? null
-                : () => onSend(() => client.sendKeys(paneId, 'enter')),
-          ),
-          const SizedBox(width: 8),
-          ActionChip(
-            label: const Text('Esc'),
-            onPressed: sending
-                ? null
-                : () => onSend(() => client.sendKeys(paneId, 'esc')),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,
@@ -586,6 +518,10 @@ class _Composer extends StatelessWidget {
     required this.onDictation,
     required this.onAttach,
     required this.onSend,
+    required this.mode,
+    required this.onAction,
+    required this.client,
+    required this.paneId,
   });
 
   final TextEditingController controller;
@@ -597,77 +533,131 @@ class _Composer extends StatelessWidget {
   final VoidCallback onDictation;
   final VoidCallback onAttach;
   final VoidCallback onSend;
+  final AgentMode? mode;
+
+  /// Wraps client actions (mode cycling, Enter, Esc) so the caller can track
+  /// in-flight sends.
+  ///
+  /// The mode chip is tappable: tapping it cycles the agent's mode by
+  /// sending the raw backtab escape sequence via `client.cycleMode`, since
+  /// herdr's `send-keys shift+tab` mis-encodes it for kitty-keyboard agents
+  /// like Claude Code (see herdr issue #1561). This can only cycle through
+  /// modes, not jump to a specific one.
+  final Future<bool> Function(Future<void> Function()) onAction;
+  final HerdrClient client;
+  final String paneId;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final mode = this.mode;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (pendingImages.isNotEmpty) ...[
-            SizedBox(
-              height: 56,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: pendingImages.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (context, index) => _PendingImagePreview(
-                  image: pendingImages[index],
-                  onRemove: sending ? null : () => onRemoveImage(index),
-                  index: index,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  enabled: !sending && !dictationStarting && !dictating,
-                  minLines: 1,
-                  maxLines: 5,
-                  textInputAction: TextInputAction.newline,
-                  style: const TextStyle(fontSize: 15),
-                  decoration: InputDecoration(
-                    hintText: 'Message agent…',
-                    filled: true,
-                    fillColor: scheme.surfaceContainerHighest,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide.none,
-                    ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (pendingImages.isNotEmpty) ...[
+              SizedBox(
+                height: 56,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: pendingImages.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) => _PendingImagePreview(
+                    image: pendingImages[index],
+                    onRemove: sending ? null : () => onRemoveImage(index),
+                    index: index,
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              _AttachButton(
-                sending: sending || dictationStarting || dictating,
-                onPressed: onAttach,
-              ),
-              const SizedBox(width: 8),
-              _MicrophoneButton(
-                starting: dictationStarting,
-                dictating: dictating,
-                onPressed: onDictation,
-              ),
-              const SizedBox(width: 8),
-              _SendButton(
-                sending: sending || dictationStarting || dictating,
-                onSend: onSend,
-              ),
+              const SizedBox(height: 8),
             ],
-          ),
-        ],
+            TextField(
+              controller: controller,
+              enabled: !sending && !dictationStarting && !dictating,
+              minLines: 1,
+              maxLines: 8,
+              textInputAction: TextInputAction.newline,
+              style: const TextStyle(fontSize: 15),
+              decoration: const InputDecoration(
+                hintText: 'Message agent…',
+                isCollapsed: true,
+                filled: false,
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(vertical: 4),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _AttachButton(
+                  sending: sending || dictationStarting || dictating,
+                  onPressed: onAttach,
+                ),
+                if (mode != null) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Tooltip(
+                      message: 'Cycle agent mode (shift+tab)',
+                      child: ActionChip(
+                        avatar: Icon(
+                          Icons.tune,
+                          size: 18,
+                          color: _modeColor(mode),
+                        ),
+                        label: Text(
+                          mode.label,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        side: BorderSide(color: _modeColor(mode)),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: sending
+                            ? null
+                            : () => onAction(() => client.cycleMode(paneId)),
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 8),
+                ActionChip(
+                  label: const Text('Enter'),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: sending
+                      ? null
+                      : () => onAction(() => client.sendKeys(paneId, 'enter')),
+                ),
+                const SizedBox(width: 8),
+                ActionChip(
+                  label: const Text('Esc'),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: sending
+                      ? null
+                      : () => onAction(() => client.sendKeys(paneId, 'esc')),
+                ),
+                const Spacer(),
+                _MicrophoneButton(
+                  starting: dictationStarting,
+                  dictating: dictating,
+                  onPressed: onDictation,
+                ),
+                const SizedBox(width: 8),
+                _SendButton(
+                  sending: sending || dictationStarting || dictating,
+                  onSend: onSend,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -818,7 +808,7 @@ class _SendButton extends StatelessWidget {
                 height: 20,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : const Icon(Icons.send, size: 20),
+            : const Icon(Icons.arrow_upward, size: 20),
       ),
     );
   }
