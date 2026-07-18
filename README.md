@@ -64,12 +64,11 @@ fvm dart run tool/spike.dart --host <host> bench 10
 3. Connection/command latency → basis for a polling interval
 4. Is `agent wait` usable as a long-poll? → whether polling can be reduced
 
-### Known CLI constraints (installed herdr 0.7.1)
+### Known CLI constraints & host behaviours
 
-- `herdr api snapshot` is **not yet released** (docs/next only). Use
-  `agent list` for the listing.
-- There's no CLI wrapper for `agent prompt` either. "Text + Enter" is sent as
-  two calls: `agent send` followed by `pane send-keys <pane> enter`.
+Herdr CLI constraints, gotchas, and measurements drover relies on live in
+[`docs/herdr-notes.md`](docs/herdr-notes.md) — add new dogfooding findings
+there.
 
 ### Results (2026-07-18, localhost loopback, herdr 0.7.1, Claude Code agent)
 

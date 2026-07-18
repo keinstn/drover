@@ -1,0 +1,47 @@
+# Herdr CLI notes
+
+Behaviours, constraints, and gotchas of the `herdr` CLI (and its socket API)
+that drover depends on. This is a living reference — add new findings here as
+dogfooding surfaces them, with the date and the herdr version they were
+observed on.
+
+Observed against **herdr 0.7.1** unless noted otherwise.
+
+## Constraints
+
+- `herdr api snapshot` is **not yet released** (docs/next only). Use
+  `agent list` for the listing.
+- There is no CLI wrapper for `agent prompt`. "Text + Enter" is sent as two
+  calls: `agent send <target> <text>` followed by `pane send-keys <pane> enter`.
+
+## Behaviours / gotchas
+
+- **`agent start` without `--workspace` hijacks the focused workspace.**
+  (2026-07-18) A workspace-less `agent start` does *not* create a new
+  workspace — it drops the new agent into whatever workspace is currently
+  *focused on the host*, as an extra pane. Closing that workspace afterwards
+  terminates whatever was running in it (including a Claude Code agent driving
+  the session). drover therefore always passes an explicit `--workspace`:
+  "new workspace" runs `workspace create` first (and rolls it back with
+  `workspace close` if the launch then fails), "existing" uses the selected id.
+  When probing manually, read `HERDR_WORKSPACE_ID` and never `workspace close`
+  it — clean up test agents with `pane close <pane>` instead.
+- **A send immediately after `agent start` can be silently dropped.**
+  (2026-07-18) During the agent's splash/startup a send was lost even though
+  `agent_status` already read `idle`. Confirm the send landed (re-check pane
+  content shortly after) rather than trusting `idle` right after launch.
+- **`integration status` is unreliable for "is this agent launchable".** It
+  reports detection-hook install state, and an agent can be running while its
+  integration reads "not installed". To decide what can be launched, probe the
+  host PATH (`command -v <bin>`) instead.
+
+## Measurements (Stage 0, 2026-07-18, localhost loopback, Claude Code agent)
+
+- `agent list` over loopback: 99–122ms (avg ~103ms) — a lower bound; a real
+  remote host over a mobile network will be higher. Enough headroom for a 1–2s
+  foreground poll.
+- `agent wait` works as a long-poll, returning ~120ms on a state change rather
+  than only at timeout.
+
+See the README's **Stage 0 spike** section for the full measurement write-up
+(chat-formatting gap, end-to-end permission-prompt answering).
