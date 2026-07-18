@@ -41,5 +41,6 @@ fvm flutter pub get
 fvm flutter analyze
 fvm flutter test
 fvm flutter run
+fvm flutter gen-l10n # regenerate localizations after editing lib/l10n/*.arb
 fvm dart run tool/spike.dart --host <host> agents
 ```

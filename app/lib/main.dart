@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 
+import 'l10n/app_localizations.dart';
 import 'src/herdr/herdr_client.dart';
 import 'src/infra/host_store.dart';
 import 'src/infra/ssh_command_runner.dart';
@@ -102,7 +103,8 @@ class _DroverAppState extends State<DroverApp> {
     try {
       final client = HerdrClient(runner, herdrBin: c.herdrBin);
       final agents = await client.listAgents();
-      return 'OK — ${agents.length} agent(s)';
+      final l10n = AppLocalizations.of(_navKey.currentContext!)!;
+      return l10n.testConnectionOk(agents.length);
     } finally {
       await runner.dispose();
     }
@@ -113,6 +115,8 @@ class _DroverAppState extends State<DroverApp> {
     return MaterialApp(
       title: 'Drover',
       navigatorKey: _navKey,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: ThemeData(
         colorSchemeSeed: Colors.teal,
         brightness: Brightness.dark,
