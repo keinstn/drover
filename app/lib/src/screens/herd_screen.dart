@@ -60,6 +60,7 @@ class _HerdScreenState extends State<HerdScreen> {
   Timer? _timer;
   final _previousStatus = <String, AgentStatus>{};
   Map<String, String> _workspaceLabels = {};
+  final _stoppingPaneIds = <String>{};
 
   @override
   void initState() {
@@ -183,6 +184,48 @@ class _HerdScreenState extends State<HerdScreen> {
     if (launched == true) _load();
   }
 
+  Future<bool> _confirmAndStop(AgentInfo agent) async {
+    final name = agent.name ?? agent.agent;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Stop agent?'),
+        content: Text(
+          '$name (${agent.paneId}) will be stopped. '
+          'Any current work will be interrupted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Stop'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return false;
+
+    setState(() => _stoppingPaneIds.add(agent.paneId));
+    try {
+      await widget.client.closeAgent(agent.paneId);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _stoppingPaneIds.remove(agent.paneId));
+      }
+    }
+    return false;
+  }
+
   Map<String, List<AgentInfo>> _grouped() {
     final groups = <String, List<AgentInfo>>{};
     for (final agent in _agents) {
@@ -246,21 +289,51 @@ class _HerdScreenState extends State<HerdScreen> {
                           ),
                         ),
                         for (final agent in entry.value)
-                          _AgentTile(
-                            agent: agent,
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => AgentScreen(
-                                    client: widget.client,
-                                    paneId: agent.paneId,
-                                    initialAgent: agent,
-                                    initialWorkspaceLabel:
-                                        _workspaceLabels[agent.workspaceId],
+                          Dismissible(
+                            key: ValueKey('agent-${agent.paneId}'),
+                            direction: _stoppingPaneIds.contains(agent.paneId)
+                                ? DismissDirection.none
+                                : DismissDirection.endToStart,
+                            background: const ColoredBox(
+                              color: Colors.red,
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: Padding(
+                                  padding: EdgeInsets.only(right: 16),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.stop, color: Colors.white),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Stop',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              );
-                            },
+                              ),
+                            ),
+                            confirmDismiss: (_) => _confirmAndStop(agent),
+                            child: _AgentTile(
+                              agent: agent,
+                              onTap: _stoppingPaneIds.contains(agent.paneId)
+                                  ? null
+                                  : () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) => AgentScreen(
+                                            client: widget.client,
+                                            paneId: agent.paneId,
+                                            initialAgent: agent,
+                                            initialWorkspaceLabel:
+                                                _workspaceLabels[agent
+                                                    .workspaceId],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                            ),
                           ),
                       ],
                     ],
@@ -282,7 +355,7 @@ class _AgentTile extends StatelessWidget {
   const _AgentTile({required this.agent, required this.onTap});
 
   final AgentInfo agent;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {

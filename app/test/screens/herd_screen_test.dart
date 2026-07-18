@@ -110,4 +110,74 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('left swipe asks for confirmation before stopping an agent', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner((_) => ok(_listEnvelope));
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HerdScreen(
+          client: client,
+          onOpenSettings: () {},
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.drag(
+      find.byKey(const ValueKey('agent-wA:p1')),
+      const Offset(-500, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Stop agent?'), findsOneWidget);
+    expect(find.textContaining('Agent One (wA:p1)'), findsOneWidget);
+    expect(
+      runner.commands,
+      isNot(contains("~/.local/bin/herdr 'pane' 'close' 'wA:p1'")),
+    );
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('Stop agent?'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('stops an agent after confirming a left swipe', (tester) async {
+    final runner = FakeCommandRunner((_) => ok(_listEnvelope));
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HerdScreen(
+          client: client,
+          onOpenSettings: () {},
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.drag(
+      find.byKey(const ValueKey('agent-wA:p1')),
+      const Offset(-500, 0),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Stop'));
+    await tester.pumpAndSettle();
+
+    expect(
+      runner.commands,
+      contains("~/.local/bin/herdr 'pane' 'close' 'wA:p1'"),
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
 }

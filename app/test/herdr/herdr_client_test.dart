@@ -157,6 +157,20 @@ void main() {
     });
   });
 
+  group('HerdrClient.closeAgent', () {
+    test('builds the pane close command', () async {
+      final runner = FakeCommandRunner((_) => ok('{"id":"1","result":{}}'));
+      final client = HerdrClient(runner);
+
+      await client.closeAgent('wB:p4');
+
+      expect(
+        runner.commands.single,
+        "~/.local/bin/herdr 'pane' 'close' 'wB:p4'",
+      );
+    });
+  });
+
   group('HerdrClient.detectAgents', () {
     test('returns the presets whose bin is found on PATH', () async {
       final runner = FakeCommandRunner((_) => ok('claude\ncursor-agent\n'));
