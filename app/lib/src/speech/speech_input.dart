@@ -71,6 +71,11 @@ class SpeechInputController implements SpeechInput {
         'Speech recognition is unavailable or permission was denied.',
       );
     }
+    if (request != _request) {
+      return const SpeechInputStartResult.failed(
+        'Speech recognition was canceled.',
+      );
+    }
 
     try {
       await _speech.listen(
@@ -98,36 +103,61 @@ class SpeechInputController implements SpeechInput {
       }
       return const SpeechInputStartResult.started();
     } catch (error) {
-      if (request == _request) _clearListeners();
+      if (request == _request) {
+        _request++;
+        _clearListeners();
+      }
+      Object? cancellationError;
+      try {
+        await _speech.cancel();
+      } catch (error) {
+        cancellationError = error;
+      }
+      final cancellationDetails = cancellationError == null
+          ? ''
+          : ' The microphone could not be stopped: $cancellationError';
       return SpeechInputStartResult.failed(
-        'On-device speech recognition is unavailable: $error',
+        'On-device speech recognition is unavailable: '
+        '$error$cancellationDetails',
       );
     }
   }
 
   Future<bool> _initialize() async {
+    final existing = _initialization;
+    if (existing != null) return existing;
+
+    final initialization = _speech.initialize(
+      onError: (error) {
+        _onError?.call('Speech recognition failed: ${error.errorMsg}');
+        _clearListeners();
+      },
+      onStatus: (status) {
+        switch (status) {
+          case SpeechToText.listeningStatus:
+            _onStatus?.call(SpeechInputStatus.listening);
+            break;
+          case SpeechToText.notListeningStatus:
+            _onStatus?.call(SpeechInputStatus.stopped);
+            break;
+          case SpeechToText.doneStatus:
+            _onStatus?.call(SpeechInputStatus.done);
+            _clearListeners();
+            break;
+        }
+      },
+    );
+    _initialization = initialization;
     try {
-      return await (_initialization ??= _speech.initialize(
-        onError: (error) {
-          _onError?.call('Speech recognition failed: ${error.errorMsg}');
-          _clearListeners();
-        },
-        onStatus: (status) {
-          switch (status) {
-            case SpeechToText.listeningStatus:
-              _onStatus?.call(SpeechInputStatus.listening);
-              break;
-            case SpeechToText.notListeningStatus:
-              _onStatus?.call(SpeechInputStatus.stopped);
-              break;
-            case SpeechToText.doneStatus:
-              _onStatus?.call(SpeechInputStatus.done);
-              _clearListeners();
-              break;
-          }
-        },
-      ));
+      final available = await initialization;
+      if (!available && identical(_initialization, initialization)) {
+        _initialization = null;
+      }
+      return available;
     } catch (_) {
+      if (identical(_initialization, initialization)) {
+        _initialization = null;
+      }
       return false;
     }
   }
