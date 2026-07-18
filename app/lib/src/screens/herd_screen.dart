@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../herdr/herdr_client.dart';
+import '../i18n/status_label.dart';
 import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
 import '../utils/path.dart';
@@ -152,7 +154,11 @@ class _HerdScreenState extends State<HerdScreen> {
           agent.status == AgentStatus.blocked) {
         HapticFeedback.heavyImpact();
         if (mounted) {
-          showTopToast(context, '${agent.name ?? agent.agent} is blocked');
+          final l10n = AppLocalizations.of(context)!;
+          showTopToast(
+            context,
+            l10n.herdAgentBlocked(agent.name ?? agent.agent),
+          );
         }
       }
       _previousStatus[agent.paneId] = agent.status;
@@ -190,23 +196,23 @@ class _HerdScreenState extends State<HerdScreen> {
     final name = agent.name ?? agent.agent;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Stop agent?'),
-        content: Text(
-          '$name (${agent.paneId}) will be stopped. '
-          'Any current work will be interrupted.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Stop'),
-          ),
-        ],
-      ),
+      builder: (context) {
+        final l10n = AppLocalizations.of(context)!;
+        return AlertDialog(
+          title: Text(l10n.herdStopDialogTitle),
+          content: Text(l10n.herdStopDialogBody(name, agent.paneId)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(l10n.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(l10n.commonStop),
+            ),
+          ],
+        );
+      },
     );
     if (confirmed != true || !mounted) return false;
 
@@ -245,6 +251,7 @@ class _HerdScreenState extends State<HerdScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final groups = _grouped();
     return Scaffold(
       appBar: AppBar(
@@ -262,7 +269,7 @@ class _HerdScreenState extends State<HerdScreen> {
             MaterialBanner(
               content: Text(_error!),
               actions: [
-                TextButton(onPressed: _load, child: const Text('Retry')),
+                TextButton(onPressed: _load, child: Text(l10n.commonRetry)),
               ],
             ),
           if (_workspaceLabelsError != null)
@@ -271,13 +278,13 @@ class _HerdScreenState extends State<HerdScreen> {
               actions: [
                 TextButton(
                   onPressed: _retryWorkspaceLabels,
-                  child: const Text('Retry'),
+                  child: Text(l10n.commonRetry),
                 ),
               ],
             ),
           Expanded(
             child: groups.isEmpty
-                ? const Center(child: Text('No agents found'))
+                ? Center(child: Text(l10n.herdNoAgents))
                 : ListView(
                     children: [
                       for (final entry in groups.entries) ...[
@@ -294,20 +301,25 @@ class _HerdScreenState extends State<HerdScreen> {
                             direction: _stoppingPaneIds.contains(agent.paneId)
                                 ? DismissDirection.none
                                 : DismissDirection.endToStart,
-                            background: const ColoredBox(
+                            background: ColoredBox(
                               color: Colors.red,
                               child: Align(
                                 alignment: Alignment.centerRight,
                                 child: Padding(
-                                  padding: EdgeInsets.only(right: 16),
+                                  padding: const EdgeInsets.only(right: 16),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.stop, color: Colors.white),
-                                      SizedBox(width: 8),
+                                      const Icon(
+                                        Icons.stop,
+                                        color: Colors.white,
+                                      ),
+                                      const SizedBox(width: 8),
                                       Text(
-                                        'Stop',
-                                        style: TextStyle(color: Colors.white),
+                                        l10n.commonStop,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -344,7 +356,7 @@ class _HerdScreenState extends State<HerdScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         key: const ValueKey('launch_agent_fab'),
-        tooltip: 'Launch agent',
+        tooltip: l10n.commonLaunchAgent,
         onPressed: _openLaunchSheet,
         child: const Icon(Icons.add),
       ),
@@ -360,6 +372,7 @@ class _AgentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final cwd = agent.foregroundCwd ?? agent.cwd;
     return ListTile(
       leading: Column(
@@ -368,7 +381,7 @@ class _AgentTile extends StatelessWidget {
         children: [
           Icon(Icons.circle, color: statusColor(agent.status), size: 14),
           Text(
-            agent.status.name,
+            agentStatusLabel(l10n, agent.status),
             style: Theme.of(context).textTheme.labelSmall,
           ),
         ],

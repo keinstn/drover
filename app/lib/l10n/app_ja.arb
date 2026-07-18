@@ -18,5 +18,39 @@
   "hostResetDialogBody": "保存された接続情報（SSH 鍵を含む）を削除し、セットアップ画面に戻ります。",
   "commonCancel": "キャンセル",
   "commonReset": "リセット",
-  "testConnectionOk": "OK — エージェント {count} 件"
+  "testConnectionOk": "OK — エージェント {count} 件",
+
+  "commonRetry": "再試行",
+  "commonStop": "停止",
+  "commonLaunchAgent": "エージェントを起動",
+
+  "agentStatusIdle": "待機中",
+  "agentStatusWorking": "作業中",
+  "agentStatusBlocked": "ブロック中",
+  "agentStatusDone": "完了",
+  "agentStatusUnknown": "不明",
+
+  "agentComposerHint": "エージェントにメッセージ…",
+  "agentCycleModeTooltip": "エージェントモードを切り替え (shift+tab)",
+  "agentRemoveImage": "画像を削除",
+  "agentAttachImage": "画像を添付",
+  "agentStopDictation": "音声入力を停止",
+  "agentDictateMessage": "音声入力",
+
+  "herdAgentBlocked": "{name} がブロックされました",
+  "herdStopDialogTitle": "エージェントを停止しますか？",
+  "herdStopDialogBody": "{name} ({paneId}) を停止します。実行中の作業は中断されます。",
+  "herdNoAgents": "エージェントが見つかりません",
+
+  "launchButton": "起動",
+  "launchNoAgents": "ホストに起動可能なエージェントが見つかりません",
+  "launchWorkingDir": "作業ディレクトリ",
+  "launchAgentName": "エージェント名",
+  "launchNewWorkspace": "新規ワークスペース",
+  "launchExistingWorkspace": "既存のワークスペース",
+  "launchWorkspaceName": "ワークスペース名",
+  "launchUseNewWorkspace": "代わりに新規ワークスペースを使う",
+  "launchNoExistingWorkspaces": "既存のワークスペースがありません",
+  "launchSelectWorkspace": "ワークスペースを選択",
+  "launchUnnamedWorkspace": "名前なしワークスペース ({id})"
 }

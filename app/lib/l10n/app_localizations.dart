@@ -211,6 +211,180 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OK — {count, plural, =1{1 agent} other{{count} agents}}'**
   String testConnectionOk(int count);
+
+  /// No description provided for @commonRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get commonRetry;
+
+  /// No description provided for @commonStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get commonStop;
+
+  /// No description provided for @commonLaunchAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Launch agent'**
+  String get commonLaunchAgent;
+
+  /// No description provided for @agentStatusIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'idle'**
+  String get agentStatusIdle;
+
+  /// No description provided for @agentStatusWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'working'**
+  String get agentStatusWorking;
+
+  /// No description provided for @agentStatusBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'blocked'**
+  String get agentStatusBlocked;
+
+  /// No description provided for @agentStatusDone.
+  ///
+  /// In en, this message translates to:
+  /// **'done'**
+  String get agentStatusDone;
+
+  /// No description provided for @agentStatusUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'unknown'**
+  String get agentStatusUnknown;
+
+  /// No description provided for @agentComposerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Message agent…'**
+  String get agentComposerHint;
+
+  /// No description provided for @agentCycleModeTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle agent mode (shift+tab)'**
+  String get agentCycleModeTooltip;
+
+  /// No description provided for @agentRemoveImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove image'**
+  String get agentRemoveImage;
+
+  /// No description provided for @agentAttachImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach image'**
+  String get agentAttachImage;
+
+  /// No description provided for @agentStopDictation.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop dictation'**
+  String get agentStopDictation;
+
+  /// No description provided for @agentDictateMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Dictate message'**
+  String get agentDictateMessage;
+
+  /// No description provided for @herdAgentBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is blocked'**
+  String herdAgentBlocked(String name);
+
+  /// No description provided for @herdStopDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop agent?'**
+  String get herdStopDialogTitle;
+
+  /// No description provided for @herdStopDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} ({paneId}) will be stopped. Any current work will be interrupted.'**
+  String herdStopDialogBody(String name, String paneId);
+
+  /// No description provided for @herdNoAgents.
+  ///
+  /// In en, this message translates to:
+  /// **'No agents found'**
+  String get herdNoAgents;
+
+  /// No description provided for @launchButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Launch'**
+  String get launchButton;
+
+  /// No description provided for @launchNoAgents.
+  ///
+  /// In en, this message translates to:
+  /// **'No launchable agents found on the host'**
+  String get launchNoAgents;
+
+  /// No description provided for @launchWorkingDir.
+  ///
+  /// In en, this message translates to:
+  /// **'Working directory'**
+  String get launchWorkingDir;
+
+  /// No description provided for @launchAgentName.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent name'**
+  String get launchAgentName;
+
+  /// No description provided for @launchNewWorkspace.
+  ///
+  /// In en, this message translates to:
+  /// **'New workspace'**
+  String get launchNewWorkspace;
+
+  /// No description provided for @launchExistingWorkspace.
+  ///
+  /// In en, this message translates to:
+  /// **'Existing workspace'**
+  String get launchExistingWorkspace;
+
+  /// No description provided for @launchWorkspaceName.
+  ///
+  /// In en, this message translates to:
+  /// **'Workspace name'**
+  String get launchWorkspaceName;
+
+  /// No description provided for @launchUseNewWorkspace.
+  ///
+  /// In en, this message translates to:
+  /// **'Use new workspace instead'**
+  String get launchUseNewWorkspace;
+
+  /// No description provided for @launchNoExistingWorkspaces.
+  ///
+  /// In en, this message translates to:
+  /// **'No existing workspaces'**
+  String get launchNoExistingWorkspaces;
+
+  /// No description provided for @launchSelectWorkspace.
+  ///
+  /// In en, this message translates to:
+  /// **'Select workspace'**
+  String get launchSelectWorkspace;
+
+  /// No description provided for @launchUnnamedWorkspace.
+  ///
+  /// In en, this message translates to:
+  /// **'Unnamed workspace ({id})'**
+  String launchUnnamedWorkspace(String id);
 }
 
 class _AppLocalizationsDelegate

@@ -66,4 +66,97 @@ class AppLocalizationsJa extends AppLocalizations {
   String testConnectionOk(int count) {
     return 'OK — エージェント $count 件';
   }
+
+  @override
+  String get commonRetry => '再試行';
+
+  @override
+  String get commonStop => '停止';
+
+  @override
+  String get commonLaunchAgent => 'エージェントを起動';
+
+  @override
+  String get agentStatusIdle => '待機中';
+
+  @override
+  String get agentStatusWorking => '作業中';
+
+  @override
+  String get agentStatusBlocked => 'ブロック中';
+
+  @override
+  String get agentStatusDone => '完了';
+
+  @override
+  String get agentStatusUnknown => '不明';
+
+  @override
+  String get agentComposerHint => 'エージェントにメッセージ…';
+
+  @override
+  String get agentCycleModeTooltip => 'エージェントモードを切り替え (shift+tab)';
+
+  @override
+  String get agentRemoveImage => '画像を削除';
+
+  @override
+  String get agentAttachImage => '画像を添付';
+
+  @override
+  String get agentStopDictation => '音声入力を停止';
+
+  @override
+  String get agentDictateMessage => '音声入力';
+
+  @override
+  String herdAgentBlocked(String name) {
+    return '$name がブロックされました';
+  }
+
+  @override
+  String get herdStopDialogTitle => 'エージェントを停止しますか？';
+
+  @override
+  String herdStopDialogBody(String name, String paneId) {
+    return '$name ($paneId) を停止します。実行中の作業は中断されます。';
+  }
+
+  @override
+  String get herdNoAgents => 'エージェントが見つかりません';
+
+  @override
+  String get launchButton => '起動';
+
+  @override
+  String get launchNoAgents => 'ホストに起動可能なエージェントが見つかりません';
+
+  @override
+  String get launchWorkingDir => '作業ディレクトリ';
+
+  @override
+  String get launchAgentName => 'エージェント名';
+
+  @override
+  String get launchNewWorkspace => '新規ワークスペース';
+
+  @override
+  String get launchExistingWorkspace => '既存のワークスペース';
+
+  @override
+  String get launchWorkspaceName => 'ワークスペース名';
+
+  @override
+  String get launchUseNewWorkspace => '代わりに新規ワークスペースを使う';
+
+  @override
+  String get launchNoExistingWorkspaces => '既存のワークスペースがありません';
+
+  @override
+  String get launchSelectWorkspace => 'ワークスペースを選択';
+
+  @override
+  String launchUnnamedWorkspace(String id) {
+    return '名前なしワークスペース ($id)';
+  }
 }
