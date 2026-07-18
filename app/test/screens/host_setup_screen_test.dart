@@ -54,6 +54,69 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('hides the reset control during first-run setup', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostSetupScreen(onSubmit: (config) async {}),
+      ),
+    );
+
+    expect(find.text('Reset host'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('reset host asks for confirmation before clearing', (
+    tester,
+  ) async {
+    var resetCalls = 0;
+
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostSetupScreen(
+          initial: const HostConfig(
+            host: 'example.com',
+            port: 22,
+            user: 'dev',
+            privateKeyPem: 'KEY',
+          ),
+          onSubmit: (config) async {},
+          onReset: () async {
+            resetCalls++;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.widgetWithText(TextButton, 'Reset host'));
+    await tester.pumpAndSettle();
+
+    // Cancelling leaves the config untouched.
+    expect(find.text('Reset host?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+    expect(resetCalls, 0);
+
+    // Confirming invokes onReset.
+    await tester.tap(find.widgetWithText(TextButton, 'Reset host'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Reset'));
+    await tester.pumpAndSettle();
+    expect(resetCalls, 1);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('re-enables Save after a successful submit', (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
