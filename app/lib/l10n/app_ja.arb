@@ -1,0 +1,22 @@
+{
+  "@@locale": "ja",
+  "hostSetupTitle": "ホスト設定",
+  "hostSetupHostLabel": "ホスト",
+  "hostSetupHostRequired": "ホストは必須です",
+  "hostSetupPortLabel": "ポート",
+  "hostSetupUserLabel": "ユーザー",
+  "hostSetupUserRequired": "ユーザーは必須です",
+  "hostSetupPrivateKeyLabel": "秘密鍵 (PEM)",
+  "hostSetupPrivateKeyRequired": "秘密鍵は必須です",
+  "hostSetupPassphraseLabel": "パスフレーズ",
+  "hostSetupAdvanced": "詳細設定",
+  "hostSetupHerdrBinLabel": "Herdr バイナリのパス",
+  "hostSetupTestConnection": "接続テスト",
+  "hostSetupSave": "保存",
+  "hostSetupResetButton": "ホストをリセット",
+  "hostResetDialogTitle": "ホストをリセットしますか？",
+  "hostResetDialogBody": "保存された接続情報（SSH 鍵を含む）を削除し、セットアップ画面に戻ります。",
+  "commonCancel": "キャンセル",
+  "commonReset": "リセット",
+  "testConnectionOk": "OK — エージェント {count} 件"
+}

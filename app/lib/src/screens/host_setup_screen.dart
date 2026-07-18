@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../models/host_config.dart';
 
 /// Form for entering (or editing) the SSH connection details for the dev
@@ -43,13 +44,9 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     super.initState();
     final initial = widget.initial;
     _hostController = TextEditingController(text: initial?.host ?? '');
-    _portController = TextEditingController(
-      text: '${initial?.port ?? 22}',
-    );
+    _portController = TextEditingController(text: '${initial?.port ?? 22}');
     _userController = TextEditingController(text: initial?.user ?? '');
-    _keyController = TextEditingController(
-      text: initial?.privateKeyPem ?? '',
-    );
+    _keyController = TextEditingController(text: initial?.privateKeyPem ?? '');
     _passphraseController = TextEditingController(
       text: initial?.passphrase ?? '',
     );
@@ -114,22 +111,20 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
   Future<void> _handleReset() async {
     final onReset = widget.onReset;
     if (onReset == null) return;
+    final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Reset host?'),
-        content: const Text(
-          'This deletes the saved connection details (including the SSH key) '
-          'and returns to the setup screen.',
-        ),
+        title: Text(l10n.hostResetDialogTitle),
+        content: Text(l10n.hostResetDialogBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Reset'),
+            child: Text(l10n.commonReset),
           ),
         ],
       ),
@@ -172,8 +167,9 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Host setup')),
+      appBar: AppBar(title: Text(l10n.hostSetupTitle)),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -181,50 +177,54 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
           children: [
             TextFormField(
               controller: _hostController,
-              decoration: const InputDecoration(labelText: 'Host'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Host is required' : null,
+              decoration: InputDecoration(labelText: l10n.hostSetupHostLabel),
+              validator: (v) => (v == null || v.trim().isEmpty)
+                  ? l10n.hostSetupHostRequired
+                  : null,
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _portController,
-              decoration: const InputDecoration(labelText: 'Port'),
+              decoration: InputDecoration(labelText: l10n.hostSetupPortLabel),
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _userController,
-              decoration: const InputDecoration(labelText: 'User'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'User is required' : null,
+              decoration: InputDecoration(labelText: l10n.hostSetupUserLabel),
+              validator: (v) => (v == null || v.trim().isEmpty)
+                  ? l10n.hostSetupUserRequired
+                  : null,
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _keyController,
-              decoration: const InputDecoration(
-                labelText: 'Private key PEM',
+              decoration: InputDecoration(
+                labelText: l10n.hostSetupPrivateKeyLabel,
               ),
               style: const TextStyle(fontFamily: 'monospace'),
               maxLines: 6,
               validator: (v) => (v == null || v.trim().isEmpty)
-                  ? 'Private key is required'
+                  ? l10n.hostSetupPrivateKeyRequired
                   : null,
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _passphraseController,
-              decoration: const InputDecoration(labelText: 'Passphrase'),
+              decoration: InputDecoration(
+                labelText: l10n.hostSetupPassphraseLabel,
+              ),
               obscureText: true,
             ),
             const SizedBox(height: 12),
             ExpansionTile(
-              title: const Text('Advanced'),
+              title: Text(l10n.hostSetupAdvanced),
               tilePadding: EdgeInsets.zero,
               children: [
                 TextFormField(
                   controller: _herdrBinController,
-                  decoration: const InputDecoration(
-                    labelText: 'Herdr binary path',
+                  decoration: InputDecoration(
+                    labelText: l10n.hostSetupHerdrBinLabel,
                   ),
                 ),
               ],
@@ -251,18 +251,16 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                           ? const SizedBox(
                               height: 16,
                               width: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('Test connection'),
+                          : Text(l10n.hostSetupTestConnection),
                     ),
                   ),
                 if (widget.onTest != null) const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
                     onPressed: _busy ? null : _handleSave,
-                    child: const Text('Save'),
+                    child: Text(l10n.hostSetupSave),
                   ),
                 ),
               ],
@@ -274,7 +272,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 style: TextButton.styleFrom(
                   foregroundColor: Theme.of(context).colorScheme.error,
                 ),
-                child: const Text('Reset host'),
+                child: Text(l10n.hostSetupResetButton),
               ),
             ],
           ],

@@ -1,3 +1,4 @@
+import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/models/host_config.dart';
 import 'package:drover/src/screens/host_setup_screen.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +17,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: HostSetupScreen(
           onSubmit: (config) async {
             captured = config;
@@ -28,10 +31,7 @@ void main() {
       find.widgetWithText(TextFormField, 'Host'),
       'example.com',
     );
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'User'),
-      'dev',
-    );
+    await tester.enterText(find.widgetWithText(TextFormField, 'User'), 'dev');
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Private key PEM'),
       '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----',
@@ -46,10 +46,7 @@ void main() {
     expect(captured!.user, 'dev');
     expect(captured!.port, 22);
     expect(captured!.herdrBin, '~/.local/bin/herdr');
-    expect(
-      captured!.privateKeyPem,
-      contains('BEGIN OPENSSH PRIVATE KEY'),
-    );
+    expect(captured!.privateKeyPem, contains('BEGIN OPENSSH PRIVATE KEY'));
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -62,6 +59,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: HostSetupScreen(onSubmit: (config) async {}),
       ),
     );
@@ -83,6 +82,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: HostSetupScreen(
           initial: const HostConfig(
             host: 'example.com',
@@ -125,6 +126,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: HostSetupScreen(onSubmit: (config) async {}),
       ),
     );
@@ -133,10 +136,7 @@ void main() {
       find.widgetWithText(TextFormField, 'Host'),
       'example.com',
     );
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'User'),
-      'dev',
-    );
+    await tester.enterText(find.widgetWithText(TextFormField, 'User'), 'dev');
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Private key PEM'),
       '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----',
