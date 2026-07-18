@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 
 import 'l10n/app_localizations.dart';
+import 'src/app_theme.dart';
 import 'src/herdr/herdr_client.dart';
 import 'src/infra/host_store.dart';
 import 'src/infra/ssh_command_runner.dart';
@@ -117,11 +118,7 @@ class _DroverAppState extends State<DroverApp> {
       navigatorKey: _navKey,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      theme: ThemeData(
-        colorSchemeSeed: Colors.teal,
-        brightness: Brightness.dark,
-        useMaterial3: true,
-      ),
+      theme: droverTheme,
       home: _config == null
           ? HostSetupScreen(onSubmit: _applyConfig, onTest: _testConnection)
           : HerdScreen(

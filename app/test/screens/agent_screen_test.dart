@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:drover/l10n/app_localizations.dart';
+import 'package:drover/src/dev/stub_herdr.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/image/image_input.dart';
@@ -8,28 +9,6 @@ import 'package:drover/src/screens/agent_screen.dart';
 import 'package:drover/src/speech/speech_input.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-class FakeCommandRunner implements CommandRunner {
-  FakeCommandRunner(this._response);
-
-  final CommandResult Function(String command) _response;
-  final commands = <String>[];
-  final uploads = <({String path, List<int> bytes})>[];
-
-  @override
-  Future<CommandResult> run(String command) async {
-    commands.add(command);
-    return _response(command);
-  }
-
-  @override
-  Future<void> uploadFile(String remotePath, List<int> bytes) async {
-    uploads.add((path: remotePath, bytes: bytes));
-  }
-
-  @override
-  Future<void> dispose() async {}
-}
 
 /// A valid 1x1 PNG so the composer's `Image.memory` preview can decode it in
 /// widget tests (arbitrary bytes would throw during paint).
@@ -88,81 +67,11 @@ class FakeSpeechInput implements SpeechInput {
   void error(String message) => _onError?.call(message);
 }
 
-CommandResult ok(String stdout) =>
-    CommandResult(exitCode: 0, stdout: stdout, stderr: '');
-
-const _readText =
-    'Bash command\n'
-    '\n'
-    '  touch spike-test.txt\n'
-    '  Create empty file spike-test.txt\n'
-    '\n'
-    ' Do you want to proceed?\n'
-    ' ❯ 1. Yes\n'
-    '   2. Yes, and always allow access to drover-spike-test/ from this\n'
-    '      project\n'
-    '   3. No\n'
-    '\n'
-    ' Esc to cancel · Tab to amend · ctrl+e to explain\n';
-
-CommandResult _respond(String command) {
-  if (command.contains("'workspace' 'list'")) {
-    return ok(
-      '{"id":"1","result":{"workspaces":['
-      '{"workspace_id":"wB","label":"Project B"}'
-      ']}}',
-    );
-  }
-  if (command.contains("'agent' 'get'")) {
-    return ok(
-      '{"id":"1","result":{"agent":{"agent":"claude",'
-      '"agent_status":"blocked","cwd":"/tmp/proj","focused":false,'
-      '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-      '"name":"Agent Three"}}}',
-    );
-  }
-  if (command.contains("'agent' 'read'")) {
-    return ok(
-      '{"id":"1","result":{"read":{"text":${_jsonEncode(_readText)}}}}',
-    );
-  }
-  return ok('{"id":"1","result":{}}');
-}
-
-const _idleWithMode =
-    'Working on the task…\n'
-    '  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle)\n';
-
-CommandResult _respondIdleWithMode(String command) {
-  if (command.contains("'agent' 'get'")) {
-    return ok(
-      '{"id":"1","result":{"agent":{"agent":"claude",'
-      '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
-      '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-      '"name":"Agent Three"}}}',
-    );
-  }
-  if (command.contains("'agent' 'read'")) {
-    return ok(
-      '{"id":"1","result":{"read":{"text":${_jsonEncode(_idleWithMode)}}}}',
-    );
-  }
-  return ok('{"id":"1","result":{}}');
-}
-
-String _jsonEncode(String s) {
-  final escaped = s
-      .replaceAll(r'\', r'\\')
-      .replaceAll('"', r'\"')
-      .replaceAll('\n', r'\n');
-  return '"$escaped"';
-}
-
 void main() {
   testWidgets('shows prompt options and sends the chosen number', (
     tester,
   ) async {
-    final runner = FakeCommandRunner(_respond);
+    final runner = StubCommandRunner(blockedPromptResponse);
     final client = HerdrClient(runner);
 
     await tester.pumpWidget(
@@ -211,10 +120,10 @@ void main() {
       if (command.contains("'agent' 'send'")) {
         return const CommandResult(exitCode: 1, stdout: '', stderr: 'boom');
       }
-      return _respond(command);
+      return blockedPromptResponse(command);
     }
 
-    final runner = FakeCommandRunner(respondFailingSend);
+    final runner = StubCommandRunner(respondFailingSend);
     final client = HerdrClient(runner);
 
     await tester.pumpWidget(
@@ -245,7 +154,7 @@ void main() {
   testWidgets('shows the current mode as a tappable chip that cycles it', (
     tester,
   ) async {
-    final runner = FakeCommandRunner(_respondIdleWithMode);
+    final runner = StubCommandRunner(idleWithModeResponse);
     final client = HerdrClient(runner);
 
     await tester.pumpWidget(
@@ -290,7 +199,7 @@ void main() {
     tester,
   ) async {
     final speech = FakeSpeechInput();
-    final client = HerdrClient(FakeCommandRunner(_respond));
+    final client = HerdrClient(StubCommandRunner(blockedPromptResponse));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -322,7 +231,7 @@ void main() {
 
   testWidgets('replaces cumulative dictated partial results', (tester) async {
     final speech = FakeSpeechInput();
-    final client = HerdrClient(FakeCommandRunner(_respond));
+    final client = HerdrClient(StubCommandRunner(blockedPromptResponse));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -356,7 +265,7 @@ void main() {
 
   testWidgets('disables sending while dictation is active', (tester) async {
     final speech = FakeSpeechInput();
-    final client = HerdrClient(FakeCommandRunner(_respond));
+    final client = HerdrClient(StubCommandRunner(blockedPromptResponse));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -387,7 +296,7 @@ void main() {
     tester,
   ) async {
     final speech = FakeSpeechInput();
-    final client = HerdrClient(FakeCommandRunner(_respond));
+    final client = HerdrClient(StubCommandRunner(blockedPromptResponse));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -431,7 +340,7 @@ void main() {
         'Speech recognition is unavailable or permission was denied.',
       ),
     );
-    final client = HerdrClient(FakeCommandRunner(_respond));
+    final client = HerdrClient(StubCommandRunner(blockedPromptResponse));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -467,7 +376,7 @@ void main() {
     tester,
   ) async {
     final speech = FakeSpeechInput();
-    final client = HerdrClient(FakeCommandRunner(_respond));
+    final client = HerdrClient(StubCommandRunner(blockedPromptResponse));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -502,7 +411,7 @@ void main() {
     tester,
   ) async {
     final speech = FakeSpeechInput();
-    final client = HerdrClient(FakeCommandRunner(_respond));
+    final client = HerdrClient(StubCommandRunner(blockedPromptResponse));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -528,7 +437,7 @@ void main() {
   testWidgets('stages multiple picked images without sending them', (
     tester,
   ) async {
-    final runner = FakeCommandRunner(_respond);
+    final runner = StubCommandRunner(blockedPromptResponse);
     final client = HerdrClient(runner);
     final imagePicker = FakeImagePicker();
 
@@ -568,7 +477,7 @@ void main() {
   testWidgets('sends the staged images and text together on send', (
     tester,
   ) async {
-    final runner = FakeCommandRunner(_respond);
+    final runner = StubCommandRunner(blockedPromptResponse);
     final client = HerdrClient(runner);
     final imagePicker = FakeImagePicker();
 
@@ -641,7 +550,7 @@ void main() {
   testWidgets('removing one staged image leaves the other and sends nothing', (
     tester,
   ) async {
-    final runner = FakeCommandRunner(_respond);
+    final runner = StubCommandRunner(blockedPromptResponse);
     final client = HerdrClient(runner);
     final imagePicker = FakeImagePicker();
 
@@ -680,7 +589,7 @@ void main() {
   });
 
   testWidgets('cancelling the image picker stages nothing', (tester) async {
-    final runner = FakeCommandRunner(_respond);
+    final runner = StubCommandRunner(blockedPromptResponse);
     final client = HerdrClient(runner);
     final imagePicker = FakeImagePicker()..result = null;
 
@@ -712,7 +621,7 @@ void main() {
   testWidgets('pulling down at the top loads more transcript lines', (
     tester,
   ) async {
-    final runner = FakeCommandRunner(_respond);
+    final runner = StubCommandRunner(blockedPromptResponse);
     final client = HerdrClient(runner);
 
     await tester.pumpWidget(

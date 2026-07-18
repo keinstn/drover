@@ -26,6 +26,12 @@ test *args:
 run *args:
     fvm flutter run {{args}}
 
+# Launch a UI preview with a stubbed herdr backend (no host needed),
+# e.g. `just preview` or `just preview --dart-define=SCENARIO=blocked`.
+[working-directory('app')]
+preview *args:
+    fvm flutter run -t lib/previews/agent_screen_preview.dart {{args}}
+
 # Run the Stage 0 SSH spike, e.g. `just spike --host localhost agents`.
 [working-directory('app')]
 spike *args:
