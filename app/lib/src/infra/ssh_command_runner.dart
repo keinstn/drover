@@ -6,6 +6,33 @@ import 'package:dartssh2/dartssh2.dart';
 import '../herdr/command_runner.dart';
 import '../models/host_config.dart';
 
+/// Composes a diagnostic message from an SSH auth failure and any notices the
+/// server sent during the attempt (userauth banner or keyboard-interactive
+/// text) — e.g. a Tailscale SSH "visit this URL to authenticate" message,
+/// which dartssh2 otherwise drops, leaving only an opaque
+/// "Connection closed before authentication".
+String describeSshAuthFailure(Object error, List<String> notices) {
+  final seen = <String>{};
+  final extra = <String>[];
+  for (final n in notices) {
+    final t = n.trim();
+    if (t.isEmpty || !seen.add(t)) continue;
+    extra.add(t);
+  }
+  if (extra.isEmpty) return error.toString();
+  return '$error\n${extra.join('\n')}';
+}
+
+/// Thrown when the SSH connection fails during authentication, carrying any
+/// server-sent notices (see [describeSshAuthFailure]). Its [toString] is the
+/// composed message verbatim (no prefix) because [HerdrClient] re-wraps it.
+class SshAuthException implements Exception {
+  SshAuthException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
 /// [CommandRunner] backed by an SSH connection to a [HostConfig] host.
 /// Connects lazily on first [run] and caches the client; a stale cached
 /// client (closed since it was last used) is reconnected before the command
@@ -22,8 +49,10 @@ class SshCommandRunner implements CommandRunner {
   final HostConfig _config;
   SSHClient? _client;
   Future<SSHClient>? _connecting;
+  final _authNotices = <String>[];
 
   Future<SSHClient> _connect() async {
+    _authNotices.clear();
     final socket = await SSHSocket.connect(
       _config.host,
       _config.port,
@@ -33,8 +62,19 @@ class SshCommandRunner implements CommandRunner {
       socket,
       username: _config.user,
       identities: SSHKeyPair.fromPem(_config.privateKeyPem, _config.passphrase),
+      onUserauthBanner: _authNotices.add,
+      onUserInfoRequest: (req) {
+        _authNotices
+          ..add(req.name)
+          ..add(req.instruction);
+        return null;
+      },
     );
-    await client.authenticated;
+    try {
+      await client.authenticated;
+    } on SSHAuthError catch (e) {
+      throw SshAuthException(describeSshAuthFailure(e, _authNotices));
+    }
     return client;
   }
 
