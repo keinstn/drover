@@ -10,11 +10,16 @@ class HostSetupScreen extends StatefulWidget {
     this.initial,
     required this.onSubmit,
     this.onTest,
+    this.onReset,
   });
 
   final HostConfig? initial;
   final Future<void> Function(HostConfig) onSubmit;
   final Future<String> Function(HostConfig)? onTest;
+
+  /// Clears the stored host config and returns to first-run setup. When null,
+  /// the reset control is hidden (e.g. during first-run setup).
+  final Future<void> Function()? onReset;
 
   @override
   State<HostSetupScreen> createState() => _HostSetupScreenState();
@@ -103,6 +108,43 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
       });
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _handleReset() async {
+    final onReset = widget.onReset;
+    if (onReset == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset host?'),
+        content: const Text(
+          'This deletes the saved connection details (including the SSH key) '
+          'and returns to the setup screen.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _busy = true);
+    try {
+      await onReset();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _statusMessage = e.toString();
+        _statusIsError = true;
+        _busy = false;
+      });
     }
   }
 
@@ -225,6 +267,16 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 ),
               ],
             ),
+            if (widget.onReset != null) ...[
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: _busy ? null : _handleReset,
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error,
+                ),
+                child: const Text('Reset host'),
+              ),
+            ],
           ],
         ),
       ),

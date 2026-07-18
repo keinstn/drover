@@ -48,6 +48,7 @@ class DroverApp extends StatefulWidget {
 }
 
 class _DroverAppState extends State<DroverApp> {
+  final _navKey = GlobalKey<NavigatorState>();
   HostConfig? _config;
   SshCommandRunner? _runner;
   HerdrClient? _client;
@@ -81,7 +82,19 @@ class _DroverAppState extends State<DroverApp> {
       _runner = runner;
       _client = client;
     });
-    Navigator.of(context).popUntil((r) => r.isFirst);
+    _navKey.currentState?.popUntil((r) => r.isFirst);
+  }
+
+  Future<void> _resetConfig() async {
+    await widget.hostStore.clear();
+    await _runner?.dispose();
+    if (!mounted) return;
+    setState(() {
+      _config = null;
+      _runner = null;
+      _client = null;
+    });
+    _navKey.currentState?.popUntil((r) => r.isFirst);
   }
 
   Future<String> _testConnection(HostConfig c) async {
@@ -99,6 +112,7 @@ class _DroverAppState extends State<DroverApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Drover',
+      navigatorKey: _navKey,
       theme: ThemeData(
         colorSchemeSeed: Colors.teal,
         brightness: Brightness.dark,
@@ -110,12 +124,13 @@ class _DroverAppState extends State<DroverApp> {
               client: _client!,
               speechInput: _speechInput,
               onOpenSettings: () {
-                Navigator.of(context).push(
+                _navKey.currentState?.push(
                   MaterialPageRoute<void>(
                     builder: (_) => HostSetupScreen(
                       initial: _config,
                       onSubmit: _applyConfig,
                       onTest: _testConnection,
+                      onReset: _resetConfig,
                     ),
                   ),
                 );
