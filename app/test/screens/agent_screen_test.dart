@@ -1,6 +1,7 @@
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/screens/agent_screen.dart';
+import 'package:drover/src/speech/speech_input.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -18,6 +19,47 @@ class FakeCommandRunner implements CommandRunner {
 
   @override
   Future<void> dispose() async {}
+}
+
+class FakeSpeechInput implements SpeechInput {
+  FakeSpeechInput({this.startResult = const SpeechInputStartResult.started()});
+
+  SpeechInputStartResult startResult;
+  SpeechInputResultListener? _onResult;
+  SpeechInputStatusListener? _onStatus;
+  SpeechInputErrorListener? _onError;
+  var stopCalls = 0;
+  var cancelCalls = 0;
+
+  @override
+  Future<SpeechInputStartResult> start({
+    required SpeechInputResultListener onResult,
+    required SpeechInputStatusListener onStatus,
+    required SpeechInputErrorListener onError,
+  }) async {
+    _onResult = onResult;
+    _onStatus = onStatus;
+    _onError = onError;
+    return startResult;
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCalls++;
+  }
+
+  @override
+  Future<void> cancel() async {
+    cancelCalls++;
+  }
+
+  void result(String words, {bool isFinal = false}) {
+    _onResult?.call(SpeechInputResult(words: words, isFinal: isFinal));
+  }
+
+  void done() => _onStatus?.call(SpeechInputStatus.done);
+
+  void error(String message) => _onError?.call(message);
 }
 
 CommandResult ok(String stdout) =>
@@ -210,5 +252,230 @@ void main() {
     );
 
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('appends dictated partial text to the existing draft', (
+    tester,
+  ) async {
+    final speech = FakeSpeechInput();
+    final client = HerdrClient(FakeCommandRunner(_respond));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          speechInput: speech,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'Please ');
+
+    await tester.tap(find.byIcon(Icons.mic));
+    await tester.pump();
+    speech.result('continue the task');
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'Please continue the task',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('replaces cumulative dictated partial results', (tester) async {
+    final speech = FakeSpeechInput();
+    final client = HerdrClient(FakeCommandRunner(_respond));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          speechInput: speech,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'Please');
+
+    await tester.tap(find.byIcon(Icons.mic));
+    await tester.pump();
+    speech.result('continue');
+    await tester.pump();
+    speech.result('continue the task');
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'Please continue the task',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('disables sending while dictation is active', (tester) async {
+    final speech = FakeSpeechInput();
+    final client = HerdrClient(FakeCommandRunner(_respond));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          speechInput: speech,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.mic));
+    await tester.pump();
+
+    final send = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('send_message_button')),
+    );
+    expect(send.onPressed, isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('stopping dictation returns the draft for review', (
+    tester,
+  ) async {
+    final speech = FakeSpeechInput();
+    final client = HerdrClient(FakeCommandRunner(_respond));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          speechInput: speech,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'Please');
+
+    await tester.tap(find.byIcon(Icons.mic));
+    await tester.pump();
+    speech.result('continue');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.stop));
+    await tester.pump();
+    speech.done();
+    await tester.pump();
+
+    expect(speech.stopCalls, 1);
+    expect(find.byIcon(Icons.mic), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'Please continue',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('shows a speech setup failure without changing the draft', (
+    tester,
+  ) async {
+    final speech = FakeSpeechInput(
+      startResult: const SpeechInputStartResult.failed(
+        'Speech recognition is unavailable or permission was denied.',
+      ),
+    );
+    final client = HerdrClient(FakeCommandRunner(_respond));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          speechInput: speech,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'Keep this draft');
+
+    await tester.tap(find.byIcon(Icons.mic));
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'Keep this draft',
+    );
+    expect(
+      find.text('Speech recognition is unavailable or permission was denied.'),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('keeps the draft when recognition reports an error', (
+    tester,
+  ) async {
+    final speech = FakeSpeechInput();
+    final client = HerdrClient(FakeCommandRunner(_respond));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          speechInput: speech,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'Keep this draft');
+
+    await tester.tap(find.byIcon(Icons.mic));
+    await tester.pump();
+    speech.error('Speech recognition failed: no service');
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'Keep this draft',
+    );
+    expect(find.text('Speech recognition failed: no service'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('cancels active dictation when the screen is disposed', (
+    tester,
+  ) async {
+    final speech = FakeSpeechInput();
+    final client = HerdrClient(FakeCommandRunner(_respond));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          speechInput: speech,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.mic));
+    await tester.pump();
+
+    await tester.pumpWidget(const SizedBox());
+
+    expect(speech.cancelCalls, 1);
   });
 }

@@ -7,6 +7,7 @@ import '../herdr/ansi_text.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/pane_text.dart';
 import '../models/agent_info.dart';
+import '../speech/speech_input.dart';
 import '../widgets/top_toast.dart';
 import 'herd_screen.dart' show statusColor;
 
@@ -25,6 +26,7 @@ class AgentScreen extends StatefulWidget {
     required this.paneId,
     this.initialAgent,
     this.initialWorkspaceLabel,
+    this.speechInput,
     this.pollInterval = const Duration(seconds: 2),
   });
 
@@ -32,6 +34,7 @@ class AgentScreen extends StatefulWidget {
   final String paneId;
   final AgentInfo? initialAgent;
   final String? initialWorkspaceLabel;
+  final SpeechInput? speechInput;
   final Duration pollInterval;
 
   @override
@@ -45,16 +48,22 @@ class _AgentScreenState extends State<AgentScreen> {
   bool _firstLoad = true;
   bool _sending = false;
   bool _workspaceLabelLoading = false;
+  bool _dictationStarting = false;
+  bool _dictating = false;
   String? _workspaceLabel;
   String? _workspaceLabelError;
   Timer? _timer;
 
   final _scrollController = ScrollController();
   final _messageController = TextEditingController();
+  late final SpeechInput _speechInput;
+  var _dictationSession = 0;
+  var _draftBeforeDictation = '';
 
   @override
   void initState() {
     super.initState();
+    _speechInput = widget.speechInput ?? SpeechInputController();
     _agent = widget.initialAgent;
     _workspaceLabel = widget.initialWorkspaceLabel;
     _load();
@@ -65,6 +74,9 @@ class _AgentScreenState extends State<AgentScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    if (_dictationStarting || _dictating) {
+      unawaited(_speechInput.cancel());
+    }
     _scrollController.dispose();
     _messageController.dispose();
     super.dispose();
@@ -156,6 +168,7 @@ class _AgentScreenState extends State<AgentScreen> {
   }
 
   Future<void> _sendMessage() async {
+    if (_dictationStarting || _dictating) return;
     final text = _messageController.text;
     if (text.trim().isEmpty) return;
     final ok = await _send(() => widget.client.prompt(widget.paneId, text));
@@ -163,6 +176,75 @@ class _AgentScreenState extends State<AgentScreen> {
       _messageController.clear();
       HapticFeedback.lightImpact();
     }
+  }
+
+  Future<void> _toggleDictation() async {
+    if (_dictating) {
+      try {
+        await _speechInput.stop();
+      } catch (error) {
+        if (mounted) showTopToast(context, error.toString());
+      }
+      return;
+    }
+    if (_dictationStarting) return;
+
+    final session = ++_dictationSession;
+    _draftBeforeDictation = _messageController.text;
+    setState(() => _dictationStarting = true);
+    final result = await _speechInput.start(
+      onResult: (result) => _applyDictationResult(session, result),
+      onStatus: (status) => _handleDictationStatus(session, status),
+      onError: (message) => _handleDictationError(session, message),
+    );
+    if (!mounted || session != _dictationSession) return;
+    if (!result.started) {
+      setState(() => _dictationStarting = false);
+      showTopToast(context, result.errorMessage!);
+      return;
+    }
+    setState(() {
+      _dictationStarting = false;
+      _dictating = true;
+    });
+  }
+
+  void _applyDictationResult(int session, SpeechInputResult result) {
+    if (!mounted || session != _dictationSession) return;
+    final spoken = result.words.trim();
+    final separator =
+        _draftBeforeDictation.isNotEmpty &&
+            !RegExp(r'\s$').hasMatch(_draftBeforeDictation)
+        ? ' '
+        : '';
+    final text = spoken.isEmpty
+        ? _draftBeforeDictation
+        : '$_draftBeforeDictation$separator$spoken';
+    _messageController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+
+  void _handleDictationStatus(int session, SpeechInputStatus status) {
+    if (!mounted ||
+        session != _dictationSession ||
+        status != SpeechInputStatus.done) {
+      return;
+    }
+    setState(() {
+      _dictationStarting = false;
+      _dictating = false;
+    });
+  }
+
+  void _handleDictationError(int session, String message) {
+    if (!mounted || session != _dictationSession) return;
+    setState(() {
+      _dictationStarting = false;
+      _dictating = false;
+    });
+    showTopToast(context, message);
   }
 
   @override
@@ -240,6 +322,9 @@ class _AgentScreenState extends State<AgentScreen> {
           _Composer(
             controller: _messageController,
             sending: _sending,
+            dictationStarting: _dictationStarting,
+            dictating: _dictating,
+            onDictation: _toggleDictation,
             onSend: _sendMessage,
           ),
         ],
@@ -422,11 +507,17 @@ class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,
     required this.sending,
+    required this.dictationStarting,
+    required this.dictating,
+    required this.onDictation,
     required this.onSend,
   });
 
   final TextEditingController controller;
   final bool sending;
+  final bool dictationStarting;
+  final bool dictating;
+  final VoidCallback onDictation;
   final VoidCallback onSend;
 
   @override
@@ -440,7 +531,7 @@ class _Composer extends StatelessWidget {
           Expanded(
             child: TextField(
               controller: controller,
-              enabled: !sending,
+              enabled: !sending && !dictationStarting && !dictating,
               minLines: 1,
               maxLines: 5,
               textInputAction: TextInputAction.newline,
@@ -461,8 +552,55 @@ class _Composer extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          _SendButton(sending: sending, onSend: onSend),
+          _MicrophoneButton(
+            starting: dictationStarting,
+            dictating: dictating,
+            onPressed: onDictation,
+          ),
+          const SizedBox(width: 8),
+          _SendButton(
+            sending: sending || dictationStarting || dictating,
+            onSend: onSend,
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _MicrophoneButton extends StatelessWidget {
+  const _MicrophoneButton({
+    required this.starting,
+    required this.dictating,
+    required this.onPressed,
+  });
+
+  final bool starting;
+  final bool dictating;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = !starting;
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: Tooltip(
+        message: dictating ? 'Stop dictation' : 'Dictate message',
+        child: OutlinedButton(
+          onPressed: enabled ? onPressed : null,
+          style: OutlinedButton.styleFrom(
+            shape: const CircleBorder(),
+            padding: EdgeInsets.zero,
+          ),
+          child: starting
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(dictating ? Icons.stop : Icons.mic, size: 20),
+        ),
       ),
     );
   }
@@ -480,6 +618,7 @@ class _SendButton extends StatelessWidget {
       width: 48,
       height: 48,
       child: FilledButton(
+        key: const ValueKey('send_message_button'),
         onPressed: sending ? null : onSend,
         style: FilledButton.styleFrom(
           shape: const CircleBorder(),

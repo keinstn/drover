@@ -28,5 +28,9 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Drover uses the microphone to dictate messages to coding agents.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Drover converts speech to text so you can dictate messages to coding agents.</string>
 </dict>
 </plist>

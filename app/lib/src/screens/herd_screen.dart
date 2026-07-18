@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../herdr/herdr_client.dart';
 import '../models/agent_info.dart';
+import '../speech/speech_input.dart';
 import '../utils/path.dart';
 import '../widgets/top_toast.dart';
 import 'agent_screen.dart';
@@ -40,11 +41,13 @@ class HerdScreen extends StatefulWidget {
     super.key,
     required this.client,
     required this.onOpenSettings,
+    this.speechInput,
     this.pollInterval = const Duration(seconds: 2),
   });
 
   final HerdrClient client;
   final VoidCallback onOpenSettings;
+  final SpeechInput? speechInput;
   final Duration pollInterval;
 
   @override
@@ -321,6 +324,7 @@ class _HerdScreenState extends State<HerdScreen> {
                                         MaterialPageRoute<void>(
                                           builder: (_) => AgentScreen(
                                             client: widget.client,
+                                            speechInput: widget.speechInput,
                                             paneId: agent.paneId,
                                             initialAgent: agent,
                                             initialWorkspaceLabel:

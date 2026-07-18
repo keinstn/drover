@@ -9,6 +9,7 @@ import 'src/infra/ssh_command_runner.dart';
 import 'src/models/host_config.dart';
 import 'src/screens/herd_screen.dart';
 import 'src/screens/host_setup_screen.dart';
+import 'src/speech/speech_input.dart';
 
 Future<void> main() async {
   if (kDebugMode) {
@@ -31,10 +32,16 @@ Future<void> main() async {
 }
 
 class DroverApp extends StatefulWidget {
-  const DroverApp({super.key, required this.hostStore, this.initialConfig});
+  const DroverApp({
+    super.key,
+    required this.hostStore,
+    this.initialConfig,
+    this.speechInput,
+  });
 
   final HostStore hostStore;
   final HostConfig? initialConfig;
+  final SpeechInput? speechInput;
 
   @override
   State<DroverApp> createState() => _DroverAppState();
@@ -44,10 +51,12 @@ class _DroverAppState extends State<DroverApp> {
   HostConfig? _config;
   SshCommandRunner? _runner;
   HerdrClient? _client;
+  late final SpeechInput _speechInput;
 
   @override
   void initState() {
     super.initState();
+    _speechInput = widget.speechInput ?? SpeechInputController();
     _config = widget.initialConfig;
     if (_config != null) {
       _runner = SshCommandRunner(_config!);
@@ -99,6 +108,7 @@ class _DroverAppState extends State<DroverApp> {
           ? HostSetupScreen(onSubmit: _applyConfig, onTest: _testConnection)
           : HerdScreen(
               client: _client!,
+              speechInput: _speechInput,
               onOpenSettings: () {
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(

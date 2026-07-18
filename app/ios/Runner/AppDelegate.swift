@@ -1,4 +1,5 @@
 import Flutter
+import Speech
 import UIKit
 
 @main
@@ -12,5 +13,16 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    let channel = FlutterMethodChannel(
+      name: "com.keinstn.drover/speech",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "supportsOnDeviceRecognition" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      result(SFSpeechRecognizer(locale: Locale.current)?.supportsOnDeviceRecognition ?? false)
+    }
   }
 }
