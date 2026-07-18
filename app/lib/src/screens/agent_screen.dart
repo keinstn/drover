@@ -55,6 +55,7 @@ class _AgentScreenState extends State<AgentScreen> {
   bool _dictating = false;
   String? _workspaceLabel;
   String? _workspaceLabelError;
+  PickedImage? _pendingImage;
   Timer? _timer;
 
   final _scrollController = ScrollController();
@@ -172,20 +173,37 @@ class _AgentScreenState extends State<AgentScreen> {
     }
   }
 
+  /// Sends the composer's text and any staged image together. With a staged
+  /// image the whole turn goes through [HerdrClient.sendImage] (caption + path);
+  /// otherwise it's a plain text prompt.
   Future<void> _sendMessage() async {
     if (_dictationStarting || _dictating) return;
     final text = _messageController.text;
-    if (text.trim().isEmpty) return;
-    final ok = await _send(() => widget.client.prompt(widget.paneId, text));
+    final image = _pendingImage;
+    if (image == null && text.trim().isEmpty) return;
+    final agent = _agent;
+    if (image != null && agent == null) return; // need the agent's cwd first
+    final ok = await _send(
+      () => image == null
+          ? widget.client.prompt(widget.paneId, text)
+          : widget.client.sendImage(
+              agent!,
+              bytes: image.bytes,
+              extension: image.extension,
+              caption: text,
+            ),
+    );
     if (ok) {
       _messageController.clear();
       HapticFeedback.lightImpact();
+      if (mounted) setState(() => _pendingImage = null);
     }
   }
 
+  /// Picks an image and stages it in the composer. It isn't sent until the user
+  /// taps send, so it goes out together with whatever text they type.
   Future<void> _attachImage() async {
-    final agent = _agent;
-    if (agent == null || _sending || _dictationStarting || _dictating) return;
+    if (_sending || _dictationStarting || _dictating) return;
     final PickedImage? picked;
     try {
       picked = await _imagePicker.pickImage();
@@ -194,19 +212,10 @@ class _AgentScreenState extends State<AgentScreen> {
       return;
     }
     if (picked == null) return; // user cancelled
-    final ok = await _send(
-      () => widget.client.sendImage(
-        agent,
-        bytes: picked!.bytes,
-        extension: picked.extension,
-        caption: _messageController.text,
-      ),
-    );
-    if (ok) {
-      _messageController.clear();
-      HapticFeedback.lightImpact();
-    }
+    if (mounted) setState(() => _pendingImage = picked);
   }
+
+  void _removePendingImage() => setState(() => _pendingImage = null);
 
   Future<void> _toggleDictation() async {
     if (_dictating) {
@@ -354,6 +363,8 @@ class _AgentScreenState extends State<AgentScreen> {
             sending: _sending,
             dictationStarting: _dictationStarting,
             dictating: _dictating,
+            pendingImage: _pendingImage,
+            onRemoveImage: _removePendingImage,
             onDictation: _toggleDictation,
             onAttach: _attachImage,
             onSend: _sendMessage,
@@ -540,6 +551,8 @@ class _Composer extends StatelessWidget {
     required this.sending,
     required this.dictationStarting,
     required this.dictating,
+    required this.pendingImage,
+    required this.onRemoveImage,
     required this.onDictation,
     required this.onAttach,
     required this.onSend,
@@ -549,6 +562,8 @@ class _Composer extends StatelessWidget {
   final bool sending;
   final bool dictationStarting;
   final bool dictating;
+  final PickedImage? pendingImage;
+  final VoidCallback onRemoveImage;
   final VoidCallback onDictation;
   final VoidCallback onAttach;
   final VoidCallback onSend;
@@ -556,49 +571,110 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final pendingImage = this.pendingImage;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              enabled: !sending && !dictationStarting && !dictating,
-              minLines: 1,
-              maxLines: 5,
-              textInputAction: TextInputAction.newline,
-              style: const TextStyle(fontSize: 15),
-              decoration: InputDecoration(
-                hintText: 'Message agent…',
-                filled: true,
-                fillColor: scheme.surfaceContainerHighest,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide.none,
+          if (pendingImage != null) ...[
+            _PendingImagePreview(
+              image: pendingImage,
+              onRemove: sending ? null : onRemoveImage,
+            ),
+            const SizedBox(height: 8),
+          ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  enabled: !sending && !dictationStarting && !dictating,
+                  minLines: 1,
+                  maxLines: 5,
+                  textInputAction: TextInputAction.newline,
+                  style: const TextStyle(fontSize: 15),
+                  decoration: InputDecoration(
+                    hintText: 'Message agent…',
+                    filled: true,
+                    fillColor: scheme.surfaceContainerHighest,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
                 ),
               ),
+              const SizedBox(width: 8),
+              _AttachButton(
+                sending: sending || dictationStarting || dictating,
+                onPressed: onAttach,
+              ),
+              const SizedBox(width: 8),
+              _MicrophoneButton(
+                starting: dictationStarting,
+                dictating: dictating,
+                onPressed: onDictation,
+              ),
+              const SizedBox(width: 8),
+              _SendButton(
+                sending: sending || dictationStarting || dictating,
+                onSend: onSend,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A staged image sitting in the composer, shown above the input row until the
+/// user sends it with their message (or removes it via [onRemove], which is
+/// null while a send is in flight).
+class _PendingImagePreview extends StatelessWidget {
+  const _PendingImagePreview({required this.image, required this.onRemove});
+
+  final PickedImage image;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.memory(
+              image.bytes,
+              width: 44,
+              height: 44,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
             ),
           ),
-          const SizedBox(width: 8),
-          _AttachButton(
-            sending: sending || dictationStarting || dictating,
-            onPressed: onAttach,
-          ),
-          const SizedBox(width: 8),
-          _MicrophoneButton(
-            starting: dictationStarting,
-            dictating: dictating,
-            onPressed: onDictation,
-          ),
-          const SizedBox(width: 8),
-          _SendButton(
-            sending: sending || dictationStarting || dictating,
-            onSend: onSend,
+          const SizedBox(width: 10),
+          Text('Image attached', style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(width: 4),
+          IconButton(
+            key: const ValueKey('remove_image_button'),
+            visualDensity: VisualDensity.compact,
+            tooltip: 'Remove image',
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: onRemove,
           ),
         ],
       ),
