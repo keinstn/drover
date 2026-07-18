@@ -7,7 +7,8 @@ global `~/.claude/CLAUDE.md` rules — those still apply.
 
 - `app/` — the Flutter app (iOS/macOS) plus `app/tool/spike.dart`, the Stage 0 SSH spike.
 
-See `README.md` for the PoC plan and Stage 0 measurement results, and
+See `README.md` for the PoC plan and Stage 0 measurement results,
+`docs/herdr-notes.md` for herdr CLI behaviours/gotchas drover relies on, and
 `~/Projects/ideas/drover.md` for the product proposal.
 
 ## One-time host setup

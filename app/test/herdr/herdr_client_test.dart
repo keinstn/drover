@@ -1,6 +1,7 @@
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/models/agent_info.dart';
+import 'package:drover/src/models/agent_preset.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class FakeCommandRunner implements CommandRunner {
@@ -153,6 +154,142 @@ void main() {
         "~/.local/bin/herdr 'agent' 'send' 'wB:p4' 'go'",
         "~/.local/bin/herdr 'pane' 'send-keys' 'wB:p4' 'enter'",
       ]);
+    });
+  });
+
+  group('HerdrClient.detectAgents', () {
+    test('returns the presets whose bin is found on PATH', () async {
+      final runner = FakeCommandRunner((_) => ok('claude\ncursor-agent\n'));
+      final client = HerdrClient(runner);
+
+      final found = await client.detectAgents(kAgentPresets);
+
+      expect(found, [kAgentPresets[0], kAgentPresets[5]]);
+      expect(runner.commands, hasLength(1));
+      expect(runner.commands.single, contains('command -v'));
+      for (final preset in kAgentPresets) {
+        expect(runner.commands.single, contains(preset.bin));
+      }
+    });
+
+    test('returns empty without calling run when presets is empty', () async {
+      final runner = FakeCommandRunner((_) => ok(''));
+      final client = HerdrClient(runner);
+
+      final found = await client.detectAgents([]);
+
+      expect(found, isEmpty);
+      expect(runner.commands, isEmpty);
+    });
+  });
+
+  group('HerdrClient.createWorkspace', () {
+    test('returns workspace_id and builds the create command', () async {
+      final runner = FakeCommandRunner(
+        (_) => ok(
+          '{"id":"1","result":{"workspace":{"workspace_id":"wJ",'
+          '"label":"proj"}}}',
+        ),
+      );
+      final client = HerdrClient(runner);
+
+      final id = await client.createWorkspace(label: 'proj', cwd: '/tmp/proj');
+
+      expect(id, 'wJ');
+      expect(
+        runner.commands.single,
+        "~/.local/bin/herdr 'workspace' 'create' '--label' 'proj' "
+        "'--cwd' '/tmp/proj' '--no-focus'",
+      );
+    });
+
+    test('omits --cwd when not given', () async {
+      final runner = FakeCommandRunner(
+        (_) => ok(
+          '{"id":"1","result":{"workspace":{"workspace_id":"wJ",'
+          '"label":"proj"}}}',
+        ),
+      );
+      final client = HerdrClient(runner);
+
+      await client.createWorkspace(label: 'proj');
+
+      expect(
+        runner.commands.single,
+        "~/.local/bin/herdr 'workspace' 'create' '--label' 'proj' '--no-focus'",
+      );
+    });
+  });
+
+  group('HerdrClient.listWorkspaces', () {
+    test('parses result.workspaces and builds the list command', () async {
+      final runner = FakeCommandRunner(
+        (_) => ok(
+          '{"id":"1","result":{"workspaces":[{"workspace_id":"w7",'
+          '"label":"ideas"}]}}',
+        ),
+      );
+      final client = HerdrClient(runner);
+
+      final workspaces = await client.listWorkspaces();
+
+      expect(workspaces, hasLength(1));
+      expect(workspaces.single.workspaceId, 'w7');
+      expect(workspaces.single.label, 'ideas');
+      expect(runner.commands.single, "~/.local/bin/herdr 'workspace' 'list'");
+    });
+  });
+
+  group('HerdrClient.closeWorkspace', () {
+    test('builds the close command', () async {
+      final runner = FakeCommandRunner(
+        (_) => ok('{"id":"1","result":{"type":"ok"}}'),
+      );
+      final client = HerdrClient(runner);
+
+      await client.closeWorkspace('wZ');
+
+      expect(
+        runner.commands.single,
+        "~/.local/bin/herdr 'workspace' 'close' 'wZ'",
+      );
+    });
+  });
+
+  group('HerdrClient.startAgent', () {
+    test('builds the start command with a workspace id', () async {
+      final runner = FakeCommandRunner(
+        (_) => ok('{"id":"1","result":{"type":"agent_started"}}'),
+      );
+      final client = HerdrClient(runner);
+
+      await client.startAgent(
+        name: 'proj',
+        argv: ['claude'],
+        cwd: '/tmp/proj',
+        workspaceId: 'wJ',
+      );
+
+      expect(
+        runner.commands.single,
+        "~/.local/bin/herdr 'agent' 'start' 'proj' '--cwd' '/tmp/proj' "
+        "'--workspace' 'wJ' '--no-focus' '--' 'claude'",
+      );
+    });
+
+    test('omits --workspace when not given', () async {
+      final runner = FakeCommandRunner(
+        (_) => ok('{"id":"1","result":{"type":"agent_started"}}'),
+      );
+      final client = HerdrClient(runner);
+
+      await client.startAgent(name: 'proj', argv: ['claude'], cwd: '/tmp/proj');
+
+      expect(
+        runner.commands.single,
+        "~/.local/bin/herdr 'agent' 'start' 'proj' '--cwd' '/tmp/proj' "
+        "'--no-focus' '--' 'claude'",
+      );
     });
   });
 }

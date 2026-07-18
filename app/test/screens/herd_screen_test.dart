@@ -61,11 +61,30 @@ void main() {
     expect(find.text('wA'), findsOneWidget);
     expect(find.text('wB'), findsOneWidget);
 
-    final blockedTop = tester
-        .getTopLeft(find.textContaining('Agent Two'))
-        .dy;
+    final blockedTop = tester.getTopLeft(find.textContaining('Agent Two')).dy;
     final idleTop = tester.getTopLeft(find.textContaining('Agent One')).dy;
     expect(blockedTop, lessThan(idleTop));
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('shows the launch-agent FAB', (tester) async {
+    final runner = FakeCommandRunner((_) => ok(_listEnvelope));
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HerdScreen(
+          client: client,
+          onOpenSettings: () {},
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('launch_agent_fab')), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
