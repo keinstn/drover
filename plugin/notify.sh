@@ -56,7 +56,15 @@ run() {
     fi
     [ -n "$body" ] || body="$status"
 
-    "${CURL:-curl}" -sS --max-time 10 -H "Title: $title" -H "Priority: $priority" -H "Tags: $tags" -d "$body" "$server/$NTFY_TOPIC" >/dev/null 2>&1 || true
+    # Only stdout (ntfy's response body) is discarded. curl's stderr is left
+    # alone: a transport-level failure (DNS, timeout, connection refused) is
+    # a real diagnostic signal, and Herdr captures a plugin hook's stderr
+    # into `herdr plugin log list`, so it stays visible there for debugging.
+    # This does NOT catch a wrong-but-reachable topic — ntfy accepts a
+    # publish to any topic string whether or not a phone is subscribed to
+    # it, so that failure mode is invisible to the publisher by design; use
+    # send-test-notification.sh to verify your config end to end instead.
+    "${CURL:-curl}" -sS --max-time 10 -H "Title: $title" -H "Priority: $priority" -H "Tags: $tags" -d "$body" "$server/$NTFY_TOPIC" >/dev/null || true
 }
 
 run || true
