@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
+import 'package:drover/src/image/image_input.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/agent_preset.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -169,8 +172,8 @@ void main() {
     });
   });
 
-  group('HerdrClient.sendImage', () {
-    test('uploads bytes and prompts with caption and path', () async {
+  group('HerdrClient.sendImages', () {
+    test('uploads bytes and prompts with caption and paths', () async {
       final runner = FakeCommandRunner((_) => ok('{"id":"1","result":{}}'));
       final client = HerdrClient(runner);
       const agent = AgentInfo(
@@ -183,23 +186,35 @@ void main() {
         focused: false,
       );
 
-      final path = await client.sendImage(
+      final paths = await client.sendImages(
         agent,
-        bytes: [1, 2, 3],
-        extension: 'png',
+        images: [
+          PickedImage(bytes: Uint8List.fromList([1, 2, 3]), extension: 'png'),
+          PickedImage(bytes: Uint8List.fromList([4, 5, 6]), extension: 'jpg'),
+        ],
         caption: 'look at this',
         timestampMs: 42,
       );
 
-      expect(path, '/tmp/proj/.drover/img-42.png');
-      expect(runner.uploads.single.path, '/tmp/proj/.drover/img-42.png');
-      expect(runner.uploads.single.bytes, [1, 2, 3]);
+      expect(paths, [
+        '/tmp/proj/.drover/img-42-0.png',
+        '/tmp/proj/.drover/img-42-1.jpg',
+      ]);
+      expect(runner.uploads[0].path, '/tmp/proj/.drover/img-42-0.png');
+      expect(runner.uploads[0].bytes, [1, 2, 3]);
+      expect(runner.uploads[1].path, '/tmp/proj/.drover/img-42-1.jpg');
+      expect(runner.uploads[1].bytes, [4, 5, 6]);
+      expect(
+        runner.commands.where((c) => c == "mkdir -p '/tmp/proj/.drover'"),
+        hasLength(1),
+      );
       expect(
         runner.commands,
         containsAllInOrder([
           "mkdir -p '/tmp/proj/.drover'",
           "~/.local/bin/herdr 'agent' 'send' 'wB:p1' "
-              "'look at this\n/tmp/proj/.drover/img-42.png'",
+              "'look at this\n/tmp/proj/.drover/img-42-0.png\n"
+              "/tmp/proj/.drover/img-42-1.jpg'",
           "~/.local/bin/herdr 'pane' 'send-keys' 'wB:p1' 'enter'",
         ]),
       );

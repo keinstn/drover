@@ -60,7 +60,7 @@ class _AgentScreenState extends State<AgentScreen> {
   bool _dictating = false;
   String? _workspaceLabel;
   String? _workspaceLabelError;
-  PickedImage? _pendingImage;
+  final List<PickedImage> _pendingImages = [];
   Timer? _timer;
   int _lines = _tailLines;
 
@@ -197,30 +197,30 @@ class _AgentScreenState extends State<AgentScreen> {
     }
   }
 
-  /// Sends the composer's text and any staged image together. With a staged
-  /// image the whole turn goes through [HerdrClient.sendImage] (caption + path);
-  /// otherwise it's a plain text prompt.
+  /// Sends the composer's text and any staged images together. With staged
+  /// images the whole turn goes through [HerdrClient.sendImages] (caption +
+  /// paths); otherwise it's a plain text prompt.
   Future<void> _sendMessage() async {
     if (_dictationStarting || _dictating) return;
     final text = _messageController.text;
-    final image = _pendingImage;
-    if (image == null && text.trim().isEmpty) return;
+    if (_pendingImages.isEmpty && text.trim().isEmpty) return;
     final agent = _agent;
-    if (image != null && agent == null) return; // need the agent's cwd first
+    if (_pendingImages.isNotEmpty && agent == null) {
+      return; // need the agent's cwd first
+    }
     final ok = await _send(
-      () => image == null
+      () => _pendingImages.isEmpty
           ? widget.client.prompt(widget.paneId, text)
-          : widget.client.sendImage(
+          : widget.client.sendImages(
               agent!,
-              bytes: image.bytes,
-              extension: image.extension,
+              images: _pendingImages,
               caption: text,
             ),
     );
     if (ok) {
       _messageController.clear();
       HapticFeedback.lightImpact();
-      if (mounted) setState(() => _pendingImage = null);
+      if (mounted) setState(() => _pendingImages.clear());
     }
   }
 
@@ -236,10 +236,11 @@ class _AgentScreenState extends State<AgentScreen> {
       return;
     }
     if (picked == null) return; // user cancelled
-    if (mounted) setState(() => _pendingImage = picked);
+    if (mounted) setState(() => _pendingImages.add(picked!));
   }
 
-  void _removePendingImage() => setState(() => _pendingImage = null);
+  void _removePendingImage(int index) =>
+      setState(() => _pendingImages.removeAt(index));
 
   Future<void> _toggleDictation() async {
     if (_dictating) {
@@ -392,7 +393,7 @@ class _AgentScreenState extends State<AgentScreen> {
             sending: _sending,
             dictationStarting: _dictationStarting,
             dictating: _dictating,
-            pendingImage: _pendingImage,
+            pendingImages: _pendingImages,
             onRemoveImage: _removePendingImage,
             onDictation: _toggleDictation,
             onAttach: _attachImage,
@@ -580,7 +581,7 @@ class _Composer extends StatelessWidget {
     required this.sending,
     required this.dictationStarting,
     required this.dictating,
-    required this.pendingImage,
+    required this.pendingImages,
     required this.onRemoveImage,
     required this.onDictation,
     required this.onAttach,
@@ -591,8 +592,8 @@ class _Composer extends StatelessWidget {
   final bool sending;
   final bool dictationStarting;
   final bool dictating;
-  final PickedImage? pendingImage;
-  final VoidCallback onRemoveImage;
+  final List<PickedImage> pendingImages;
+  final void Function(int index) onRemoveImage;
   final VoidCallback onDictation;
   final VoidCallback onAttach;
   final VoidCallback onSend;
@@ -600,17 +601,25 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final pendingImage = this.pendingImage;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (pendingImage != null) ...[
-            _PendingImagePreview(
-              image: pendingImage,
-              onRemove: sending ? null : onRemoveImage,
+          if (pendingImages.isNotEmpty) ...[
+            SizedBox(
+              height: 56,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: pendingImages.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, index) => _PendingImagePreview(
+                  image: pendingImages[index],
+                  onRemove: sending ? null : () => onRemoveImage(index),
+                  index: index,
+                ),
+              ),
             ),
             const SizedBox(height: 8),
           ],
@@ -664,46 +673,55 @@ class _Composer extends StatelessWidget {
   }
 }
 
-/// A staged image sitting in the composer, shown above the input row until the
-/// user sends it with their message (or removes it via [onRemove], which is
-/// null while a send is in flight).
+/// A single staged image thumbnail sitting in the composer's horizontal
+/// strip, shown above the input row until the user sends it with their
+/// message (or removes it via [onRemove], which is null while a send is in
+/// flight). [index] is this item's position in the strip, used to give its
+/// remove button a unique key.
 class _PendingImagePreview extends StatelessWidget {
-  const _PendingImagePreview({required this.image, required this.onRemove});
+  const _PendingImagePreview({
+    required this.image,
+    required this.onRemove,
+    required this.index,
+  });
 
   final PickedImage image;
   final VoidCallback? onRemove;
+  final int index;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+    return SizedBox(
+      width: 52,
+      height: 52,
+      child: Stack(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.memory(
-              image.bytes,
-              width: 44,
-              height: 44,
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
+          Positioned(
+            left: 4,
+            top: 8,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.memory(
+                image.bytes,
+                width: 44,
+                height: 44,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+              ),
             ),
           ),
-          const SizedBox(width: 10),
-          Text('Image attached', style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(width: 4),
-          IconButton(
-            key: const ValueKey('remove_image_button'),
-            visualDensity: VisualDensity.compact,
-            tooltip: 'Remove image',
-            icon: const Icon(Icons.close, size: 18),
-            onPressed: onRemove,
+          Positioned(
+            right: 0,
+            top: 0,
+            child: IconButton(
+              key: ValueKey('remove_image_button_$index'),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 22, height: 22),
+              tooltip: 'Remove image',
+              icon: const Icon(Icons.cancel, size: 18),
+              onPressed: onRemove,
+            ),
           ),
         ],
       ),

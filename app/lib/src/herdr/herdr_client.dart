@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../image/image_input.dart';
 import '../models/agent_info.dart';
 import '../models/agent_preset.dart';
 import '../models/host_config.dart';
@@ -148,29 +149,37 @@ class HerdrClient {
     await sendKeys(paneId, 'enter');
   }
 
-  /// Upload [bytes] as an image into [agent]'s working directory and prompt
-  /// the agent to read it by its absolute path. Placing the file under the
-  /// agent's cwd keeps Claude Code's file read from triggering an
+  /// Upload [images] into [agent]'s working directory and prompt the agent
+  /// to read them by their absolute paths. Placing the files under the
+  /// agent's cwd keeps Claude Code's file reads from triggering an
   /// out-of-workspace permission prompt (reads within the workspace are
-  /// allowed). [caption], if non-empty, is sent on the line above the path.
-  /// Returns the remote path. [timestampMs] is injectable only so tests get
-  /// a deterministic filename.
-  Future<String> sendImage(
+  /// allowed). [caption], if non-empty, is sent on the line above the paths.
+  /// Returns the remote paths in order. [timestampMs] is injectable only so
+  /// tests get a deterministic filename.
+  Future<List<String>> sendImages(
     AgentInfo agent, {
-    required List<int> bytes,
-    required String extension,
+    required List<PickedImage> images,
     String caption = '',
     int? timestampMs,
   }) async {
+    final base = timestampMs ?? DateTime.now().millisecondsSinceEpoch;
     final dir = '${agent.cwd}/.drover';
-    final path =
-        '$dir/img-${timestampMs ?? DateTime.now().millisecondsSinceEpoch}.$extension';
     await _runner.run('mkdir -p ${shQuote(dir)}');
-    await _runner.uploadFile(path, bytes);
+
+    final paths = <String>[];
+    for (var i = 0; i < images.length; i++) {
+      final image = images[i];
+      final path = '$dir/img-$base-$i.${image.extension}';
+      await _runner.uploadFile(path, image.bytes);
+      paths.add(path);
+    }
+
     final trimmed = caption.trim();
-    final text = trimmed.isEmpty ? path : '${caption.trimRight()}\n$path';
+    final text = trimmed.isEmpty
+        ? paths.join('\n')
+        : '${caption.trimRight()}\n${paths.join('\n')}';
     await prompt(agent.paneId, text);
-    return path;
+    return paths;
   }
 
   /// Probe the host PATH for which of [presets] are installed, returning the
