@@ -293,13 +293,13 @@ class _HerdScreenState extends State<HerdScreen> {
                             key: ValueKey('agent-${agent.paneId}'),
                             direction: _stoppingPaneIds.contains(agent.paneId)
                                 ? DismissDirection.none
-                                : DismissDirection.startToEnd,
+                                : DismissDirection.endToStart,
                             background: const ColoredBox(
                               color: Colors.red,
                               child: Align(
-                                alignment: Alignment.centerLeft,
+                                alignment: Alignment.centerRight,
                                 child: Padding(
-                                  padding: EdgeInsets.only(left: 16),
+                                  padding: EdgeInsets.only(right: 16),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [

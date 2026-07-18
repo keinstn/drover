@@ -111,7 +111,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('right swipe asks for confirmation before stopping an agent', (
+  testWidgets('left swipe asks for confirmation before stopping an agent', (
     tester,
   ) async {
     final runner = FakeCommandRunner((_) => ok(_listEnvelope));
@@ -131,7 +131,7 @@ void main() {
 
     await tester.drag(
       find.byKey(const ValueKey('agent-wA:p1')),
-      const Offset(500, 0),
+      const Offset(-500, 0),
     );
     await tester.pumpAndSettle();
 
@@ -149,7 +149,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('stops an agent after confirming a right swipe', (tester) async {
+  testWidgets('stops an agent after confirming a left swipe', (tester) async {
     final runner = FakeCommandRunner((_) => ok(_listEnvelope));
     final client = HerdrClient(runner);
 
@@ -167,7 +167,7 @@ void main() {
 
     await tester.drag(
       find.byKey(const ValueKey('agent-wA:p1')),
-      const Offset(500, 0),
+      const Offset(-500, 0),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Stop'));
