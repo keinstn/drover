@@ -5,14 +5,9 @@ import 'package:flutter/services.dart';
 
 import '../herdr/herdr_client.dart';
 import '../models/agent_info.dart';
+import '../utils/path.dart';
 import 'agent_screen.dart';
-
-/// Returns the last non-empty path segment of [path], or [path] itself if it
-/// has none (e.g. `/` or an empty string).
-String _lastPathSegment(String path) {
-  final segments = path.split('/').where((s) => s.isNotEmpty).toList();
-  return segments.isEmpty ? path : segments.last;
-}
+import 'launch_agent_sheet.dart';
 
 const _statusOrder = <AgentStatus, int>{
   AgentStatus.blocked: 0,
@@ -104,14 +99,39 @@ class _HerdScreenState extends State<HerdScreen> {
         HapticFeedback.heavyImpact();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${agent.name ?? agent.agent} is blocked'),
-            ),
+            SnackBar(content: Text('${agent.name ?? agent.agent} is blocked')),
           );
         }
       }
       _previousStatus[agent.paneId] = agent.status;
     }
+  }
+
+  List<String> _distinctCwds() {
+    final seen = <String>{};
+    final cwds = <String>[];
+    for (final agent in _agents) {
+      final cwd = agent.foregroundCwd ?? agent.cwd;
+      if (seen.add(cwd)) cwds.add(cwd);
+    }
+    return cwds;
+  }
+
+  Future<void> _openLaunchSheet() async {
+    final launched = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: LaunchAgentSheet(
+          client: widget.client,
+          existingCwds: _distinctCwds(),
+        ),
+      ),
+    );
+    if (launched == true) _load();
   }
 
   Map<String, List<AgentInfo>> _grouped() {
@@ -187,6 +207,12 @@ class _HerdScreenState extends State<HerdScreen> {
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton(
+        key: const ValueKey('launch_agent_fab'),
+        tooltip: 'Launch agent',
+        onPressed: _openLaunchSheet,
+        child: const Icon(Icons.add),
+      ),
     );
   }
 }
@@ -213,7 +239,7 @@ class _AgentTile extends StatelessWidget {
         ],
       ),
       title: Text('${agent.name ?? agent.agent} · ${agent.paneId}'),
-      subtitle: Text(_lastPathSegment(cwd)),
+      subtitle: Text(lastPathSegment(cwd)),
       onTap: onTap,
     );
   }
