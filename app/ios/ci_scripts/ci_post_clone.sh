@@ -20,7 +20,9 @@ FVMRC="$CI_PRIMARY_REPOSITORY_PATH/app/.fvmrc"
 FLUTTER_VERSION="$(plutil -extract flutter raw -o - "$FVMRC")"
 
 echo "Installing Flutter $FLUTTER_VERSION (from app/.fvmrc)"
-git clone https://github.com/flutter/flutter.git --depth 1 -b "$FLUTTER_VERSION" "$HOME/flutter"
+if [ ! -d "$HOME/flutter" ]; then
+  git clone https://github.com/flutter/flutter.git --depth 1 -b "$FLUTTER_VERSION" "$HOME/flutter"
+fi
 export PATH="$HOME/flutter/bin:$PATH"
 
 flutter --version
