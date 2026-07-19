@@ -47,9 +47,13 @@ fvm dart run tool/spike.dart --host <host> agents
 
 ## UI previews
 
-`just preview` boots a screen straight into a stubbed herdr backend (no SSH
-host needed) so you can screenshot/inspect UI on a simulator. Pick a scenario
-via `--dart-define=SCENARIO=idle|blocked` (default `idle`). The harness lives
-in `app/lib/previews/` and `app/lib/src/dev/stub_herdr.dart`, and shares
-`droverTheme` and l10n with production. To preview another screen or add a
-scenario, add an entrypoint under `lib/previews/` reusing `StubCommandRunner`.
+All previews run against a stubbed herdr backend (no SSH host needed) so you
+can screenshot/inspect UI on a simulator. `just preview` opens an in-app
+gallery listing every registered screen; `just preview <name>` (e.g.
+`just preview launch`) boots one screen directly, which is handy for
+marionette-driven screenshots. Pick a scenario via
+`--dart-define=SCENARIO=idle|blocked` (default `idle`). The harness is a single
+entrypoint `app/lib/previews/preview.dart` plus `app/lib/src/dev/stub_herdr.dart`,
+and shares `droverTheme` and l10n with production. To add a screen, register a
+`WidgetBuilder` in the `_previews` map in `preview.dart` — no new entrypoint
+file or justfile recipe needed.
