@@ -1,6 +1,7 @@
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
+import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/screens/herd_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +20,12 @@ class FakeCommandRunner implements CommandRunner {
 
   @override
   Future<void> uploadFile(String remotePath, List<int> bytes) async {}
+
+  @override
+  Future<List<RemoteDirEntry>> listDirectory(String path) async => [];
+
+  @override
+  Future<String> resolvePath(String path) async => path;
 
   @override
   Future<void> dispose() async {}

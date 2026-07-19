@@ -159,4 +159,22 @@ class AppLocalizationsJa extends AppLocalizations {
   String launchUnnamedWorkspace(String id) {
     return '名前なしワークスペース ($id)';
   }
+
+  @override
+  String get launchBrowseDir => '参照';
+
+  @override
+  String get dirPickerTitle => 'ディレクトリを選択';
+
+  @override
+  String get dirPickerUse => 'このディレクトリを使う';
+
+  @override
+  String get dirPickerParent => '上の階層へ';
+
+  @override
+  String get dirPickerShowHidden => '隠しフォルダを表示';
+
+  @override
+  String get dirPickerEmpty => 'サブフォルダがありません';
 }

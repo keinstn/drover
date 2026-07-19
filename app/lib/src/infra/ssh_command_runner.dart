@@ -5,6 +5,7 @@ import 'package:dartssh2/dartssh2.dart';
 
 import '../herdr/command_runner.dart';
 import '../models/host_config.dart';
+import '../models/remote_dir_entry.dart';
 
 /// Composes a diagnostic message from an SSH auth failure and any notices the
 /// server sent during the attempt (userauth banner or keyboard-interactive
@@ -130,6 +131,37 @@ class SshCommandRunner implements CommandRunner {
       } finally {
         await file.close();
       }
+    } finally {
+      sftp.close();
+    }
+  }
+
+  @override
+  Future<List<RemoteDirEntry>> listDirectory(String path) async {
+    final client = await _ensureClient();
+    final sftp = await client.sftp();
+    try {
+      final names = await sftp.listdir(path);
+      return names
+          .where((n) => n.filename != '.' && n.filename != '..')
+          .map(
+            (n) => RemoteDirEntry(
+              name: n.filename,
+              isDirectory: n.attr.isDirectory,
+            ),
+          )
+          .toList();
+    } finally {
+      sftp.close();
+    }
+  }
+
+  @override
+  Future<String> resolvePath(String path) async {
+    final client = await _ensureClient();
+    final sftp = await client.sftp();
+    try {
+      return await sftp.absolute(path);
     } finally {
       sftp.close();
     }

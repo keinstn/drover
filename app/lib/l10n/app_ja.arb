@@ -52,5 +52,12 @@
   "launchUseNewWorkspace": "代わりに新規ワークスペースを使う",
   "launchNoExistingWorkspaces": "既存のワークスペースがありません",
   "launchSelectWorkspace": "ワークスペースを選択",
-  "launchUnnamedWorkspace": "名前なしワークスペース ({id})"
+  "launchUnnamedWorkspace": "名前なしワークスペース ({id})",
+  "launchBrowseDir": "参照",
+
+  "dirPickerTitle": "ディレクトリを選択",
+  "dirPickerUse": "このディレクトリを使う",
+  "dirPickerParent": "上の階層へ",
+  "dirPickerShowHidden": "隠しフォルダを表示",
+  "dirPickerEmpty": "サブフォルダがありません"
 }

@@ -1,6 +1,21 @@
 // Dev-only stub herdr backend for previews and widget tests. Not referenced
 // by production `main.dart`, so it is excluded from release builds.
 import '../herdr/command_runner.dart';
+import '../models/remote_dir_entry.dart';
+
+/// A small canned directory tree, keyed by absolute path, for previewing a
+/// future directory browser without a real host.
+const _stubDirTree = <String, List<RemoteDirEntry>>{
+  '/home/dev': [
+    RemoteDirEntry(name: 'proj', isDirectory: true),
+    RemoteDirEntry(name: 'notes.txt', isDirectory: false),
+  ],
+  '/home/dev/proj': [
+    RemoteDirEntry(name: 'src', isDirectory: true),
+    RemoteDirEntry(name: 'README.md', isDirectory: false),
+  ],
+  '/home/dev/proj/src': [RemoteDirEntry(name: 'main.dart', isDirectory: false)],
+};
 
 class StubCommandRunner implements CommandRunner {
   StubCommandRunner(this._response);
@@ -18,6 +33,16 @@ class StubCommandRunner implements CommandRunner {
   @override
   Future<void> uploadFile(String remotePath, List<int> bytes) async {
     uploads.add((path: remotePath, bytes: bytes));
+  }
+
+  @override
+  Future<List<RemoteDirEntry>> listDirectory(String path) async {
+    return _stubDirTree[path] ?? [];
+  }
+
+  @override
+  Future<String> resolvePath(String path) async {
+    return path == '.' ? '/home/dev' : path;
   }
 
   @override

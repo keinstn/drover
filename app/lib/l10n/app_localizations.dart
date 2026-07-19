@@ -385,6 +385,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Unnamed workspace ({id})'**
   String launchUnnamedWorkspace(String id);
+
+  /// No description provided for @launchBrowseDir.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse'**
+  String get launchBrowseDir;
+
+  /// No description provided for @dirPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Select directory'**
+  String get dirPickerTitle;
+
+  /// No description provided for @dirPickerUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Use this directory'**
+  String get dirPickerUse;
+
+  /// No description provided for @dirPickerParent.
+  ///
+  /// In en, this message translates to:
+  /// **'Parent directory'**
+  String get dirPickerParent;
+
+  /// No description provided for @dirPickerShowHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Show hidden folders'**
+  String get dirPickerShowHidden;
+
+  /// No description provided for @dirPickerEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No subfolders'**
+  String get dirPickerEmpty;
 }
 
 class _AppLocalizationsDelegate

@@ -6,12 +6,20 @@ import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/image/image_input.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/agent_preset.dart';
+import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class FakeCommandRunner implements CommandRunner {
-  FakeCommandRunner(this._response);
+  FakeCommandRunner(
+    this._response, {
+    Future<List<RemoteDirEntry>> Function(String path)? listDirectory,
+    Future<String> Function(String path)? resolvePath,
+  }) : _listDirectory = listDirectory ?? ((_) async => []),
+       _resolvePath = resolvePath ?? ((path) async => path);
 
   final CommandResult Function(String command) _response;
+  final Future<List<RemoteDirEntry>> Function(String path) _listDirectory;
+  final Future<String> Function(String path) _resolvePath;
   final commands = <String>[];
   final uploads = <({String path, List<int> bytes})>[];
 
@@ -25,6 +33,13 @@ class FakeCommandRunner implements CommandRunner {
   Future<void> uploadFile(String remotePath, List<int> bytes) async {
     uploads.add((path: remotePath, bytes: bytes));
   }
+
+  @override
+  Future<List<RemoteDirEntry>> listDirectory(String path) =>
+      _listDirectory(path);
+
+  @override
+  Future<String> resolvePath(String path) => _resolvePath(path);
 
   @override
   Future<void> dispose() async {}
@@ -371,6 +386,39 @@ void main() {
         "~/.local/bin/herdr 'agent' 'start' 'proj' '--cwd' '/tmp/proj' "
         "'--no-focus' '--' 'claude'",
       );
+    });
+  });
+
+  group('HerdrClient.listDirectory / resolvePath', () {
+    test(
+      'listDirectory forwards to the runner and returns its entries',
+      () async {
+        final runner = FakeCommandRunner(
+          (_) => ok(''),
+          listDirectory: (path) async => [
+            RemoteDirEntry(name: '$path/src', isDirectory: true),
+          ],
+        );
+        final client = HerdrClient(runner);
+
+        final entries = await client.listDirectory('/tmp/proj');
+
+        expect(entries, hasLength(1));
+        expect(entries.single.name, '/tmp/proj/src');
+        expect(entries.single.isDirectory, isTrue);
+      },
+    );
+
+    test('resolvePath forwards to the runner and returns its result', () async {
+      final runner = FakeCommandRunner(
+        (_) => ok(''),
+        resolvePath: (path) async => path == '.' ? '/home/dev' : path,
+      );
+      final client = HerdrClient(runner);
+
+      final resolved = await client.resolvePath('.');
+
+      expect(resolved, '/home/dev');
     });
   });
 }
