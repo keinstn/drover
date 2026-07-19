@@ -31,9 +31,8 @@ flutter precache --ios
 cd "$CI_PRIMARY_REPOSITORY_PATH/app"
 flutter pub get
 
-# Use Xcode Cloud's monotonic build number so every TestFlight upload is
-# unique without bumping pubspec's `+N` each release. The marketing version
-# (CFBundleShortVersionString) still comes from pubspec. Falls back to 1 for
-# local runs where CI_BUILD_NUMBER is unset.
-flutter build ios --config-only --release --no-codesign \
-  --build-number="${CI_BUILD_NUMBER:-1}"
+# Both the marketing version (CFBundleShortVersionString) and the build number
+# (CFBundleVersion) come straight from pubspec's `version:` field. The Xcode
+# Cloud workflow only builds when app/pubspec.yaml changes, so bumping that
+# field is what triggers a release.
+flutter build ios --config-only --release --no-codesign
