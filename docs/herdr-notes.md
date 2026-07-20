@@ -103,6 +103,23 @@ Observed against **herdr 0.7.1** unless noted otherwise.
   could otherwise misfire on an unrelated nav label. Copilot's `autopilot` is
   mapped to the existing `AgentMode.autoAccept` (no new enum value); Copilot
   has no `bypass`-equivalent mode, so `AgentMode.bypass` stays Claude-only.
+- **GitHub Copilot CLI parses `@path` as a native image attachment, live
+  Copilot CLI 1.0.72 — but only some path forms.** (2026-07-21) Typing an
+  `@path` mention in the composer is recognized as an image attachment and
+  recorded in `user.message.attachments` — unlike Claude Code, which just
+  reads a bare path off ordinary prompt text with no special mention syntax.
+  However, a literal absolute-path mention (`@/abs/path with spaces/x.png`)
+  is *not* parsed at all once the path contains a space. Because uploaded
+  images live under the agent's own cwd, a *relative* mention
+  (`@.drover/x.png`) resolves correctly regardless of whether the cwd itself
+  contains spaces — both single- and multiple-space/newline-separated
+  relative mentions produce the correct absolute path in
+  `user.message.attachments`. drover's Copilot image capability reuses the
+  same `<cwd>/.drover` upload-and-gitignore staging as Claude Code (avoids an
+  out-of-workspace permission prompt) but prompts with `@.drover/<filename>`
+  mentions, relative to cwd, rather than bare or absolute-path mentions; the
+  upload helper's return value (and this capability's `send` return value)
+  stay absolute paths for callers.
 - **Answering a Claude Code `AskUserQuestion` TUI by key injection.**
   (2026-07-20) The prompt is a `tool_use` block named `AskUserQuestion` in the
   session JSONL (`input.questions[].{question, header, multiSelect,

@@ -107,13 +107,12 @@ void main() {
       expect(adapter.supports(_agent('codex')), isFalse);
     });
 
-    test('exposes mode only', () {
+    test('exposes mode and image capabilities', () {
       expect(adapter.mode, isNotNull);
+      expect(adapter.images, isNotNull);
     });
 
-    test('leaves images, structured-prompt, and native history null for this '
-        'unit', () {
-      expect(adapter.images, isNull);
+    test('leaves structured-prompt and native history null for this unit', () {
       expect(adapter.structuredPrompt, isNull);
       expect(
         adapter.createNativeHistory(_FakeCommandRunner(), _agent('copilot')),
