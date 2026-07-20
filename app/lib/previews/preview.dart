@@ -19,8 +19,10 @@ import '../src/app_theme.dart';
 import '../src/dev/stub_herdr.dart';
 import '../src/herdr/command_runner.dart';
 import '../src/herdr/herdr_client.dart';
+import '../src/models/host_config.dart';
 import '../src/screens/agent_screen.dart';
 import '../src/screens/herd_screen.dart';
+import '../src/screens/host_setup_screen.dart';
 import '../src/screens/launch_agent_sheet.dart';
 
 const _scenario = String.fromEnvironment('SCENARIO', defaultValue: 'idle');
@@ -118,6 +120,19 @@ final _previews = <String, WidgetBuilder>{
       client: _client(_launchResponder),
       existingCwds: const ['/home/dev/proj'],
     ),
+  ),
+  'host-setup': (_) => HostSetupScreen(
+    initial: const HostConfig(
+      host: 'devbox.local',
+      port: 22,
+      user: 'dev',
+      privateKeyPem:
+          '-----BEGIN OPENSSH PRIVATE KEY-----\n'
+          'stub-preview-key\n'
+          '-----END OPENSSH PRIVATE KEY-----',
+    ),
+    onSubmit: (_) async {},
+    onTest: (_) async => 'SSH connection succeeded (stubbed preview)',
   ),
 };
 
