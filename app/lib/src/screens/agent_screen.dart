@@ -12,6 +12,7 @@ import '../i18n/status_label.dart';
 import '../image/image_input.dart';
 import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
+import '../transcript/native_transcript.dart';
 import '../widgets/top_toast.dart';
 import 'herd_screen.dart' show statusColor;
 
@@ -23,7 +24,30 @@ const _transcriptFg = Color(0xFFE4E4E7);
 
 const _tailLines = 120; // lines fetched on the live poll / first load
 const _lineStep = 240; // extra lines added per pull-to-load-more
-const _maxLines = 2000; // ceiling — herdr's `recent` buffer is finite
+const _maxPaneLines = 1000; // herdr's `recent` buffer is finite
+
+String? _liveTerminalText(String paneText, NativeTranscript? nativeHistory) {
+  if (nativeHistory == null || nativeHistory.messages.isEmpty) {
+    return paneText;
+  }
+  final nativeText = nativeHistory.messages
+      .map((message) => message.text)
+      .join('\n');
+  final lines = paneText
+      .split('\n')
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .toList();
+  final duplicateLines = lines
+      .where((line) => line.length > 8 && nativeText.contains(line))
+      .length;
+  // The pane is retained for mode/prompt parsing, but not rendered when most
+  // of it is already represented by the structured native conversation.
+  if (lines.isNotEmpty && duplicateLines * 2 >= lines.length) {
+    return null;
+  }
+  return paneText;
+}
 
 /// Detail screen for a single agent's pane: a live transcript, quick actions,
 /// and a message composer.
@@ -58,6 +82,10 @@ class _AgentScreenState extends State<AgentScreen> {
   bool _firstLoad = true;
   bool _sending = false;
   bool _workspaceLabelLoading = false;
+  NativeTranscript? _nativeHistory;
+  String? _nativeHistorySessionIdentity;
+  String? _nativeHistoryError;
+  bool _paneEndReached = false;
   bool _dictationStarting = false;
   bool _dictating = false;
   String? _workspaceLabel;
@@ -70,6 +98,7 @@ class _AgentScreenState extends State<AgentScreen> {
   final _messageController = TextEditingController();
   late final SpeechInput _speechInput;
   late final ImagePickerPort _imagePicker;
+  late final NativeTranscriptHistory _nativeTranscriptHistory;
   var _dictationSession = 0;
   var _draftBeforeDictation = '';
 
@@ -78,6 +107,7 @@ class _AgentScreenState extends State<AgentScreen> {
     super.initState();
     _speechInput = widget.speechInput ?? SpeechInputController();
     _imagePicker = widget.imagePicker ?? SystemImagePicker();
+    _nativeTranscriptHistory = NativeTranscriptHistory(widget.client.runner);
     _agent = widget.initialAgent;
     _workspaceLabel = widget.initialWorkspaceLabel;
     _load();
@@ -142,11 +172,33 @@ class _AgentScreenState extends State<AgentScreen> {
         : null;
     try {
       final agent = await widget.client.getAgent(widget.paneId);
+      final nativeHistorySessionIdentity =
+          NativeTranscriptHistory.sessionIdentityFor(agent);
+      final nativeHistorySessionChanged =
+          nativeHistorySessionIdentity != _nativeHistorySessionIdentity;
+      NativeTranscript? nativeHistory;
+      String? nativeHistoryError;
+      try {
+        nativeHistory = await _nativeTranscriptHistory.load(agent);
+      } catch (e) {
+        nativeHistoryError = e.toString();
+      }
       final text = await widget.client.readAgent(widget.paneId, lines: _lines);
       if (!mounted) return;
+      final paneEndReached =
+          loadMore && (text == _text || _lines >= _maxPaneLines);
       setState(() {
         _agent = agent;
         _text = text;
+        _nativeHistory =
+            nativeHistoryError != null && !nativeHistorySessionChanged
+            ? _nativeHistory
+            : nativeHistory;
+        _nativeHistorySessionIdentity = nativeHistorySessionIdentity;
+        _nativeHistoryError = nativeHistoryError;
+        if (paneEndReached) {
+          _paneEndReached = true;
+        }
         _firstLoad = false;
       });
       if (_workspaceLabel == null &&
@@ -177,8 +229,10 @@ class _AgentScreenState extends State<AgentScreen> {
   }
 
   Future<void> _loadMore() async {
-    if (_lines >= _maxLines) return;
-    setState(() => _lines = min(_maxLines, _lines + _lineStep));
+    if ((_nativeHistory?.messages.isNotEmpty ?? false) || _paneEndReached) {
+      return;
+    }
+    setState(() => _lines = min(_maxPaneLines, _lines + _lineStep));
     await _load(loadMore: true);
   }
 
@@ -325,6 +379,9 @@ class _AgentScreenState extends State<AgentScreen> {
         ? parsePromptOptions(plain)
         : null;
     final mode = parseAgentMode(plain);
+    final nativeHistory = _nativeHistory;
+    final paneText = stripTuiChrome(_text);
+    final liveTerminalText = _liveTerminalText(paneText, nativeHistory);
 
     return Scaffold(
       appBar: AppBar(
@@ -364,6 +421,13 @@ class _AgentScreenState extends State<AgentScreen> {
                 ),
               ],
             ),
+          if (_nativeHistoryError != null)
+            MaterialBanner(
+              content: Text(l10n.agentNativeHistoryError(_nativeHistoryError!)),
+              actions: [
+                TextButton(onPressed: _load, child: Text(l10n.commonRetry)),
+              ],
+            ),
           Expanded(
             child: Container(
               width: double.infinity,
@@ -375,7 +439,34 @@ class _AgentScreenState extends State<AgentScreen> {
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-                  child: _Transcript(ansiText: stripTuiChrome(_text)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (nativeHistory != null) ...[
+                        _TranscriptSectionLabel(label: l10n.agentNativeHistory),
+                        _NativeTranscript(messages: nativeHistory.messages),
+                      ],
+                      if (liveTerminalText != null &&
+                          liveTerminalText.trim().isNotEmpty) ...[
+                        if (nativeHistory != null) const SizedBox(height: 20),
+                        if (nativeHistory != null)
+                          _TranscriptSectionLabel(
+                            label: l10n.agentLiveTerminal,
+                          ),
+                        _Transcript(ansiText: liveTerminalText),
+                      ],
+                      if (nativeHistory == null && _paneEndReached) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          l10n.agentHistoryBeginning,
+                          style: const TextStyle(
+                            color: _transcriptFg,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -441,6 +532,61 @@ class _Transcript extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _TranscriptSectionLabel extends StatelessWidget {
+  const _TranscriptSectionLabel({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: _transcriptFg,
+          fontWeight: FontWeight.bold,
+          fontSize: 13,
+        ),
+      ),
+    );
+  }
+}
+
+class _NativeTranscript extends StatelessWidget {
+  const _NativeTranscript({required this.messages});
+
+  final List<TranscriptMessage> messages;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final message in messages)
+          Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: message.speaker == TranscriptSpeaker.user
+                  ? const Color(0xFF30363D)
+                  : const Color(0xFF22252B),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SelectableText(
+              message.text,
+              style: const TextStyle(
+                color: _transcriptFg,
+                fontSize: 14,
+                height: 1.35,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

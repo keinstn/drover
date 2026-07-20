@@ -9,7 +9,7 @@ import 'package:drover/src/models/agent_preset.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class FakeCommandRunner implements CommandRunner {
+class FakeCommandRunner extends CommandRunner {
   FakeCommandRunner(
     this._response, {
     Future<List<RemoteDirEntry>> Function(String path)? listDirectory,

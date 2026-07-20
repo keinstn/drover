@@ -126,6 +126,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentDictateMessage => 'Dictate message';
 
   @override
+  String get agentNativeHistory => 'Conversation history';
+
+  @override
+  String get agentLiveTerminal => 'Live terminal';
+
+  @override
+  String get agentHistoryBeginning =>
+      'Beginning of retained terminal history reached';
+
+  @override
+  String agentNativeHistoryError(String error) {
+    return 'Native history unavailable: $error';
+  }
+
+  @override
   String herdAgentBlocked(String name) {
     return '$name is blocked';
   }

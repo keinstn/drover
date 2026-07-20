@@ -6,7 +6,7 @@ import 'package:drover/src/screens/directory_picker_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class FakeCommandRunner implements CommandRunner {
+class FakeCommandRunner extends CommandRunner {
   FakeCommandRunner({
     required this.listDirectoryImpl,
     required this.resolvePathImpl,

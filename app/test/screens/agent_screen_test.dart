@@ -94,7 +94,252 @@ class FakeSpeechInput implements SpeechInput {
   void error(String message) => _onError?.call(message);
 }
 
+class NativeHistoryRunner extends StubCommandRunner {
+  NativeHistoryRunner() : super(_response);
+
+  String contents =
+      '{"type":"user","message":{"role":"user","content":"Native question"}}\n'
+      '{"type":"assistant","message":{"role":"assistant","content":['
+      '{"type":"thinking","thinking":"hidden"},'
+      '{"type":"text","text":"Native reply"}]}}\n';
+  final readOffsets = <int>[];
+  bool failNativeStat = false;
+
+  static CommandResult _response(String command) {
+    if (command.startsWith('find ')) {
+      return ok(
+        '/home/dev/.claude/projects/-tmp-proj/'
+        'c7c50b87-4d4c-4a92-9396-2cfa4158612d.jsonl\n',
+      );
+    }
+    if (command.contains("'agent' 'get'")) {
+      return ok(
+        '{"id":"1","result":{"agent":{"agent":"claude",'
+        '"agent_status":"working","cwd":"/tmp/proj","focused":false,'
+        '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+        '"agent_session":{"source":"claude","agent":"claude","kind":"id",'
+        '"value":"c7c50b87-4d4c-4a92-9396-2cfa4158612d"}}}}',
+      );
+    }
+    return workingResponse(command);
+  }
+
+  @override
+  Future<RemoteFileStat> statFile(String path) async {
+    if (failNativeStat) {
+      throw StateError('transient transcript access denied');
+    }
+    return RemoteFileStat(size: utf8.encode(contents).length);
+  }
+
+  @override
+  Future<List<int>> readFile(String path, {int offset = 0}) async {
+    readOffsets.add(offset);
+    return utf8.encode(contents).sublist(offset);
+  }
+}
+
+class BrokenNativeHistoryRunner extends NativeHistoryRunner {
+  @override
+  Future<RemoteFileStat> statFile(String path) =>
+      Future.error(StateError('transcript access denied'));
+}
+
 void main() {
+  testWidgets('renders native Claude history with a separated live terminal', (
+    tester,
+  ) async {
+    final runner = NativeHistoryRunner();
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(runner.commands, isNotEmpty);
+    expect(runner.readOffsets, [0]);
+    expect(find.text('Conversation history'), findsOneWidget);
+    expect(find.text('Native question'), findsOneWidget);
+    expect(find.text('Native reply'), findsOneWidget);
+    expect(find.text('Live terminal'), findsOneWidget);
+    expect(find.text('working…'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('falls back to pane history when native metadata is absent', (
+    tester,
+  ) async {
+    final client = HerdrClient(StubCommandRunner(workingResponse));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('working…'), findsOneWidget);
+    expect(find.text('Conversation history'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('shows native load errors while keeping pane fallback', (
+    tester,
+  ) async {
+    final client = HerdrClient(BrokenNativeHistoryRunner());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('working…'), findsOneWidget);
+    expect(find.textContaining('Native history unavailable'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('keeps native history visible when a later native stat fails', (
+    tester,
+  ) async {
+    final runner = NativeHistoryRunner();
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(seconds: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Native question'), findsOneWidget);
+
+    runner.failNativeStat = true;
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Native question'), findsOneWidget);
+    expect(find.text('Native reply'), findsOneWidget);
+    expect(find.text('working…'), findsOneWidget);
+    expect(find.textContaining('Native history unavailable'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('shows retained-history notice when pane load-more has no text', (
+    tester,
+  ) async {
+    final client = HerdrClient(StubCommandRunner(workingResponse));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.drag(
+      find.byKey(const ValueKey('transcript_scroll')),
+      const Offset(0, 300),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(
+      find.text('Beginning of retained terminal history reached'),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'loads more pane history when native transcript has no visible messages',
+    (tester) async {
+      final runner = NativeHistoryRunner()
+        ..contents =
+            '{"type":"assistant","message":{"role":"assistant","content":['
+            '{"type":"thinking","thinking":"hidden"}]}}';
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('working…'), findsOneWidget);
+
+      await tester.drag(
+        find.byKey(const ValueKey('transcript_scroll')),
+        const Offset(0, 1000),
+      );
+      await tester.pump();
+      await tester.fling(
+        find.byKey(const ValueKey('transcript_scroll')),
+        const Offset(0, 300),
+        1000,
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        runner.commands.any(
+          (command) =>
+              command.contains("'agent' 'read'") && command.contains("'360'"),
+        ),
+        isTrue,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('shows prompt options and sends the chosen number', (
     tester,
   ) async {

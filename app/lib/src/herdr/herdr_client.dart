@@ -26,6 +26,10 @@ class HerdrClient {
   final CommandRunner _runner;
   final String herdrBin;
 
+  /// Transport exposed for native, non-herdr data sources such as transcript
+  /// files. Herdr commands themselves remain encapsulated by this client.
+  CommandRunner get runner => _runner;
+
   /// Runs a herdr command and returns its raw result, throwing a transport
   /// [HerdrException] on a spawn failure or a non-zero exit (herdr prints an
   /// error envelope to stderr and exits non-zero on failure).
