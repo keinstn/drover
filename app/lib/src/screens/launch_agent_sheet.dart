@@ -212,6 +212,15 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                       : Text(l10n.launchButton),
                 ),
               ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  key: const ValueKey('launch_cancel_button'),
+                  onPressed: _busy ? null : () => Navigator.pop(context, false),
+                  child: Text(l10n.commonCancel),
+                ),
+              ),
             ],
           ),
         ),

@@ -173,6 +173,33 @@ void main() {
     },
   );
 
+  testWidgets('tapping cancel closes the sheet without launching', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_response);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: _Harness(client: client),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    final cancelButton = find.byKey(const ValueKey('launch_cancel_button'));
+    await tester.ensureVisible(cancelButton);
+    await tester.pumpAndSettle();
+    await tester.tap(cancelButton);
+    await tester.pumpAndSettle();
+
+    final state = tester.state<_HarnessState>(find.byType(_Harness));
+    expect(state.poppedValue, false);
+    expect(runner.commands.any((c) => c.contains("'agent' 'start'")), isFalse);
+  });
+
   testWidgets('new workspace name defaults to the cwd segment', (tester) async {
     final runner = FakeCommandRunner(_response);
     final client = HerdrClient(runner);
