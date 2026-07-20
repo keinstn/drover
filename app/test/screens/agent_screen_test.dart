@@ -10,6 +10,7 @@ import 'package:drover/src/speech/speech_input.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpt_markdown/gpt_markdown.dart';
 
 /// A valid 1x1 PNG so the composer's `Image.memory` preview can decode it in
 /// widget tests (arbitrary bytes would throw during paint).
@@ -160,6 +161,23 @@ class BrokenNativeHistoryRunner extends NativeHistoryRunner {
       Future.error(StateError('transcript access denied'));
 }
 
+/// Serves a pane read whose lines are all present in the native conversation
+/// ("Native question" / "Native reply"), so the live-terminal section is
+/// suppressed as redundant.
+class DuplicatePaneRunner extends NativeHistoryRunner {
+  @override
+  Future<CommandResult> run(String command) async {
+    if (command.contains("'agent' 'read'")) {
+      commands.add(command);
+      return ok(
+        '{"id":"1","result":{"read":{"text":'
+        '"Native question\\nNative reply\\n"}}}',
+      );
+    }
+    return super.run(command);
+  }
+}
+
 void main() {
   testWidgets('renders native Claude history with a separated live terminal', (
     tester,
@@ -184,12 +202,221 @@ void main() {
     expect(runner.readOffsets, [0]);
     expect(find.text('Conversation history'), findsOneWidget);
     expect(find.text('Native question'), findsOneWidget);
-    expect(find.text('Native reply'), findsOneWidget);
+    // The assistant reply is Markdown-rendered (a RichText, not a Text widget).
+    expect(
+      find.textContaining('Native reply', findRichText: true),
+      findsOneWidget,
+    );
     expect(find.text('Live terminal'), findsOneWidget);
     expect(find.text('working…'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'renders assistant turns as Markdown and user turns as plain bubbles',
+    (tester) async {
+      final client = HerdrClient(NativeHistoryRunner());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Only the assistant reply goes through GptMarkdown.
+      expect(find.byType(GptMarkdown), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(GptMarkdown),
+          matching: find.textContaining('Native reply', findRichText: true),
+        ),
+        findsOneWidget,
+      );
+      // The user turn stays a plain (non-Markdown) selectable bubble.
+      expect(find.text('Native question'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(GptMarkdown),
+          matching: find.text('Native question'),
+        ),
+        findsNothing,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('right-aligns user turns', (tester) async {
+    final client = HerdrClient(NativeHistoryRunner());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final align = tester.widget<Align>(
+      find
+          .ancestor(
+            of: find.text('Native question'),
+            matching: find.byType(Align),
+          )
+          .first,
+    );
+    expect(align.alignment, Alignment.centerRight);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('renders a fenced code block without overflow', (tester) async {
+    final longLine = 'final value = ${'x' * 200};';
+    final runner = NativeHistoryRunner()
+      ..contents =
+          '${jsonEncode({
+            'type': 'assistant',
+            'message': {
+              'role': 'assistant',
+              'content': [
+                {'type': 'text', 'text': '# Heading\n\n**bold** and `inline`\n\n- one\n- two\n\n'
+                    '```dart\n$longLine\n```'},
+              ],
+            },
+          })}\n';
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(GptMarkdown), findsOneWidget);
+    expect(find.textContaining('final value ='), findsOneWidget);
+    // A layout overflow would surface as a thrown exception during layout.
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('renders transcript images as an inert placeholder (no network)', (
+    tester,
+  ) async {
+    final runner = NativeHistoryRunner()
+      ..contents =
+          '${jsonEncode({
+            'type': 'assistant',
+            'message': {
+              'role': 'assistant',
+              'content': [
+                {'type': 'text', 'text': '![x](https://example.invalid/x.png)'},
+              ],
+            },
+          })}\n';
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Untrusted transcript images must never build an Image (which would GET
+    // the URL); they render as an inert placeholder showing the URL instead.
+    expect(find.byType(GptMarkdown), findsOneWidget);
+    expect(find.byType(Image), findsNothing);
+    expect(find.textContaining('example.invalid'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('hides the native section when the parsed history is empty', (
+    tester,
+  ) async {
+    final runner = NativeHistoryRunner()
+      ..contents =
+          '{"type":"assistant","message":{"role":"assistant","content":['
+          '{"type":"thinking","thinking":"hidden"}]}}';
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // An empty-but-present native history is treated as absent: no header, and
+    // the pane fallback still renders.
+    expect(find.text('Conversation history'), findsNothing);
+    expect(find.text('working…'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'hides the live terminal when the pane duplicates native history',
+    (tester) async {
+      final client = HerdrClient(DuplicatePaneRunner());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The native section shows, but the pane (all lines already present in the
+      // native conversation) is suppressed — no live-terminal section at all.
+      expect(find.text('Conversation history'), findsOneWidget);
+      expect(find.text('Native question'), findsOneWidget);
+      expect(find.text('Live terminal'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('falls back to pane history when native metadata is absent', (
     tester,
@@ -265,7 +492,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Native question'), findsOneWidget);
-    expect(find.text('Native reply'), findsOneWidget);
+    expect(
+      find.textContaining('Native reply', findRichText: true),
+      findsOneWidget,
+    );
     expect(find.text('working…'), findsOneWidget);
     expect(find.textContaining('Native history unavailable'), findsOneWidget);
 

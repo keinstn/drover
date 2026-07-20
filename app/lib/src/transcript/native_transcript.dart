@@ -66,6 +66,13 @@ class NativeTranscriptHistory {
 class ClaudeTranscriptParser {
   const ClaudeTranscriptParser();
 
+  static final _systemReminder = RegExp(
+    r'<system-reminder>.*?</system-reminder>',
+    dotAll: true,
+  );
+  static final _commandName = RegExp(r'<command-name>(.*?)</command-name>');
+  static final _commandArgs = RegExp(r'<command-args>(.*?)</command-args>');
+
   List<TranscriptMessage> parseLines(String input) {
     final messages = <TranscriptMessage>[];
     for (final line in const LineSplitter().convert(input)) {
@@ -85,6 +92,7 @@ class ClaudeTranscriptParser {
       final message = record['message'];
       if ((type != 'user' && type != 'assistant') ||
           record['isSidechain'] == true ||
+          record['isMeta'] == true ||
           message is! Map<String, dynamic> ||
           message['role'] != type) {
         return null;
@@ -102,11 +110,33 @@ class ClaudeTranscriptParser {
         _ => '',
       };
       if (text.isEmpty) return null;
+      final stripped = text.replaceAll(_systemReminder, '').trim();
+      if (stripped.isEmpty) return null;
+      if (type == 'user') {
+        // Only anchor at the start: a prompt merely mentioning these tags
+        // mid-text is not a genuine local-command/command record.
+        if (stripped.startsWith('<local-command-stdout>') ||
+            stripped.startsWith('<local-command-caveat>')) {
+          return null;
+        }
+        if (stripped.startsWith('<command-name>') ||
+            stripped.startsWith('<command-message>')) {
+          final commandName = _commandName.firstMatch(stripped);
+          if (commandName != null) {
+            final name = commandName.group(1)!;
+            final args = _commandArgs.firstMatch(stripped)?.group(1);
+            return TranscriptMessage(
+              speaker: TranscriptSpeaker.user,
+              text: (args != null && args.isNotEmpty) ? '$name $args' : name,
+            );
+          }
+        }
+      }
       return TranscriptMessage(
         speaker: type == 'user'
             ? TranscriptSpeaker.user
             : TranscriptSpeaker.assistant,
-        text: text,
+        text: stripped,
       );
     } on FormatException {
       return null;

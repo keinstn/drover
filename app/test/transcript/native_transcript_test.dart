@@ -112,6 +112,107 @@ void main() {
         'Main reply',
       ]);
     });
+
+    test('ignores isMeta records', () {
+      const input =
+          '{"type":"user","isMeta":true,"message":{"role":"user",'
+          '"content":"Meta prompt"}}\n'
+          '{"type":"user","message":{"role":"user","content":"Real prompt"}}\n';
+
+      final messages = const ClaudeTranscriptParser().parseLines(input);
+
+      expect(messages.map((message) => message.text), ['Real prompt']);
+    });
+
+    test('strips system-reminder blocks but keeps surrounding text', () {
+      final input =
+          '{"type":"user","message":{"role":"user","content":'
+          '${jsonEncode('Before <system-reminder>hidden\nstuff</system-reminder> After')}'
+          '}}\n';
+
+      final messages = const ClaudeTranscriptParser().parseLines(input);
+
+      expect(messages.map((message) => message.text), ['Before  After']);
+    });
+
+    test('skips a message that is only a system-reminder', () {
+      final input =
+          '{"type":"assistant","message":{"role":"assistant","content":['
+          '{"type":"text","text":'
+          '${jsonEncode('<system-reminder>hidden</system-reminder>')}}]}}\n';
+
+      final messages = const ClaudeTranscriptParser().parseLines(input);
+
+      expect(messages, isEmpty);
+    });
+
+    test('ignores local-command-stdout records', () {
+      final input =
+          '{"type":"user","message":{"role":"user","content":'
+          '${jsonEncode('<local-command-stdout>ok</local-command-stdout>')}'
+          '}}\n'
+          '{"type":"user","message":{"role":"user","content":'
+          '${jsonEncode('<local-command-caveat>note</local-command-caveat>')}'
+          '}}\n'
+          '{"type":"user","message":{"role":"user","content":"Real prompt"}}\n';
+
+      final messages = const ClaudeTranscriptParser().parseLines(input);
+
+      expect(messages.map((message) => message.text), ['Real prompt']);
+    });
+
+    test('renders a command-name record as the slash command', () {
+      final input =
+          '{"type":"user","message":{"role":"user","content":'
+          '${jsonEncode('<command-message>model</command-message>'
+          '<command-name>/model</command-name>')}'
+          '}}\n';
+
+      final messages = const ClaudeTranscriptParser().parseLines(input);
+
+      expect(messages.map((message) => message.text), ['/model']);
+    });
+
+    test('renders a command-name record with args', () {
+      final input =
+          '{"type":"user","message":{"role":"user","content":'
+          '${jsonEncode('<command-name>/model</command-name>'
+          '<command-args>opus</command-args>')}'
+          '}}\n';
+
+      final messages = const ClaudeTranscriptParser().parseLines(input);
+
+      expect(messages.map((message) => message.text), ['/model opus']);
+    });
+
+    test('keeps a user prompt that merely mentions command-name mid-text', () {
+      final input =
+          '{"type":"user","message":{"role":"user","content":'
+          '${jsonEncode('How do I use <command-name>/model</command-name>?')}'
+          '}}\n';
+
+      final messages = const ClaudeTranscriptParser().parseLines(input);
+
+      expect(messages.map((message) => message.text), [
+        'How do I use <command-name>/model</command-name>?',
+      ]);
+    });
+
+    test(
+      'keeps a user prompt that merely quotes local-command-stdout mid-text',
+      () {
+        final input =
+            '{"type":"user","message":{"role":"user","content":'
+            '${jsonEncode('What does <local-command-stdout>ok</local-command-stdout> mean?')}'
+            '}}\n';
+
+        final messages = const ClaudeTranscriptParser().parseLines(input);
+
+        expect(messages.map((message) => message.text), [
+          'What does <local-command-stdout>ok</local-command-stdout> mean?',
+        ]);
+      },
+    );
   });
 
   group('NativeTranscriptLoader', () {

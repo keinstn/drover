@@ -27,8 +27,10 @@ import '../src/screens/launch_agent_sheet.dart';
 
 const _scenario = String.fromEnvironment('SCENARIO', defaultValue: 'idle');
 
-HerdrClient _client(CommandResult Function(String) responder) =>
-    HerdrClient(StubCommandRunner(responder));
+HerdrClient _client(
+  CommandResult Function(String) responder, {
+  Map<String, String>? files,
+}) => HerdrClient(StubCommandRunner(responder, files: files));
 
 CommandResult _launchResponder(String command) {
   if (command.contains('command -v')) {
@@ -108,13 +110,24 @@ final _previews = <String, WidgetBuilder>{
     onOpenSettings: () {},
     pollInterval: const Duration(hours: 1),
   ),
-  'agent': (_) => AgentScreen(
-    client: _client(
-      _scenario == 'blocked' ? blockedPromptResponse : idleWithModeResponse,
-    ),
-    paneId: 'wB:p1',
-    pollInterval: const Duration(hours: 1),
-  ),
+  'agent': (_) => _scenario == 'native'
+      ? AgentScreen(
+          client: _client(
+            nativeHistoryResponse,
+            files: {nativeTranscriptPath: nativeTranscriptJsonl},
+          ),
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        )
+      : AgentScreen(
+          client: _client(
+            _scenario == 'blocked'
+                ? blockedPromptResponse
+                : idleWithModeResponse,
+          ),
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
   'launch': (_) => Scaffold(
     body: LaunchAgentSheet(
       client: _client(_launchResponder),
