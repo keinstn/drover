@@ -124,7 +124,7 @@ void main() {
         var transcript = await loader.load(claudeAgent());
         expect(transcript?.messages.map((message) => message.text), ['One']);
         expect(runner.commands, [
-          'find "\$HOME/.claude/projects" -mindepth 2 -maxdepth 2 -type f '
+          'command find "\$HOME/.claude/projects" -mindepth 2 -maxdepth 2 -type f '
               "-name '$_sessionId.jsonl' -print -quit",
         ]);
         expect(runner.readOffsets, [0]);

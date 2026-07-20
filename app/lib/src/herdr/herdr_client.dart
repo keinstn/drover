@@ -169,7 +169,7 @@ class HerdrClient {
   }) async {
     final base = timestampMs ?? DateTime.now().millisecondsSinceEpoch;
     final dir = '${agent.cwd}/.drover';
-    await _runner.run('mkdir -p ${shQuote(dir)}');
+    await _runner.run('command mkdir -p ${shQuote(dir)}');
 
     final paths = <String>[];
     for (var i = 0; i < images.length; i++) {
