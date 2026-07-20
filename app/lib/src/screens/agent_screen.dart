@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:gpt_markdown/gpt_markdown.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../herdr/ansi_text.dart';
@@ -21,6 +22,9 @@ import 'herd_screen.dart' show statusColor;
 // terminal, so a dark panel keeps them faithful and legible.
 const _transcriptBg = Color(0xFF1B1B1F);
 const _transcriptFg = Color(0xFFE4E4E7);
+// Panel behind inline/fenced code, a touch lighter than the transcript surface
+// so code stays legible without the pure-white background of light themes.
+const _codeSurface = Color(0xFF26262B);
 
 const _tailLines = 120; // lines fetched on the live poll / first load
 const _lineStep = 240; // extra lines added per pull-to-load-more
@@ -384,6 +388,10 @@ class _AgentScreenState extends State<AgentScreen> {
         : null;
     final mode = parseAgentMode(plain);
     final nativeHistory = _nativeHistory;
+    // An empty-but-present native history (e.g. every record filtered out) is
+    // treated as absent: no section header, and the pane fallback keeps working.
+    final hasNativeHistory =
+        nativeHistory != null && nativeHistory.messages.isNotEmpty;
     final paneText = stripTuiChrome(_text);
     final liveTerminalText = _liveTerminalText(paneText, nativeHistory);
 
@@ -446,20 +454,20 @@ class _AgentScreenState extends State<AgentScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (nativeHistory != null) ...[
+                      if (hasNativeHistory) ...[
                         _TranscriptSectionLabel(label: l10n.agentNativeHistory),
                         _NativeTranscript(messages: nativeHistory.messages),
                       ],
                       if (liveTerminalText != null &&
                           liveTerminalText.trim().isNotEmpty) ...[
-                        if (nativeHistory != null) const SizedBox(height: 20),
-                        if (nativeHistory != null)
+                        if (hasNativeHistory) const SizedBox(height: 20),
+                        if (hasNativeHistory)
                           _TranscriptSectionLabel(
                             label: l10n.agentLiveTerminal,
                           ),
                         _Transcript(ansiText: liveTerminalText),
                       ],
-                      if (nativeHistory == null && _paneEndReached) ...[
+                      if (!hasNativeHistory && _paneEndReached) ...[
                         const SizedBox(height: 12),
                         Text(
                           l10n.agentHistoryBeginning,
@@ -561,6 +569,8 @@ class _TranscriptSectionLabel extends StatelessWidget {
   }
 }
 
+/// Renders the structured native conversation as a modern chat: user turns as
+/// right-aligned bubbles, assistant turns as full-width Markdown.
 class _NativeTranscript extends StatelessWidget {
   const _NativeTranscript({required this.messages});
 
@@ -568,29 +578,141 @@ class _NativeTranscript extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final message in messages)
-          Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: message.speaker == TranscriptSpeaker.user
-                  ? const Color(0xFF30363D)
-                  : const Color(0xFF22252B),
-              borderRadius: BorderRadius.circular(8),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxBubbleWidth = constraints.maxWidth * 0.8;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final message in messages)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: message.speaker == TranscriptSpeaker.user
+                    ? _UserBubble(text: message.text, maxWidth: maxBubbleWidth)
+                    : _AssistantMessage(text: message.text),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _UserBubble extends StatelessWidget {
+  const _UserBubble({required this.text, required this.maxWidth});
+
+  final String text;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: const BoxDecoration(
+            color: Color(0xFF30363D),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(14),
+              topRight: Radius.circular(14),
+              bottomLeft: Radius.circular(14),
+              bottomRight: Radius.circular(4),
             ),
-            child: SelectableText(
-              message.text,
+          ),
+          child: SelectableText(
+            text,
+            style: const TextStyle(
+              color: _transcriptFg,
+              fontSize: 14,
+              height: 1.35,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AssistantMessage extends StatelessWidget {
+  const _AssistantMessage({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return SelectionArea(
+      child: GptMarkdown(
+        text,
+        style: const TextStyle(color: _transcriptFg, fontSize: 14, height: 1.4),
+        // Transcript text is untrusted remote content. gpt_markdown's default
+        // image renderer would GET the URL via NetworkImage on build, so images
+        // are shown as an inert, non-tappable placeholder — no network I/O.
+        imageBuilder: (context, imageUrl, width, height) => Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: _codeSurface,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.image_outlined, size: 16, color: _transcriptFg),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  imageUrl,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    color: _transcriptFg,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Inline code: a small dark panel keeps it readable on the dark surface.
+        highlightBuilder: (context, code, style) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+          decoration: BoxDecoration(
+            color: _codeSurface,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            code,
+            style: style.copyWith(
+              fontFamily: 'monospace',
+              color: _transcriptFg,
+            ),
+          ),
+        ),
+        // Fenced code: dark panel with horizontal scroll so long lines never
+        // overflow the transcript width.
+        codeBuilder: (context, name, code, closed) => Container(
+          width: double.infinity,
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: _codeSurface,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Text(
+              code,
               style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                height: 1.4,
                 color: _transcriptFg,
-                fontSize: 14,
-                height: 1.35,
               ),
             ),
           ),
-      ],
+        ),
+      ),
     );
   }
 }
