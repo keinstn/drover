@@ -44,8 +44,10 @@ drover/
 ## Getting started
 
 You need a Herdr host reachable over SSH with key-based auth (on macOS: System
-Settings → Sharing → Remote Login), plus Flutter via `fvm`. One-time host setup
-and the full command reference live in [`CLAUDE.md`](CLAUDE.md).
+Settings → Sharing → Remote Login), with the `claude` Herdr integration
+installed (`herdr integration install claude`) so full transcript history
+works, plus Flutter via `fvm`. One-time host setup and the full command
+reference live in [`CLAUDE.md`](CLAUDE.md).
 
 A `justfile` wraps the common recipes (`just` to list them):
 

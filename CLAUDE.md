@@ -18,6 +18,11 @@ CLI behaviours/gotchas drover relies on.
 - [marionette_mcp](https://pub.dev/packages/marionette_mcp) (lets Claude Code
   inspect/tap/screenshot the running app via the Dart VM service): `dart pub global
   activate marionette_mcp`, then ensure `~/.pub-cache/bin` is on PATH.
+- On the Herdr host (the SSH target running your agents): `herdr integration
+  install claude`, so `agent_session` is reported and drover's native
+  transcript history (full session history, no pull-to-load-more needed) works
+  for Claude Code agents. See `docs/herdr-notes.md` for the gotchas — notably,
+  it only takes effect for sessions started after the install.
 
 ## Marionette MCP
 

@@ -63,6 +63,21 @@ Observed against **herdr 0.7.1** unless noted otherwise.
   out-of-workspace read permission prompt. Path-reading is **agent-specific**
   (this is Claude Code's behaviour; Codex/Copilot CLI etc. will need their own
   rule), so drover's image input is Claude-Code-only for now.
+- **`agent_session` requires the claude integration hook, and only from the
+  next `SessionStart`.** (2026-07-20) `agent list`/`agent get` only include
+  `agent_session` (the field drover's native transcript history, #39, keys
+  off) when `terminal.hook_authority` has a `session_ref` — populated by the
+  `claude` integration hook (`herdr integration install claude`) reporting the
+  Claude session id on the `SessionStart` event. If that integration was never
+  installed on the host, `agent_session` is always absent (no error — drover
+  silently falls back to the pane-text history from #23, which is bounded by
+  herdr's finite retained pane buffer). Installing the integration
+  (`herdr integration status` shows per-agent install state) only affects
+  **sessions started after the install** — a Claude Code process already
+  running keeps the hook config it loaded at its own `SessionStart`, so an
+  already-running agent needs a fresh session (restart, or a `/clear`/resume
+  that re-fires `SessionStart`) before drover's native transcript history
+  activates for it.
 
 ## Measurements (Stage 0, 2026-07-18, localhost loopback, Claude Code agent)
 
