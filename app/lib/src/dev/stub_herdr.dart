@@ -248,6 +248,48 @@ final nativeTranscriptJsonl =
       ]),
     ].join('\n')}\n';
 
+/// A stubbed Claude turn ending in an unanswered AskUserQuestion tool_use (a
+/// single-select and a multi-select question, no matching tool_result), so the
+/// agent screen auto-presents the answer sheet. Served under
+/// [nativeTranscriptPath] via the `askuser` preview scenario. Submitting against
+/// this stub errors (the injector's canned reads don't match) — the scenario is
+/// for viewing the sheet, not driving a real submit.
+final askUserTranscriptJsonl =
+    '${[
+      _nativeLine('user', 'Set up the deploy for me.'),
+      _nativeAssistant([
+        {'type': 'text', 'text': 'A couple of choices before I proceed.'},
+        {
+          'type': 'tool_use',
+          'name': 'AskUserQuestion',
+          'id': 'toolu_askuser_preview',
+          'input': {
+            'questions': [
+              {
+                'question': 'Which environment should I deploy to?',
+                'header': 'Environment',
+                'multiSelect': false,
+                'options': [
+                  {'label': 'Staging', 'description': 'Safe, resettable sandbox'},
+                  {'label': 'Production', 'description': 'Live traffic — be careful'},
+                ],
+              },
+              {
+                'question': 'Which checks should run first?',
+                'header': 'Pre-deploy checks',
+                'multiSelect': true,
+                'options': [
+                  {'label': 'Unit tests'},
+                  {'label': 'Integration tests'},
+                  {'label': 'Lint'},
+                ],
+              },
+            ],
+          },
+        },
+      ]),
+    ].join('\n')}\n';
+
 const _nativeReadText = 'It retries up to attempts times before giving up.\n';
 
 CommandResult nativeHistoryResponse(String command) {

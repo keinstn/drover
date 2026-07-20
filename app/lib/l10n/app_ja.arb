@@ -45,6 +45,13 @@
   "agentHistoryBeginning": "保持されているターミナル履歴の先頭に到達しました",
   "agentNativeHistoryError": "ネイティブ履歴を利用できません: {error}",
 
+  "agentAskUserSend": "送信",
+  "agentAskUserClose": "閉じる",
+  "agentAskUserCustomHint": "自由入力…",
+  "agentAskUserQuestionNumber": "質問 {current} / {total}",
+  "agentAskUserDismissed": "この質問は利用できなくなりました",
+  "agentAskUserSubmitError": "回答を送信できませんでした: {error}",
+
   "herdAgentBlocked": "{name} がブロックされました",
   "herdStopDialogTitle": "エージェントを停止しますか？",
   "herdStopDialogBody": "{name} ({paneId}) を停止します。実行中の作業は中断されます。",

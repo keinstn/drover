@@ -144,6 +144,28 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get agentAskUserSend => 'Send';
+
+  @override
+  String get agentAskUserClose => 'Close';
+
+  @override
+  String get agentAskUserCustomHint => 'Type something…';
+
+  @override
+  String agentAskUserQuestionNumber(int current, int total) {
+    return 'Question $current of $total';
+  }
+
+  @override
+  String get agentAskUserDismissed => 'The question is no longer available';
+
+  @override
+  String agentAskUserSubmitError(String error) {
+    return 'Couldn\'t submit answer: $error';
+  }
+
+  @override
   String herdAgentBlocked(String name) {
     return '$name is blocked';
   }

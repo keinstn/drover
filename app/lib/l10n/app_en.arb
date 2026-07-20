@@ -55,6 +55,24 @@
     }
   },
 
+  "agentAskUserSend": "Send",
+  "agentAskUserClose": "Close",
+  "agentAskUserCustomHint": "Type something…",
+  "agentAskUserQuestionNumber": "Question {current} of {total}",
+  "@agentAskUserQuestionNumber": {
+    "placeholders": {
+      "current": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "agentAskUserDismissed": "The question is no longer available",
+  "agentAskUserSubmitError": "Couldn't submit answer: {error}",
+  "@agentAskUserSubmitError": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+
   "herdAgentBlocked": "{name} is blocked",
   "@herdAgentBlocked": {
     "placeholders": {

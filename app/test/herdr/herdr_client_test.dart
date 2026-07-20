@@ -171,6 +171,20 @@ void main() {
       );
     });
 
+    test('sendPaneText builds the pane send-text command', () async {
+      // `pane send-text` prints nothing on success (exit 0, empty stdout), like
+      // send-keys; the client must tolerate that and build the raw-text command.
+      final runner = FakeCommandRunner((_) => ok(''));
+      final client = HerdrClient(runner);
+
+      await client.sendPaneText('wB:p4', '2');
+
+      expect(
+        runner.commands.single,
+        "~/.local/bin/herdr 'pane' 'send-text' 'wB:p4' '2'",
+      );
+    });
+
     test('prompt sends text then enter', () async {
       // agent send returns an envelope; pane send-keys returns empty stdout.
       final runner = FakeCommandRunner(

@@ -135,6 +135,14 @@ class HerdrClient {
     await _runOk(['pane', 'send-keys', paneId, key]);
   }
 
+  /// Send raw [text] to [paneId] as keystrokes, with no trailing Enter, via
+  /// herdr's `pane send-text` — the same transport as [cycleMode], NOT `agent
+  /// send` (which would submit a prompt). Used to type option digits and custom
+  /// answers straight into an interactive TUI dialog.
+  Future<void> sendPaneText(String paneId, String text) async {
+    await _runOk(['pane', 'send-text', paneId, text]);
+  }
+
   /// Cycle the agent's interaction mode — the runtime equivalent of pressing
   /// shift+tab. herdr's `pane send-keys shift+tab` mis-encodes to a plain Tab
   /// for kitty-keyboard agents like Claude Code (herdr issue #1561), so send the

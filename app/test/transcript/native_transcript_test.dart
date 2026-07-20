@@ -278,6 +278,73 @@ void main() {
       expect(entries, hasLength(1));
       expect(entries.single, isA<TranscriptToolUse>());
     });
+
+    test('captures the tool_use id', () {
+      const input =
+          '{"type":"assistant","message":{"role":"assistant","content":['
+          '{"type":"tool_use","id":"toolu_1","name":"Read","input":{}}]}}\n';
+
+      final entries = const ClaudeTranscriptParser().parseLines(input);
+
+      final toolUse = entries.single as TranscriptToolUse;
+      expect(toolUse.id, 'toolu_1');
+    });
+
+    test('leaves the tool_use id null when the block has none', () {
+      const input =
+          '{"type":"assistant","message":{"role":"assistant","content":['
+          '{"type":"tool_use","name":"Read","input":{}}]}}\n';
+
+      final entries = const ClaudeTranscriptParser().parseLines(input);
+
+      expect((entries.single as TranscriptToolUse).id, isNull);
+    });
+
+    test(
+      'emits a tool_result marker alongside text in the same user record',
+      () {
+        const input =
+            '{"type":"user","message":{"role":"user","content":['
+            '{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"},'
+            '{"type":"text","text":"Continuing"}]}}\n';
+
+        final entries = const ClaudeTranscriptParser().parseLines(input);
+
+        expect(entries, hasLength(2));
+        final toolResult = entries[0] as TranscriptToolResult;
+        expect(toolResult.toolUseId, 'toolu_1');
+        final message = entries[1] as TranscriptMessage;
+        expect(message.text, 'Continuing');
+      },
+    );
+
+    test(
+      'emits a tool_result marker for a user record with no visible text',
+      () {
+        const input =
+            '{"type":"user","message":{"role":"user","content":['
+            '{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}}\n';
+
+        final entries = const ClaudeTranscriptParser().parseLines(input);
+
+        expect(entries, hasLength(1));
+        expect((entries.single as TranscriptToolResult).toolUseId, 'toolu_1');
+      },
+    );
+
+    test('excludes tool_result markers from the messages getter', () {
+      const input =
+          '{"type":"user","message":{"role":"user","content":['
+          '{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"},'
+          '{"type":"text","text":"Continuing"}]}}\n';
+
+      final entries = const ClaudeTranscriptParser().parseLines(input);
+      final transcript = NativeTranscript(entries);
+
+      expect(transcript.messages.map((message) => message.text), [
+        'Continuing',
+      ]);
+    });
   });
 
   group('toolUseSummary', () {
@@ -341,6 +408,308 @@ void main() {
       expect(toolUseSummary('AskUserQuestion', {'questions': []}), '');
       expect(toolUseSummary('Unknown', {}), '');
     });
+  });
+
+  group('parseAskUserQuestion', () {
+    test('parses multiple questions with options and descriptions', () {
+      final toolUse = TranscriptToolUse(
+        name: 'AskUserQuestion',
+        id: 'toolu_1',
+        input: {
+          'questions': [
+            {
+              'question': 'Which approach?',
+              'header': 'Approach',
+              'multiSelect': false,
+              'options': [
+                {'label': 'A', 'description': 'First option'},
+                {'label': 'B'},
+              ],
+            },
+            {
+              'question': 'Which files?',
+              'header': 'Files',
+              'multiSelect': true,
+              'options': [
+                {'label': 'a.dart'},
+              ],
+            },
+          ],
+        },
+      );
+
+      final prompt = parseAskUserQuestion(toolUse);
+
+      expect(prompt, isNotNull);
+      expect(prompt!.toolUseId, 'toolu_1');
+      expect(prompt.questions, hasLength(2));
+      final first = prompt.questions[0];
+      expect(first.question, 'Which approach?');
+      expect(first.header, 'Approach');
+      expect(first.multiSelect, isFalse);
+      expect(first.options, hasLength(2));
+      expect(first.options[0].label, 'A');
+      expect(first.options[0].description, 'First option');
+      expect(first.options[1].label, 'B');
+      expect(first.options[1].description, isNull);
+      final second = prompt.questions[1];
+      expect(second.multiSelect, isTrue);
+      expect(second.options.single.label, 'a.dart');
+    });
+
+    test('defaults header to empty and multiSelect to false when missing', () {
+      final toolUse = TranscriptToolUse(
+        name: 'AskUserQuestion',
+        id: 'toolu_1',
+        input: {
+          'questions': [
+            {'question': 'Which approach?'},
+          ],
+        },
+      );
+
+      final prompt = parseAskUserQuestion(toolUse);
+
+      expect(prompt!.questions.single.header, '');
+      expect(prompt.questions.single.multiSelect, isFalse);
+      expect(prompt.questions.single.options, isEmpty);
+    });
+
+    test('returns null for the wrong tool name', () {
+      final toolUse = TranscriptToolUse(
+        name: 'Read',
+        id: 'toolu_1',
+        input: {
+          'questions': [
+            {'question': 'Which approach?'},
+          ],
+        },
+      );
+
+      expect(parseAskUserQuestion(toolUse), isNull);
+    });
+
+    test('returns null when the tool_use has no id', () {
+      final toolUse = TranscriptToolUse(
+        name: 'AskUserQuestion',
+        input: {
+          'questions': [
+            {'question': 'Which approach?'},
+          ],
+        },
+      );
+
+      expect(parseAskUserQuestion(toolUse), isNull);
+    });
+
+    test('returns null when questions is missing or the wrong shape', () {
+      expect(
+        parseAskUserQuestion(
+          TranscriptToolUse(name: 'AskUserQuestion', id: 'toolu_1', input: {}),
+        ),
+        isNull,
+      );
+      expect(
+        parseAskUserQuestion(
+          TranscriptToolUse(
+            name: 'AskUserQuestion',
+            id: 'toolu_1',
+            input: {'questions': 'not a list'},
+          ),
+        ),
+        isNull,
+      );
+    });
+
+    test('skips a malformed question but keeps well-shaped ones', () {
+      final toolUse = TranscriptToolUse(
+        name: 'AskUserQuestion',
+        id: 'toolu_1',
+        input: {
+          'questions': [
+            {'header': 'No question field'},
+            {'question': 'Which approach?'},
+          ],
+        },
+      );
+
+      final prompt = parseAskUserQuestion(toolUse);
+
+      expect(prompt!.questions, hasLength(1));
+      expect(prompt.questions.single.question, 'Which approach?');
+    });
+
+    test('returns null when every question is malformed', () {
+      final toolUse = TranscriptToolUse(
+        name: 'AskUserQuestion',
+        id: 'toolu_1',
+        input: {
+          'questions': [
+            {'header': 'No question field'},
+          ],
+        },
+      );
+
+      expect(parseAskUserQuestion(toolUse), isNull);
+    });
+
+    test('skips a blank or whitespace-only question', () {
+      final toolUse = TranscriptToolUse(
+        name: 'AskUserQuestion',
+        id: 'toolu_1',
+        input: {
+          'questions': [
+            {'question': ''},
+            {'question': '   '},
+            {'question': 'Which approach?'},
+          ],
+        },
+      );
+
+      final prompt = parseAskUserQuestion(toolUse);
+
+      expect(prompt!.questions, hasLength(1));
+      expect(prompt.questions.single.question, 'Which approach?');
+    });
+
+    test('returns null when the only question is blank', () {
+      final toolUse = TranscriptToolUse(
+        name: 'AskUserQuestion',
+        id: 'toolu_1',
+        input: {
+          'questions': [
+            {'question': '   '},
+          ],
+        },
+      );
+
+      expect(parseAskUserQuestion(toolUse), isNull);
+    });
+
+    test('skips a malformed option but keeps well-shaped ones', () {
+      final toolUse = TranscriptToolUse(
+        name: 'AskUserQuestion',
+        id: 'toolu_1',
+        input: {
+          'questions': [
+            {
+              'question': 'Which approach?',
+              'options': [
+                {'description': 'No label field'},
+                {'label': 'A'},
+              ],
+            },
+          ],
+        },
+      );
+
+      final prompt = parseAskUserQuestion(toolUse);
+
+      expect(prompt!.questions.single.options, hasLength(1));
+      expect(prompt.questions.single.options.single.label, 'A');
+    });
+  });
+
+  group('NativeTranscript.pendingAskUserQuestion', () {
+    test('returns the AskUserQuestion prompt with no matching tool_result', () {
+      final transcript = NativeTranscript([
+        TranscriptToolUse(
+          name: 'AskUserQuestion',
+          id: 'toolu_1',
+          input: {
+            'questions': [
+              {'question': 'Which approach?'},
+            ],
+          },
+        ),
+      ]);
+
+      final prompt = transcript.pendingAskUserQuestion;
+
+      expect(prompt, isNotNull);
+      expect(prompt!.toolUseId, 'toolu_1');
+    });
+
+    test('returns null once a matching tool_result has arrived', () {
+      final transcript = NativeTranscript([
+        TranscriptToolUse(
+          name: 'AskUserQuestion',
+          id: 'toolu_1',
+          input: {
+            'questions': [
+              {'question': 'Which approach?'},
+            ],
+          },
+        ),
+        const TranscriptToolResult('toolu_1'),
+      ]);
+
+      expect(transcript.pendingAskUserQuestion, isNull);
+    });
+
+    test('picks the last unanswered AskUserQuestion among several', () {
+      final transcript = NativeTranscript([
+        TranscriptToolUse(
+          name: 'AskUserQuestion',
+          id: 'toolu_1',
+          input: {
+            'questions': [
+              {'question': 'First?'},
+            ],
+          },
+        ),
+        const TranscriptToolResult('toolu_1'),
+        TranscriptToolUse(
+          name: 'AskUserQuestion',
+          id: 'toolu_2',
+          input: {
+            'questions': [
+              {'question': 'Second?'},
+            ],
+          },
+        ),
+        TranscriptToolUse(
+          name: 'AskUserQuestion',
+          id: 'toolu_3',
+          input: {
+            'questions': [
+              {'question': 'Third?'},
+            ],
+          },
+        ),
+      ]);
+
+      final prompt = transcript.pendingAskUserQuestion;
+
+      expect(prompt!.toolUseId, 'toolu_3');
+    });
+
+    test('returns null when there is no AskUserQuestion tool_use', () {
+      final transcript = NativeTranscript([
+        const TranscriptMessage(speaker: TranscriptSpeaker.user, text: 'Hello'),
+      ]);
+
+      expect(transcript.pendingAskUserQuestion, isNull);
+    });
+
+    test(
+      'returns null when the pending tool_use has only a blank question',
+      () {
+        final transcript = NativeTranscript([
+          TranscriptToolUse(
+            name: 'AskUserQuestion',
+            id: 'toolu_1',
+            input: {
+              'questions': [
+                {'question': '   '},
+              ],
+            },
+          ),
+        ]);
+
+        expect(transcript.pendingAskUserQuestion, isNull);
+      },
+    );
   });
 
   group('NativeTranscriptLoader', () {

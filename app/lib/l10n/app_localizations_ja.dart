@@ -136,6 +136,28 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String get agentAskUserSend => '送信';
+
+  @override
+  String get agentAskUserClose => '閉じる';
+
+  @override
+  String get agentAskUserCustomHint => '自由入力…';
+
+  @override
+  String agentAskUserQuestionNumber(int current, int total) {
+    return '質問 $current / $total';
+  }
+
+  @override
+  String get agentAskUserDismissed => 'この質問は利用できなくなりました';
+
+  @override
+  String agentAskUserSubmitError(String error) {
+    return '回答を送信できませんでした: $error';
+  }
+
+  @override
   String herdAgentBlocked(String name) {
     return '$name がブロックされました';
   }

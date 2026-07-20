@@ -19,16 +19,69 @@ class TranscriptMessage extends TranscriptEntry {
 }
 
 class TranscriptToolUse extends TranscriptEntry {
-  const TranscriptToolUse({required this.name, required this.input});
+  const TranscriptToolUse({required this.name, required this.input, this.id});
 
   final String name;
   final Map<String, dynamic> input;
+  final String? id;
 }
 
 class TranscriptThinking extends TranscriptEntry {
   const TranscriptThinking(this.text);
 
   final String text;
+}
+
+/// A marker for a tool_result block seen in a later USER record, matched to
+/// its originating [TranscriptToolUse] by [toolUseId].
+class TranscriptToolResult extends TranscriptEntry {
+  const TranscriptToolResult(this.toolUseId);
+
+  final String toolUseId;
+}
+
+/// One selectable option within an [AskUserQuestionItem].
+class AskUserQuestionOption {
+  const AskUserQuestionOption({required this.label, this.description});
+
+  final String label;
+  final String? description;
+}
+
+/// One question within an [AskUserQuestionPrompt].
+class AskUserQuestionItem {
+  const AskUserQuestionItem({
+    required this.question,
+    required this.header,
+    required this.multiSelect,
+    required this.options,
+  });
+
+  final String question;
+  final String header;
+  final bool multiSelect;
+  final List<AskUserQuestionOption> options;
+}
+
+/// The parsed input of an AskUserQuestion tool_use, keyed by the tool_use id
+/// its eventual tool_result must match.
+class AskUserQuestionPrompt {
+  const AskUserQuestionPrompt({
+    required this.toolUseId,
+    required this.questions,
+  });
+
+  final String toolUseId;
+  final List<AskUserQuestionItem> questions;
+}
+
+/// A user's answer to one [AskUserQuestionItem]. Single-select answers have
+/// at most one selected index; a custom answer sets [customText] instead.
+class AskUserQuestionAnswer {
+  const AskUserQuestionAnswer({required this.selectedIndexes, this.customText});
+
+  final List<int> selectedIndexes;
+  final String? customText;
 }
 
 /// The cap every [toolUseSummary] branch truncates its return value to, so a
@@ -83,6 +136,53 @@ String _firstLine(String text) => text.split('\n').first;
 String _truncate(String text, int maxLength) =>
     text.length <= maxLength ? text : '${text.substring(0, maxLength)}…';
 
+/// Parses an AskUserQuestion tool_use's input into typed questions. Returns
+/// null unless [toolUse] is an AskUserQuestion with an id and at least one
+/// well-shaped question; malformed questions/options are skipped rather than
+/// thrown.
+AskUserQuestionPrompt? parseAskUserQuestion(TranscriptToolUse toolUse) {
+  final toolUseId = toolUse.id;
+  if (toolUse.name != 'AskUserQuestion' || toolUseId == null) return null;
+  final rawQuestions = toolUse.input['questions'];
+  if (rawQuestions is! List) return null;
+  final questions = <AskUserQuestionItem>[];
+  for (final rawQuestion in rawQuestions) {
+    if (rawQuestion is! Map) continue;
+    final question = rawQuestion['question'];
+    // A blank question defeats the downstream substring safety gate
+    // (contains("") is always true), so treat it as malformed.
+    if (question is! String || question.trim().isEmpty) continue;
+    final header = rawQuestion['header'];
+    final multiSelect = rawQuestion['multiSelect'];
+    final rawOptions = rawQuestion['options'];
+    final options = <AskUserQuestionOption>[];
+    if (rawOptions is List) {
+      for (final rawOption in rawOptions) {
+        if (rawOption is! Map) continue;
+        final label = rawOption['label'];
+        if (label is! String) continue;
+        final description = rawOption['description'];
+        options.add(
+          AskUserQuestionOption(
+            label: label,
+            description: description is String ? description : null,
+          ),
+        );
+      }
+    }
+    questions.add(
+      AskUserQuestionItem(
+        question: question,
+        header: header is String ? header : '',
+        multiSelect: multiSelect is bool ? multiSelect : false,
+        options: options,
+      ),
+    );
+  }
+  if (questions.isEmpty) return null;
+  return AskUserQuestionPrompt(toolUseId: toolUseId, questions: questions);
+}
+
 class NativeTranscript {
   const NativeTranscript(this.entries);
 
@@ -91,6 +191,25 @@ class NativeTranscript {
   /// Compat view for UI code that only renders chat messages.
   List<TranscriptMessage> get messages =>
       entries.whereType<TranscriptMessage>().toList();
+
+  /// The last AskUserQuestion tool_use with no matching tool_result yet, or
+  /// null if every AskUserQuestion so far has been answered (or none were
+  /// asked).
+  AskUserQuestionPrompt? get pendingAskUserQuestion {
+    final answeredIds = entries
+        .whereType<TranscriptToolResult>()
+        .map((result) => result.toolUseId)
+        .toSet();
+    for (final entry in entries.reversed) {
+      if (entry is TranscriptToolUse &&
+          entry.name == 'AskUserQuestion' &&
+          entry.id != null &&
+          !answeredIds.contains(entry.id)) {
+        return parseAskUserQuestion(entry);
+      }
+    }
+    return null;
+  }
 }
 
 /// A native agent-specific transcript source. More agent formats can be
@@ -177,26 +296,37 @@ class ClaudeTranscriptParser {
           _ => const [],
         };
       }
-      // type == 'user': only text is visible; tool_result blocks stay hidden.
+      // type == 'user': text is visible; tool_result blocks are hidden but
+      // become markers so a pending AskUserQuestion can be detected.
+      final blocks = content is List<dynamic>
+          ? content.whereType<Map<String, dynamic>>()
+          : const <Map<String, dynamic>>[];
+      final toolResults = <TranscriptToolResult>[];
+      for (final block in blocks) {
+        if (block['type'] != 'tool_result') continue;
+        final toolUseId = block['tool_use_id'];
+        if (toolUseId is String) {
+          toolResults.add(TranscriptToolResult(toolUseId));
+        }
+      }
       final text = switch (content) {
         String value => value,
-        List<dynamic> blocks =>
+        List<dynamic> _ =>
           blocks
-              .whereType<Map<String, dynamic>>()
               .where((block) => block['type'] == 'text')
               .map((block) => block['text'])
               .whereType<String>()
               .join(),
         _ => '',
       };
-      if (text.isEmpty) return const [];
+      if (text.isEmpty) return toolResults;
       final stripped = text.replaceAll(_systemReminder, '').trim();
-      if (stripped.isEmpty) return const [];
+      if (stripped.isEmpty) return toolResults;
       // Only anchor at the start: a prompt merely mentioning these tags
       // mid-text is not a genuine local-command/command record.
       if (stripped.startsWith('<local-command-stdout>') ||
           stripped.startsWith('<local-command-caveat>')) {
-        return const [];
+        return toolResults;
       }
       if (stripped.startsWith('<command-name>') ||
           stripped.startsWith('<command-message>')) {
@@ -205,6 +335,7 @@ class ClaudeTranscriptParser {
           final name = commandName.group(1)!;
           final args = _commandArgs.firstMatch(stripped)?.group(1);
           return [
+            ...toolResults,
             TranscriptMessage(
               speaker: TranscriptSpeaker.user,
               text: (args != null && args.isNotEmpty) ? '$name $args' : name,
@@ -213,6 +344,7 @@ class ClaudeTranscriptParser {
         }
       }
       return [
+        ...toolResults,
         TranscriptMessage(speaker: TranscriptSpeaker.user, text: stripped),
       ];
     } on FormatException {
@@ -258,10 +390,12 @@ class ClaudeTranscriptParser {
           final name = block['name'];
           if (name is String) {
             final input = block['input'];
+            final id = block['id'];
             entries.add(
               TranscriptToolUse(
                 name: name,
                 input: input is Map<String, dynamic> ? input : const {},
+                id: id is String ? id : null,
               ),
             );
           }

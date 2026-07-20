@@ -110,24 +110,31 @@ final _previews = <String, WidgetBuilder>{
     onOpenSettings: () {},
     pollInterval: const Duration(hours: 1),
   ),
-  'agent': (_) => _scenario == 'native'
-      ? AgentScreen(
-          client: _client(
-            nativeHistoryResponse,
-            files: {nativeTranscriptPath: nativeTranscriptJsonl},
-          ),
-          paneId: 'wB:p1',
-          pollInterval: const Duration(hours: 1),
-        )
-      : AgentScreen(
-          client: _client(
-            _scenario == 'blocked'
-                ? blockedPromptResponse
-                : idleWithModeResponse,
-          ),
-          paneId: 'wB:p1',
-          pollInterval: const Duration(hours: 1),
-        ),
+  'agent': (_) => switch (_scenario) {
+    'native' => AgentScreen(
+      client: _client(
+        nativeHistoryResponse,
+        files: {nativeTranscriptPath: nativeTranscriptJsonl},
+      ),
+      paneId: 'wB:p1',
+      pollInterval: const Duration(hours: 1),
+    ),
+    'askuser' => AgentScreen(
+      client: _client(
+        nativeHistoryResponse,
+        files: {nativeTranscriptPath: askUserTranscriptJsonl},
+      ),
+      paneId: 'wB:p1',
+      pollInterval: const Duration(hours: 1),
+    ),
+    _ => AgentScreen(
+      client: _client(
+        _scenario == 'blocked' ? blockedPromptResponse : idleWithModeResponse,
+      ),
+      paneId: 'wB:p1',
+      pollInterval: const Duration(hours: 1),
+    ),
+  },
   'launch': (_) => Scaffold(
     body: LaunchAgentSheet(
       client: _client(_launchResponder),

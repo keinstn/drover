@@ -344,6 +344,42 @@ abstract class AppLocalizations {
   /// **'Native history unavailable: {error}'**
   String agentNativeHistoryError(String error);
 
+  /// No description provided for @agentAskUserSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get agentAskUserSend;
+
+  /// No description provided for @agentAskUserClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get agentAskUserClose;
+
+  /// No description provided for @agentAskUserCustomHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Type something…'**
+  String get agentAskUserCustomHint;
+
+  /// No description provided for @agentAskUserQuestionNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Question {current} of {total}'**
+  String agentAskUserQuestionNumber(int current, int total);
+
+  /// No description provided for @agentAskUserDismissed.
+  ///
+  /// In en, this message translates to:
+  /// **'The question is no longer available'**
+  String get agentAskUserDismissed;
+
+  /// No description provided for @agentAskUserSubmitError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t submit answer: {error}'**
+  String agentAskUserSubmitError(String error);
+
   /// No description provided for @herdAgentBlocked.
   ///
   /// In en, this message translates to:
