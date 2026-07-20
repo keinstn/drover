@@ -281,7 +281,7 @@ abstract class AppLocalizations {
   /// No description provided for @agentModeBypass.
   ///
   /// In en, this message translates to:
-  /// **'Bypass'**
+  /// **'Auto'**
   String get agentModeBypass;
 
   /// No description provided for @agentComposerHint.

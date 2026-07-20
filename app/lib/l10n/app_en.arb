@@ -38,7 +38,7 @@
   "agentModeNormal": "Normal",
   "agentModeAutoAccept": "Accept Edits",
   "agentModePlan": "Plan",
-  "agentModeBypass": "Bypass",
+  "agentModeBypass": "Auto",
 
   "agentComposerHint": "Message agent…",
   "agentCycleModeTooltip": "Cycle agent mode (shift+tab)",

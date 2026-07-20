@@ -108,7 +108,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentModePlan => 'Plan';
 
   @override
-  String get agentModeBypass => 'Bypass';
+  String get agentModeBypass => 'Auto';
 
   @override
   String get agentComposerHint => 'Message agent…';

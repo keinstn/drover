@@ -101,7 +101,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get agentModePlan => 'プラン';
 
   @override
-  String get agentModeBypass => 'バイパス';
+  String get agentModeBypass => 'オート';
 
   @override
   String get agentComposerHint => 'エージェントにメッセージ…';
