@@ -39,6 +39,10 @@
   "agentStopAgent": "エージェントを停止",
   "agentStopDictation": "音声入力を停止",
   "agentDictateMessage": "音声入力",
+  "agentNativeHistory": "会話履歴",
+  "agentLiveTerminal": "ライブターミナル",
+  "agentHistoryBeginning": "保持されているターミナル履歴の先頭に到達しました",
+  "agentNativeHistoryError": "ネイティブ履歴を利用できません: {error}",
 
   "herdAgentBlocked": "{name} がブロックされました",
   "herdStopDialogTitle": "エージェントを停止しますか？",

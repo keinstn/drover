@@ -168,6 +168,36 @@ class SshCommandRunner implements CommandRunner {
   }
 
   @override
+  Future<RemoteFileStat> statFile(String path) async {
+    final client = await _ensureClient();
+    final sftp = await client.sftp();
+    try {
+      final attrs = await sftp.stat(path);
+      final size = attrs.size;
+      if (size == null) throw StateError('Remote file size is unavailable');
+      return RemoteFileStat(size: size);
+    } finally {
+      sftp.close();
+    }
+  }
+
+  @override
+  Future<List<int>> readFile(String path, {int offset = 0}) async {
+    final client = await _ensureClient();
+    final sftp = await client.sftp();
+    try {
+      final file = await sftp.open(path);
+      try {
+        return await file.readBytes(offset: offset);
+      } finally {
+        await file.close();
+      }
+    } finally {
+      sftp.close();
+    }
+  }
+
+  @override
   Future<void> dispose() async {
     _client?.close();
     _client = null;

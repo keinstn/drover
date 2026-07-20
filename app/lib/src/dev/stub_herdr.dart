@@ -17,7 +17,7 @@ const _stubDirTree = <String, List<RemoteDirEntry>>{
   '/home/dev/proj/src': [RemoteDirEntry(name: 'main.dart', isDirectory: false)],
 };
 
-class StubCommandRunner implements CommandRunner {
+class StubCommandRunner extends CommandRunner {
   StubCommandRunner(this._response);
 
   final CommandResult Function(String command) _response;

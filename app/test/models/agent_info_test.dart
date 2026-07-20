@@ -63,5 +63,43 @@ void main() {
       expect(info.focused, isTrue);
       expect(info.foregroundCwd, isNull);
     });
+
+    test('parses optional typed agent session metadata', () {
+      final info = AgentInfo.fromJson({
+        'agent': 'claude',
+        'agent_status': 'idle',
+        'cwd': '/tmp',
+        'focused': false,
+        'pane_id': 'wB:p4',
+        'tab_id': 'wB:t1',
+        'workspace_id': 'wB',
+        'agent_session': {
+          'source': 'claude',
+          'agent': 'claude',
+          'kind': 'id',
+          'value': 'c7c50b87-4d4c-4a92-9396-2cfa4158612d',
+        },
+      });
+
+      expect(info.agentSession?.source, 'claude');
+      expect(info.agentSession?.agent, 'claude');
+      expect(info.agentSession?.kind, 'id');
+      expect(info.agentSession?.value, 'c7c50b87-4d4c-4a92-9396-2cfa4158612d');
+    });
+
+    test('ignores malformed optional agent session metadata', () {
+      final info = AgentInfo.fromJson({
+        'agent': 'claude',
+        'agent_status': 'idle',
+        'cwd': '/tmp',
+        'focused': false,
+        'pane_id': 'wB:p4',
+        'tab_id': 'wB:t1',
+        'workspace_id': 'wB',
+        'agent_session': {'kind': 'id'},
+      });
+
+      expect(info.agentSession, isNull);
+    });
   });
 }

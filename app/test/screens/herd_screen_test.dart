@@ -6,7 +6,7 @@ import 'package:drover/src/screens/herd_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class FakeCommandRunner implements CommandRunner {
+class FakeCommandRunner extends CommandRunner {
   FakeCommandRunner(this._response);
 
   final CommandResult Function(String command) _response;

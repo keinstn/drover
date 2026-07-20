@@ -119,6 +119,20 @@ class AppLocalizationsJa extends AppLocalizations {
   String get agentDictateMessage => '音声入力';
 
   @override
+  String get agentNativeHistory => '会話履歴';
+
+  @override
+  String get agentLiveTerminal => 'ライブターミナル';
+
+  @override
+  String get agentHistoryBeginning => '保持されているターミナル履歴の先頭に到達しました';
+
+  @override
+  String agentNativeHistoryError(String error) {
+    return 'ネイティブ履歴を利用できません: $error';
+  }
+
+  @override
   String herdAgentBlocked(String name) {
     return '$name がブロックされました';
   }

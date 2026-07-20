@@ -44,6 +44,15 @@
   "agentStopAgent": "Stop agent",
   "agentStopDictation": "Stop dictation",
   "agentDictateMessage": "Dictate message",
+  "agentNativeHistory": "Conversation history",
+  "agentLiveTerminal": "Live terminal",
+  "agentHistoryBeginning": "Beginning of retained terminal history reached",
+  "agentNativeHistoryError": "Native history unavailable: {error}",
+  "@agentNativeHistoryError": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
 
   "herdAgentBlocked": "{name} is blocked",
   "@herdAgentBlocked": {

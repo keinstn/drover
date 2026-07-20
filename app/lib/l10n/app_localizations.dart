@@ -314,6 +314,30 @@ abstract class AppLocalizations {
   /// **'Dictate message'**
   String get agentDictateMessage;
 
+  /// No description provided for @agentNativeHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation history'**
+  String get agentNativeHistory;
+
+  /// No description provided for @agentLiveTerminal.
+  ///
+  /// In en, this message translates to:
+  /// **'Live terminal'**
+  String get agentLiveTerminal;
+
+  /// No description provided for @agentHistoryBeginning.
+  ///
+  /// In en, this message translates to:
+  /// **'Beginning of retained terminal history reached'**
+  String get agentHistoryBeginning;
+
+  /// No description provided for @agentNativeHistoryError.
+  ///
+  /// In en, this message translates to:
+  /// **'Native history unavailable: {error}'**
+  String agentNativeHistoryError(String error);
+
   /// No description provided for @herdAgentBlocked.
   ///
   /// In en, this message translates to:
