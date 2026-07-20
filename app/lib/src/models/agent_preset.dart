@@ -19,7 +19,6 @@ const kAgentPresets = <AgentPreset>[
   AgentPreset(label: 'Codex', bin: 'codex', argv: ['codex']),
   AgentPreset(label: 'Copilot CLI', bin: 'copilot', argv: ['copilot']),
   AgentPreset(label: 'Droid', bin: 'droid', argv: ['droid']),
-  AgentPreset(label: 'opencode', bin: 'opencode', argv: ['opencode']),
   AgentPreset(label: 'Cursor', bin: 'cursor-agent', argv: ['cursor-agent']),
   AgentPreset(label: 'pi', bin: 'pi', argv: ['pi']),
   AgentPreset(label: 'oh-my-pi', bin: 'omp', argv: ['omp']),
