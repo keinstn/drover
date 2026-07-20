@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../app_theme.dart';
 import '../herdr/herdr_client.dart';
 import '../i18n/status_label.dart';
 import '../models/agent_info.dart';
@@ -24,15 +25,15 @@ const _statusOrder = <AgentStatus, int>{
 Color statusColor(AgentStatus status) {
   switch (status) {
     case AgentStatus.blocked:
-      return Colors.red;
+      return statusBlocked;
     case AgentStatus.working:
-      return Colors.amber;
+      return statusWorking;
     case AgentStatus.idle:
-      return Colors.green;
+      return statusIdle;
     case AgentStatus.done:
-      return Colors.blue;
+      return statusDone;
     case AgentStatus.unknown:
-      return Colors.grey;
+      return statusUnknown;
   }
 }
 
@@ -381,7 +382,7 @@ class _HerdScreenState extends State<HerdScreen> {
                                 ? DismissDirection.none
                                 : DismissDirection.endToStart,
                             background: ColoredBox(
-                              color: Colors.red,
+                              color: Theme.of(context).colorScheme.error,
                               child: Align(
                                 alignment: Alignment.centerRight,
                                 child: Padding(
@@ -389,15 +390,19 @@ class _HerdScreenState extends State<HerdScreen> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const Icon(
+                                      Icon(
                                         Icons.stop,
-                                        color: Colors.white,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onError,
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
                                         l10n.commonStop,
-                                        style: const TextStyle(
-                                          color: Colors.white,
+                                        style: TextStyle(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onError,
                                         ),
                                       ),
                                     ],
@@ -442,6 +447,8 @@ class _HerdScreenState extends State<HerdScreen> {
         key: const ValueKey('launch_agent_fab'),
         tooltip: l10n.commonLaunchAgent,
         onPressed: _openLaunchSheet,
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
         child: const Icon(Icons.add),
       ),
     );
