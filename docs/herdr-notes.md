@@ -120,6 +120,47 @@ Observed against **herdr 0.7.1** unless noted otherwise.
   mentions, relative to cwd, rather than bare or absolute-path mentions; the
   upload helper's return value (and this capability's `send` return value)
   stay absolute paths for callers.
+- **GitHub Copilot CLI's native transcript source is `events.jsonl` under a
+  herdr-reported session id, live Copilot CLI 1.0.72 and herdr integration
+  v2.** (2026-07-21) `agent list`/`agent get`'s `agent_session` for a Copilot
+  pane reports `{source:"herdr:copilot", agent:"copilot", kind:"id",
+  value:"<uuid>"}` — note the `source` is namespaced `herdr:copilot` (unlike
+  Claude's bare `"claude"`), which drover's `CopilotTranscriptLoader`
+  deliberately does not gate on (only `agent`/`kind`/`value` are checked,
+  matching the Claude adapter's existing precedent of ignoring `source`).
+  Like Claude's `agent_session`, this field can be absent until after the
+  session's first prompt/`SessionStart`-equivalent hook fires — a pane with
+  no session yet is a normal "not resolved yet" state, not an error. The
+  session's transcript lives at
+  `${COPILOT_HOME:-$HOME/.copilot}/session-state/<uuid>/events.jsonl`; unlike
+  Claude Code's per-project directory layout (which needs a `find` to locate
+  the one file matching a session id anywhere under `~/.claude/projects`),
+  Copilot's path is fully deterministic from the id alone, so drover's loader
+  does a direct existence check of that one candidate path (honoring
+  `COPILOT_HOME` via shell parameter expansion) instead of a broader
+  traversal. The file may not exist yet even once the session id is known
+  (before the session's first turn) — this is the normal "no transcript yet"
+  case (falls back to pane-text history), not a genuine read failure.
+  `session.db` in the same session-state directory is Copilot CLI's own
+  internal state store, not transcript storage, and drover never reads it.
+  Each line of `events.jsonl` is one JSON event
+  `{type, data, id, timestamp, parentId, agentId?}`. Only four `type`s carry
+  user-visible content: `user.message` (`data.content`, plus an
+  `attachments` array drover's parser does not render, to avoid exposing
+  local binary data), `assistant.message` (`data.content` together with
+  `data.phase` — visible only when `phase` is `final_answer` or
+  `commentary`; the intermediate `phase: null` step can have empty content
+  or opaque/encrypted reasoning and is never rendered, matching the "no
+  plaintext reasoning" constraint), `tool.execution_start`
+  (`data.{toolCallId, toolName, arguments}`), and `tool.execution_complete`
+  (`data.{toolCallId, success, result:{content, detailedContent}}`, paired
+  to its start by `toolCallId`). Every other `type` (hook/session-lifecycle/
+  usage events, etc.) is noise the parser skips. Tool events are mapped onto
+  the same `TranscriptToolUse`/`TranscriptToolResult` shapes Claude Code's
+  parser already produces (not Copilot-specific types), so a later ask_user
+  detector can work across agents without new plumbing. No structured-prompt
+  (ask_user) detection is implemented yet — this is generic tool
+  start/result mapping only.
 - **Answering a Claude Code `AskUserQuestion` TUI by key injection.**
   (2026-07-20) The prompt is a `tool_use` block named `AskUserQuestion` in the
   session JSONL (`input.questions[].{question, header, multiSelect,

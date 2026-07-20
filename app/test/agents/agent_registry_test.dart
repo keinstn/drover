@@ -112,13 +112,41 @@ void main() {
       expect(adapter.images, isNotNull);
     });
 
-    test('leaves structured-prompt and native history null for this unit', () {
+    test('leaves structured-prompt null for this unit', () {
       expect(adapter.structuredPrompt, isNull);
-      expect(
-        adapter.createNativeHistory(_FakeCommandRunner(), _agent('copilot')),
-        isNull,
-      );
     });
+
+    test(
+      'createNativeHistory returns null without a matching agent session',
+      () {
+        final loader = adapter.createNativeHistory(
+          _FakeCommandRunner(),
+          _agent('copilot'),
+        );
+
+        expect(loader, isNull);
+      },
+    );
+
+    test(
+      'createNativeHistory returns a loader for a valid Copilot session',
+      () {
+        final loader = adapter.createNativeHistory(
+          _FakeCommandRunner(),
+          _agent(
+            'copilot',
+            agentSession: const AgentSession(
+              source: 'herdr:copilot',
+              agent: 'copilot',
+              kind: 'id',
+              value: 'c7c50b87-4d4c-4a92-9396-2cfa4158612d',
+            ),
+          ),
+        );
+
+        expect(loader, isNotNull);
+      },
+    );
   });
 
   group('unsupported agent fallback', () {
