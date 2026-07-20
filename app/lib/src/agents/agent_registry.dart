@@ -4,10 +4,11 @@
 import '../models/agent_info.dart';
 import 'agent_adapter.dart';
 import 'claude/claude_adapter.dart';
+import 'copilot/copilot_adapter.dart';
 
 /// Every known [AgentAdapter], in resolution order. Add a new agent's
 /// adapter here to register it — no other wiring is required.
-const _adapters = <AgentAdapter>[ClaudeAgentAdapter()];
+const _adapters = <AgentAdapter>[ClaudeAgentAdapter(), CopilotAgentAdapter()];
 
 /// Resolves the [AgentAdapter] that supports [agent] by [AgentAdapter.supports],
 /// or null if none does. An unrecognized agent falls back entirely to

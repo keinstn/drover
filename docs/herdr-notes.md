@@ -78,6 +78,31 @@ Observed against **herdr 0.7.1** unless noted otherwise.
   already-running agent needs a fresh session (restart, or a `/clear`/resume
   that re-fires `SessionStart`) before drover's native transcript history
   activates for it.
+- **GitHub Copilot CLI's mode cycling and footer, live Copilot CLI 1.0.72.**
+  (2026-07-21) With the composer focused, the raw backtab escape sequence
+  `ESC [ Z` (same workaround as Claude Code above — `pane send-keys
+  shift+tab` is equally broken for Copilot CLI and must not be used) cycles
+  `interactive` (the default, no on-screen label) → `plan` → `autopilot` →
+  back to `interactive`. The composer's footer comes in two forms, and both
+  name `plan`/`autopilot` explicitly when active:
+  - idle: `/ commands · ? help · tab next tab`, becoming
+    `plan · / commands · ? help · tab next tab` or
+    `autopilot · / commands · ? help · tab next tab`.
+  - working: `◎ Working esc interrupt`, becoming
+    `◉ Working - plan esc interrupt` or
+    `Working - autopilot esc interrupt`.
+
+  `interactive` shows neither word in either form. **Caveat:** raw backtab
+  only cycles the mode while the composer is focused — if focus is on the
+  top-nav instead (whose focused state shows `Session | Issues | Pull
+  requests | Gists`), the same keystroke changes the nav selection instead,
+  and neither footer form is on-screen at all. So drover's Copilot mode
+  parser anchors on the idle footer's `commands`/`help`/`next tab` words or
+  the working footer's `Working`/`interrupt` words together, rather than
+  scanning for the bare words `plan`/`autopilot` anywhere in the pane, which
+  could otherwise misfire on an unrelated nav label. Copilot's `autopilot` is
+  mapped to the existing `AgentMode.autoAccept` (no new enum value); Copilot
+  has no `bypass`-equivalent mode, so `AgentMode.bypass` stays Claude-only.
 - **Answering a Claude Code `AskUserQuestion` TUI by key injection.**
   (2026-07-20) The prompt is a `tool_use` block named `AskUserQuestion` in the
   session JSONL (`input.questions[].{question, header, multiSelect,

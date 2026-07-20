@@ -1,6 +1,7 @@
 import 'package:drover/src/agents/agent_adapter.dart';
 import 'package:drover/src/agents/agent_registry.dart';
 import 'package:drover/src/agents/claude/claude_adapter.dart';
+import 'package:drover/src/agents/copilot/copilot_adapter.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
@@ -43,9 +44,14 @@ void main() {
       expect(adapter, isA<ClaudeAgentAdapter>());
     });
 
+    test('resolves a Copilot agent to CopilotAgentAdapter', () {
+      final adapter = resolveAgentAdapter(_agent('copilot'));
+
+      expect(adapter, isA<CopilotAgentAdapter>());
+    });
+
     test('returns null for an unrecognized agent', () {
       expect(resolveAgentAdapter(_agent('codex')), isNull);
-      expect(resolveAgentAdapter(_agent('copilot')), isNull);
     });
   });
 
@@ -90,6 +96,29 @@ void main() {
       );
 
       expect(loader, isNotNull);
+    });
+  });
+
+  group('CopilotAgentAdapter capabilities', () {
+    const adapter = CopilotAgentAdapter();
+
+    test('supports only the copilot agent', () {
+      expect(adapter.supports(_agent('copilot')), isTrue);
+      expect(adapter.supports(_agent('codex')), isFalse);
+    });
+
+    test('exposes mode only', () {
+      expect(adapter.mode, isNotNull);
+    });
+
+    test('leaves images, structured-prompt, and native history null for this '
+        'unit', () {
+      expect(adapter.images, isNull);
+      expect(adapter.structuredPrompt, isNull);
+      expect(
+        adapter.createNativeHistory(_FakeCommandRunner(), _agent('copilot')),
+        isNull,
+      );
     });
   });
 
