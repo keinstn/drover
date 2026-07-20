@@ -86,7 +86,9 @@ void main() {
           '{"type":"tool_result","content":"ignored"}]}}\n'
           '{"type":"tool","message":{"role":"tool","content":"ignored"}}\n';
 
-      final messages = const ClaudeTranscriptParser().parseLines(input);
+      final messages = const ClaudeTranscriptParser()
+          .parseLines(input)
+          .whereType<TranscriptMessage>();
 
       expect(messages.map((message) => message.speaker), [
         TranscriptSpeaker.user,
@@ -105,7 +107,9 @@ void main() {
           '{"type":"assistant","message":{"role":"assistant","content":['
           '{"type":"text","text":"Main reply"}]}}\n';
 
-      final messages = const ClaudeTranscriptParser().parseLines(input);
+      final messages = const ClaudeTranscriptParser()
+          .parseLines(input)
+          .whereType<TranscriptMessage>();
 
       expect(messages.map((message) => message.text), [
         'Main prompt',
@@ -119,7 +123,9 @@ void main() {
           '"content":"Meta prompt"}}\n'
           '{"type":"user","message":{"role":"user","content":"Real prompt"}}\n';
 
-      final messages = const ClaudeTranscriptParser().parseLines(input);
+      final messages = const ClaudeTranscriptParser()
+          .parseLines(input)
+          .whereType<TranscriptMessage>();
 
       expect(messages.map((message) => message.text), ['Real prompt']);
     });
@@ -130,7 +136,9 @@ void main() {
           '${jsonEncode('Before <system-reminder>hidden\nstuff</system-reminder> After')}'
           '}}\n';
 
-      final messages = const ClaudeTranscriptParser().parseLines(input);
+      final messages = const ClaudeTranscriptParser()
+          .parseLines(input)
+          .whereType<TranscriptMessage>();
 
       expect(messages.map((message) => message.text), ['Before  After']);
     });
@@ -141,9 +149,9 @@ void main() {
           '{"type":"text","text":'
           '${jsonEncode('<system-reminder>hidden</system-reminder>')}}]}}\n';
 
-      final messages = const ClaudeTranscriptParser().parseLines(input);
+      final entries = const ClaudeTranscriptParser().parseLines(input);
 
-      expect(messages, isEmpty);
+      expect(entries, isEmpty);
     });
 
     test('ignores local-command-stdout records', () {
@@ -156,7 +164,9 @@ void main() {
           '}}\n'
           '{"type":"user","message":{"role":"user","content":"Real prompt"}}\n';
 
-      final messages = const ClaudeTranscriptParser().parseLines(input);
+      final messages = const ClaudeTranscriptParser()
+          .parseLines(input)
+          .whereType<TranscriptMessage>();
 
       expect(messages.map((message) => message.text), ['Real prompt']);
     });
@@ -168,7 +178,9 @@ void main() {
           '<command-name>/model</command-name>')}'
           '}}\n';
 
-      final messages = const ClaudeTranscriptParser().parseLines(input);
+      final messages = const ClaudeTranscriptParser()
+          .parseLines(input)
+          .whereType<TranscriptMessage>();
 
       expect(messages.map((message) => message.text), ['/model']);
     });
@@ -180,7 +192,9 @@ void main() {
           '<command-args>opus</command-args>')}'
           '}}\n';
 
-      final messages = const ClaudeTranscriptParser().parseLines(input);
+      final messages = const ClaudeTranscriptParser()
+          .parseLines(input)
+          .whereType<TranscriptMessage>();
 
       expect(messages.map((message) => message.text), ['/model opus']);
     });
@@ -191,7 +205,9 @@ void main() {
           '${jsonEncode('How do I use <command-name>/model</command-name>?')}'
           '}}\n';
 
-      final messages = const ClaudeTranscriptParser().parseLines(input);
+      final messages = const ClaudeTranscriptParser()
+          .parseLines(input)
+          .whereType<TranscriptMessage>();
 
       expect(messages.map((message) => message.text), [
         'How do I use <command-name>/model</command-name>?',
@@ -206,13 +222,125 @@ void main() {
             '${jsonEncode('What does <local-command-stdout>ok</local-command-stdout> mean?')}'
             '}}\n';
 
-        final messages = const ClaudeTranscriptParser().parseLines(input);
+        final messages = const ClaudeTranscriptParser()
+            .parseLines(input)
+            .whereType<TranscriptMessage>();
 
         expect(messages.map((message) => message.text), [
           'What does <local-command-stdout>ok</local-command-stdout> mean?',
         ]);
       },
     );
+
+    test('emits text, tool_use, and thinking entries in content order', () {
+      const input =
+          '{"type":"assistant","message":{"role":"assistant","content":['
+          '{"type":"text","text":"Before"},'
+          '{"type":"tool_use","name":"Read","input":{"file_path":"/a.dart"}},'
+          '{"type":"thinking","thinking":"pondering"},'
+          '{"type":"text","text":"After"}]}}\n';
+
+      final entries = const ClaudeTranscriptParser().parseLines(input);
+
+      expect(entries, hasLength(4));
+      final message0 = entries[0] as TranscriptMessage;
+      expect(message0.speaker, TranscriptSpeaker.assistant);
+      expect(message0.text, 'Before');
+      final toolUse = entries[1] as TranscriptToolUse;
+      expect(toolUse.name, 'Read');
+      expect(toolUse.input, {'file_path': '/a.dart'});
+      final thinking = entries[2] as TranscriptThinking;
+      expect(thinking.text, 'pondering');
+      final message1 = entries[3] as TranscriptMessage;
+      expect(message1.text, 'After');
+    });
+
+    test('defaults tool_use input to an empty map when missing', () {
+      const input =
+          '{"type":"assistant","message":{"role":"assistant","content":['
+          '{"type":"tool_use","name":"Bash"}]}}\n';
+
+      final entries = const ClaudeTranscriptParser().parseLines(input);
+
+      expect(entries, hasLength(1));
+      final toolUse = entries.single as TranscriptToolUse;
+      expect(toolUse.name, 'Bash');
+      expect(toolUse.input, isEmpty);
+    });
+
+    test('keeps a record whose content is only tool_use blocks', () {
+      const input =
+          '{"type":"assistant","message":{"role":"assistant","content":['
+          '{"type":"tool_use","name":"Read","input":{"file_path":"/a.dart"}}]}}\n';
+
+      final entries = const ClaudeTranscriptParser().parseLines(input);
+
+      expect(entries, hasLength(1));
+      expect(entries.single, isA<TranscriptToolUse>());
+    });
+  });
+
+  group('toolUseSummary', () {
+    test('truncates a long Bash command to its first line', () {
+      final command = 'a' * 110;
+      final summary = toolUseSummary('Bash', {
+        'command': '$command\nrest of command',
+      });
+
+      expect(summary, '${'a' * 100}…');
+    });
+
+    test('keeps a short Bash command unchanged', () {
+      expect(toolUseSummary('Bash', {'command': 'ls -la'}), 'ls -la');
+    });
+
+    test('reads file_path for Read/Edit/Write', () {
+      expect(toolUseSummary('Read', {'file_path': '/a.dart'}), '/a.dart');
+    });
+
+    test('reads the first question for AskUserQuestion', () {
+      final summary = toolUseSummary('AskUserQuestion', {
+        'questions': [
+          {'question': 'Which approach?'},
+          {'question': 'Second question'},
+        ],
+      });
+
+      expect(summary, 'Which approach?');
+    });
+
+    test('falls back to the first string value for unknown tools', () {
+      expect(
+        toolUseSummary('MysteryTool', {'count': 3, 'label': 'value'}),
+        'value',
+      );
+    });
+
+    test('truncates an unknown tool\'s huge default-branch value', () {
+      final label = 'b' * 150;
+      final summary = toolUseSummary('MysteryTool', {'label': label});
+
+      expect(summary, '${'b' * 100}…');
+    });
+
+    test('collapses a multi-line non-Bash value to its first line', () {
+      final summary = toolUseSummary('Grep', {
+        'pattern': 'first line\nsecond line',
+      });
+
+      expect(summary, 'first line');
+    });
+
+    test('returns empty string for wrong-shaped input', () {
+      expect(toolUseSummary('Read', {'file_path': 42}), '');
+      expect(toolUseSummary('Bash', {}), '');
+      expect(
+        toolUseSummary('AskUserQuestion', {'questions': 'not a list'}),
+        '',
+      );
+      expect(toolUseSummary('AskUserQuestion', {'questions': []}), '');
+      expect(toolUseSummary('Unknown', {}), '');
+    });
   });
 
   group('NativeTranscriptLoader', () {
@@ -284,6 +412,51 @@ void main() {
       ]);
       expect(runner.readOffsets, [0, utf8.encode('$one$two').length]);
     });
+
+    test(
+      'appends every entry parsed from one line, across two polls',
+      () async {
+        const first =
+            '{"type":"assistant","message":{"role":"assistant","content":['
+            '{"type":"text","text":"Before"},'
+            '{"type":"tool_use","name":"Read","input":{"file_path":"/a.dart"}}'
+            ']}}\n';
+        final runner = MemoryRunner(first);
+        final loader = NativeTranscriptLoader(runner);
+
+        var transcript = await loader.load(claudeAgent());
+        expect(transcript?.entries, hasLength(2));
+        expect(transcript?.entries[0], isA<TranscriptMessage>());
+        expect(transcript?.entries[1], isA<TranscriptToolUse>());
+
+        runner.contents +=
+            '{"type":"user","message":{"role":"user","content":"After"}}\n';
+        transcript = await loader.load(claudeAgent());
+        expect(transcript?.entries, hasLength(3));
+        expect(transcript?.messages.map((message) => message.text), [
+          'Before',
+          'After',
+        ]);
+      },
+    );
+
+    test(
+      'does not duplicate a multi-entry unterminated record on repeat poll',
+      () async {
+        const record =
+            '{"type":"assistant","message":{"role":"assistant","content":['
+            '{"type":"tool_use","name":"Read","input":{"file_path":"/a.dart"}},'
+            '{"type":"thinking","thinking":"pondering"}]}}';
+        final runner = MemoryRunner(record);
+        final loader = NativeTranscriptLoader(runner);
+
+        var transcript = await loader.load(claudeAgent());
+        expect(transcript?.entries, hasLength(2));
+
+        transcript = await loader.load(claudeAgent());
+        expect(transcript?.entries, hasLength(2));
+      },
+    );
 
     test('does not construct a lookup for unsafe session values', () async {
       final runner = MemoryRunner('');

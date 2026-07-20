@@ -262,6 +262,47 @@ double? _fontSizeOfText(InlineSpan root, String needle) {
   return found;
 }
 
+/// Pumps an [AgentScreen] whose native session serves [contents] verbatim.
+Future<void> _pumpNative(WidgetTester tester, String contents) async {
+  final client = HerdrClient(NativeHistoryRunner()..contents = contents);
+  await tester.pumpWidget(
+    MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: AgentScreen(
+        client: client,
+        paneId: 'wB:p1',
+        pollInterval: const Duration(hours: 1),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// JSONL for a single assistant turn carrying one tool_use block.
+String _toolUseJsonl(String name, Map<String, dynamic> input) =>
+    '${jsonEncode({
+      'type': 'assistant',
+      'message': {
+        'role': 'assistant',
+        'content': [
+          {'type': 'tool_use', 'name': name, 'input': input},
+        ],
+      },
+    })}\n';
+
+/// JSONL for a single assistant turn carrying one thinking block.
+String _thinkingJsonl(String text) =>
+    '${jsonEncode({
+      'type': 'assistant',
+      'message': {
+        'role': 'assistant',
+        'content': [
+          {'type': 'thinking', 'thinking': text},
+        ],
+      },
+    })}\n';
+
 void main() {
   testWidgets('renders native Claude history with a separated live terminal', (
     tester,
@@ -539,10 +580,11 @@ void main() {
   testWidgets('hides the native section when the parsed history is empty', (
     tester,
   ) async {
+    // A record whose content yields no entries at all (an empty content array),
+    // as opposed to a thinking/tool_use-only turn, which now counts as history.
     final runner = NativeHistoryRunner()
       ..contents =
-          '{"type":"assistant","message":{"role":"assistant","content":['
-          '{"type":"thinking","thinking":"hidden"}]}}';
+          '{"type":"assistant","message":{"role":"assistant","content":[]}}';
     final client = HerdrClient(runner);
 
     await tester.pumpWidget(
@@ -563,6 +605,168 @@ void main() {
     // the pane fallback still renders.
     expect(find.text('Conversation history'), findsNothing);
     expect(find.text('working…'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('shows the native section for a tool_use-only history', (
+    tester,
+  ) async {
+    await _pumpNative(
+      tester,
+      _toolUseJsonl('Read', {'file_path': 'lib/main.dart'}),
+    );
+
+    // A history with no chat messages, only a tool_use, still counts.
+    expect(find.text('Conversation history'), findsOneWidget);
+    expect(find.text('Read'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('renders a tool_use chip and toggles its detail on tap', (
+    tester,
+  ) async {
+    await _pumpNative(
+      tester,
+      _toolUseJsonl('Bash', {'command': 'echo hello', 'description': 'say hi'}),
+    );
+
+    // The chip shows the tool name and its one-line summary.
+    expect(find.text('Bash'), findsOneWidget);
+    expect(find.textContaining('echo hello'), findsWidgets);
+    // Collapsed by default: the pretty-printed input is not shown.
+    expect(find.textContaining('"command"'), findsNothing);
+
+    await tester.tap(find.text('Bash'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('"command"'), findsOneWidget);
+
+    // A second tap collapses it again.
+    await tester.tap(find.text('Bash'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('"command"'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('expands an Edit tool_use into a diff card', (tester) async {
+    await _pumpNative(
+      tester,
+      _toolUseJsonl('Edit', {
+        'file_path': 'lib/main.dart',
+        'old_string': 'old line one\nold line two',
+        'new_string': 'new line one\nnew line two',
+      }),
+    );
+
+    expect(find.text('Edit'), findsOneWidget);
+    expect(find.textContaining('old line one'), findsNothing);
+
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+
+    // The diff card renders both the removed and the added lines.
+    expect(find.textContaining('old line one'), findsOneWidget);
+    expect(find.textContaining('old line two'), findsOneWidget);
+    expect(find.textContaining('new line one'), findsOneWidget);
+    expect(find.textContaining('new line two'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('renders a thinking row collapsed and expands it on tap', (
+    tester,
+  ) async {
+    await _pumpNative(tester, _thinkingJsonl('my private reasoning'));
+
+    // Collapsed by default: the label shows but the thinking body is hidden.
+    expect(find.text('Thinking…'), findsOneWidget);
+    expect(find.textContaining('my private reasoning'), findsNothing);
+
+    await tester.tap(find.text('Thinking…'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('my private reasoning'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('expands a tool_use with non-finite JSON without throwing', (
+    tester,
+  ) async {
+    // Out-of-range literals decode to double.infinity; the detail must still
+    // render (via the toEncodable fallback) rather than throw every poll.
+    await _pumpNative(
+      tester,
+      '{"type":"assistant","message":{"role":"assistant","content":['
+      '{"type":"tool_use","name":"Bash","input":'
+      '{"command":"echo hi","ceiling":1e999}}]}}\n',
+    );
+
+    await tester.tap(find.text('Bash'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('Infinity'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('caps a large Write diff and shows a truncation footer', (
+    tester,
+  ) async {
+    final content = List.generate(500, (i) => 'line $i').join('\n');
+    await _pumpNative(
+      tester,
+      _toolUseJsonl('Write', {'file_path': 'big.txt', 'content': content}),
+    );
+
+    await tester.tap(find.text('Write'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    // Rendered lines cap at 200; the remaining 300 are summarised in a footer.
+    expect(find.text('… +300 lines'), findsOneWidget);
+    expect(find.textContaining('line 0'), findsWidgets);
+    expect(find.textContaining('line 499'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('keeps a tool_use chip expanded across an appending poll', (
+    tester,
+  ) async {
+    final runner = NativeHistoryRunner()
+      ..contents = _toolUseJsonl('Bash', {'command': 'echo hello'});
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(seconds: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Bash'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('"command"'), findsOneWidget);
+
+    // A later poll appends a new entry; the loader keeps the tool_use instance,
+    // so the chip's index/name/summary key is stable and it stays expanded.
+    runner.contents =
+        '${runner.contents}'
+        '{"type":"user","message":{"role":"user","content":"a new turn"}}\n';
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(find.text('a new turn'), findsOneWidget);
+    expect(find.textContaining('"command"'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -714,12 +918,14 @@ void main() {
   });
 
   testWidgets(
-    'loads more pane history when native transcript has no visible messages',
+    'loads more pane history when the native transcript has no entries',
     (tester) async {
+      // An empty content array parses to zero entries, so there is no history
+      // to gate on and pull-to-load-more falls through to the pane. A
+      // thinking/tool_use-only turn now counts as history and would block it.
       final runner = NativeHistoryRunner()
         ..contents =
-            '{"type":"assistant","message":{"role":"assistant","content":['
-            '{"type":"thinking","thinking":"hidden"}]}}';
+            '{"type":"assistant","message":{"role":"assistant","content":[]}}';
       final client = HerdrClient(runner);
 
       await tester.pumpWidget(

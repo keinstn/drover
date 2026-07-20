@@ -41,6 +41,7 @@
   "agentDictateMessage": "音声入力",
   "agentNativeHistory": "会話履歴",
   "agentLiveTerminal": "ライブターミナル",
+  "agentThinking": "思考中…",
   "agentHistoryBeginning": "保持されているターミナル履歴の先頭に到達しました",
   "agentNativeHistoryError": "ネイティブ履歴を利用できません: {error}",
 

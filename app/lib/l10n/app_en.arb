@@ -46,6 +46,7 @@
   "agentDictateMessage": "Dictate message",
   "agentNativeHistory": "Conversation history",
   "agentLiveTerminal": "Live terminal",
+  "agentThinking": "Thinking…",
   "agentHistoryBeginning": "Beginning of retained terminal history reached",
   "agentNativeHistoryError": "Native history unavailable: {error}",
   "@agentNativeHistoryError": {

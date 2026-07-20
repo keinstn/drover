@@ -132,6 +132,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentLiveTerminal => 'Live terminal';
 
   @override
+  String get agentThinking => 'Thinking…';
+
+  @override
   String get agentHistoryBeginning =>
       'Beginning of retained terminal history reached';
 

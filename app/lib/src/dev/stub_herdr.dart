@@ -157,6 +157,19 @@ String _nativeLine(String type, String text) => jsonEncode({
   },
 });
 
+/// An assistant record whose content is [blocks] verbatim, letting a turn mix
+/// text, thinking, and tool_use blocks the way Claude reports them.
+String _nativeAssistant(List<Map<String, dynamic>> blocks) => jsonEncode({
+  'type': 'assistant',
+  'message': {'role': 'assistant', 'content': blocks},
+});
+
+Map<String, dynamic> _toolUse(String name, Map<String, dynamic> input) => {
+  'type': 'tool_use',
+  'name': name,
+  'input': input,
+};
+
 const _assistantOverview = '''
 ## Auth module
 
@@ -203,10 +216,37 @@ And here's the change as a diff:
  }
 ```''';
 
-/// Canned Claude JSONL: a user prompt, a Markdown-rich reply, a follow-up
-/// prompt, a reply with a fenced code block, and a reply with a diff block.
+const _editOld = '''  for (var i = 0; ; i++) {
+    if (i >= attempts - 1) rethrow;
+  }''';
+
+const _editNew = '''  for (var i = 0; i < attempts; i++) {
+    if (i == attempts - 1) rethrow;
+  }''';
+
+/// Canned Claude JSONL weaving thinking, tool_use, and text the way Claude
+/// reports a turn: a prompt, a reply that thinks then reads/greps before its
+/// Markdown overview, a fenced-code reply, a diff-block reply, and a final
+/// reply that applies the fix via an Edit tool_use.
 final nativeTranscriptJsonl =
-    '${[_nativeLine('user', 'Can you summarize the auth module?'), _nativeLine('assistant', _assistantOverview), _nativeLine('user', 'Great — now show the retry helper.'), _nativeLine('assistant', _assistantCode), _nativeLine('user', 'Show me the fix as a diff.'), _nativeLine('assistant', _assistantDiff)].join('\n')}\n';
+    '${[
+      _nativeLine('user', 'Can you summarize the auth module?'),
+      _nativeAssistant([
+        {'type': 'thinking', 'thinking': 'Let me read the auth controller and grep for refresh call '
+            'sites before summarizing.'},
+        _toolUse('Read', {'file_path': 'lib/auth/auth_controller.dart'}),
+        _toolUse('Bash', {'command': 'grep -rn "refresh(" lib/auth', 'description': 'Find refresh call sites'}),
+        {'type': 'text', 'text': _assistantOverview},
+      ]),
+      _nativeLine('user', 'Great — now show the retry helper.'),
+      _nativeLine('assistant', _assistantCode),
+      _nativeLine('user', 'Show me the fix as a diff.'),
+      _nativeLine('assistant', _assistantDiff),
+      _nativeAssistant([
+        {'type': 'text', 'text': 'Applying the fix now.'},
+        _toolUse('Edit', {'file_path': 'lib/auth/retry.dart', 'old_string': _editOld, 'new_string': _editNew}),
+      ]),
+    ].join('\n')}\n';
 
 const _nativeReadText = 'It retries up to attempts times before giving up.\n';
 
