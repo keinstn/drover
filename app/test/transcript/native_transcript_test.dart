@@ -11,6 +11,8 @@ class MemoryRunner extends CommandRunner {
 
   String contents;
   String? lookupOutput;
+  var lookupExitCode = 0;
+  String lookupError = '';
   final commands = <String>[];
   final readOffsets = <int>[];
   final statSizes = <int>[];
@@ -21,9 +23,9 @@ class MemoryRunner extends CommandRunner {
   Future<CommandResult> run(String command) async {
     commands.add(command);
     return CommandResult(
-      exitCode: 0,
+      exitCode: lookupExitCode,
       stdout: lookupOutput ?? '$path\n',
-      stderr: '',
+      stderr: lookupError,
     );
   }
 
@@ -193,9 +195,54 @@ void main() {
       expect(runner.readOffsets, isEmpty);
     });
 
+    test(
+      'returns null when transcript lookup succeeds but finds no path yet',
+      () async {
+        final runner = MemoryRunner('');
+        runner.lookupOutput = '';
+
+        final transcript = await NativeTranscriptLoader(
+          runner,
+        ).load(claudeAgent());
+
+        expect(transcript, isNull);
+        expect(runner.readOffsets, isEmpty);
+      },
+    );
+
+    test('throws when transcript lookup command fails', () async {
+      final runner = MemoryRunner('');
+      runner.lookupExitCode = 1;
+      runner.lookupError = 'permission denied';
+
+      await expectLater(
+        NativeTranscriptLoader(runner).load(claudeAgent()),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('Unable to locate Claude transcript'),
+          ),
+        ),
+      );
+      expect(runner.readOffsets, isEmpty);
+    });
+
     test('rejects an unsafe transcript path returned by lookup', () async {
       final runner = MemoryRunner('');
       runner.lookupOutput = '../unsafe/$_sessionId.jsonl\n';
+
+      await expectLater(
+        NativeTranscriptLoader(runner).load(claudeAgent()),
+        throwsA(isA<StateError>()),
+      );
+      expect(runner.readOffsets, isEmpty);
+    });
+
+    test('rejects multiple transcript paths returned by lookup', () async {
+      final runner = MemoryRunner('');
+      runner.lookupOutput =
+          '${MemoryRunner.path}\n/home/dev/.claude/projects/other/$_sessionId.jsonl\n';
 
       await expectLater(
         NativeTranscriptLoader(runner).load(claudeAgent()),
