@@ -107,13 +107,10 @@ void main() {
       expect(adapter.supports(_agent('codex')), isFalse);
     });
 
-    test('exposes mode and image capabilities', () {
+    test('exposes mode, structured-prompt, and image capabilities', () {
       expect(adapter.mode, isNotNull);
+      expect(adapter.structuredPrompt, isNotNull);
       expect(adapter.images, isNotNull);
-    });
-
-    test('leaves structured-prompt null for this unit', () {
-      expect(adapter.structuredPrompt, isNull);
     });
 
     test(

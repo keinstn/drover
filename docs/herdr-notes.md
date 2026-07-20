@@ -158,9 +158,61 @@ Observed against **herdr 0.7.1** unless noted otherwise.
   usage events, etc.) is noise the parser skips. Tool events are mapped onto
   the same `TranscriptToolUse`/`TranscriptToolResult` shapes Claude Code's
   parser already produces (not Copilot-specific types), so a later ask_user
-  detector can work across agents without new plumbing. No structured-prompt
-  (ask_user) detection is implemented yet — this is generic tool
-  start/result mapping only.
+  detector can work across agents without new plumbing.
+- **GitHub Copilot CLI's `ask_user` tool and TUI dialog, live Copilot CLI
+  1.0.72.** (2026-07-21) The prompt is a `tool.execution_start` event with
+  `toolName: 'ask_user'` and `data.arguments.{question:String,
+  choices?:List<String>}`, keyed by `toolCallId`; it is *answered* once a
+  later `tool.execution_complete` event's `toolCallId` matches — so "pending"
+  = the last `ask_user` tool_use with no matching `tool.execution_complete`,
+  the same pattern as Claude Code's `AskUserQuestion`. Unlike Claude Code,
+  exactly **one single-select question** is ever carried per call — there is
+  no multi-question/multi-select schema, so drover's
+  `CopilotStructuredPromptCapability` always maps it to a single
+  `multiSelect: false` `StructuredPromptQuestion`; a `choices` entry that
+  isn't a string is skipped rather than invalidating the whole call, and a
+  missing/blank `question` makes the whole tool_use unparseable (returns
+  null), matching Claude's AskUserQuestion parser's safety precedent. The
+  live TUI dialog has two shapes:
+  - **With `choices`:** numbered options `1..N` plus a trailing
+    `N+1. Other (type your answer)` row, header `Question` above the full
+    question text, footer `↑/↓ to select · enter to confirm · esc to
+    cancel`. Sending a normal option's digit alone **confirms and closes the
+    dialog immediately** — no Enter, no review step (like Claude's lone
+    single-select case). Selecting "Other" (digit `N+1`) replaces that
+    numbered row with a `Type your answer:` edit field (capital `T`, unlike
+    the lowercase `(type your answer)` inside the row's own label) without
+    closing the dialog; typing the answer and sending `enter` commits it and
+    closes the dialog. The edit field's own footer text was not spiked live,
+    so drover's submitter (`agents/copilot/copilot_askuser_submitter.dart`)
+    does not assert a specific edit-mode footer string. It also cannot rely
+    on "same question still showing, dialog not closed" alone, since that
+    also holds on the unmodified original screen if the digit silently
+    no-ops; instead it requires the live-observed `Type your answer`
+    placeholder itself as positive evidence (text that cannot appear on the
+    original numbered-choices screen) before typing, with the numbered
+    "Other" row's disappearance as corroborating (not sole) evidence.
+  - **Without `choices`:** a plain freeform text box, footer `enter to
+    submit · esc to cancel`. Typing the answer and sending `enter` submits
+    and closes.
+  Because the question dialog re-uses generic single-select machinery,
+  drover's parser maps the no-choices case to a `StructuredPromptQuestion`
+  with an **empty `options` list** rather than inventing a synthetic option
+  — `StructuredPromptSheet`'s existing customText field (used for Claude's
+  "Type something" answers) already renders as a bare free-text box when
+  there are no options to list, so no sheet changes were needed. As with
+  Claude's dialog, the pane wraps long questions at terminal width, so
+  drover's confirmation matching whitespace-normalizes both sides. Closure is
+  detected by the `Question` header and both known footers being *absent* —
+  not by the question text being gone, since Copilot's scrollback echoes a
+  `● Asked user` summary line that reprints the question text after it
+  closes (the same reasoning as Claude's `Esc to cancel`-chrome check).
+  Digits are capped at single-digit option/row numbers (index ≤ 8, so option
+  count ≤ 9) for the same reason as Claude's submitter: a two-digit send
+  would have its first digit acted on immediately by the TUI. The submitter
+  is read-driven like Claude's: it re-reads the pane after every keystroke
+  and aborts (throws `CopilotAskUserSubmitError`, never sends Esc) on any
+  unrecognized state rather than guessing.
 - **Answering a Claude Code `AskUserQuestion` TUI by key injection.**
   (2026-07-20) The prompt is a `tool_use` block named `AskUserQuestion` in the
   session JSONL (`input.questions[].{question, header, multiSelect,
