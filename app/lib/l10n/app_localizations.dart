@@ -314,6 +314,12 @@ abstract class AppLocalizations {
   /// **'Dictate message'**
   String get agentDictateMessage;
 
+  /// No description provided for @agentSendEscape.
+  ///
+  /// In en, this message translates to:
+  /// **'Send Esc key'**
+  String get agentSendEscape;
+
   /// No description provided for @agentNativeHistory.
   ///
   /// In en, this message translates to:

@@ -39,6 +39,7 @@
   "agentStopAgent": "エージェントを停止",
   "agentStopDictation": "音声入力を停止",
   "agentDictateMessage": "音声入力",
+  "agentSendEscape": "Esc キーを送信",
   "agentNativeHistory": "会話履歴",
   "agentLiveTerminal": "ライブターミナル",
   "agentThinking": "思考中…",

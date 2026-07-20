@@ -126,6 +126,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentDictateMessage => 'Dictate message';
 
   @override
+  String get agentSendEscape => 'Send Esc key';
+
+  @override
   String get agentNativeHistory => 'Conversation history';
 
   @override

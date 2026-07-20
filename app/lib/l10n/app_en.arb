@@ -44,6 +44,7 @@
   "agentStopAgent": "Stop agent",
   "agentStopDictation": "Stop dictation",
   "agentDictateMessage": "Dictate message",
+  "agentSendEscape": "Send Esc key",
   "agentNativeHistory": "Conversation history",
   "agentLiveTerminal": "Live terminal",
   "agentThinking": "Thinking…",
