@@ -21,13 +21,28 @@ class FakeImagePicker implements ImagePickerPort {
   FakeImagePicker({PickedImage? result})
     : result = result ?? PickedImage(bytes: _tinyPng, extension: 'png');
 
+  /// Used by [pickImage] (camera), and as the sole gallery result when
+  /// [galleryResult] isn't set.
   PickedImage? result;
+
+  /// When set, [pickImages] (gallery) returns this instead of `[result]`,
+  /// letting a single gallery pick stage several images at once.
+  List<PickedImage>? galleryResult;
+
   final sources = <ImageAttachSource>[];
+  var galleryCalls = 0;
 
   @override
   Future<PickedImage?> pickImage(ImageAttachSource source) async {
     sources.add(source);
     return result;
+  }
+
+  @override
+  Future<List<PickedImage>> pickImages() async {
+    galleryCalls++;
+    if (galleryResult != null) return galleryResult!;
+    return result == null ? [] : [result!];
   }
 }
 
@@ -624,6 +639,45 @@ void main() {
     expect(find.byKey(const ValueKey('remove_image_button_1')), findsOneWidget);
     expect(runner.uploads, isEmpty);
     expect(runner.commands.any((c) => c.contains("'agent' 'send'")), isFalse);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a single gallery pick can stage multiple images at once', (
+    tester,
+  ) async {
+    final runner = StubCommandRunner(blockedPromptResponse);
+    final client = HerdrClient(runner);
+    final imagePicker = FakeImagePicker()
+      ..galleryResult = [
+        PickedImage(bytes: _tinyPng, extension: 'png'),
+        PickedImage(bytes: _tinyPng, extension: 'jpg'),
+      ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          imagePicker: imagePicker,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // On non-iOS platforms tapping the attach button goes straight to the
+    // gallery (no source menu), and one pick can return several images.
+    await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(imagePicker.galleryCalls, 1);
+    expect(find.byKey(const ValueKey('remove_image_button_0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('remove_image_button_1')), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
