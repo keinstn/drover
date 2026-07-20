@@ -262,7 +262,7 @@ void main() {
 
       final found = await client.detectAgents(kAgentPresets);
 
-      expect(found, [kAgentPresets[0], kAgentPresets[5]]);
+      expect(found, [kAgentPresets[0]]);
       expect(runner.commands, hasLength(1));
       expect(runner.commands.single, contains('command -v'));
       for (final preset in kAgentPresets) {
