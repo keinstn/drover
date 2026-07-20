@@ -1,52 +1,13 @@
 // Pure parsing helpers for herdr `agent read` text output: stripping TUI
-// chrome (status/mode lines, box-drawing rules), recognizing the agent's
-// current mode, and recognizing Claude Code style numbered permission prompts.
+// chrome (status/mode lines, box-drawing rules) and recognizing a generic
+// numbered-options permission prompt (the shared fallback for agents with no
+// dedicated structured-prompt capability).
 
 import 'ansi_text.dart';
 
 final _dashRule = RegExp(r'^[─]{5,}\s*$');
 final _modeLine = RegExp(r'^\s*[⏸⏵]');
 final _emptyPrompt = RegExp(r'^❯\s*$');
-
-/// The agent's current interaction mode, as shown on the TUI mode line and
-/// cycled with shift+tab (Claude Code).
-enum AgentMode {
-  normal('normal'),
-  autoAccept('auto-accept'),
-  plan('plan'),
-  bypass('bypass');
-
-  const AgentMode(this.label);
-
-  final String label;
-}
-
-/// Reads the current [AgentMode] from the trailing mode line of [text] (e.g.
-/// `-- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle)`). Returns null when no
-/// mode line is present. Expects plain text — strip ANSI first.
-///
-/// Matching is by wording because the `⏵⏵`/`⏸` glyphs alone don't disambiguate
-/// (`⏵⏵` fronts both auto-accept and bypass; `⏸` fronts both plan and the
-/// default "manual" mode). Claude Code has phrased auto-accept as both
-/// `auto mode on` and `accept edits on`, so both are matched; anything else on
-/// a recognized mode line (e.g. `manual mode on`) is the default [normal].
-AgentMode? parseAgentMode(String text) {
-  final lines = text.split('\n');
-  final start = lines.length > 6 ? lines.length - 6 : 0;
-  for (var i = lines.length - 1; i >= start; i--) {
-    final lower = lines[i].toLowerCase();
-    final isModeLine =
-        lower.contains('-- insert --') || _modeLine.hasMatch(lines[i]);
-    if (!isModeLine) continue;
-    if (lower.contains('plan')) return AgentMode.plan;
-    if (lower.contains('bypass')) return AgentMode.bypass;
-    if (lower.contains('auto') || lower.contains('accept')) {
-      return AgentMode.autoAccept;
-    }
-    return AgentMode.normal;
-  }
-  return null;
-}
 
 /// Strips trailing TUI chrome lines (bottom-up) from [text]: blank lines,
 /// box-drawing rules, `-- INSERT --` mode indicators, status lines, and a
@@ -93,8 +54,10 @@ class PromptQuestion {
 final _optionPattern = RegExp(r'^(\s*)(❯\s*)?(\d+)\.\s+(\S.*)$');
 
 /// Scans the last 30 lines of [text] for a numbered options prompt (e.g. a
-/// Claude Code permission dialog). Returns null if fewer than two options are
-/// found or the numbering doesn't start at 1 and increment by 1.
+/// Claude Code style permission dialog). This is the shared fallback used
+/// when the current agent has no [StructuredPromptCapability] of its own.
+/// Returns null if fewer than two options are found or the numbering doesn't
+/// start at 1 and increment by 1.
 PromptQuestion? parsePromptOptions(String text) {
   final allLines = text.split('\n');
   final windowStart = allLines.length > 30 ? allLines.length - 30 : 0;

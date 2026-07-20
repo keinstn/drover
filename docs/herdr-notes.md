@@ -104,7 +104,8 @@ Observed against **herdr 0.7.1** unless noted otherwise.
     multi-select is advanced by `right`. After the last question you land on the
     Submit tab's review screen → `pane send-text 1`.
   Because the last-single-select-in-a-multi-question and custom-in-multi-question
-  transitions were *not* spiked, drover's injector (`askuser_submitter.dart`) is
+  transitions were *not* spiked, drover's injector
+  (`agents/claude/claude_askuser_submitter.dart`) is
   **read-driven**: after every keystroke it re-reads the pane and confirms the
   expected transition (a normalized substring match on the question text, since
   the pane wraps long questions; the open dialog is detected by its `Esc to

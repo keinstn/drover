@@ -1,62 +1,62 @@
 import 'package:drover/l10n/app_localizations.dart';
-import 'package:drover/src/screens/askuser_sheet.dart';
+import 'package:drover/src/screens/structured_prompt_sheet.dart';
 import 'package:drover/src/transcript/native_transcript.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // A lone single-select question with a described first option.
-const _singleOnly = AskUserQuestionPrompt(
-  toolUseId: 't1',
+const _singleOnly = StructuredPrompt(
+  id: 't1',
   questions: [
-    AskUserQuestionItem(
+    StructuredPromptQuestion(
       question: 'Which environment?',
       header: 'Environment',
       multiSelect: false,
       options: [
-        AskUserQuestionOption(label: 'Staging', description: 'safe sandbox'),
-        AskUserQuestionOption(label: 'Production'),
+        StructuredPromptOption(label: 'Staging', description: 'safe sandbox'),
+        StructuredPromptOption(label: 'Production'),
       ],
     ),
   ],
 );
 
 // A lone multi-select question.
-const _multiOnly = AskUserQuestionPrompt(
-  toolUseId: 't2',
+const _multiOnly = StructuredPrompt(
+  id: 't2',
   questions: [
-    AskUserQuestionItem(
+    StructuredPromptQuestion(
       question: 'Which checks?',
       header: 'Checks',
       multiSelect: true,
       options: [
-        AskUserQuestionOption(label: 'Unit'),
-        AskUserQuestionOption(label: 'Integration'),
-        AskUserQuestionOption(label: 'Lint'),
+        StructuredPromptOption(label: 'Unit'),
+        StructuredPromptOption(label: 'Integration'),
+        StructuredPromptOption(label: 'Lint'),
       ],
     ),
   ],
 );
 
 // A single-select question followed by a multi-select one.
-const _twoQuestions = AskUserQuestionPrompt(
-  toolUseId: 't3',
+const _twoQuestions = StructuredPrompt(
+  id: 't3',
   questions: [
-    AskUserQuestionItem(
+    StructuredPromptQuestion(
       question: 'Pick one',
       header: '',
       multiSelect: false,
       options: [
-        AskUserQuestionOption(label: 'One'),
-        AskUserQuestionOption(label: 'Two'),
+        StructuredPromptOption(label: 'One'),
+        StructuredPromptOption(label: 'Two'),
       ],
     ),
-    AskUserQuestionItem(
+    StructuredPromptQuestion(
       question: 'Pick many',
       header: '',
       multiSelect: true,
       options: [
-        AskUserQuestionOption(label: 'X'),
-        AskUserQuestionOption(label: 'Y'),
+        StructuredPromptOption(label: 'X'),
+        StructuredPromptOption(label: 'Y'),
       ],
     ),
   ],
@@ -66,10 +66,10 @@ const _twoQuestions = AskUserQuestionPrompt(
 /// real key-injection submitter so the sheet stays host-free in tests.
 class _Recorder {
   int calls = 0;
-  List<AskUserQuestionAnswer>? answers;
+  List<StructuredPromptAnswer>? answers;
   bool fail = false;
 
-  Future<void> submit(List<AskUserQuestionAnswer> answers) async {
+  Future<void> submit(List<StructuredPromptAnswer> answers) async {
     calls++;
     this.answers = answers;
     if (fail) throw StateError('boom');
@@ -80,7 +80,7 @@ class _Recorder {
 /// Cancel/Send can pop a real route.
 Future<void> _openSheet(
   WidgetTester tester,
-  AskUserQuestionPrompt prompt,
+  StructuredPrompt prompt,
   _Recorder recorder,
 ) async {
   await tester.pumpWidget(
@@ -94,8 +94,10 @@ Future<void> _openSheet(
               onPressed: () => showModalBottomSheet<void>(
                 context: context,
                 isScrollControlled: true,
-                builder: (_) =>
-                    AskUserSheet(prompt: prompt, onSubmit: recorder.submit),
+                builder: (_) => StructuredPromptSheet(
+                  prompt: prompt,
+                  onSubmit: recorder.submit,
+                ),
               ),
               child: const Text('open'),
             ),
@@ -109,7 +111,9 @@ Future<void> _openSheet(
 }
 
 VoidCallback? _sendPressed(WidgetTester tester) => tester
-    .widget<FilledButton>(find.byKey(const ValueKey('askuser_send_button')))
+    .widget<FilledButton>(
+      find.byKey(const ValueKey('structured_prompt_send_button')),
+    )
     .onPressed;
 
 void main() {
@@ -125,10 +129,13 @@ void main() {
       expect(find.text('Production'), findsOneWidget);
       // The custom field starts collapsed behind its tap-to-expand toggle.
       expect(
-        find.byKey(const ValueKey('askuser_q0_custom_toggle')),
+        find.byKey(const ValueKey('structured_prompt_q0_custom_toggle')),
         findsOneWidget,
       );
-      expect(find.byKey(const ValueKey('askuser_q0_custom')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('structured_prompt_q0_custom')),
+        findsNothing,
+      );
     },
   );
 
@@ -136,12 +143,14 @@ void main() {
     final recorder = _Recorder();
     await _openSheet(tester, _singleOnly, recorder);
 
-    await tester.tap(find.byKey(const ValueKey('askuser_q0_opt0')));
+    await tester.tap(find.byKey(const ValueKey('structured_prompt_q0_opt0')));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('askuser_q0_opt1')));
+    await tester.tap(find.byKey(const ValueKey('structured_prompt_q0_opt1')));
     await tester.pump();
 
-    await tester.tap(find.byKey(const ValueKey('askuser_send_button')));
+    await tester.tap(
+      find.byKey(const ValueKey('structured_prompt_send_button')),
+    );
     await tester.pumpAndSettle();
 
     expect(recorder.answers, hasLength(1));
@@ -153,12 +162,14 @@ void main() {
     final recorder = _Recorder();
     await _openSheet(tester, _multiOnly, recorder);
 
-    await tester.tap(find.byKey(const ValueKey('askuser_q0_opt0')));
+    await tester.tap(find.byKey(const ValueKey('structured_prompt_q0_opt0')));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('askuser_q0_opt2')));
+    await tester.tap(find.byKey(const ValueKey('structured_prompt_q0_opt2')));
     await tester.pump();
 
-    await tester.tap(find.byKey(const ValueKey('askuser_send_button')));
+    await tester.tap(
+      find.byKey(const ValueKey('structured_prompt_send_button')),
+    );
     await tester.pumpAndSettle();
 
     expect(recorder.answers!.single.selectedIndexes, [0, 2]);
@@ -170,9 +181,12 @@ void main() {
   ) async {
     await _openSheet(tester, _multiOnly, _Recorder());
 
-    expect(find.byKey(const ValueKey('askuser_q0_custom')), findsNothing);
     expect(
-      find.byKey(const ValueKey('askuser_q0_custom_toggle')),
+      find.byKey(const ValueKey('structured_prompt_q0_custom')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('structured_prompt_q0_custom_toggle')),
       findsNothing,
     );
   });
@@ -184,7 +198,7 @@ void main() {
 
     expect(_sendPressed(tester), isNull);
 
-    await tester.tap(find.byKey(const ValueKey('askuser_q0_opt1')));
+    await tester.tap(find.byKey(const ValueKey('structured_prompt_q0_opt1')));
     await tester.pump();
 
     expect(_sendPressed(tester), isNotNull);
@@ -199,20 +213,24 @@ void main() {
       // Nothing answered yet: Send is disabled.
       expect(_sendPressed(tester), isNull);
 
-      await tester.tap(find.byKey(const ValueKey('askuser_q0_opt0')));
+      await tester.tap(find.byKey(const ValueKey('structured_prompt_q0_opt0')));
       await tester.pump();
       expect(_sendPressed(tester), isNotNull);
 
-      await tester.tap(find.byKey(const ValueKey('askuser_q0_custom_toggle')));
+      await tester.tap(
+        find.byKey(const ValueKey('structured_prompt_q0_custom_toggle')),
+      );
       await tester.pump();
       await tester.enterText(
-        find.byKey(const ValueKey('askuser_q0_custom')),
+        find.byKey(const ValueKey('structured_prompt_q0_custom')),
         'roll my own',
       );
       await tester.pump();
       expect(_sendPressed(tester), isNotNull);
 
-      await tester.tap(find.byKey(const ValueKey('askuser_send_button')));
+      await tester.tap(
+        find.byKey(const ValueKey('structured_prompt_send_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(recorder.answers!.single.customText, 'roll my own');
@@ -226,24 +244,31 @@ void main() {
       final recorder = _Recorder();
       await _openSheet(tester, _singleOnly, recorder);
 
-      await tester.tap(find.byKey(const ValueKey('askuser_q0_custom_toggle')));
+      await tester.tap(
+        find.byKey(const ValueKey('structured_prompt_q0_custom_toggle')),
+      );
       await tester.pump();
       await tester.enterText(
-        find.byKey(const ValueKey('askuser_q0_custom')),
+        find.byKey(const ValueKey('structured_prompt_q0_custom')),
         'roll my own',
       );
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('askuser_q0_opt1')));
+      await tester.tap(find.byKey(const ValueKey('structured_prompt_q0_opt1')));
       await tester.pump();
 
       // Selecting an option collapses the custom field back to its toggle.
-      expect(find.byKey(const ValueKey('askuser_q0_custom')), findsNothing);
       expect(
-        find.byKey(const ValueKey('askuser_q0_custom_toggle')),
+        find.byKey(const ValueKey('structured_prompt_q0_custom')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('structured_prompt_q0_custom_toggle')),
         findsOneWidget,
       );
 
-      await tester.tap(find.byKey(const ValueKey('askuser_send_button')));
+      await tester.tap(
+        find.byKey(const ValueKey('structured_prompt_send_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(recorder.answers!.single.selectedIndexes, [1]);
@@ -258,14 +283,18 @@ void main() {
 
     expect(_sendPressed(tester), isNull);
 
-    await tester.ensureVisible(find.byKey(const ValueKey('askuser_q0_opt0')));
-    await tester.tap(find.byKey(const ValueKey('askuser_q0_opt0')));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('structured_prompt_q0_opt0')),
+    );
+    await tester.tap(find.byKey(const ValueKey('structured_prompt_q0_opt0')));
     await tester.pump();
     // First question answered, second still open.
     expect(_sendPressed(tester), isNull);
 
-    await tester.ensureVisible(find.byKey(const ValueKey('askuser_q1_opt0')));
-    await tester.tap(find.byKey(const ValueKey('askuser_q1_opt0')));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('structured_prompt_q1_opt0')),
+    );
+    await tester.tap(find.byKey(const ValueKey('structured_prompt_q1_opt0')));
     await tester.pump();
     expect(_sendPressed(tester), isNotNull);
   });
@@ -274,17 +303,25 @@ void main() {
     final recorder = _Recorder();
     await _openSheet(tester, _twoQuestions, recorder);
 
-    await tester.ensureVisible(find.byKey(const ValueKey('askuser_q0_opt1')));
-    await tester.tap(find.byKey(const ValueKey('askuser_q0_opt1')));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('structured_prompt_q0_opt1')),
+    );
+    await tester.tap(find.byKey(const ValueKey('structured_prompt_q0_opt1')));
     await tester.pump();
-    await tester.ensureVisible(find.byKey(const ValueKey('askuser_q1_opt0')));
-    await tester.tap(find.byKey(const ValueKey('askuser_q1_opt0')));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('structured_prompt_q1_opt0')),
+    );
+    await tester.tap(find.byKey(const ValueKey('structured_prompt_q1_opt0')));
     await tester.pump();
-    await tester.ensureVisible(find.byKey(const ValueKey('askuser_q1_opt1')));
-    await tester.tap(find.byKey(const ValueKey('askuser_q1_opt1')));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('structured_prompt_q1_opt1')),
+    );
+    await tester.tap(find.byKey(const ValueKey('structured_prompt_q1_opt1')));
     await tester.pump();
 
-    await tester.tap(find.byKey(const ValueKey('askuser_send_button')));
+    await tester.tap(
+      find.byKey(const ValueKey('structured_prompt_send_button')),
+    );
     await tester.pumpAndSettle();
 
     expect(recorder.answers, hasLength(2));
@@ -298,12 +335,14 @@ void main() {
     final recorder = _Recorder();
     await _openSheet(tester, _singleOnly, recorder);
 
-    expect(find.byType(AskUserSheet), findsOneWidget);
+    expect(find.byType(StructuredPromptSheet), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('askuser_cancel_button')));
+    await tester.tap(
+      find.byKey(const ValueKey('structured_prompt_cancel_button')),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.byType(AskUserSheet), findsNothing);
+    expect(find.byType(StructuredPromptSheet), findsNothing);
     expect(recorder.calls, 0);
   });
 
@@ -311,12 +350,14 @@ void main() {
     final recorder = _Recorder()..fail = true;
     await _openSheet(tester, _singleOnly, recorder);
 
-    await tester.tap(find.byKey(const ValueKey('askuser_q0_opt0')));
+    await tester.tap(find.byKey(const ValueKey('structured_prompt_q0_opt0')));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('askuser_send_button')));
+    await tester.tap(
+      find.byKey(const ValueKey('structured_prompt_send_button')),
+    );
     await tester.pumpAndSettle();
 
     expect(recorder.calls, 1);
-    expect(find.byType(AskUserSheet), findsOneWidget);
+    expect(find.byType(StructuredPromptSheet), findsOneWidget);
   });
 }

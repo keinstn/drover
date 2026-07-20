@@ -5,23 +5,25 @@
 // actually happened, and ABORTS (throws) on any state it cannot recognize
 // rather than sending keys blindly.
 
-import '../transcript/native_transcript.dart';
-import 'ansi_text.dart';
+import '../../herdr/ansi_text.dart';
+import '../../transcript/native_transcript.dart';
+import '../agent_capabilities.dart';
 
 /// Thrown when the dialog is not in the expected state — the initial screen
 /// isn't the dialog, a question can't be matched, an expected transition never
 /// appears, or the staged answers don't fit the prompt. Signals the caller to
 /// stop and surface the failure rather than retry blindly.
-class AskUserQuestionSubmitError implements Exception {
+class AskUserQuestionSubmitError implements StructuredPromptSubmitError {
   const AskUserQuestionSubmitError(this.message);
 
+  @override
   final String message;
 
   @override
   String toString() => 'AskUserQuestionSubmitError: $message';
 }
 
-/// Submits a staged answer set for an [AskUserQuestionPrompt] by injecting
+/// Submits a staged answer set for a [StructuredPrompt] by injecting
 /// keystrokes into the live TUI dialog. Depends only on three transport
 /// closures (satisfied by [HerdrClient.readAgent]/`sendPaneText`/`sendKeys`),
 /// so it is unit-testable without a real host.
@@ -49,8 +51,8 @@ class AskUserQuestionSubmitter {
   /// state; never sends Esc, and never sends keys when the state is unknown.
   Future<void> submit({
     required String paneId,
-    required AskUserQuestionPrompt prompt,
-    required List<AskUserQuestionAnswer> answers,
+    required StructuredPrompt prompt,
+    required List<StructuredPromptAnswer> answers,
   }) async {
     _validate(prompt, answers);
 
@@ -117,8 +119,8 @@ class AskUserQuestionSubmitter {
   /// something" custom row is digit N+1.
   Future<void> _apply(
     String paneId,
-    AskUserQuestionItem question,
-    AskUserQuestionAnswer answer,
+    StructuredPromptQuestion question,
+    StructuredPromptAnswer answer,
   ) async {
     if (question.multiSelect) {
       // Each digit toggles a checkbox and keeps the dialog open; `right`
@@ -143,8 +145,8 @@ class AskUserQuestionSubmitter {
   /// Validates the staged answers against the prompt up front, so a mismatch
   /// aborts before a single keystroke is sent.
   void _validate(
-    AskUserQuestionPrompt prompt,
-    List<AskUserQuestionAnswer> answers,
+    StructuredPrompt prompt,
+    List<StructuredPromptAnswer> answers,
   ) {
     if (answers.length != prompt.questions.length) {
       throw AskUserQuestionSubmitError(
@@ -217,7 +219,7 @@ class AskUserQuestionSubmitter {
   /// tab. The pane wraps long questions at terminal width, so both sides are
   /// whitespace-normalized before matching — the match is agnostic to how (or
   /// whether) the read was wrapped.
-  bool _showsQuestion(String text, AskUserQuestionItem question) =>
+  bool _showsQuestion(String text, StructuredPromptQuestion question) =>
       _normalize(text).contains(_normalize(question.question));
 
   /// The final review step lists "1. Submit answers / 2. Cancel". Matched on

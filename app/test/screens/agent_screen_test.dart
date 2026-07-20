@@ -6,7 +6,7 @@ import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/image/image_input.dart';
 import 'package:drover/src/screens/agent_screen.dart';
-import 'package:drover/src/screens/askuser_sheet.dart';
+import 'package:drover/src/screens/structured_prompt_sheet.dart';
 import 'package:drover/src/speech/speech_input.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -67,6 +67,61 @@ CommandResult workingResponse(String command) {
   }
   if (command.contains("'agent' 'read'")) {
     return ok('{"id":"1","result":{"read":{"text":"working…"}}}');
+  }
+  return ok('{"id":"1","result":{}}');
+}
+
+/// An unrecognized agent ("codex", say) whose pane happens to contain
+/// Claude's own mode-line wording verbatim — no [AgentAdapter] supports it, so
+/// its `AgentModeCapability`/`ImageAttachmentCapability` are both resolved as
+/// null regardless of what the pane text looks like.
+CommandResult unsupportedAgentModeResponse(String command) {
+  if (command.contains("'workspace' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"workspaces":['
+      '{"workspace_id":"wB","label":"Project B"}'
+      ']}}',
+    );
+  }
+  if (command.contains("'agent' 'get'")) {
+    return ok(
+      '{"id":"1","result":{"agent":{"agent":"codex",'
+      '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
+      '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+      '"name":"Agent Three"}}}',
+    );
+  }
+  if (command.contains("'agent' 'read'")) {
+    return ok(
+      '{"id":"1","result":{"read":{"text":${jsonEncode(idleWithModeText)}}}}',
+    );
+  }
+  return ok('{"id":"1","result":{}}');
+}
+
+/// The same blocked numbered-prompt pane text `blockedPromptResponse` serves,
+/// but for an unrecognized agent — so AgentScreen must fall back to the
+/// generic pane-text prompt parser rather than a Claude-specific dialog.
+CommandResult unsupportedAgentBlockedResponse(String command) {
+  if (command.contains("'workspace' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"workspaces":['
+      '{"workspace_id":"wB","label":"Project B"}'
+      ']}}',
+    );
+  }
+  if (command.contains("'agent' 'get'")) {
+    return ok(
+      '{"id":"1","result":{"agent":{"agent":"codex",'
+      '"agent_status":"blocked","cwd":"/tmp/proj","focused":false,'
+      '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+      '"name":"Agent Three"}}}',
+    );
+  }
+  if (command.contains("'agent' 'read'")) {
+    return ok(
+      '{"id":"1","result":{"read":{"text":${jsonEncode(blockedPromptText)}}}}',
+    );
   }
   return ok('{"id":"1","result":{}}');
 }
@@ -1866,10 +1921,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(AskUserSheet), findsOneWidget);
+    expect(find.byType(StructuredPromptSheet), findsOneWidget);
     expect(
       find.descendant(
-        of: find.byType(AskUserSheet),
+        of: find.byType(StructuredPromptSheet),
         matching: find.text('Which environment should I deploy to?'),
       ),
       findsOneWidget,
@@ -1903,7 +1958,7 @@ void main() {
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(find.byType(AskUserSheet), findsOneWidget);
+    expect(find.byType(StructuredPromptSheet), findsOneWidget);
 
     runner.contents = '$askUserTranscriptJsonl$answered';
     await tester.pump(const Duration(seconds: 1)); // fire the poll timer
@@ -1911,7 +1966,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
-    expect(find.byType(AskUserSheet), findsNothing);
+    expect(find.byType(StructuredPromptSheet), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -1937,17 +1992,19 @@ void main() {
     for (var i = 0; i < 8; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    expect(find.byType(AskUserSheet), findsOneWidget);
+    expect(find.byType(StructuredPromptSheet), findsOneWidget);
 
     // Answer the single question and submit; the real submitter succeeds against
     // the runner's canned reads, clears _askUserSheetOpen, and the sheet starts
     // popping itself. Answer the prompt in the JSONL at the same moment so the
     // very next poll (still mid-close animation) sees no pending prompt — the
     // race window that used to trigger a spurious auto-dismiss (2nd pop + toast).
-    await tester.tap(find.byKey(const ValueKey('askuser_q0_opt0')));
+    await tester.tap(find.byKey(const ValueKey('structured_prompt_q0_opt0')));
     await tester.pump();
     runner.contents = '$_singleAskUserJsonl$_singleAskUserAnswered';
-    await tester.tap(find.byKey(const ValueKey('askuser_send_button')));
+    await tester.tap(
+      find.byKey(const ValueKey('structured_prompt_send_button')),
+    );
     await tester.pump(); // submit resolves; self-pop begins (animation at 0)
     // Fire a poll a single short step in — well within the ~250ms close
     // animation, so the sheet route is still mid-transition.
@@ -1960,7 +2017,7 @@ void main() {
     // The sheet closed exactly once via its own submit; no second pop took the
     // AgentScreen with it, and no "dismissed" toast fired.
     expect(find.byType(AgentScreen), findsOneWidget);
-    expect(find.byType(AskUserSheet), findsNothing);
+    expect(find.byType(StructuredPromptSheet), findsNothing);
     expect(
       find.text(
         AppLocalizations.of(
@@ -1972,4 +2029,83 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'an unsupported agent hides image-attach and mode-cycle controls even '
+    'with Claude-like mode text in the pane',
+    (tester) async {
+      final client = HerdrClient(
+        StubCommandRunner(unsupportedAgentModeResponse),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // The screen renders normally...
+      expect(find.text('idle · Project B'), findsOneWidget);
+      // ...but no adapter supports "codex", so neither optional capability is
+      // resolved and neither control renders, regardless of the pane text
+      // containing Claude's own mode-line wording (`idleWithModeText`).
+      expect(find.byKey(const ValueKey('attach_image_button')), findsNothing);
+      expect(find.byKey(const ValueKey('cycle_mode_button')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'an unsupported agent still renders and falls back to the generic '
+    'numbered prompt when blocked',
+    (tester) async {
+      final runner = StubCommandRunner(unsupportedAgentBlockedResponse);
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // The generic numbered-prompt fallback (parsed straight from pane
+      // text) still renders for an agent with no adapter at all.
+      expect(find.widgetWithText(FilledButton, '1. Yes'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, '3. No'), findsOneWidget);
+      expect(find.text('blocked · Project B'), findsOneWidget);
+      // Still no mode/image controls, matching an unsupported agent.
+      expect(find.byKey(const ValueKey('attach_image_button')), findsNothing);
+      expect(find.byKey(const ValueKey('cycle_mode_button')), findsNothing);
+
+      await tester.tap(find.widgetWithText(FilledButton, '1. Yes'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        runner.commands.any(
+          (c) => c.contains("agent' 'send'") && c.contains("'1'"),
+        ),
+        isTrue,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }

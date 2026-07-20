@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import '../image/image_input.dart';
 import '../models/agent_info.dart';
 import '../models/agent_preset.dart';
 import '../models/host_config.dart';
@@ -136,20 +135,12 @@ class HerdrClient {
   }
 
   /// Send raw [text] to [paneId] as keystrokes, with no trailing Enter, via
-  /// herdr's `pane send-text` — the same transport as [cycleMode], NOT `agent
-  /// send` (which would submit a prompt). Used to type option digits and custom
-  /// answers straight into an interactive TUI dialog.
+  /// herdr's `pane send-text` — NOT `agent send` (which would submit a
+  /// prompt). Used by agent-specific capabilities to type option digits,
+  /// custom answers, and mode-cycle escape sequences straight into an
+  /// interactive TUI.
   Future<void> sendPaneText(String paneId, String text) async {
     await _runOk(['pane', 'send-text', paneId, text]);
-  }
-
-  /// Cycle the agent's interaction mode — the runtime equivalent of pressing
-  /// shift+tab. herdr's `pane send-keys shift+tab` mis-encodes to a plain Tab
-  /// for kitty-keyboard agents like Claude Code (herdr issue #1561), so send the
-  /// raw backtab escape sequence (ESC [ Z) via `pane send-text`, which is
-  /// verified to cycle the mode end-to-end.
-  Future<void> cycleMode(String paneId) async {
-    await _runOk(['pane', 'send-text', paneId, '\u001b[Z']);
   }
 
   /// Stop the agent running in [paneId] by closing its pane.
@@ -160,44 +151,6 @@ class HerdrClient {
   Future<void> prompt(String paneId, String text) async {
     await sendText(paneId, text);
     await sendKeys(paneId, 'enter');
-  }
-
-  /// Upload [images] into [agent]'s working directory and prompt the agent
-  /// to read them by their absolute paths. Placing the files under the
-  /// agent's cwd keeps Claude Code's file reads from triggering an
-  /// out-of-workspace permission prompt (reads within the workspace are
-  /// allowed). [caption], if non-empty, is sent on the line above the paths.
-  /// Returns the remote paths in order. [timestampMs] is injectable only so
-  /// tests get a deterministic filename.
-  Future<List<String>> sendImages(
-    AgentInfo agent, {
-    required List<PickedImage> images,
-    String caption = '',
-    int? timestampMs,
-  }) async {
-    final base = timestampMs ?? DateTime.now().millisecondsSinceEpoch;
-    final dir = '${agent.cwd}/.drover';
-    await _runner.run('command mkdir -p ${shQuote(dir)}');
-
-    final paths = <String>[];
-    for (var i = 0; i < images.length; i++) {
-      final image = images[i];
-      final path = '$dir/img-$base-$i.${image.extension}';
-      await _runner.uploadFile(path, image.bytes);
-      paths.add(path);
-    }
-
-    // Mark the .drover dir git-ignored so uploaded images can't be accidentally
-    // committed when cwd is a git repo. '*' ignores the dir's whole contents,
-    // including this .gitignore itself.
-    await _runner.uploadFile('$dir/.gitignore', utf8.encode('*\n'));
-
-    final trimmed = caption.trim();
-    final text = trimmed.isEmpty
-        ? paths.join('\n')
-        : '${caption.trimRight()}\n${paths.join('\n')}';
-    await prompt(agent.paneId, text);
-    return paths;
   }
 
   /// Probe the host PATH for which of [presets] are installed, returning the
@@ -295,13 +248,13 @@ class HerdrClient {
   }
 
   /// List the entries of the directory at [path]. Raw transport/SFTP
-  /// capability (like [sendImages]' uploads), not a herdr JSON-envelope
-  /// command.
+  /// capability (like the uploads an image-attachment capability drives),
+  /// not a herdr JSON-envelope command.
   Future<List<RemoteDirEntry>> listDirectory(String path) =>
       _runner.listDirectory(path);
 
   /// Resolve [path] to an absolute path on the host. Raw transport/SFTP
-  /// capability (like [sendImages]' uploads), not a herdr JSON-envelope
-  /// command.
+  /// capability (like the uploads an image-attachment capability drives),
+  /// not a herdr JSON-envelope command.
   Future<String> resolvePath(String path) => _runner.resolvePath(path);
 }
