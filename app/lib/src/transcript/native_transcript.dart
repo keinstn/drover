@@ -152,6 +152,9 @@ class NativeTranscriptLoader implements NativeTranscriptAdapter {
       _reset(id);
     }
     final path = _path ?? await _locate(id);
+    if (path == null) {
+      return null;
+    }
     _path = path;
     final stat = await _runner.statFile(path);
     if (stat.size < _size) {
@@ -207,7 +210,7 @@ class NativeTranscriptLoader implements NativeTranscriptAdapter {
     _messages.clear();
   }
 
-  Future<String> _locate(String sessionId) async {
+  Future<String?> _locate(String sessionId) async {
     // The id is validated above; the only interpolated shell value remains
     // single-quoted. Limit the search to Claude's one-level project folders.
     final fileName = '$sessionId.jsonl';
@@ -222,6 +225,9 @@ class NativeTranscriptLoader implements NativeTranscriptAdapter {
         .split('\n')
         .where((path) => path.isNotEmpty)
         .toList(growable: false);
+    if (paths.isEmpty) {
+      return null;
+    }
     if (paths.length != 1 ||
         !paths.single.startsWith('/') ||
         paths.single.split('/').contains('..') ||
