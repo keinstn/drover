@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../app_theme.dart';
 import '../herdr/ansi_text.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/pane_text.dart';
@@ -776,13 +777,13 @@ class _PromptCard extends StatelessWidget {
 Color _modeColor(AgentMode mode) {
   switch (mode) {
     case AgentMode.normal:
-      return Colors.blueGrey;
+      return statusUnknown;
     case AgentMode.autoAccept:
-      return Colors.amber.shade700;
+      return statusWorking;
     case AgentMode.plan:
-      return Colors.blue;
+      return modePlan;
     case AgentMode.bypass:
-      return Colors.red;
+      return statusBlocked;
   }
 }
 
@@ -997,6 +998,8 @@ class _AttachButton extends StatelessWidget {
           style: OutlinedButton.styleFrom(
             shape: const CircleBorder(),
             padding: EdgeInsets.zero,
+            foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+            side: BorderSide(color: Theme.of(context).colorScheme.outline),
           ),
           child: const Icon(Icons.add, size: 22),
         ),
@@ -1103,6 +1106,8 @@ class _MicrophoneButton extends StatelessWidget {
           style: OutlinedButton.styleFrom(
             shape: const CircleBorder(),
             padding: EdgeInsets.zero,
+            foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+            side: BorderSide(color: Theme.of(context).colorScheme.outline),
           ),
           child: starting
               ? const SizedBox(
