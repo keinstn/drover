@@ -84,6 +84,7 @@ class ClaudeTranscriptParser {
       final type = record['type'];
       final message = record['message'];
       if ((type != 'user' && type != 'assistant') ||
+          record['isSidechain'] == true ||
           message is! Map<String, dynamic> ||
           message['role'] != type) {
         return null;

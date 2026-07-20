@@ -92,6 +92,24 @@ void main() {
       ]);
       expect(messages.map((message) => message.text), ['Hello', 'Hi']);
     });
+
+    test('ignores sidechain (subagent) records', () {
+      const input =
+          '{"type":"user","message":{"role":"user","content":"Main prompt"}}\n'
+          '{"type":"user","isSidechain":true,"message":{"role":"user",'
+          '"content":"Subagent prompt"}}\n'
+          '{"type":"assistant","isSidechain":true,"message":{"role":"assistant",'
+          '"content":[{"type":"text","text":"Subagent reply"}]}}\n'
+          '{"type":"assistant","message":{"role":"assistant","content":['
+          '{"type":"text","text":"Main reply"}]}}\n';
+
+      final messages = const ClaudeTranscriptParser().parseLines(input);
+
+      expect(messages.map((message) => message.text), [
+        'Main prompt',
+        'Main reply',
+      ]);
+    });
   });
 
   group('NativeTranscriptLoader', () {
