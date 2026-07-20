@@ -113,18 +113,24 @@ VoidCallback? _sendPressed(WidgetTester tester) => tester
     .onPressed;
 
 void main() {
-  testWidgets('renders each question, its options, and the custom field', (
-    tester,
-  ) async {
-    await _openSheet(tester, _singleOnly, _Recorder());
+  testWidgets(
+    'renders each question, its options, and the custom field toggle',
+    (tester) async {
+      await _openSheet(tester, _singleOnly, _Recorder());
 
-    expect(find.text('Environment'), findsOneWidget);
-    expect(find.text('Which environment?'), findsOneWidget);
-    expect(find.text('Staging'), findsOneWidget);
-    expect(find.text('safe sandbox'), findsOneWidget);
-    expect(find.text('Production'), findsOneWidget);
-    expect(find.text('Type something…'), findsOneWidget);
-  });
+      expect(find.text('Environment'), findsOneWidget);
+      expect(find.text('Which environment?'), findsOneWidget);
+      expect(find.text('Staging'), findsOneWidget);
+      expect(find.text('safe sandbox'), findsOneWidget);
+      expect(find.text('Production'), findsOneWidget);
+      // The custom field starts collapsed behind its tap-to-expand toggle.
+      expect(
+        find.byKey(const ValueKey('askuser_q0_custom_toggle')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('askuser_q0_custom')), findsNothing);
+    },
+  );
 
   testWidgets('radios enforce a single selection', (tester) async {
     final recorder = _Recorder();
@@ -159,10 +165,16 @@ void main() {
     expect(recorder.answers!.single.customText, isNull);
   });
 
-  testWidgets('a multi-select question shows no custom field', (tester) async {
+  testWidgets('a multi-select question shows no custom field or toggle', (
+    tester,
+  ) async {
     await _openSheet(tester, _multiOnly, _Recorder());
 
     expect(find.byKey(const ValueKey('askuser_q0_custom')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('askuser_q0_custom_toggle')),
+      findsNothing,
+    );
   });
 
   testWidgets('multi-select keeps Send disabled until an option is checked', (
@@ -191,6 +203,8 @@ void main() {
       await tester.pump();
       expect(_sendPressed(tester), isNotNull);
 
+      await tester.tap(find.byKey(const ValueKey('askuser_q0_custom_toggle')));
+      await tester.pump();
       await tester.enterText(
         find.byKey(const ValueKey('askuser_q0_custom')),
         'roll my own',
@@ -206,24 +220,36 @@ void main() {
     },
   );
 
-  testWidgets('selecting an option clears the custom text', (tester) async {
-    final recorder = _Recorder();
-    await _openSheet(tester, _singleOnly, recorder);
+  testWidgets(
+    'selecting an option clears the custom text and re-collapses it',
+    (tester) async {
+      final recorder = _Recorder();
+      await _openSheet(tester, _singleOnly, recorder);
 
-    await tester.enterText(
-      find.byKey(const ValueKey('askuser_q0_custom')),
-      'roll my own',
-    );
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('askuser_q0_opt1')));
-    await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('askuser_q0_custom_toggle')));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const ValueKey('askuser_q0_custom')),
+        'roll my own',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('askuser_q0_opt1')));
+      await tester.pump();
 
-    await tester.tap(find.byKey(const ValueKey('askuser_send_button')));
-    await tester.pumpAndSettle();
+      // Selecting an option collapses the custom field back to its toggle.
+      expect(find.byKey(const ValueKey('askuser_q0_custom')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('askuser_q0_custom_toggle')),
+        findsOneWidget,
+      );
 
-    expect(recorder.answers!.single.selectedIndexes, [1]);
-    expect(recorder.answers!.single.customText, isNull);
-  });
+      await tester.tap(find.byKey(const ValueKey('askuser_send_button')));
+      await tester.pumpAndSettle();
+
+      expect(recorder.answers!.single.selectedIndexes, [1]);
+      expect(recorder.answers!.single.customText, isNull);
+    },
+  );
 
   testWidgets('Send stays disabled until every question is answered', (
     tester,
