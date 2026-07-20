@@ -38,7 +38,10 @@
   "agentComposerHint": "Message agent…",
   "agentCycleModeTooltip": "Cycle agent mode (shift+tab)",
   "agentRemoveImage": "Remove image",
-  "agentAttachImage": "Attach image",
+  "agentAttachImage": "Add attachment",
+  "agentAttachFromLibrary": "Photo",
+  "agentAttachFromCamera": "Camera",
+  "agentStopAgent": "Stop agent",
   "agentStopDictation": "Stop dictation",
   "agentDictateMessage": "Dictate message",
 

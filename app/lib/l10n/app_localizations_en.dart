@@ -108,7 +108,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentRemoveImage => 'Remove image';
 
   @override
-  String get agentAttachImage => 'Attach image';
+  String get agentAttachImage => 'Add attachment';
+
+  @override
+  String get agentAttachFromLibrary => 'Photo';
+
+  @override
+  String get agentAttachFromCamera => 'Camera';
+
+  @override
+  String get agentStopAgent => 'Stop agent';
 
   @override
   String get agentStopDictation => 'Stop dictation';

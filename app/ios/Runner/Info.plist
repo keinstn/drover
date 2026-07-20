@@ -28,6 +28,8 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Drover uses the camera to capture a photo to send to an agent.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Drover connects to your development machine over SSH to supervise coding agents.</string>
 	<key>NSMicrophoneUsageDescription</key>

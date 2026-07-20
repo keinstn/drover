@@ -281,8 +281,26 @@ abstract class AppLocalizations {
   /// No description provided for @agentAttachImage.
   ///
   /// In en, this message translates to:
-  /// **'Attach image'**
+  /// **'Add attachment'**
   String get agentAttachImage;
+
+  /// No description provided for @agentAttachFromLibrary.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo'**
+  String get agentAttachFromLibrary;
+
+  /// No description provided for @agentAttachFromCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Camera'**
+  String get agentAttachFromCamera;
+
+  /// No description provided for @agentStopAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop agent'**
+  String get agentStopAgent;
 
   /// No description provided for @agentStopDictation.
   ///

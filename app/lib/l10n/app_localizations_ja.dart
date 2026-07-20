@@ -101,7 +101,16 @@ class AppLocalizationsJa extends AppLocalizations {
   String get agentRemoveImage => '画像を削除';
 
   @override
-  String get agentAttachImage => '画像を添付';
+  String get agentAttachImage => '添付を追加';
+
+  @override
+  String get agentAttachFromLibrary => '写真';
+
+  @override
+  String get agentAttachFromCamera => 'カメラ';
+
+  @override
+  String get agentStopAgent => 'エージェントを停止';
 
   @override
   String get agentStopDictation => '音声入力を停止';

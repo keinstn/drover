@@ -7,6 +7,7 @@ import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/image/image_input.dart';
 import 'package:drover/src/screens/agent_screen.dart';
 import 'package:drover/src/speech/speech_input.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -21,9 +22,35 @@ class FakeImagePicker implements ImagePickerPort {
     : result = result ?? PickedImage(bytes: _tinyPng, extension: 'png');
 
   PickedImage? result;
+  final sources = <ImageAttachSource>[];
 
   @override
-  Future<PickedImage?> pickImage() async => result;
+  Future<PickedImage?> pickImage(ImageAttachSource source) async {
+    sources.add(source);
+    return result;
+  }
+}
+
+CommandResult workingResponse(String command) {
+  if (command.contains("'workspace' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"workspaces":['
+      '{"workspace_id":"wB","label":"Project B"}'
+      ']}}',
+    );
+  }
+  if (command.contains("'agent' 'get'")) {
+    return ok(
+      '{"id":"1","result":{"agent":{"agent":"claude",'
+      '"agent_status":"working","cwd":"/tmp/proj","focused":false,'
+      '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+      '"name":"Agent Three"}}}',
+    );
+  }
+  if (command.contains("'agent' 'read'")) {
+    return ok('{"id":"1","result":{"read":{"text":"working…"}}}');
+  }
+  return ok('{"id":"1","result":{}}');
 }
 
 class FakeSpeechInput implements SpeechInput {
@@ -151,9 +178,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('shows the current mode as a tappable chip that cycles it', (
-    tester,
-  ) async {
+  testWidgets('shows a mode button that cycles the agent mode', (tester) async {
     final runner = StubCommandRunner(idleWithModeResponse);
     final client = HerdrClient(runner);
 
@@ -171,17 +196,15 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // Mode shows as an ActionChip; y/n are gone; Enter/Esc remain.
-    expect(find.widgetWithText(ActionChip, 'auto-accept'), findsOneWidget);
-    expect(find.widgetWithText(ActionChip, 'y'), findsNothing);
-    expect(find.widgetWithText(ActionChip, 'n'), findsNothing);
-    expect(find.widgetWithText(ActionChip, 'Enter'), findsOneWidget);
-    expect(find.widgetWithText(ActionChip, 'Esc'), findsOneWidget);
+    // Mode is now a dedicated button; the old Enter/Esc chips are gone.
+    expect(find.byKey(const ValueKey('cycle_mode_button')), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'Enter'), findsNothing);
+    expect(find.widgetWithText(ActionChip, 'Esc'), findsNothing);
 
-    // Tapping the mode chip cycles it by sending the raw backtab escape
+    // Tapping the mode button cycles it by sending the raw backtab escape
     // sequence via `pane send-text` (herdr's `send-keys shift+tab` mis-encodes
     // it — see herdr issue #1561).
-    await tester.tap(find.widgetWithText(ActionChip, 'auto-accept'));
+    await tester.tap(find.byKey(const ValueKey('cycle_mode_button')));
     await tester.pump();
     await tester.pump();
 
@@ -193,6 +216,137 @@ void main() {
     );
 
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('turns send into a stop button that interrupts with Esc', (
+    tester,
+  ) async {
+    final runner = StubCommandRunner(workingResponse);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // A working agent with an empty input shows a stop button, not send.
+    expect(find.byIcon(Icons.stop), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_upward), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('send_message_button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      runner.commands.any(
+        (c) => c.contains('send-keys') && c.contains("'esc'"),
+      ),
+      isTrue,
+    );
+
+    // Typing a message turns it back into a send button.
+    await tester.enterText(find.byType(TextField), 'hello');
+    await tester.pump();
+    expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
+    expect(find.byIcon(Icons.stop), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('keeps send (not stop) when a working agent has a staged image', (
+    tester,
+  ) async {
+    final runner = StubCommandRunner(workingResponse);
+    final client = HerdrClient(runner);
+    final imagePicker = FakeImagePicker();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          imagePicker: imagePicker,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // Working agent, empty input → stop button.
+    expect(find.byIcon(Icons.stop), findsOneWidget);
+
+    // Staging an image (with no caption) must flip it back to a send button so
+    // the image can actually be sent rather than interrupting the agent.
+    await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
+    expect(find.byIcon(Icons.stop), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('send_message_button')));
+    await tester.pump();
+    await tester.pump();
+
+    // The image was sent and no Esc interrupt was issued.
+    expect(runner.uploads.any((u) => !u.path.endsWith('.gitignore')), isTrue);
+    expect(
+      runner.commands.any(
+        (c) => c.contains('send-keys') && c.contains("'esc'"),
+      ),
+      isFalse,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('offers photo and camera sources on iOS', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final runner = StubCommandRunner(blockedPromptResponse);
+    final client = HerdrClient(runner);
+    final imagePicker = FakeImagePicker();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          imagePicker: imagePicker,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('attach_from_library')), findsOneWidget);
+    expect(find.byKey(const ValueKey('attach_from_camera')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('attach_from_camera')));
+    await tester.pumpAndSettle();
+
+    // The chosen source reaches the picker and the shot is staged.
+    expect(imagePicker.sources, [ImageAttachSource.camera]);
+    expect(find.byKey(const ValueKey('remove_image_button_0')), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('appends dictated partial text to the existing draft', (
