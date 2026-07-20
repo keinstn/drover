@@ -33,7 +33,10 @@
   "agentComposerHint": "エージェントにメッセージ…",
   "agentCycleModeTooltip": "エージェントモードを切り替え (shift+tab)",
   "agentRemoveImage": "画像を削除",
-  "agentAttachImage": "画像を添付",
+  "agentAttachImage": "添付を追加",
+  "agentAttachFromLibrary": "写真",
+  "agentAttachFromCamera": "カメラ",
+  "agentStopAgent": "エージェントを停止",
   "agentStopDictation": "音声入力を停止",
   "agentDictateMessage": "音声入力",
 

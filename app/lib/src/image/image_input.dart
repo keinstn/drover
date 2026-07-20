@@ -9,20 +9,28 @@ class PickedImage {
   final String extension; // lowercase, no dot, e.g. 'png', 'jpg'
 }
 
+/// Where an attached image comes from. Camera capture is only offered on
+/// platforms that support it (iOS); the gallery is always available.
+enum ImageAttachSource { gallery, camera }
+
 /// App-scoped interface for picking a single image. Returns null if the user
 /// cancels.
 abstract interface class ImagePickerPort {
-  Future<PickedImage?> pickImage();
+  Future<PickedImage?> pickImage(ImageAttachSource source);
 }
 
-/// Backs [ImagePickerPort] with the image_picker plugin (photo library).
+/// Backs [ImagePickerPort] with the image_picker plugin.
 class SystemImagePicker implements ImagePickerPort {
   SystemImagePicker({ImagePicker? picker}) : _picker = picker ?? ImagePicker();
   final ImagePicker _picker;
 
   @override
-  Future<PickedImage?> pickImage() async {
-    final file = await _picker.pickImage(source: ImageSource.gallery);
+  Future<PickedImage?> pickImage(ImageAttachSource source) async {
+    final file = await _picker.pickImage(
+      source: source == ImageAttachSource.camera
+          ? ImageSource.camera
+          : ImageSource.gallery,
+    );
     if (file == null) return null;
     final bytes = await file.readAsBytes();
     final dot = file.name.lastIndexOf('.');

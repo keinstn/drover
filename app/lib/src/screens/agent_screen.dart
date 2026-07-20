@@ -226,13 +226,14 @@ class _AgentScreenState extends State<AgentScreen> {
     }
   }
 
-  /// Picks an image and stages it in the composer. It isn't sent until the user
-  /// taps send, so it goes out together with whatever text they type.
-  Future<void> _attachImage() async {
+  /// Picks an image from [source] and stages it in the composer. It isn't sent
+  /// until the user taps send, so it goes out together with whatever text they
+  /// type.
+  Future<void> _attachImage(ImageAttachSource source) async {
     if (_sending || _dictationStarting || _dictating) return;
     final PickedImage? picked;
     try {
-      picked = await _imagePicker.pickImage();
+      picked = await _imagePicker.pickImage(source);
     } catch (e) {
       if (mounted) showTopToast(context, e.toString());
       return;
@@ -391,6 +392,7 @@ class _AgentScreenState extends State<AgentScreen> {
             sending: _sending,
             dictationStarting: _dictationStarting,
             dictating: _dictating,
+            agentRunning: agent?.status == AgentStatus.working,
             pendingImages: _pendingImages,
             onRemoveImage: _removePendingImage,
             onDictation: _toggleDictation,
@@ -518,6 +520,7 @@ class _Composer extends StatelessWidget {
     required this.sending,
     required this.dictationStarting,
     required this.dictating,
+    required this.agentRunning,
     required this.pendingImages,
     required this.onRemoveImage,
     required this.onDictation,
@@ -533,10 +536,14 @@ class _Composer extends StatelessWidget {
   final bool sending;
   final bool dictationStarting;
   final bool dictating;
+
+  /// Whether the agent is actively processing. When it is and the input is
+  /// empty, the send button becomes a stop button that interrupts with Esc.
+  final bool agentRunning;
   final List<PickedImage> pendingImages;
   final void Function(int index) onRemoveImage;
   final VoidCallback onDictation;
-  final VoidCallback onAttach;
+  final void Function(ImageAttachSource source) onAttach;
   final VoidCallback onSend;
   final AgentMode? mode;
 
@@ -602,57 +609,21 @@ class _Composer extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            if (mode != null) ...[
-              Row(
-                children: [
-                  Flexible(
-                    child: Tooltip(
-                      message: l10n.agentCycleModeTooltip,
-                      child: ActionChip(
-                        avatar: Icon(
-                          Icons.tune,
-                          size: 18,
-                          color: _modeColor(mode),
-                        ),
-                        label: Text(
-                          mode.label,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        side: BorderSide(color: _modeColor(mode)),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: sending
-                            ? null
-                            : () => onAction(() => client.cycleMode(paneId)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-            ],
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 _AttachButton(
                   sending: sending || dictationStarting || dictating,
-                  onPressed: onAttach,
+                  onPick: onAttach,
                 ),
-                const SizedBox(width: 8),
-                ActionChip(
-                  label: const Text('Enter'),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: sending
-                      ? null
-                      : () => onAction(() => client.sendKeys(paneId, 'enter')),
-                ),
-                const SizedBox(width: 8),
-                ActionChip(
-                  label: const Text('Esc'),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: sending
-                      ? null
-                      : () => onAction(() => client.sendKeys(paneId, 'esc')),
-                ),
+                if (mode != null) ...[
+                  const SizedBox(width: 8),
+                  _ModeButton(
+                    mode: mode,
+                    sending: sending,
+                    onPressed: () => onAction(() => client.cycleMode(paneId)),
+                  ),
+                ],
                 const Spacer(),
                 _MicrophoneButton(
                   starting: dictationStarting,
@@ -661,8 +632,12 @@ class _Composer extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 _SendButton(
-                  sending: sending || dictationStarting || dictating,
+                  controller: controller,
+                  busy: sending || dictationStarting || dictating,
+                  agentRunning: agentRunning,
+                  hasPendingImages: pendingImages.isNotEmpty,
                   onSend: onSend,
+                  onStop: () => onAction(() => client.sendKeys(paneId, 'esc')),
                 ),
               ],
             ),
@@ -731,10 +706,10 @@ class _PendingImagePreview extends StatelessWidget {
 }
 
 class _AttachButton extends StatelessWidget {
-  const _AttachButton({required this.sending, required this.onPressed});
+  const _AttachButton({required this.sending, required this.onPick});
 
   final bool sending;
-  final VoidCallback onPressed;
+  final void Function(ImageAttachSource source) onPick;
 
   @override
   Widget build(BuildContext context) {
@@ -746,12 +721,85 @@ class _AttachButton extends StatelessWidget {
         message: l10n.agentAttachImage,
         child: OutlinedButton(
           key: const ValueKey('attach_image_button'),
-          onPressed: sending ? null : onPressed,
+          onPressed: sending ? null : () => _handleTap(context),
           style: OutlinedButton.styleFrom(
             shape: const CircleBorder(),
             padding: EdgeInsets.zero,
           ),
-          child: const Icon(Icons.add_photo_alternate, size: 20),
+          child: const Icon(Icons.add, size: 22),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleTap(BuildContext context) async {
+    // Camera capture is iOS-only (image_picker has no camera source on macOS).
+    // Without a choice to make, go straight to the photo library.
+    if (Theme.of(context).platform != TargetPlatform.iOS) {
+      onPick(ImageAttachSource.gallery);
+      return;
+    }
+    final source = await _showSourceSheet(context);
+    if (source != null) onPick(source);
+  }
+
+  Future<ImageAttachSource?> _showSourceSheet(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return showModalBottomSheet<ImageAttachSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              key: const ValueKey('attach_from_library'),
+              leading: const Icon(Icons.photo_library_outlined),
+              title: Text(l10n.agentAttachFromLibrary),
+              onTap: () => Navigator.of(context).pop(ImageAttachSource.gallery),
+            ),
+            ListTile(
+              key: const ValueKey('attach_from_camera'),
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: Text(l10n.agentAttachFromCamera),
+              onTap: () => Navigator.of(context).pop(ImageAttachSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeButton extends StatelessWidget {
+  const _ModeButton({
+    required this.mode,
+    required this.sending,
+    required this.onPressed,
+  });
+
+  final AgentMode mode;
+  final bool sending;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final color = _modeColor(mode);
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: Tooltip(
+        message: l10n.agentCycleModeTooltip,
+        child: OutlinedButton(
+          key: const ValueKey('cycle_mode_button'),
+          onPressed: sending ? null : onPressed,
+          style: OutlinedButton.styleFrom(
+            shape: const CircleBorder(),
+            padding: EdgeInsets.zero,
+            foregroundColor: color,
+            side: BorderSide(color: color),
+          ),
+          child: const Icon(Icons.tune, size: 20),
         ),
       ),
     );
@@ -797,31 +845,59 @@ class _MicrophoneButton extends StatelessWidget {
   }
 }
 
+/// The composer's primary action button. It shows a spinner while [busy]
+/// (a send/attach is in flight or dictation is active), a stop button when the
+/// agent is running and there is nothing staged to send — no text and no
+/// pending images (tapping it interrupts with Esc via [onStop]), and otherwise
+/// a send button ([onSend]).
 class _SendButton extends StatelessWidget {
-  const _SendButton({required this.sending, required this.onSend});
+  const _SendButton({
+    required this.controller,
+    required this.busy,
+    required this.agentRunning,
+    required this.hasPendingImages,
+    required this.onSend,
+    required this.onStop,
+  });
 
-  final bool sending;
+  final TextEditingController controller;
+  final bool busy;
+  final bool agentRunning;
+  final bool hasPendingImages;
   final VoidCallback onSend;
+  final VoidCallback onStop;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return SizedBox(
       width: 48,
       height: 48,
-      child: FilledButton(
-        key: const ValueKey('send_message_button'),
-        onPressed: sending ? null : onSend,
-        style: FilledButton.styleFrom(
-          shape: const CircleBorder(),
-          padding: EdgeInsets.zero,
-        ),
-        child: sending
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.arrow_upward, size: 20),
+      child: ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, value, _) {
+          final showStop =
+              agentRunning && !hasPendingImages && value.text.trim().isEmpty;
+          final button = FilledButton(
+            key: const ValueKey('send_message_button'),
+            onPressed: busy ? null : (showStop ? onStop : onSend),
+            style: FilledButton.styleFrom(
+              shape: const CircleBorder(),
+              padding: EdgeInsets.zero,
+            ),
+            child: busy
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(showStop ? Icons.stop : Icons.arrow_upward, size: 20),
+          );
+          if (!busy && showStop) {
+            return Tooltip(message: l10n.agentStopAgent, child: button);
+          }
+          return button;
+        },
       ),
     );
   }
