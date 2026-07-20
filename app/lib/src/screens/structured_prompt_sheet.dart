@@ -3,27 +3,32 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../transcript/native_transcript.dart';
 
-/// Modal bottom sheet that stages and submits a user's answers to a Claude Code
-/// AskUserQuestion prompt. Each question renders its options (radios for
-/// single-select, checkboxes for multi-select) plus a free-text field;
-/// selecting options and typing custom text are mutually exclusive per question.
+/// Modal bottom sheet that stages and submits a user's answers to an agent's
+/// interactive structured prompt (e.g. Claude Code's AskUserQuestion tool).
+/// Each question renders its options (radios for single-select, checkboxes
+/// for multi-select) plus a free-text field; selecting options and typing
+/// custom text are mutually exclusive per question.
 ///
 /// Answers are staged locally — nothing leaves the sheet until Send invokes
-/// [onSubmit], which performs the actual key-injection submit (see
-/// [AskUserQuestionSubmitter]). Injecting [onSubmit] keeps the sheet
+/// [onSubmit], which performs the actual submit via the resolved agent's
+/// `StructuredPromptCapability`. Injecting [onSubmit] keeps the sheet
 /// unit-testable without driving a real host: on success the sheet closes; on
 /// failure [onSubmit] throws and the sheet stays open with its staged answers.
-class AskUserSheet extends StatefulWidget {
-  const AskUserSheet({super.key, required this.prompt, required this.onSubmit});
+class StructuredPromptSheet extends StatefulWidget {
+  const StructuredPromptSheet({
+    super.key,
+    required this.prompt,
+    required this.onSubmit,
+  });
 
-  final AskUserQuestionPrompt prompt;
-  final Future<void> Function(List<AskUserQuestionAnswer> answers) onSubmit;
+  final StructuredPrompt prompt;
+  final Future<void> Function(List<StructuredPromptAnswer> answers) onSubmit;
 
   @override
-  State<AskUserSheet> createState() => _AskUserSheetState();
+  State<StructuredPromptSheet> createState() => _StructuredPromptSheetState();
 }
 
-class _AskUserSheetState extends State<AskUserSheet> {
+class _StructuredPromptSheetState extends State<StructuredPromptSheet> {
   // Staged option selections per question. A set even for single-select (where
   // it holds 0 or 1 entries); custom free-text answers live in the controllers.
   late final List<Set<int>> _selected;
@@ -92,19 +97,19 @@ class _AskUserSheetState extends State<AskUserSheet> {
     return true;
   }
 
-  List<AskUserQuestionAnswer> _buildAnswers() {
-    final answers = <AskUserQuestionAnswer>[];
+  List<StructuredPromptAnswer> _buildAnswers() {
+    final answers = <StructuredPromptAnswer>[];
     for (var i = 0; i < widget.prompt.questions.length; i++) {
       final custom = widget.prompt.questions[i].multiSelect
           ? ''
           : _customControllers[i].text.trim();
       if (custom.isNotEmpty) {
         answers.add(
-          AskUserQuestionAnswer(selectedIndexes: const [], customText: custom),
+          StructuredPromptAnswer(selectedIndexes: const [], customText: custom),
         );
       } else {
         final indexes = _selected[i].toList()..sort();
-        answers.add(AskUserQuestionAnswer(selectedIndexes: indexes));
+        answers.add(StructuredPromptAnswer(selectedIndexes: indexes));
       }
     }
     return answers;
@@ -166,7 +171,7 @@ class _AskUserSheetState extends State<AskUserSheet> {
               child: Row(
                 children: [
                   TextButton(
-                    key: const ValueKey('askuser_cancel_button'),
+                    key: const ValueKey('structured_prompt_cancel_button'),
                     onPressed: _submitting
                         ? null
                         : () => Navigator.of(context).pop(),
@@ -174,7 +179,7 @@ class _AskUserSheetState extends State<AskUserSheet> {
                   ),
                   const Spacer(),
                   FilledButton(
-                    key: const ValueKey('askuser_send_button'),
+                    key: const ValueKey('structured_prompt_send_button'),
                     onPressed: (_canSend && !_submitting) ? _submit : null,
                     child: _submitting
                         ? const SizedBox(
@@ -197,7 +202,7 @@ class _AskUserSheetState extends State<AskUserSheet> {
     BuildContext context,
     AppLocalizations l10n,
     int index,
-    AskUserQuestionItem question,
+    StructuredPromptQuestion question,
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -248,7 +253,7 @@ class _AskUserSheetState extends State<AskUserSheet> {
           const SizedBox(height: 6),
           if (_customOpen[index])
             TextField(
-              key: ValueKey('askuser_q${index}_custom'),
+              key: ValueKey('structured_prompt_q${index}_custom'),
               controller: _customControllers[index],
               enabled: !_submitting,
               autofocus: true,
@@ -265,7 +270,7 @@ class _AskUserSheetState extends State<AskUserSheet> {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
-                key: ValueKey('askuser_q${index}_custom_toggle'),
+                key: ValueKey('structured_prompt_q${index}_custom_toggle'),
                 onPressed: _submitting
                     ? null
                     : () => setState(() => _customOpen[index] = true),
@@ -289,9 +294,9 @@ class _AskUserSheetState extends State<AskUserSheet> {
 
   Widget _buildOption(
     int questionIndex,
-    AskUserQuestionItem question,
+    StructuredPromptQuestion question,
     int optionIndex,
-    AskUserQuestionOption option,
+    StructuredPromptOption option,
   ) {
     final selected = _selected[questionIndex].contains(optionIndex);
     final theme = Theme.of(context);
@@ -305,7 +310,7 @@ class _AskUserSheetState extends State<AskUserSheet> {
               color: scheme.onSurfaceVariant,
             ),
           );
-    final key = ValueKey('askuser_q${questionIndex}_opt$optionIndex');
+    final key = ValueKey('structured_prompt_q${questionIndex}_opt$optionIndex');
     void toggle() => _toggleOption(questionIndex, optionIndex);
     if (question.multiSelect) {
       return CheckboxListTile(

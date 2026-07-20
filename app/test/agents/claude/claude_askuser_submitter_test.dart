@@ -1,4 +1,4 @@
-import 'package:drover/src/herdr/askuser_submitter.dart';
+import 'package:drover/src/agents/claude/claude_askuser_submitter.dart';
 import 'package:drover/src/transcript/native_transcript.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -44,73 +44,73 @@ AskUserQuestionSubmitter submitterFor(FakePane pane) =>
 
 // --- Prompt fixtures -------------------------------------------------------
 
-const singleSelectPrompt = AskUserQuestionPrompt(
-  toolUseId: 'tool_1',
+const singleSelectPrompt = StructuredPrompt(
+  id: 'tool_1',
   questions: [
-    AskUserQuestionItem(
+    StructuredPromptQuestion(
       question: 'What should I do next?',
       header: 'Next step',
       multiSelect: false,
       options: [
-        AskUserQuestionOption(label: 'Ship it'),
-        AskUserQuestionOption(label: 'Keep iterating'),
+        StructuredPromptOption(label: 'Ship it'),
+        StructuredPromptOption(label: 'Keep iterating'),
       ],
     ),
   ],
 );
 
-const wrappedPrompt = AskUserQuestionPrompt(
-  toolUseId: 'tool_wrap',
+const wrappedPrompt = StructuredPrompt(
+  id: 'tool_wrap',
   questions: [
-    AskUserQuestionItem(
+    StructuredPromptQuestion(
       question:
           'Should I refactor the parser now or keep the current '
           'implementation and revisit it later once the other work lands?',
       header: 'Refactor',
       multiSelect: false,
       options: [
-        AskUserQuestionOption(label: 'Refactor now'),
-        AskUserQuestionOption(label: 'Later'),
+        StructuredPromptOption(label: 'Refactor now'),
+        StructuredPromptOption(label: 'Later'),
       ],
     ),
   ],
 );
 
-const multiSelectPrompt = AskUserQuestionPrompt(
-  toolUseId: 'tool_2',
+const multiSelectPrompt = StructuredPrompt(
+  id: 'tool_2',
   questions: [
-    AskUserQuestionItem(
+    StructuredPromptQuestion(
       question: 'Which files should I touch?',
       header: 'Files',
       multiSelect: true,
       options: [
-        AskUserQuestionOption(label: 'lib/a.dart'),
-        AskUserQuestionOption(label: 'lib/b.dart'),
-        AskUserQuestionOption(label: 'lib/c.dart'),
+        StructuredPromptOption(label: 'lib/a.dart'),
+        StructuredPromptOption(label: 'lib/b.dart'),
+        StructuredPromptOption(label: 'lib/c.dart'),
       ],
     ),
   ],
 );
 
-const twoQuestionPrompt = AskUserQuestionPrompt(
-  toolUseId: 'tool_3',
+const twoQuestionPrompt = StructuredPrompt(
+  id: 'tool_3',
   questions: [
-    AskUserQuestionItem(
+    StructuredPromptQuestion(
       question: 'What priority?',
       header: 'Priority',
       multiSelect: false,
       options: [
-        AskUserQuestionOption(label: 'High'),
-        AskUserQuestionOption(label: 'Low'),
+        StructuredPromptOption(label: 'High'),
+        StructuredPromptOption(label: 'Low'),
       ],
     ),
-    AskUserQuestionItem(
+    StructuredPromptQuestion(
       question: 'Which files?',
       header: 'Files',
       multiSelect: true,
       options: [
-        AskUserQuestionOption(label: 'lib/a.dart'),
-        AskUserQuestionOption(label: 'lib/b.dart'),
+        StructuredPromptOption(label: 'lib/a.dart'),
+        StructuredPromptOption(label: 'lib/b.dart'),
       ],
     ),
   ],
@@ -203,23 +203,21 @@ const unrelatedScreen = '''
 
 /// A single-question prompt with [count] options, for exercising the digit
 /// range guard.
-AskUserQuestionPrompt promptWithOptions(
-  int count, {
-  bool multiSelect = false,
-}) => AskUserQuestionPrompt(
-  toolUseId: 'tool_n',
-  questions: [
-    AskUserQuestionItem(
-      question: 'Pick an option',
-      header: 'Pick',
-      multiSelect: multiSelect,
-      options: [
-        for (var i = 0; i < count; i++)
-          AskUserQuestionOption(label: 'Option ${i + 1}'),
+StructuredPrompt promptWithOptions(int count, {bool multiSelect = false}) =>
+    StructuredPrompt(
+      id: 'tool_n',
+      questions: [
+        StructuredPromptQuestion(
+          question: 'Pick an option',
+          header: 'Pick',
+          multiSelect: multiSelect,
+          options: [
+            for (var i = 0; i < count; i++)
+              StructuredPromptOption(label: 'Option ${i + 1}'),
+          ],
+        ),
       ],
-    ),
-  ],
-);
+    );
 
 void main() {
   group('single question, single-select, normal option', () {
@@ -232,7 +230,7 @@ void main() {
         paneId: 'wB:p1',
         prompt: singleSelectPrompt,
         answers: const [
-          AskUserQuestionAnswer(selectedIndexes: [0]),
+          StructuredPromptAnswer(selectedIndexes: [0]),
         ],
       );
 
@@ -249,7 +247,7 @@ void main() {
         paneId: 'wB:p1',
         prompt: wrappedPrompt,
         answers: const [
-          AskUserQuestionAnswer(selectedIndexes: [0]),
+          StructuredPromptAnswer(selectedIndexes: [0]),
         ],
       );
 
@@ -265,7 +263,7 @@ void main() {
         paneId: 'wB:p1',
         prompt: singleSelectPrompt,
         answers: const [
-          AskUserQuestionAnswer(selectedIndexes: [], customText: 'Rewrite it'),
+          StructuredPromptAnswer(selectedIndexes: [], customText: 'Rewrite it'),
         ],
       );
 
@@ -288,7 +286,7 @@ void main() {
         paneId: 'wB:p1',
         prompt: multiSelectPrompt,
         answers: const [
-          AskUserQuestionAnswer(selectedIndexes: [0, 2]),
+          StructuredPromptAnswer(selectedIndexes: [0, 2]),
         ],
       );
 
@@ -317,8 +315,8 @@ void main() {
         paneId: 'wB:p1',
         prompt: twoQuestionPrompt,
         answers: const [
-          AskUserQuestionAnswer(selectedIndexes: [0]),
-          AskUserQuestionAnswer(selectedIndexes: [0, 1]),
+          StructuredPromptAnswer(selectedIndexes: [0]),
+          StructuredPromptAnswer(selectedIndexes: [0, 1]),
         ],
       );
 
@@ -345,7 +343,7 @@ void main() {
           paneId: 'wB:p1',
           prompt: singleSelectPrompt,
           answers: const [
-            AskUserQuestionAnswer(selectedIndexes: [0]),
+            StructuredPromptAnswer(selectedIndexes: [0]),
           ],
         ),
         throwsA(isA<AskUserQuestionSubmitError>()),
@@ -367,7 +365,7 @@ void main() {
           paneId: 'wB:p1',
           prompt: multiSelectPrompt,
           answers: const [
-            AskUserQuestionAnswer(selectedIndexes: [0, 2]),
+            StructuredPromptAnswer(selectedIndexes: [0, 2]),
           ],
         ),
         throwsA(isA<AskUserQuestionSubmitError>()),
@@ -386,8 +384,8 @@ void main() {
           paneId: 'wB:p1',
           prompt: singleSelectPrompt,
           answers: const [
-            AskUserQuestionAnswer(selectedIndexes: [0]),
-            AskUserQuestionAnswer(selectedIndexes: [1]),
+            StructuredPromptAnswer(selectedIndexes: [0]),
+            StructuredPromptAnswer(selectedIndexes: [1]),
           ],
         ),
         throwsA(isA<AskUserQuestionSubmitError>()),
@@ -405,7 +403,7 @@ void main() {
           paneId: 'wB:p1',
           prompt: singleSelectPrompt,
           answers: const [
-            AskUserQuestionAnswer(selectedIndexes: [5]),
+            StructuredPromptAnswer(selectedIndexes: [5]),
           ],
         ),
         throwsA(isA<AskUserQuestionSubmitError>()),
@@ -424,7 +422,7 @@ void main() {
           paneId: 'wB:p1',
           prompt: singleSelectPrompt,
           answers: const [
-            AskUserQuestionAnswer(selectedIndexes: [0]),
+            StructuredPromptAnswer(selectedIndexes: [0]),
           ],
         ),
         throwsA(isA<AskUserQuestionSubmitError>()),
@@ -444,7 +442,7 @@ void main() {
           paneId: 'wB:p1',
           prompt: multiSelectPrompt,
           answers: const [
-            AskUserQuestionAnswer(selectedIndexes: [0, 2]),
+            StructuredPromptAnswer(selectedIndexes: [0, 2]),
           ],
         ),
         throwsA(
@@ -468,7 +466,7 @@ void main() {
           paneId: 'wB:p1',
           prompt: promptWithOptions(10),
           answers: const [
-            AskUserQuestionAnswer(selectedIndexes: [9]),
+            StructuredPromptAnswer(selectedIndexes: [9]),
           ],
         ),
         throwsA(
@@ -491,7 +489,7 @@ void main() {
           paneId: 'wB:p1',
           prompt: promptWithOptions(9),
           answers: const [
-            AskUserQuestionAnswer(selectedIndexes: [], customText: 'other'),
+            StructuredPromptAnswer(selectedIndexes: [], customText: 'other'),
           ],
         ),
         throwsA(

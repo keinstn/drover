@@ -97,46 +97,4 @@ void main() {
       expect(parsePromptOptions('Proceed?\n1. Yes\n3. No'), isNull);
     });
   });
-
-  group('parseAgentMode', () {
-    test('reads auto-accept from the mode line', () {
-      expect(parseAgentMode(chromeFixture), AgentMode.autoAccept);
-    });
-
-    test('reads auto-accept from the "accept edits" wording', () {
-      expect(
-        parseAgentMode('body\n  ⏵⏵ accept edits on (shift+tab to cycle)'),
-        AgentMode.autoAccept,
-      );
-    });
-
-    test('maps the default "manual mode" line to normal', () {
-      expect(
-        parseAgentMode('body\n  -- INSERT -- ⏸ manual mode on'),
-        AgentMode.normal,
-      );
-    });
-
-    test('reads plan mode', () {
-      expect(
-        parseAgentMode('body\n  ⏸ plan mode on (shift+tab to cycle)'),
-        AgentMode.plan,
-      );
-    });
-
-    test('reads bypass permissions mode', () {
-      expect(
-        parseAgentMode('body\n  ⏵⏵ bypass permissions on (shift+tab to cycle)'),
-        AgentMode.bypass,
-      );
-    });
-
-    test('falls back to normal for a bare insert line', () {
-      expect(parseAgentMode('body\n  -- INSERT --'), AgentMode.normal);
-    });
-
-    test('returns null when there is no mode line', () {
-      expect(parseAgentMode(permissionPromptFixture), isNull);
-    });
-  });
 }

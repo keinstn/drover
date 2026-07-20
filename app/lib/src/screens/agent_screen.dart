@@ -11,9 +11,11 @@ import 'package:re_highlight/re_highlight.dart';
 import 'package:re_highlight/styles/github-dark-dimmed.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../agents/agent_capabilities.dart';
+import '../agents/agent_native_history.dart';
+import '../agents/agent_registry.dart';
 import '../app_theme.dart';
 import '../herdr/ansi_text.dart';
-import '../herdr/askuser_submitter.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/pane_text.dart';
 import '../i18n/status_label.dart';
@@ -22,7 +24,7 @@ import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
 import '../transcript/native_transcript.dart';
 import '../widgets/top_toast.dart';
-import 'askuser_sheet.dart';
+import 'structured_prompt_sheet.dart';
 import 'herd_screen.dart' show statusColor;
 
 // The transcript renders on a fixed dark surface regardless of app theme:
@@ -131,14 +133,15 @@ class _AgentScreenState extends State<AgentScreen> {
   final List<PickedImage> _pendingImages = [];
   Timer? _timer;
   int _lines = _tailLines;
-  // Whether the AskUserQuestion sheet is currently on screen, and the tool_use
-  // id it was opened for. The id is retained after the sheet closes so the 2s
-  // poll never re-opens the sheet for the same prompt (once-only presentation).
-  bool _askUserSheetOpen = false;
-  String? _shownAskUserToolUseId;
+  // Whether the structured-prompt sheet is currently on screen, and the
+  // prompt id it was opened for. The id is retained after the sheet closes so
+  // the 2s poll never re-opens the sheet for the same prompt (once-only
+  // presentation).
+  bool _structuredPromptSheetOpen = false;
+  String? _shownStructuredPromptId;
   // The pushed sheet's route, so an auto-dismiss only pops when that route is
   // still current (never the AgentScreen route beneath it).
-  ModalRoute<void>? _askUserSheetRoute;
+  ModalRoute<void>? _structuredPromptSheetRoute;
 
   final _scrollController = ScrollController();
   final _messageController = TextEditingController();
@@ -176,6 +179,27 @@ class _AgentScreenState extends State<AgentScreen> {
     if (!_scrollController.hasClients) return true;
     final position = _scrollController.position;
     return position.pixels >= position.maxScrollExtent - 40;
+  }
+
+  /// The resolved agent-specific capabilities for [_agent], or null when the
+  /// agent hasn't loaded yet, no adapter supports it, or the adapter doesn't
+  /// implement that capability. AgentScreen only ever consumes capabilities
+  /// through these getters — never a concrete agent implementation — so
+  /// unsupported functionality is hidden or falls back to the generic
+  /// pane-text behavior instead of throwing.
+  AgentModeCapability? get _modeCapability {
+    final agent = _agent;
+    return agent == null ? null : resolveAgentAdapter(agent)?.mode;
+  }
+
+  StructuredPromptCapability? get _structuredPrompt {
+    final agent = _agent;
+    return agent == null ? null : resolveAgentAdapter(agent)?.structuredPrompt;
+  }
+
+  ImageAttachmentCapability? get _imagesCapability {
+    final agent = _agent;
+    return agent == null ? null : resolveAgentAdapter(agent)?.images;
   }
 
   Future<void> _loadWorkspaceLabel() async {
@@ -266,7 +290,7 @@ class _AgentScreenState extends State<AgentScreen> {
           _scrollController.jumpTo(target);
         });
       }
-      _syncAskUserSheet();
+      _syncStructuredPromptSheet();
     } catch (_) {
       // Keep last known state on read/poll errors; the transcript stays
       // visible and the next tick will retry.
@@ -275,23 +299,26 @@ class _AgentScreenState extends State<AgentScreen> {
     }
   }
 
-  /// Reconciles the AskUserQuestion sheet with the latest poll. Auto-presents
-  /// the sheet the first time a prompt is pending (tracked by tool_use id so a
-  /// later poll never re-opens it), and auto-dismisses an open sheet once its
-  /// prompt is gone — answered elsewhere or the agent moved on.
-  void _syncAskUserSheet() {
+  /// Reconciles the structured-prompt sheet with the latest poll.
+  /// Auto-presents the sheet the first time a prompt is pending (tracked by
+  /// its id so a later poll never re-opens it), and auto-dismisses an open
+  /// sheet once its prompt is gone — answered elsewhere or the agent moved on.
+  void _syncStructuredPromptSheet() {
     if (!mounted) return;
-    final pending = _nativeHistory?.pendingAskUserQuestion;
-    if (_askUserSheetOpen) {
-      if (pending == null || pending.toolUseId != _shownAskUserToolUseId) {
+    final history = _nativeHistory;
+    final pending = history == null
+        ? null
+        : _structuredPrompt?.pendingPrompt(history);
+    if (_structuredPromptSheetOpen) {
+      if (pending == null || pending.id != _shownStructuredPromptId) {
         // Clear the flag first so nothing else treats the sheet as open, then
         // only pop/toast if the sheet's route is genuinely still current — a
         // successful submit or user cancel pops the route itself, and its
         // ~250ms close animation would otherwise let this branch fire a second
         // pop (which could pop the AgentScreen) and a spurious toast.
-        _askUserSheetOpen = false;
-        final route = _askUserSheetRoute;
-        _askUserSheetRoute = null;
+        _structuredPromptSheetOpen = false;
+        final route = _structuredPromptSheetRoute;
+        _structuredPromptSheetRoute = null;
         if (route != null && route.isCurrent) {
           Navigator.of(context).pop();
           showTopToast(
@@ -302,55 +329,53 @@ class _AgentScreenState extends State<AgentScreen> {
       }
       return;
     }
-    if (pending != null && pending.toolUseId != _shownAskUserToolUseId) {
-      unawaited(_openAskUserSheet(pending));
+    if (pending != null && pending.id != _shownStructuredPromptId) {
+      unawaited(_openStructuredPromptSheet(pending));
     }
   }
 
-  Future<void> _openAskUserSheet(AskUserQuestionPrompt prompt) async {
-    _askUserSheetOpen = true;
-    _shownAskUserToolUseId = prompt.toolUseId;
+  Future<void> _openStructuredPromptSheet(StructuredPrompt prompt) async {
+    _structuredPromptSheetOpen = true;
+    _shownStructuredPromptId = prompt.id;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (sheetContext) {
-        _askUserSheetRoute = ModalRoute.of(sheetContext);
-        return AskUserSheet(
+        _structuredPromptSheetRoute = ModalRoute.of(sheetContext);
+        return StructuredPromptSheet(
           prompt: prompt,
-          onSubmit: (answers) => _submitAskUser(prompt, answers),
+          onSubmit: (answers) => _submitStructuredPrompt(prompt, answers),
         );
       },
     );
-    _askUserSheetOpen = false;
-    _askUserSheetRoute = null;
+    _structuredPromptSheetOpen = false;
+    _structuredPromptSheetRoute = null;
   }
 
-  /// Submits the staged [answers] into the live TUI dialog via the read-driven
-  /// key injector. On failure the error is surfaced as a top toast and rethrown
-  /// so the sheet stays open with its staged answers.
-  Future<void> _submitAskUser(
-    AskUserQuestionPrompt prompt,
-    List<AskUserQuestionAnswer> answers,
+  /// Submits the staged [answers] into the live TUI dialog via the resolved
+  /// agent's structured-prompt capability. On failure the error is surfaced
+  /// as a top toast and rethrown so the sheet stays open with its staged
+  /// answers.
+  Future<void> _submitStructuredPrompt(
+    StructuredPrompt prompt,
+    List<StructuredPromptAnswer> answers,
   ) async {
-    final submitter = AskUserQuestionSubmitter(
-      readPane: (paneId) => widget.client.readAgent(paneId),
-      sendPaneText: widget.client.sendPaneText,
-      sendKeys: widget.client.sendKeys,
-    );
     try {
-      await submitter.submit(
+      await _structuredPrompt!.submit(
+        client: widget.client,
         paneId: widget.paneId,
         prompt: prompt,
         answers: answers,
       );
       // The sheet pops itself on success. Clear the flag synchronously (before
-      // that pop and any subsequent poll) so _syncAskUserSheet doesn't mistake
-      // the close for an auto-dismiss and double-pop / show the dismissed toast.
-      _askUserSheetOpen = false;
+      // that pop and any subsequent poll) so _syncStructuredPromptSheet
+      // doesn't mistake the close for an auto-dismiss and double-pop / show
+      // the dismissed toast.
+      _structuredPromptSheetOpen = false;
     } catch (error) {
       if (mounted) {
-        final message = error is AskUserQuestionSubmitError
+        final message = error is StructuredPromptSubmitError
             ? error.message
             : error.toString();
         showTopToast(
@@ -390,20 +415,23 @@ class _AgentScreenState extends State<AgentScreen> {
   }
 
   /// Sends the composer's text and any staged images together. With staged
-  /// images the whole turn goes through [HerdrClient.sendImages] (caption +
-  /// paths); otherwise it's a plain text prompt.
+  /// images the whole turn goes through the resolved agent's
+  /// [ImageAttachmentCapability] (caption + paths); otherwise it's a plain
+  /// text prompt.
   Future<void> _sendMessage() async {
     if (_dictationStarting || _dictating) return;
     final text = _messageController.text;
     if (_pendingImages.isEmpty && text.trim().isEmpty) return;
     final agent = _agent;
-    if (_pendingImages.isNotEmpty && agent == null) {
-      return; // need the agent's cwd first
+    final images = _imagesCapability;
+    if (_pendingImages.isNotEmpty && (agent == null || images == null)) {
+      return; // need the agent's cwd and an image-capable adapter first
     }
     final ok = await _send(
       () => _pendingImages.isEmpty
           ? widget.client.prompt(widget.paneId, text)
-          : widget.client.sendImages(
+          : images!.send(
+              widget.client,
               agent!,
               images: _pendingImages,
               caption: text,
@@ -516,14 +544,19 @@ class _AgentScreenState extends State<AgentScreen> {
     final workspaceLabel = _workspaceLabel ?? agent?.workspaceId;
     final plain = stripAnsi(_text);
     final nativeHistory = _nativeHistory;
-    // A pending AskUserQuestion drives its own modal sheet; suppress the
+    final structuredPrompt = _structuredPrompt;
+    // A pending structured prompt drives its own modal sheet; suppress the
     // pane-text _PromptCard for it so the two never render at once. Other
     // blocked states keep the _PromptCard unchanged.
-    final hasPendingAskUser = nativeHistory?.pendingAskUserQuestion != null;
-    final question = agent?.status == AgentStatus.blocked && !hasPendingAskUser
+    final hasPendingStructuredPrompt =
+        nativeHistory != null &&
+        structuredPrompt?.pendingPrompt(nativeHistory) != null;
+    final question =
+        agent?.status == AgentStatus.blocked && !hasPendingStructuredPrompt
         ? parsePromptOptions(plain)
         : null;
-    final mode = parseAgentMode(plain);
+    final modeCapability = _modeCapability;
+    final mode = modeCapability?.parseMode(plain);
     // An empty-but-present native history (e.g. every record filtered out) is
     // treated as absent: no section header, and the pane fallback keeps working.
     // A tool_use- or thinking-only history still counts, so key off entries.
@@ -634,11 +667,13 @@ class _AgentScreenState extends State<AgentScreen> {
             dictating: _dictating,
             agentRunning: agent?.status == AgentStatus.working,
             pendingImages: _pendingImages,
+            canAttachImages: _imagesCapability != null,
             onRemoveImage: _removePendingImage,
             onDictation: _toggleDictation,
             onAttach: _attachImage,
             onSend: _sendMessage,
             mode: mode,
+            modeCapability: modeCapability,
             onAction: _send,
             client: widget.client,
             paneId: widget.paneId,
@@ -749,7 +784,8 @@ class _NativeTranscript extends StatelessWidget {
                     text: text,
                   ),
                   // A tool_result marker is only used to detect an answered
-                  // AskUserQuestion; it has no chat-visible rendering.
+                  // structured prompt (e.g. Claude's AskUserQuestion); it has
+                  // no chat-visible rendering.
                   TranscriptToolResult() => const SizedBox.shrink(),
                 },
               ),
@@ -1454,11 +1490,13 @@ class _Composer extends StatelessWidget {
     required this.dictating,
     required this.agentRunning,
     required this.pendingImages,
+    required this.canAttachImages,
     required this.onRemoveImage,
     required this.onDictation,
     required this.onAttach,
     required this.onSend,
     required this.mode,
+    required this.modeCapability,
     required this.onAction,
     required this.client,
     required this.paneId,
@@ -1473,20 +1511,29 @@ class _Composer extends StatelessWidget {
   /// empty, the send button becomes a stop button that interrupts with Esc.
   final bool agentRunning;
   final List<PickedImage> pendingImages;
+
+  /// Whether the resolved agent has an [ImageAttachmentCapability]. The
+  /// attach-image affordance is hidden entirely when it doesn't, rather than
+  /// offering an attach flow that has nowhere to send its upload.
+  final bool canAttachImages;
   final void Function(int index) onRemoveImage;
   final VoidCallback onDictation;
   final void Function(ImageAttachSource source) onAttach;
   final VoidCallback onSend;
   final AgentMode? mode;
 
+  /// The resolved agent's mode capability, used only to cycle the mode when
+  /// the chip is tapped. Non-null whenever [mode] is (both come from the
+  /// same resolved capability), so the mode button is only ever built when
+  /// this is available.
+  final AgentModeCapability? modeCapability;
+
   /// Wraps client actions (mode cycling, Enter, Esc) so the caller can track
   /// in-flight sends.
   ///
-  /// The mode chip is tappable: tapping it cycles the agent's mode by
-  /// sending the raw backtab escape sequence via `client.cycleMode`, since
-  /// herdr's `send-keys shift+tab` mis-encodes it for kitty-keyboard agents
-  /// like Claude Code (see herdr issue #1561). This can only cycle through
-  /// modes, not jump to a specific one.
+  /// The mode chip is tappable: tapping it cycles the agent's mode via
+  /// [modeCapability]. This can only cycle through modes, not jump to a
+  /// specific one.
   final Future<bool> Function(Future<void> Function()) onAction;
   final HerdrClient client;
   final String paneId;
@@ -1544,19 +1591,23 @@ class _Composer extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _AttachButton(
-                  sending: sending || dictationStarting || dictating,
-                  onPick: onAttach,
-                ),
-                if (mode != null) ...[
+                if (canAttachImages) ...[
+                  _AttachButton(
+                    sending: sending || dictationStarting || dictating,
+                    onPick: onAttach,
+                  ),
                   const SizedBox(width: 8),
+                ],
+                if (mode != null) ...[
                   _ModeButton(
                     mode: mode,
                     sending: sending,
-                    onPressed: () => onAction(() => client.cycleMode(paneId)),
+                    onPressed: () => onAction(
+                      () => modeCapability!.cycleMode(client, paneId),
+                    ),
                   ),
+                  const SizedBox(width: 8),
                 ],
-                const SizedBox(width: 8),
                 _EscapeButton(
                   sending: sending,
                   onPressed: () =>

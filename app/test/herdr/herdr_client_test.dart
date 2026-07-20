@@ -1,9 +1,5 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
-import 'package:drover/src/image/image_input.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/agent_preset.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
@@ -199,59 +195,6 @@ void main() {
         "~/.local/bin/herdr 'agent' 'send' 'wB:p4' 'go'",
         "~/.local/bin/herdr 'pane' 'send-keys' 'wB:p4' 'enter'",
       ]);
-    });
-  });
-
-  group('HerdrClient.sendImages', () {
-    test('uploads bytes and prompts with caption and paths', () async {
-      final runner = FakeCommandRunner((_) => ok('{"id":"1","result":{}}'));
-      final client = HerdrClient(runner);
-      const agent = AgentInfo(
-        paneId: 'wB:p1',
-        workspaceId: 'wB',
-        tabId: 'wB:t1',
-        agent: 'claude',
-        status: AgentStatus.idle,
-        cwd: '/tmp/proj',
-        focused: false,
-      );
-
-      final paths = await client.sendImages(
-        agent,
-        images: [
-          PickedImage(bytes: Uint8List.fromList([1, 2, 3]), extension: 'png'),
-          PickedImage(bytes: Uint8List.fromList([4, 5, 6]), extension: 'jpg'),
-        ],
-        caption: 'look at this',
-        timestampMs: 42,
-      );
-
-      expect(paths, [
-        '/tmp/proj/.drover/img-42-0.png',
-        '/tmp/proj/.drover/img-42-1.jpg',
-      ]);
-      expect(runner.uploads[0].path, '/tmp/proj/.drover/img-42-0.png');
-      expect(runner.uploads[0].bytes, [1, 2, 3]);
-      expect(runner.uploads[1].path, '/tmp/proj/.drover/img-42-1.jpg');
-      expect(runner.uploads[1].bytes, [4, 5, 6]);
-      expect(runner.uploads[2].path, '/tmp/proj/.drover/.gitignore');
-      expect(utf8.decode(runner.uploads[2].bytes), '*\n');
-      expect(
-        runner.commands.where(
-          (c) => c == "command mkdir -p '/tmp/proj/.drover'",
-        ),
-        hasLength(1),
-      );
-      expect(
-        runner.commands,
-        containsAllInOrder([
-          "command mkdir -p '/tmp/proj/.drover'",
-          "~/.local/bin/herdr 'agent' 'send' 'wB:p1' "
-              "'look at this\n/tmp/proj/.drover/img-42-0.png\n"
-              "/tmp/proj/.drover/img-42-1.jpg'",
-          "~/.local/bin/herdr 'pane' 'send-keys' 'wB:p1' 'enter'",
-        ]),
-      );
     });
   });
 
