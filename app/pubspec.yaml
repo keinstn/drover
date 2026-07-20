@@ -54,6 +54,12 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+dependency_overrides:
+  dartssh2:
+    git:
+      url: https://github.com/keinstn/dartssh2.git
+      ref: 4172e4c00671c5d1b1d005c1c9fed9292706630e
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 

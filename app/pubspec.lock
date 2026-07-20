@@ -100,10 +100,11 @@ packages:
   dartssh2:
     dependency: "direct main"
     description:
-      name: dartssh2
-      sha256: "68b066d130d0dd322018f5fa69ea919927f082d7062ef613b200c5f01e0c7636"
-      url: "https://pub.dev"
-    source: hosted
+      path: "."
+      ref: "4172e4c00671c5d1b1d005c1c9fed9292706630e"
+      resolved-ref: "4172e4c00671c5d1b1d005c1c9fed9292706630e"
+      url: "https://github.com/keinstn/dartssh2.git"
+    source: git
     version: "2.22.2"
   fake_async:
     dependency: transitive

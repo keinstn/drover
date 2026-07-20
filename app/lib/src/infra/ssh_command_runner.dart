@@ -112,18 +112,33 @@ class SshCommandRunner implements CommandRunner {
     );
   }
 
-  @override
-  Future<CommandResult> run(String command) {
+  /// Runs [body] with the shared client, serialized on [_mutex] so at most one
+  /// channel is ever open at a time. If a channel open is refused (e.g. the
+  /// server hit its per-connection session limit), the TCP connection stays
+  /// open, so [_ensureClient] would otherwise keep reusing this wedged client
+  /// forever and every later call would fail identically. Drop the client so
+  /// the next call reconnects. Resetting here is safe: a channel-open failure
+  /// means [body] never ran a command, so it cannot re-send a non-idempotent
+  /// `agent send` / `send-keys`.
+  Future<T> _withClient<T>(Future<T> Function(SSHClient client) body) {
     return _mutex.run(() async {
       final client = await _ensureClient();
-      return _execute(client, command);
+      try {
+        return await body(client);
+      } on SSHChannelOpenError {
+        await dispose();
+        rethrow;
+      }
     });
   }
 
   @override
+  Future<CommandResult> run(String command) =>
+      _withClient((client) => _execute(client, command));
+
+  @override
   Future<void> uploadFile(String remotePath, List<int> bytes) {
-    return _mutex.run(() async {
-      final client = await _ensureClient();
+    return _withClient((client) async {
       final sftp = await client.sftp();
       try {
         final file = await sftp.open(
@@ -139,15 +154,14 @@ class SshCommandRunner implements CommandRunner {
           await file.close();
         }
       } finally {
-        sftp.close();
+        await sftp.close();
       }
     });
   }
 
   @override
   Future<List<RemoteDirEntry>> listDirectory(String path) {
-    return _mutex.run(() async {
-      final client = await _ensureClient();
+    return _withClient((client) async {
       final sftp = await client.sftp();
       try {
         final names = await sftp.listdir(path);
@@ -161,28 +175,26 @@ class SshCommandRunner implements CommandRunner {
             )
             .toList();
       } finally {
-        sftp.close();
+        await sftp.close();
       }
     });
   }
 
   @override
   Future<String> resolvePath(String path) {
-    return _mutex.run(() async {
-      final client = await _ensureClient();
+    return _withClient((client) async {
       final sftp = await client.sftp();
       try {
         return await sftp.absolute(path);
       } finally {
-        sftp.close();
+        await sftp.close();
       }
     });
   }
 
   @override
   Future<RemoteFileStat> statFile(String path) {
-    return _mutex.run(() async {
-      final client = await _ensureClient();
+    return _withClient((client) async {
       final sftp = await client.sftp();
       try {
         final attrs = await sftp.stat(path);
@@ -190,15 +202,14 @@ class SshCommandRunner implements CommandRunner {
         if (size == null) throw StateError('Remote file size is unavailable');
         return RemoteFileStat(size: size);
       } finally {
-        sftp.close();
+        await sftp.close();
       }
     });
   }
 
   @override
   Future<List<int>> readFile(String path, {int offset = 0}) {
-    return _mutex.run(() async {
-      final client = await _ensureClient();
+    return _withClient((client) async {
       final sftp = await client.sftp();
       try {
         final file = await sftp.open(path);
@@ -208,7 +219,7 @@ class SshCommandRunner implements CommandRunner {
           await file.close();
         }
       } finally {
-        sftp.close();
+        await sftp.close();
       }
     });
   }
