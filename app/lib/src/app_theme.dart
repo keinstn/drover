@@ -37,5 +37,7 @@ const statusBlocked = Color(0xFFE5695E);
 const statusDone = Color(0xFF63C08C);
 const statusUnknown = Color(0xFF6C7681);
 
-/// Used for [AgentMode.plan] only — distinct from the status colors above.
-const modePlan = Color(0xFF6FA8D8);
+// Dedicated colors for AgentMode, distinct from the status colors above so
+// mode and agent-status never share meaning by accident.
+const modeAcceptEdit = Color(0xFF9B7EC7);
+const modePlan = Color(0xFF5FAF82);

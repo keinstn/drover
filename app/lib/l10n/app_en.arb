@@ -35,6 +35,11 @@
   "agentStatusDone": "done",
   "agentStatusUnknown": "unknown",
 
+  "agentModeNormal": "Normal",
+  "agentModeAutoAccept": "Accept Edits",
+  "agentModePlan": "Plan",
+  "agentModeBypass": "Bypass",
+
   "agentComposerHint": "Message agent…",
   "agentCycleModeTooltip": "Cycle agent mode (shift+tab)",
   "agentRemoveImage": "Remove image",
