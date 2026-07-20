@@ -28,6 +28,8 @@ class _AskUserSheetState extends State<AskUserSheet> {
   // it holds 0 or 1 entries); custom free-text answers live in the controllers.
   late final List<Set<int>> _selected;
   late final List<TextEditingController> _customControllers;
+  // Whether the custom free-text field is expanded (revealed) per question.
+  late final List<bool> _customOpen;
   bool _submitting = false;
 
   @override
@@ -36,6 +38,7 @@ class _AskUserSheetState extends State<AskUserSheet> {
     final count = widget.prompt.questions.length;
     _selected = List.generate(count, (_) => <int>{});
     _customControllers = List.generate(count, (_) => TextEditingController());
+    _customOpen = List.generate(count, (_) => false);
   }
 
   @override
@@ -49,8 +52,10 @@ class _AskUserSheetState extends State<AskUserSheet> {
   void _toggleOption(int questionIndex, int optionIndex) {
     final question = widget.prompt.questions[questionIndex];
     setState(() {
-      // Selecting an option and typing custom text are mutually exclusive.
+      // Selecting an option and typing custom text are mutually exclusive;
+      // collapse the custom field back to its tap-to-expand affordance too.
       _customControllers[questionIndex].clear();
+      _customOpen[questionIndex] = false;
       final selected = _selected[questionIndex];
       if (question.multiSelect) {
         if (!selected.remove(optionIndex)) selected.add(optionIndex);
@@ -149,7 +154,7 @@ class _AskUserSheetState extends State<AskUserSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     for (final (index, question) in questions.indexed) ...[
-                      if (index > 0) const Divider(height: 32),
+                      if (index > 0) const Divider(height: 20),
                       _buildQuestion(context, l10n, index, question),
                     ],
                   ],
@@ -213,8 +218,8 @@ class _AskUserSheetState extends State<AskUserSheet> {
           ),
         ),
         const SizedBox(height: 4),
-        Text(question.question, style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
+        Text(question.question, style: theme.textTheme.titleSmall),
+        const SizedBox(height: 6),
         if (question.multiSelect)
           for (final (optionIndex, option) in question.options.indexed)
             _buildOption(index, question, optionIndex, option)
@@ -236,21 +241,47 @@ class _AskUserSheetState extends State<AskUserSheet> {
           ),
         // A custom free-text answer is offered only for single-select
         // questions; the submitter rejects custom text on multi-select ones.
+        // It starts collapsed behind a tap-to-expand affordance (mirroring
+        // the TUI's "Type something" option) and only reveals the TextField
+        // once tapped.
         if (!question.multiSelect) ...[
-          const SizedBox(height: 8),
-          TextField(
-            key: ValueKey('askuser_q${index}_custom'),
-            controller: _customControllers[index],
-            enabled: !_submitting,
-            minLines: 1,
-            maxLines: 4,
-            onChanged: (value) => _onCustomChanged(index, value),
-            decoration: InputDecoration(
-              hintText: l10n.agentAskUserCustomHint,
-              isDense: true,
-              border: const OutlineInputBorder(),
+          const SizedBox(height: 6),
+          if (_customOpen[index])
+            TextField(
+              key: ValueKey('askuser_q${index}_custom'),
+              controller: _customControllers[index],
+              enabled: !_submitting,
+              autofocus: true,
+              minLines: 1,
+              maxLines: 4,
+              onChanged: (value) => _onCustomChanged(index, value),
+              decoration: InputDecoration(
+                hintText: l10n.agentAskUserCustomHint,
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+            )
+          else
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: ValueKey('askuser_q${index}_custom_toggle'),
+                onPressed: _submitting
+                    ? null
+                    : () => setState(() => _customOpen[index] = true),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  l10n.agentAskUserCustomHint,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.primary,
+                  ),
+                ),
+              ),
             ),
-          ),
         ],
       ],
     );
@@ -263,12 +294,16 @@ class _AskUserSheetState extends State<AskUserSheet> {
     AskUserQuestionOption option,
   ) {
     final selected = _selected[questionIndex].contains(optionIndex);
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final titleStyle = theme.textTheme.bodyMedium;
     final subtitle = option.description == null
         ? null
         : Text(
             option.description!,
-            style: TextStyle(color: scheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
           );
     final key = ValueKey('askuser_q${questionIndex}_opt$optionIndex');
     void toggle() => _toggleOption(questionIndex, optionIndex);
@@ -279,7 +314,9 @@ class _AskUserSheetState extends State<AskUserSheet> {
         onChanged: _submitting ? null : (_) => toggle(),
         controlAffinity: ListTileControlAffinity.leading,
         contentPadding: EdgeInsets.zero,
-        title: Text(option.label),
+        dense: true,
+        visualDensity: VisualDensity.compact,
+        title: Text(option.label, style: titleStyle),
         subtitle: subtitle,
       );
     }
@@ -290,7 +327,9 @@ class _AskUserSheetState extends State<AskUserSheet> {
       enabled: !_submitting,
       controlAffinity: ListTileControlAffinity.leading,
       contentPadding: EdgeInsets.zero,
-      title: Text(option.label),
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      title: Text(option.label, style: titleStyle),
       subtitle: subtitle,
     );
   }
