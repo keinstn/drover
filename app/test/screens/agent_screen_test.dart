@@ -10,6 +10,7 @@ import 'package:drover/src/speech/speech_input.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpt_markdown/custom_widgets/custom_divider.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 
 /// A valid 1x1 PNG so the composer's `Image.memory` preview can decode it in
@@ -178,6 +179,89 @@ class DuplicatePaneRunner extends NativeHistoryRunner {
   }
 }
 
+/// JSONL for a single assistant turn carrying [text].
+String _assistantJsonl(String text) =>
+    '${jsonEncode({
+      'type': 'assistant',
+      'message': {
+        'role': 'assistant',
+        'content': [
+          {'type': 'text', 'text': text},
+        ],
+      },
+    })}\n';
+
+/// Pumps an [AgentScreen] whose only native turn is an assistant message
+/// carrying [text], then settles and lets the off-isolate code highlighter
+/// deliver its result. Fenced code is highlighted via [compute], which only
+/// runs under [WidgetTester.runAsync]; blocks render plain until it lands.
+Future<void> _pumpAssistant(WidgetTester tester, String text) async {
+  final client = HerdrClient(
+    NativeHistoryRunner()..contents = _assistantJsonl(text),
+  );
+  await tester.pumpWidget(
+    MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: AgentScreen(
+        client: client,
+        paneId: 'wB:p1',
+        pollInterval: const Duration(hours: 1),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.runAsync(
+    () => Future<void>.delayed(const Duration(milliseconds: 800)),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// The [RichText] whose flattened text contains [needle], or null.
+RichText? _richTextContaining(WidgetTester tester, String needle) {
+  for (final rich in tester.widgetList<RichText>(find.byType(RichText))) {
+    if (rich.text.toPlainText().contains(needle)) return rich;
+  }
+  return null;
+}
+
+/// Distinct foreground colours across [root], merging inherited styles so the
+/// count reflects what actually paints.
+Set<Color> _spanColors(InlineSpan root) {
+  final colors = <Color>{};
+  void walk(InlineSpan span, TextStyle inherited) {
+    if (span is! TextSpan) return;
+    final merged = inherited.merge(span.style);
+    if ((span.text ?? '').isNotEmpty && merged.color != null) {
+      colors.add(merged.color!);
+    }
+    for (final child in span.children ?? const <InlineSpan>[]) {
+      walk(child, merged);
+    }
+  }
+
+  walk(root, const TextStyle());
+  return colors;
+}
+
+/// The effective font size of the first span whose text contains [needle].
+double? _fontSizeOfText(InlineSpan root, String needle) {
+  double? found;
+  void walk(InlineSpan span, TextStyle inherited) {
+    if (span is! TextSpan) return;
+    final merged = inherited.merge(span.style);
+    if (found == null && (span.text ?? '').contains(needle)) {
+      found = merged.fontSize;
+    }
+    for (final child in span.children ?? const <InlineSpan>[]) {
+      walk(child, merged);
+    }
+  }
+
+  walk(root, const TextStyle());
+  return found;
+}
+
 void main() {
   testWidgets('renders native Claude history with a separated live terminal', (
     tester,
@@ -316,6 +400,99 @@ void main() {
     expect(find.textContaining('final value ='), findsOneWidget);
     // A layout overflow would surface as a thrown exception during layout.
     expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('syntax-highlights a dart fence with multiple colours', (
+    tester,
+  ) async {
+    await _pumpAssistant(
+      tester,
+      '```dart\nvoid main() {\n  final x = 42;\n  print(x);\n}\n```',
+    );
+
+    final code = _richTextContaining(tester, 'void main');
+    expect(code, isNotNull);
+    // More than one foreground colour means the highlighter coloured the tokens
+    // rather than falling back to a single plain style.
+    expect(_spanColors(code!.text).length, greaterThan(1));
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('renders an unknown-language fence as plain text (no throw)', (
+    tester,
+  ) async {
+    await _pumpAssistant(tester, '```zzz\nsome unknown code\n```');
+
+    expect(find.textContaining('some unknown code'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('renders a diff fence without throwing', (tester) async {
+    await _pumpAssistant(
+      tester,
+      '```diff\n-old removed line\n+new added line\n```',
+    );
+
+    expect(
+      find.textContaining('new added line', findRichText: true),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('renders an over-cap fence as plain text without highlighting', (
+    tester,
+  ) async {
+    // Over the 20k pre-check: highlighting is skipped entirely (no isolate
+    // work), so the raw code renders immediately as plain text.
+    final huge = 'x' * 20001;
+    final client = HerdrClient(
+      NativeHistoryRunner()
+        ..contents = _assistantJsonl('```dart\n// MARKER\n$huge\n```'),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('MARKER'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('scales an h2 heading to chat proportions', (tester) async {
+    await _pumpAssistant(tester, '## Title');
+
+    final heading = _richTextContaining(tester, 'Title');
+    expect(heading, isNotNull);
+    expect(_fontSizeOfText(heading!.text, 'Title'), 18);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('does not add a divider after an h1 heading', (tester) async {
+    await _pumpAssistant(tester, '# Title');
+
+    expect(find.textContaining('Title', findRichText: true), findsOneWidget);
+    // gpt_markdown draws the auto h1 divider as a CustomDivider; disabled here.
+    expect(find.byType(CustomDivider), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
   });
