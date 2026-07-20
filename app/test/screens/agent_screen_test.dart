@@ -896,6 +896,58 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets(
+    'scrolls a long live-terminal line horizontally instead of wrapping it',
+    (tester) async {
+      // TUI screens are laid out for a fixed terminal width; a long single
+      // line must render at its intrinsic width (scrollable), not re-wrap.
+      final longLine = 'x' * 400;
+      CommandResult respondLongLine(String command) {
+        if (command.contains("'agent' 'read'")) {
+          return ok(
+            '{"id":"1","result":{"read":{"text":${jsonEncodeString(longLine)}}}}',
+          );
+        }
+        return workingResponse(command);
+      }
+
+      final client = HerdrClient(StubCommandRunner(respondLongLine));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining(longLine), findsOneWidget);
+      // A layout overflow (from the long line being forced to fit the phone's
+      // width) would surface as a thrown exception during layout.
+      expect(tester.takeException(), isNull);
+
+      // The live terminal scrolls horizontally rather than wrapping; this is
+      // distinct from the transcript's outer vertical scroll (keyed
+      // `transcript_scroll`), and no fenced code/diff/image row is on screen
+      // here, so it's the only horizontal SingleChildScrollView present.
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is SingleChildScrollView &&
+              widget.scrollDirection == Axis.horizontal,
+        ),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('shows native load errors while keeping pane fallback', (
     tester,
   ) async {
