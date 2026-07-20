@@ -56,6 +56,10 @@ CommandResult _respond(String command) {
       ']}}',
     );
   }
+  if (command.contains("'workspace' 'rename'") ||
+      command.contains("'agent' 'rename'")) {
+    return ok('{"id":"1","result":{"type":"ok"}}');
+  }
   return ok(_listEnvelope);
 }
 
@@ -195,6 +199,76 @@ void main() {
     expect(
       runner.commands,
       contains("~/.local/bin/herdr 'pane' 'close' 'wA:p1'"),
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('long press on workspace header renames workspace', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HerdScreen(
+          client: client,
+          onOpenSettings: () {},
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.longPress(find.text('Project A'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rename workspace'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'Delivery');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(
+      runner.commands,
+      contains("~/.local/bin/herdr 'workspace' 'rename' 'wA' 'Delivery'"),
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('long press on an agent renames the agent', (tester) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HerdScreen(
+          client: client,
+          onOpenSettings: () {},
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.longPress(find.byKey(const ValueKey('agent-wA:p1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rename agent'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'Pair Driver');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(
+      runner.commands,
+      contains("~/.local/bin/herdr 'agent' 'rename' 'wA:p1' 'Pair Driver'"),
     );
 
     await tester.pumpWidget(const SizedBox());

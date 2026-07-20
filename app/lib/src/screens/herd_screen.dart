@@ -145,6 +145,8 @@ class _HerdScreenState extends State<HerdScreen> {
   String _workspaceLabel(String workspaceId) =>
       _workspaceLabels[workspaceId] ?? workspaceId;
 
+  String _agentDisplayName(AgentInfo agent) => agent.name ?? agent.agent;
+
   void _checkBlockedTransitions(List<AgentInfo> agents) {
     for (final agent in agents) {
       final previous = _previousStatus[agent.paneId];
@@ -157,7 +159,7 @@ class _HerdScreenState extends State<HerdScreen> {
           final l10n = AppLocalizations.of(context)!;
           showTopToast(
             context,
-            l10n.herdAgentBlocked(agent.name ?? agent.agent),
+            l10n.herdAgentBlocked(_agentDisplayName(agent)),
           );
         }
       }
@@ -193,7 +195,7 @@ class _HerdScreenState extends State<HerdScreen> {
   }
 
   Future<bool> _confirmAndStop(AgentInfo agent) async {
-    final name = agent.name ?? agent.agent;
+    final name = _agentDisplayName(agent);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -230,6 +232,79 @@ class _HerdScreenState extends State<HerdScreen> {
       }
     }
     return false;
+  }
+
+  Future<String?> _promptRename({
+    required String title,
+    required String fieldLabel,
+    required String initialValue,
+  }) async {
+    final controller = TextEditingController(text: initialValue);
+    final next = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        final l10n = AppLocalizations.of(context)!;
+        return AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+              labelText: fieldLabel,
+            ),
+            onSubmitted: (value) => Navigator.of(context).pop(value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(l10n.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(controller.text),
+              child: Text(MaterialLocalizations.of(context).saveButtonLabel),
+            ),
+          ],
+        );
+      },
+    );
+    return next?.trim();
+  }
+
+  Future<void> _renameWorkspace(String workspaceId) async {
+    final l10n = AppLocalizations.of(context)!;
+    final current = _workspaceLabel(workspaceId);
+    final next = await _promptRename(
+      title: l10n.herdRenameWorkspaceTitle,
+      fieldLabel: l10n.herdRenameWorkspaceField,
+      initialValue: current,
+    );
+    if (next == null || next.isEmpty || next == current || !mounted) return;
+    try {
+      await widget.client.renameWorkspace(workspaceId, next);
+      if (!mounted) return;
+      setState(() => _workspaceLabels[workspaceId] = next);
+      _loadWorkspaceLabels();
+    } catch (e) {
+      if (mounted) showTopToast(context, e.toString());
+    }
+  }
+
+  Future<void> _renameAgent(AgentInfo agent) async {
+    final l10n = AppLocalizations.of(context)!;
+    final current = _agentDisplayName(agent);
+    final next = await _promptRename(
+      title: l10n.herdRenameAgentTitle,
+      fieldLabel: l10n.herdRenameAgentField,
+      initialValue: current,
+    );
+    if (next == null || next.isEmpty || next == current || !mounted) return;
+    try {
+      await widget.client.renameAgent(agent.paneId, next);
+      await _load();
+    } catch (e) {
+      if (mounted) showTopToast(context, e.toString());
+    }
   }
 
   Map<String, List<AgentInfo>> _grouped() {
@@ -288,11 +363,15 @@ class _HerdScreenState extends State<HerdScreen> {
                 : ListView(
                     children: [
                       for (final entry in groups.entries) ...[
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                          child: Text(
-                            _workspaceLabel(entry.key),
-                            style: Theme.of(context).textTheme.titleSmall,
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onLongPress: () => _renameWorkspace(entry.key),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                            child: Text(
+                              _workspaceLabel(entry.key),
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
                           ),
                         ),
                         for (final agent in entry.value)
@@ -329,6 +408,11 @@ class _HerdScreenState extends State<HerdScreen> {
                             confirmDismiss: (_) => _confirmAndStop(agent),
                             child: _AgentTile(
                               agent: agent,
+                              displayName: _agentDisplayName(agent),
+                              onLongPress:
+                                  _stoppingPaneIds.contains(agent.paneId)
+                                  ? null
+                                  : () => _renameAgent(agent),
                               onTap: _stoppingPaneIds.contains(agent.paneId)
                                   ? null
                                   : () {
@@ -365,10 +449,17 @@ class _HerdScreenState extends State<HerdScreen> {
 }
 
 class _AgentTile extends StatelessWidget {
-  const _AgentTile({required this.agent, required this.onTap});
+  const _AgentTile({
+    required this.agent,
+    required this.displayName,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   final AgentInfo agent;
+  final String displayName;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -386,9 +477,10 @@ class _AgentTile extends StatelessWidget {
           ),
         ],
       ),
-      title: Text(agent.name ?? agent.agent),
+      title: Text(displayName),
       subtitle: Text(lastPathSegment(cwd)),
       onTap: onTap,
+      onLongPress: onLongPress,
     );
   }
 }

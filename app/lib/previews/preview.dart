@@ -20,6 +20,7 @@ import '../src/dev/stub_herdr.dart';
 import '../src/herdr/command_runner.dart';
 import '../src/herdr/herdr_client.dart';
 import '../src/screens/agent_screen.dart';
+import '../src/screens/herd_screen.dart';
 import '../src/screens/launch_agent_sheet.dart';
 
 const _scenario = String.fromEnvironment('SCENARIO', defaultValue: 'idle');
@@ -48,8 +49,63 @@ CommandResult _launchResponder(String command) {
   return ok('{"id":"1","result":{}}');
 }
 
+const _herdListEnvelope =
+    '{"id":"1","result":{"agents":['
+    '{"agent":"claude","agent_status":"idle","cwd":"/tmp/proj-a",'
+    '"focused":false,"pane_id":"wA:p1","tab_id":"wA:t1",'
+    '"workspace_id":"wA","name":"Agent One"},'
+    '{"agent":"claude","agent_status":"blocked","cwd":"/tmp/proj-a",'
+    '"focused":false,"pane_id":"wA:p2","tab_id":"wA:t1",'
+    '"workspace_id":"wA","name":"Agent Two"},'
+    '{"agent":"claude","agent_status":"working","cwd":"/tmp/proj-b",'
+    '"focused":false,"pane_id":"wB:p1","tab_id":"wB:t1",'
+    '"workspace_id":"wB","name":"Agent Three"}'
+    ']}}';
+
+const _herdAgentReadText =
+    'Working on the task...\n'
+    '-- INSERT -- auto mode on\n';
+
+CommandResult _herdResponder(String command) {
+  if (command.contains("'workspace' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"workspaces":['
+      '{"workspace_id":"wA","label":"Project A"},'
+      '{"workspace_id":"wB","label":"Project B"}'
+      ']}}',
+    );
+  }
+  if (command.contains("'agent' 'list'")) return ok(_herdListEnvelope);
+  if (command.contains("'workspace' 'rename'") ||
+      command.contains("'agent' 'rename'")) {
+    return ok('{"id":"1","result":{"type":"ok"}}');
+  }
+  if (command.contains("'pane' 'close'")) {
+    return ok('{"id":"1","result":{"type":"ok"}}');
+  }
+  if (command.contains("'agent' 'get'")) {
+    return ok(
+      '{"id":"1","result":{"agent":{"agent":"claude",'
+      '"agent_status":"working","cwd":"/tmp/proj-b","focused":false,'
+      '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+      '"name":"Agent Three"}}}',
+    );
+  }
+  if (command.contains("'agent' 'read'")) {
+    return ok(
+      '{"id":"1","result":{"read":{"text":${jsonEncodeString(_herdAgentReadText)}}}}',
+    );
+  }
+  return ok('{"id":"1","result":{}}');
+}
+
 /// Registry of named previews. Add a screen = add an entry here.
 final _previews = <String, WidgetBuilder>{
+  'herd': (_) => HerdScreen(
+    client: _client(_herdResponder),
+    onOpenSettings: () {},
+    pollInterval: const Duration(hours: 1),
+  ),
   'agent': (_) => AgentScreen(
     client: _client(
       _scenario == 'blocked' ? blockedPromptResponse : idleWithModeResponse,

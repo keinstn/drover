@@ -157,6 +157,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get herdNoAgents => 'No agents found';
 
   @override
+  String get herdRenameWorkspaceTitle => 'Rename workspace';
+
+  @override
+  String get herdRenameWorkspaceField => 'Workspace name';
+
+  @override
+  String get herdRenameAgentTitle => 'Rename agent';
+
+  @override
+  String get herdRenameAgentField => 'Agent name';
+
+  @override
   String get launchButton => 'Launch';
 
   @override

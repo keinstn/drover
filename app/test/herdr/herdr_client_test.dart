@@ -354,6 +354,22 @@ void main() {
     });
   });
 
+  group('HerdrClient.renameWorkspace', () {
+    test('builds the rename command', () async {
+      final runner = FakeCommandRunner(
+        (_) => ok('{"id":"1","result":{"type":"workspace_renamed"}}'),
+      );
+      final client = HerdrClient(runner);
+
+      await client.renameWorkspace('wZ', 'Project Z');
+
+      expect(
+        runner.commands.single,
+        "~/.local/bin/herdr 'workspace' 'rename' 'wZ' 'Project Z'",
+      );
+    });
+  });
+
   group('HerdrClient.startAgent', () {
     test('builds the start command with a workspace id', () async {
       final runner = FakeCommandRunner(
@@ -387,6 +403,22 @@ void main() {
         runner.commands.single,
         "~/.local/bin/herdr 'agent' 'start' 'proj' '--cwd' '/tmp/proj' "
         "'--no-focus' '--' 'claude'",
+      );
+    });
+  });
+
+  group('HerdrClient.renameAgent', () {
+    test('builds the rename command', () async {
+      final runner = FakeCommandRunner(
+        (_) => ok('{"id":"1","result":{"type":"agent_renamed"}}'),
+      );
+      final client = HerdrClient(runner);
+
+      await client.renameAgent('wA:p1', 'Pair Programmer');
+
+      expect(
+        runner.commands.single,
+        "~/.local/bin/herdr 'agent' 'rename' 'wA:p1' 'Pair Programmer'",
       );
     });
   });

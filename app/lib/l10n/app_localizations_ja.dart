@@ -149,6 +149,18 @@ class AppLocalizationsJa extends AppLocalizations {
   String get herdNoAgents => 'エージェントが見つかりません';
 
   @override
+  String get herdRenameWorkspaceTitle => 'ワークスペース名を変更';
+
+  @override
+  String get herdRenameWorkspaceField => 'ワークスペース名';
+
+  @override
+  String get herdRenameAgentTitle => 'エージェント名を変更';
+
+  @override
+  String get herdRenameAgentField => 'エージェント名';
+
+  @override
   String get launchButton => '起動';
 
   @override
