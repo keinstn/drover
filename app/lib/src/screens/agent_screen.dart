@@ -1,9 +1,13 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
+import 'package:re_highlight/languages/all.dart';
+import 'package:re_highlight/re_highlight.dart';
+import 'package:re_highlight/styles/github-dark-dimmed.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
@@ -26,6 +30,25 @@ const _transcriptFg = Color(0xFFE4E4E7);
 // Panel behind inline/fenced code, a touch lighter than the transcript surface
 // so code stays legible without the pure-white background of light themes.
 const _codeSurface = Color(0xFF26262B);
+
+// Base style for fenced code: kept in sync with the plain-text fallback so
+// highlighted and unhighlighted blocks read identically apart from colour.
+const _codeTextStyle = TextStyle(
+  fontFamily: 'monospace',
+  fontSize: 13,
+  height: 1.4,
+  color: _transcriptFg,
+);
+
+// UI-side highlighter, used only for the cheap getLanguage() pre-check that
+// decides whether a fence tag is worth highlighting. The actual highlight()
+// call is expensive (seconds on pathological input) and runs off the UI
+// isolate — see _highlightSegments.
+final Highlight _codeHighlighter = Highlight()
+  ..registerLanguages(builtinLanguages);
+
+// Above this the highlight cost isn't worth it; such blocks render plain.
+const _maxHighlightChars = 20000;
 
 const _tailLines = 120; // lines fetched on the live poll / first load
 const _lineStep = 240; // extra lines added per pull-to-load-more
@@ -636,6 +659,45 @@ class _UserBubble extends StatelessWidget {
   }
 }
 
+// Chat-scale heading sizes (the gpt_markdown defaults are display-sized) with
+// the auto h1 divider disabled. Built once from constants — the factory is
+// costly (it builds a full ThemeData + Typography) and _AssistantMessage
+// rebuilds on every 2s poll.
+final _assistantMarkdownTheme = GptMarkdownThemeData(
+  brightness: Brightness.dark,
+  h1: const TextStyle(
+    fontSize: 20,
+    fontWeight: FontWeight.bold,
+    color: _transcriptFg,
+  ),
+  h2: const TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+    color: _transcriptFg,
+  ),
+  h3: const TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.bold,
+    color: _transcriptFg,
+  ),
+  h4: const TextStyle(
+    fontSize: 15,
+    fontWeight: FontWeight.bold,
+    color: _transcriptFg,
+  ),
+  h5: const TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.bold,
+    color: _transcriptFg,
+  ),
+  h6: const TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.bold,
+    color: _transcriptFg,
+  ),
+  autoAddDividerLineAfterH1: false,
+);
+
 class _AssistantMessage extends StatelessWidget {
   const _AssistantMessage({required this.text});
 
@@ -644,75 +706,227 @@ class _AssistantMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SelectionArea(
-      child: GptMarkdown(
-        text,
-        style: const TextStyle(color: _transcriptFg, fontSize: 14, height: 1.4),
-        // Transcript text is untrusted remote content. gpt_markdown's default
-        // image renderer would GET the URL via NetworkImage on build, so images
-        // are shown as an inert, non-tappable placeholder — no network I/O.
-        imageBuilder: (context, imageUrl, width, height) => Container(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color: _codeSurface,
-            borderRadius: BorderRadius.circular(6),
+      child: GptMarkdownTheme(
+        gptThemeData: _assistantMarkdownTheme,
+        child: GptMarkdown(
+          text,
+          style: const TextStyle(
+            color: _transcriptFg,
+            fontSize: 14,
+            height: 1.4,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.image_outlined, size: 16, color: _transcriptFg),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  imageUrl,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 13,
-                    color: _transcriptFg,
+          // Transcript text is untrusted remote content. gpt_markdown's default
+          // image renderer would GET the URL via NetworkImage on build, so images
+          // are shown as an inert, non-tappable placeholder — no network I/O.
+          imageBuilder: (context, imageUrl, width, height) => Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              color: _codeSurface,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.image_outlined,
+                  size: 16,
+                  color: _transcriptFg,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    imageUrl,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      color: _transcriptFg,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
-        // Inline code: a small dark panel keeps it readable on the dark surface.
-        highlightBuilder: (context, code, style) => Container(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-          decoration: BoxDecoration(
-            color: _codeSurface,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            code,
-            style: style.copyWith(
-              fontFamily: 'monospace',
-              color: _transcriptFg,
+              ],
             ),
           ),
-        ),
-        // Fenced code: dark panel with horizontal scroll so long lines never
-        // overflow the transcript width.
-        codeBuilder: (context, name, code, closed) => Container(
-          width: double.infinity,
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: _codeSurface,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+          // Inline code: a small dark panel keeps it readable on the dark surface.
+          highlightBuilder: (context, code, style) => Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            decoration: BoxDecoration(
+              color: _codeSurface,
+              borderRadius: BorderRadius.circular(4),
+            ),
             child: Text(
               code,
-              style: const TextStyle(
+              style: style.copyWith(
                 fontFamily: 'monospace',
-                fontSize: 13,
-                height: 1.4,
                 color: _transcriptFg,
               ),
             ),
           ),
+          // Fenced code: syntax-highlighted when the fence tag names a known
+          // language, otherwise a plain dark panel. Both scroll horizontally
+          // so long lines never overflow the transcript width.
+          codeBuilder: (context, name, code, closed) =>
+              _FencedCode(language: name.trim(), code: code),
         ),
+      ),
+    );
+  }
+}
+
+/// A flat, isolate-transferable highlighted run: its text plus the theme
+/// attributes that differ from [_codeTextStyle]. A null [color] inherits the
+/// base colour. TextSpan itself isn't sent across the isolate boundary — this
+/// serialisable form is, and the UI side rebuilds spans from it.
+class _CodeSegment {
+  const _CodeSegment({
+    required this.text,
+    this.color,
+    this.bold = false,
+    this.italic = false,
+  });
+
+  final String text;
+  final Color? color;
+  final bool bold;
+  final bool italic;
+}
+
+/// Highlights [code] as [language] and flattens the result to [_CodeSegment]s.
+/// Runs on a background isolate via [compute]: highlight() can take seconds on
+/// pathological input, so it must never touch the UI isolate. The size cap and
+/// unknown-language check are done by the caller before spawning this.
+List<_CodeSegment>? _highlightSegments((String, String) request) {
+  final (language, code) = request;
+  final highlighter = Highlight()..registerLanguages(builtinLanguages);
+  final result = highlighter.highlight(code: code, language: language);
+  // re_highlight runs in safe mode and can swallow a fatal parse error, leaving
+  // errorRaised set and a truncated result; render such blocks plain instead.
+  if (result.errorRaised != null) return null;
+  // The panel already paints _codeSurface and the base style governs root text,
+  // so the theme's root entry (a null-scope node the renderer never applies) is
+  // irrelevant; pass a null base and carry only per-scope attributes.
+  final renderer = TextSpanRenderer(null, githubDarkDimmedTheme);
+  result.render(renderer);
+  final span = renderer.span;
+  if (span == null) return null;
+  final segments = <_CodeSegment>[];
+  void walk(InlineSpan node, TextStyle inherited) {
+    if (node is! TextSpan) return;
+    final merged = inherited.merge(node.style);
+    final text = node.text;
+    if (text != null && text.isNotEmpty) {
+      segments.add(
+        _CodeSegment(
+          text: text,
+          color: merged.color,
+          bold: merged.fontWeight == FontWeight.bold,
+          italic: merged.fontStyle == FontStyle.italic,
+        ),
+      );
+    }
+    for (final child in node.children ?? const <InlineSpan>[]) {
+      walk(child, merged);
+    }
+  }
+
+  walk(span, const TextStyle());
+  return segments;
+}
+
+/// A fenced code block, syntax-highlighted with re_highlight when [language] is
+/// a known highlight.js language (or alias). Unknown/empty tags fall back to
+/// plain monospace with no highlighting (no auto-detection).
+class _FencedCode extends StatefulWidget {
+  const _FencedCode({required this.language, required this.code});
+
+  final String language;
+  final String code;
+
+  @override
+  State<_FencedCode> createState() => _FencedCodeState();
+}
+
+class _FencedCodeState extends State<_FencedCode> {
+  // Highlighted runs, or null to render plain (pending, unknown tag, too large,
+  // or a highlight error). Cached so the 2s poll's rebuilds don't re-highlight;
+  // recomputed only when the language or code actually change.
+  List<_CodeSegment>? _segments;
+  // Guards against a stale isolate result overwriting a newer request.
+  int _requestId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _highlight();
+  }
+
+  @override
+  void didUpdateWidget(_FencedCode oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.language != widget.language ||
+        oldWidget.code != widget.code) {
+      _segments = null; // show the plain fallback until the new result lands
+      _highlight();
+    }
+  }
+
+  Future<void> _highlight() async {
+    // Invalidate any in-flight result before the pre-checks: when content at
+    // this tree position changes to something non-highlightable, a stale
+    // isolate result must not land on it.
+    final id = ++_requestId;
+    // Cheap synchronous pre-checks keep unknown/oversized blocks off the isolate.
+    if (widget.language.isEmpty ||
+        widget.code.length > _maxHighlightChars ||
+        _codeHighlighter.getLanguage(widget.language) == null) {
+      return;
+    }
+    List<_CodeSegment>? segments;
+    try {
+      segments = await compute(_highlightSegments, (
+        widget.language,
+        widget.code,
+      ));
+    } catch (_) {
+      // Highlighting untrusted text must never surface as an error.
+      segments = null;
+    }
+    // Apply only the latest request, and only while still mounted.
+    if (!mounted || id != _requestId) return;
+    setState(() => _segments = segments);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final segments = _segments;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _codeSurface,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: segments == null
+            ? Text(widget.code, style: _codeTextStyle)
+            : Text.rich(
+                TextSpan(
+                  style: _codeTextStyle,
+                  children: [
+                    for (final segment in segments)
+                      TextSpan(
+                        text: segment.text,
+                        style: TextStyle(
+                          color: segment.color,
+                          fontWeight: segment.bold ? FontWeight.bold : null,
+                          fontStyle: segment.italic ? FontStyle.italic : null,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
       ),
     );
   }

@@ -185,10 +185,28 @@ Future<T> withRetry<T>(Future<T> Function() run, {int attempts = 3}) async {
 
 It retries up to `attempts` times before giving up.''';
 
+const _assistantDiff = '''
+And here's the change as a diff:
+
+```diff
+ Future<T> withRetry<T>(Future<T> Function() run, {int attempts = 3}) async {
+-  for (var i = 0; ; i++) {
++  for (var i = 0; i < attempts; i++) {
+     try {
+       return await run();
+-    } catch (_) {
+-      if (i >= attempts - 1) rethrow;
++    } catch (_) {
++      if (i == attempts - 1) rethrow;
+     }
+   }
+ }
+```''';
+
 /// Canned Claude JSONL: a user prompt, a Markdown-rich reply, a follow-up
-/// prompt, and a reply with a fenced code block.
+/// prompt, a reply with a fenced code block, and a reply with a diff block.
 final nativeTranscriptJsonl =
-    '${[_nativeLine('user', 'Can you summarize the auth module?'), _nativeLine('assistant', _assistantOverview), _nativeLine('user', 'Great — now show the retry helper.'), _nativeLine('assistant', _assistantCode)].join('\n')}\n';
+    '${[_nativeLine('user', 'Can you summarize the auth module?'), _nativeLine('assistant', _assistantOverview), _nativeLine('user', 'Great — now show the retry helper.'), _nativeLine('assistant', _assistantCode), _nativeLine('user', 'Show me the fix as a diff.'), _nativeLine('assistant', _assistantDiff)].join('\n')}\n';
 
 const _nativeReadText = 'It retries up to attempts times before giving up.\n';
 
