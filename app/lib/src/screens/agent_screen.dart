@@ -13,6 +13,7 @@ import 'package:re_highlight/styles/github-dark-dimmed.dart';
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
 import '../herdr/ansi_text.dart';
+import '../herdr/askuser_submitter.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/pane_text.dart';
 import '../i18n/status_label.dart';
@@ -21,6 +22,7 @@ import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
 import '../transcript/native_transcript.dart';
 import '../widgets/top_toast.dart';
+import 'askuser_sheet.dart';
 import 'herd_screen.dart' show statusColor;
 
 // The transcript renders on a fixed dark surface regardless of app theme:
@@ -129,6 +131,14 @@ class _AgentScreenState extends State<AgentScreen> {
   final List<PickedImage> _pendingImages = [];
   Timer? _timer;
   int _lines = _tailLines;
+  // Whether the AskUserQuestion sheet is currently on screen, and the tool_use
+  // id it was opened for. The id is retained after the sheet closes so the 2s
+  // poll never re-opens the sheet for the same prompt (once-only presentation).
+  bool _askUserSheetOpen = false;
+  String? _shownAskUserToolUseId;
+  // The pushed sheet's route, so an auto-dismiss only pops when that route is
+  // still current (never the AgentScreen route beneath it).
+  ModalRoute<void>? _askUserSheetRoute;
 
   final _scrollController = ScrollController();
   final _messageController = TextEditingController();
@@ -256,11 +266,99 @@ class _AgentScreenState extends State<AgentScreen> {
           _scrollController.jumpTo(target);
         });
       }
+      _syncAskUserSheet();
     } catch (_) {
       // Keep last known state on read/poll errors; the transcript stays
       // visible and the next tick will retry.
     } finally {
       _loading = false;
+    }
+  }
+
+  /// Reconciles the AskUserQuestion sheet with the latest poll. Auto-presents
+  /// the sheet the first time a prompt is pending (tracked by tool_use id so a
+  /// later poll never re-opens it), and auto-dismisses an open sheet once its
+  /// prompt is gone — answered elsewhere or the agent moved on.
+  void _syncAskUserSheet() {
+    if (!mounted) return;
+    final pending = _nativeHistory?.pendingAskUserQuestion;
+    if (_askUserSheetOpen) {
+      if (pending == null || pending.toolUseId != _shownAskUserToolUseId) {
+        // Clear the flag first so nothing else treats the sheet as open, then
+        // only pop/toast if the sheet's route is genuinely still current — a
+        // successful submit or user cancel pops the route itself, and its
+        // ~250ms close animation would otherwise let this branch fire a second
+        // pop (which could pop the AgentScreen) and a spurious toast.
+        _askUserSheetOpen = false;
+        final route = _askUserSheetRoute;
+        _askUserSheetRoute = null;
+        if (route != null && route.isCurrent) {
+          Navigator.of(context).pop();
+          showTopToast(
+            context,
+            AppLocalizations.of(context)!.agentAskUserDismissed,
+          );
+        }
+      }
+      return;
+    }
+    if (pending != null && pending.toolUseId != _shownAskUserToolUseId) {
+      unawaited(_openAskUserSheet(pending));
+    }
+  }
+
+  Future<void> _openAskUserSheet(AskUserQuestionPrompt prompt) async {
+    _askUserSheetOpen = true;
+    _shownAskUserToolUseId = prompt.toolUseId;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) {
+        _askUserSheetRoute = ModalRoute.of(sheetContext);
+        return AskUserSheet(
+          prompt: prompt,
+          onSubmit: (answers) => _submitAskUser(prompt, answers),
+        );
+      },
+    );
+    _askUserSheetOpen = false;
+    _askUserSheetRoute = null;
+  }
+
+  /// Submits the staged [answers] into the live TUI dialog via the read-driven
+  /// key injector. On failure the error is surfaced as a top toast and rethrown
+  /// so the sheet stays open with its staged answers.
+  Future<void> _submitAskUser(
+    AskUserQuestionPrompt prompt,
+    List<AskUserQuestionAnswer> answers,
+  ) async {
+    final submitter = AskUserQuestionSubmitter(
+      readPane: (paneId) => widget.client.readAgent(paneId),
+      sendPaneText: widget.client.sendPaneText,
+      sendKeys: widget.client.sendKeys,
+    );
+    try {
+      await submitter.submit(
+        paneId: widget.paneId,
+        prompt: prompt,
+        answers: answers,
+      );
+      // The sheet pops itself on success. Clear the flag synchronously (before
+      // that pop and any subsequent poll) so _syncAskUserSheet doesn't mistake
+      // the close for an auto-dismiss and double-pop / show the dismissed toast.
+      _askUserSheetOpen = false;
+    } catch (error) {
+      if (mounted) {
+        final message = error is AskUserQuestionSubmitError
+            ? error.message
+            : error.toString();
+        showTopToast(
+          context,
+          AppLocalizations.of(context)!.agentAskUserSubmitError(message),
+        );
+      }
+      rethrow;
     }
   }
 
@@ -417,11 +515,15 @@ class _AgentScreenState extends State<AgentScreen> {
     final displayName = agent?.name ?? agent?.agent ?? widget.paneId;
     final workspaceLabel = _workspaceLabel ?? agent?.workspaceId;
     final plain = stripAnsi(_text);
-    final question = agent?.status == AgentStatus.blocked
+    final nativeHistory = _nativeHistory;
+    // A pending AskUserQuestion drives its own modal sheet; suppress the
+    // pane-text _PromptCard for it so the two never render at once. Other
+    // blocked states keep the _PromptCard unchanged.
+    final hasPendingAskUser = nativeHistory?.pendingAskUserQuestion != null;
+    final question = agent?.status == AgentStatus.blocked && !hasPendingAskUser
         ? parsePromptOptions(plain)
         : null;
     final mode = parseAgentMode(plain);
-    final nativeHistory = _nativeHistory;
     // An empty-but-present native history (e.g. every record filtered out) is
     // treated as absent: no section header, and the pane fallback keeps working.
     // A tool_use- or thinking-only history still counts, so key off entries.
@@ -646,6 +748,9 @@ class _NativeTranscript extends StatelessWidget {
                     key: ValueKey('thinking_${index}_${text.hashCode}'),
                     text: text,
                   ),
+                  // A tool_result marker is only used to detect an answered
+                  // AskUserQuestion; it has no chat-visible rendering.
+                  TranscriptToolResult() => const SizedBox.shrink(),
                 },
               ),
           ],

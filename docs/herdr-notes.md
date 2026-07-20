@@ -78,6 +78,40 @@ Observed against **herdr 0.7.1** unless noted otherwise.
   already-running agent needs a fresh session (restart, or a `/clear`/resume
   that re-fires `SessionStart`) before drover's native transcript history
   activates for it.
+- **Answering a Claude Code `AskUserQuestion` TUI by key injection.**
+  (2026-07-20) The prompt is a `tool_use` block named `AskUserQuestion` in the
+  session JSONL (`input.questions[].{question, header, multiSelect,
+  options[].{label, description}}`), with an `id`; it is *answered* once a later
+  USER record carries a `tool_result` block whose `tool_use_id` matches (content
+  = `Your questions have been answered: "Q"="…".`). So "pending" = the last
+  `AskUserQuestion` tool_use with no matching `tool_result`. drover answers it by
+  injecting keys — digits/custom text via `pane send-text`, Enter/arrows via
+  `pane send-keys`. Options are numbered 1..N in order (option index *i* → digit
+  *i+1*); the "Type something" custom row is digit *N+1*. Verified end-to-end
+  against a live agent (two spikes):
+  - **Single question, single-select, normal option:** the option digit submits
+    the whole prompt *immediately* — the dialog closes, no Enter, no review.
+  - **Single question, single-select, custom:** digit *N+1* (selects the row +
+    enters edit mode), then `pane send-text <text>`, then `send-keys enter`.
+  - **Single question, multi-select:** each option digit *toggles* its checkbox
+    (dialog stays open); then `send-keys right` reaches a "Review your answers"
+    screen (`1. Submit answers / 2. Cancel`); `pane send-text 1` commits.
+    Multi-select also *lists* a "Type something" row, but drover does not offer
+    custom text for multi-select (the sequence is unverified).
+  - **Multiple questions in one call:** the dialog shows a tab bar
+    `← [ ] Q1header [ ] Q2header ✔ Submit →`. Answer each tab in order; a
+    single-select digit records and *auto-advances* to the next tab, a
+    multi-select is advanced by `right`. After the last question you land on the
+    Submit tab's review screen → `pane send-text 1`.
+  Because the last-single-select-in-a-multi-question and custom-in-multi-question
+  transitions were *not* spiked, drover's injector (`askuser_submitter.dart`) is
+  **read-driven**: after every keystroke it re-reads the pane and confirms the
+  expected transition (a normalized substring match on the question text, since
+  the pane wraps long questions; the open dialog is detected by its `Esc to
+  cancel` footer — *not* by question-text presence, since after submit Claude
+  echoes `User answered Claude's questions: … <question> → <answer>`, reprinting
+  the text). It aborts (throws, no auto-Esc) on any unrecognized state rather
+  than sending keys blindly.
 
 ## Measurements (Stage 0, 2026-07-18, localhost loopback, Claude Code agent)
 

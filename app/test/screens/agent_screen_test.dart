@@ -6,6 +6,7 @@ import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/image/image_input.dart';
 import 'package:drover/src/screens/agent_screen.dart';
+import 'package:drover/src/screens/askuser_sheet.dart';
 import 'package:drover/src/speech/speech_input.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -174,6 +175,77 @@ class DuplicatePaneRunner extends NativeHistoryRunner {
         '{"id":"1","result":{"read":{"text":'
         '"Native question\\nNative reply\\n"}}}',
       );
+    }
+    return super.run(command);
+  }
+}
+
+/// The question text of [_singleAskUserJsonl], reused by the read override so
+/// the submitter's initial-screen and dialog-closed confirmations both pass.
+const _askUserQuestionText = 'Which environment should I deploy to?';
+
+/// A session ending in a lone single-select AskUserQuestion (no tool_result),
+/// so the sheet auto-presents and a real submit can drive to success.
+final _singleAskUserJsonl =
+    '${[
+      '{"type":"user","message":{"role":"user","content":"Deploy please"}}',
+      jsonEncode({
+        'type': 'assistant',
+        'message': {
+          'role': 'assistant',
+          'content': [
+            {
+              'type': 'tool_use',
+              'name': 'AskUserQuestion',
+              'id': 'toolu_single',
+              'input': {
+                'questions': [
+                  {
+                    'question': _askUserQuestionText,
+                    'header': 'Environment',
+                    'multiSelect': false,
+                    'options': [
+                      {'label': 'Staging'},
+                      {'label': 'Production'},
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+    ].join('\n')}\n';
+
+/// The tool_result that marks [_singleAskUserJsonl]'s question answered.
+const _singleAskUserAnswered =
+    '{"type":"user","message":{"role":"user","content":['
+    '{"type":"tool_result","tool_use_id":"toolu_single"}]}}\n';
+
+/// Serves [_singleAskUserJsonl] and drives the read-driven submitter to a
+/// success: `agent read` returns the open dialog (question text + the "Esc to
+/// cancel" chrome the submitter gates on) until the answer digit is sent via
+/// `pane send-text`, after which it returns a closed screen — so the initial
+/// confirm and the final dialog-closed confirm both pass.
+class AskUserSubmitRunner extends NativeHistoryRunner {
+  AskUserSubmitRunner() {
+    contents = _singleAskUserJsonl;
+  }
+
+  bool _answerSent = false;
+
+  @override
+  Future<CommandResult> run(String command) async {
+    if (command.contains("'pane' 'send-text'")) {
+      _answerSent = true;
+      return super.run(command);
+    }
+    if (command.contains("'agent' 'read'")) {
+      commands.add(command);
+      final text = _answerSent
+          ? 'All set.'
+          : '$_askUserQuestionText\nEsc to cancel';
+      return ok('{"id":"1","result":{"read":{"text":${jsonEncode(text)}}}}');
     }
     return super.run(command);
   }
@@ -1732,6 +1804,130 @@ void main() {
         (c) => c.contains("'agent' 'read'") && c.contains("'360'"),
       ),
       isTrue,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('auto-presents the AskUserQuestion sheet when one is pending', (
+    tester,
+  ) async {
+    final runner = NativeHistoryRunner()..contents = askUserTranscriptJsonl;
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: HerdrClient(runner),
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AskUserSheet), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AskUserSheet),
+        matching: find.text('Which environment should I deploy to?'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('auto-dismisses the sheet once the pending prompt is gone', (
+    tester,
+  ) async {
+    // A tool_result matching the AskUserQuestion's id marks it answered, so the
+    // next poll finds no pending prompt.
+    const answered =
+        '{"type":"user","message":{"role":"user","content":['
+        '{"type":"tool_result","tool_use_id":"toolu_askuser_preview"}]}}\n';
+    final runner = NativeHistoryRunner()..contents = askUserTranscriptJsonl;
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: HerdrClient(runner),
+          paneId: 'wB:p1',
+          pollInterval: const Duration(seconds: 1),
+        ),
+      ),
+    );
+    // Drive the initial load and let the modal animate in (avoiding
+    // pumpAndSettle, which never settles against the periodic poll).
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(AskUserSheet), findsOneWidget);
+
+    runner.contents = '$askUserTranscriptJsonl$answered';
+    await tester.pump(const Duration(seconds: 1)); // fire the poll timer
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.byType(AskUserSheet), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a poll after a successful submit does not double-pop or toast', (
+    tester,
+  ) async {
+    // A short poll interval so a poll can be fired while the sheet's own close
+    // animation (~250ms) is still running — the mid-close race window.
+    final runner = AskUserSubmitRunner();
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: HerdrClient(runner),
+          paneId: 'wB:p1',
+          pollInterval: const Duration(milliseconds: 50),
+        ),
+      ),
+    );
+    // Drive the initial load and let the sheet animate in.
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.byType(AskUserSheet), findsOneWidget);
+
+    // Answer the single question and submit; the real submitter succeeds against
+    // the runner's canned reads, clears _askUserSheetOpen, and the sheet starts
+    // popping itself. Answer the prompt in the JSONL at the same moment so the
+    // very next poll (still mid-close animation) sees no pending prompt — the
+    // race window that used to trigger a spurious auto-dismiss (2nd pop + toast).
+    await tester.tap(find.byKey(const ValueKey('askuser_q0_opt0')));
+    await tester.pump();
+    runner.contents = '$_singleAskUserJsonl$_singleAskUserAnswered';
+    await tester.tap(find.byKey(const ValueKey('askuser_send_button')));
+    await tester.pump(); // submit resolves; self-pop begins (animation at 0)
+    // Fire a poll a single short step in — well within the ~250ms close
+    // animation, so the sheet route is still mid-transition.
+    await tester.pump(const Duration(milliseconds: 50));
+    // Let everything settle out.
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // The sheet closed exactly once via its own submit; no second pop took the
+    // AgentScreen with it, and no "dismissed" toast fired.
+    expect(find.byType(AgentScreen), findsOneWidget);
+    expect(find.byType(AskUserSheet), findsNothing);
+    expect(
+      find.text(
+        AppLocalizations.of(
+          tester.element(find.byType(AgentScreen)),
+        )!.agentAskUserDismissed,
+      ),
+      findsNothing,
     );
 
     await tester.pumpWidget(const SizedBox());
