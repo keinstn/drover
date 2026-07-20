@@ -260,6 +260,30 @@ abstract class AppLocalizations {
   /// **'unknown'**
   String get agentStatusUnknown;
 
+  /// No description provided for @agentModeNormal.
+  ///
+  /// In en, this message translates to:
+  /// **'Normal'**
+  String get agentModeNormal;
+
+  /// No description provided for @agentModeAutoAccept.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept Edits'**
+  String get agentModeAutoAccept;
+
+  /// No description provided for @agentModePlan.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan'**
+  String get agentModePlan;
+
+  /// No description provided for @agentModeBypass.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get agentModeBypass;
+
   /// No description provided for @agentComposerHint.
   ///
   /// In en, this message translates to:

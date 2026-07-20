@@ -1474,11 +1474,24 @@ Color _modeColor(AgentMode mode) {
     case AgentMode.normal:
       return statusUnknown;
     case AgentMode.autoAccept:
-      return statusWorking;
+      return modeAcceptEdit;
     case AgentMode.plan:
       return modePlan;
     case AgentMode.bypass:
       return statusBlocked;
+  }
+}
+
+String _modeLabel(AgentMode mode, AppLocalizations l10n) {
+  switch (mode) {
+    case AgentMode.normal:
+      return l10n.agentModeNormal;
+    case AgentMode.autoAccept:
+      return l10n.agentModeAutoAccept;
+    case AgentMode.plan:
+      return l10n.agentModePlan;
+    case AgentMode.bypass:
+      return l10n.agentModeBypass;
   }
 }
 
@@ -1777,7 +1790,6 @@ class _ModeButton extends StatelessWidget {
     final l10n = AppLocalizations.of(context)!;
     final color = _modeColor(mode);
     return SizedBox(
-      width: 48,
       height: 48,
       child: Tooltip(
         message: l10n.agentCycleModeTooltip,
@@ -1785,12 +1797,19 @@ class _ModeButton extends StatelessWidget {
           key: const ValueKey('cycle_mode_button'),
           onPressed: sending ? null : onPressed,
           style: OutlinedButton.styleFrom(
-            shape: const CircleBorder(),
-            padding: EdgeInsets.zero,
+            shape: const StadiumBorder(),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             foregroundColor: color,
             side: BorderSide(color: color),
           ),
-          child: const Icon(Icons.tune, size: 20),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.tune, size: 18),
+              const SizedBox(width: 6),
+              Text(_modeLabel(mode, l10n)),
+            ],
+          ),
         ),
       ),
     );

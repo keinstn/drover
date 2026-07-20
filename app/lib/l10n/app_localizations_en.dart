@@ -99,6 +99,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentStatusUnknown => 'unknown';
 
   @override
+  String get agentModeNormal => 'Normal';
+
+  @override
+  String get agentModeAutoAccept => 'Accept Edits';
+
+  @override
+  String get agentModePlan => 'Plan';
+
+  @override
+  String get agentModeBypass => 'Auto';
+
+  @override
   String get agentComposerHint => 'Message agent…';
 
   @override
