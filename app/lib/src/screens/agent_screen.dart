@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -27,9 +28,16 @@ import 'herd_screen.dart' show statusColor;
 // terminal, so a dark panel keeps them faithful and legible.
 const _transcriptBg = Color(0xFF1B1B1F);
 const _transcriptFg = Color(0xFFE4E4E7);
+// Dimmed foreground for secondary rows (tool-use summaries, thinking blocks)
+// that should read as quieter than the main conversation text.
+const _transcriptFgDim = Color(0xFF8B8B92);
 // Panel behind inline/fenced code, a touch lighter than the transcript surface
 // so code stays legible without the pure-white background of light themes.
 const _codeSurface = Color(0xFF26262B);
+// Muted diff tints painted over _codeSurface: low-chroma red/green (~20% alpha)
+// that stay calm on the dark Ink surface.
+const _diffRemoveBg = Color(0x33F85149);
+const _diffAddBg = Color(0x333FB950);
 
 // Base style for fenced code: kept in sync with the plain-text fallback so
 // highlighted and unhighlighted blocks read identically apart from colour.
@@ -257,7 +265,9 @@ class _AgentScreenState extends State<AgentScreen> {
   }
 
   Future<void> _loadMore() async {
-    if ((_nativeHistory?.messages.isNotEmpty ?? false) || _paneEndReached) {
+    // Gate on entries (not just chat messages) so a tool_use- or thinking-only
+    // history stops pull-to-load-more, matching hasNativeHistory.
+    if ((_nativeHistory?.entries.isNotEmpty ?? false) || _paneEndReached) {
       return;
     }
     setState(() => _lines = min(_maxPaneLines, _lines + _lineStep));
@@ -414,8 +424,9 @@ class _AgentScreenState extends State<AgentScreen> {
     final nativeHistory = _nativeHistory;
     // An empty-but-present native history (e.g. every record filtered out) is
     // treated as absent: no section header, and the pane fallback keeps working.
+    // A tool_use- or thinking-only history still counts, so key off entries.
     final hasNativeHistory =
-        nativeHistory != null && nativeHistory.messages.isNotEmpty;
+        nativeHistory != null && nativeHistory.entries.isNotEmpty;
     final paneText = stripTuiChrome(_text);
     final liveTerminalText = _liveTerminalText(paneText, nativeHistory);
 
@@ -480,7 +491,7 @@ class _AgentScreenState extends State<AgentScreen> {
                     children: [
                       if (hasNativeHistory) ...[
                         _TranscriptSectionLabel(label: l10n.agentNativeHistory),
-                        _NativeTranscript(messages: nativeHistory.messages),
+                        _NativeTranscript(entries: nativeHistory.entries),
                       ],
                       if (liveTerminalText != null &&
                           liveTerminalText.trim().isNotEmpty) ...[
@@ -593,12 +604,14 @@ class _TranscriptSectionLabel extends StatelessWidget {
   }
 }
 
-/// Renders the structured native conversation as a modern chat: user turns as
-/// right-aligned bubbles, assistant turns as full-width Markdown.
+/// Renders the structured native conversation as a modern chat, in the order
+/// Claude produced each entry: user turns as right-aligned bubbles, assistant
+/// turns as full-width Markdown, tool invocations as collapsible chips, and
+/// thinking blocks as dimmed one-line rows.
 class _NativeTranscript extends StatelessWidget {
-  const _NativeTranscript({required this.messages});
+  const _NativeTranscript({required this.entries});
 
-  final List<TranscriptMessage> messages;
+  final List<TranscriptEntry> entries;
 
   @override
   Widget build(BuildContext context) {
@@ -608,16 +621,343 @@ class _NativeTranscript extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final message in messages)
+            for (final (index, entry) in entries.indexed)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: message.speaker == TranscriptSpeaker.user
-                    ? _UserBubble(text: message.text, maxWidth: maxBubbleWidth)
-                    : _AssistantMessage(text: message.text),
+                child: switch (entry) {
+                  TranscriptMessage(:final speaker, :final text) =>
+                    speaker == TranscriptSpeaker.user
+                        ? _UserBubble(text: text, maxWidth: maxBubbleWidth)
+                        : _AssistantMessage(text: text),
+                  // Position is a stable identity while history is append-only;
+                  // folding name + summary into the key drops the expansion
+                  // state for most different entries that land at this index
+                  // (e.g. after a session reset). It's name/summary-level
+                  // identity, so a genuinely different entry that happens to
+                  // share this index, name, and summary would still inherit it.
+                  TranscriptToolUse(:final name, :final input) => _ToolUseChip(
+                    key: ValueKey(
+                      'tool_${index}_${name}_${toolUseSummary(name, input).hashCode}',
+                    ),
+                    name: name,
+                    input: input,
+                  ),
+                  TranscriptThinking(:final text) => _ThinkingRow(
+                    key: ValueKey('thinking_${index}_${text.hashCode}'),
+                    text: text,
+                  ),
+                },
               ),
           ],
         );
       },
+    );
+  }
+}
+
+/// A compact, collapsible tool invocation: a single glyph + name + summary row
+/// that expands to a detail panel (a diff card for Edit/Write, otherwise the
+/// pretty-printed input). Stateful so the expansion survives the 2s poll.
+class _ToolUseChip extends StatefulWidget {
+  const _ToolUseChip({super.key, required this.name, required this.input});
+
+  final String name;
+  final Map<String, dynamic> input;
+
+  @override
+  State<_ToolUseChip> createState() => _ToolUseChipState();
+}
+
+class _ToolUseChipState extends State<_ToolUseChip> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = toolUseSummary(widget.name, widget.input);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: _codeSurface,
+          borderRadius: BorderRadius.circular(6),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Row(
+                children: [
+                  const Text(
+                    '⏺',
+                    style: TextStyle(color: _transcriptFgDim, fontSize: 12),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    widget.name,
+                    style: const TextStyle(
+                      color: _transcriptFg,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        color: _transcriptFgDim,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (_expanded)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: _toolUseDetail(widget.name, widget.input),
+          ),
+      ],
+    );
+  }
+}
+
+/// Picks the expanded detail for a tool_use: a diff card for Edit (old/new
+/// strings) and Write (content as added lines), otherwise the pretty-printed
+/// input. Wrong-shaped input for Edit/Write falls back to the JSON detail.
+Widget _toolUseDetail(String name, Map<String, dynamic> input) {
+  if (name == 'Edit') {
+    final oldText = input['old_string'];
+    final newText = input['new_string'];
+    if (oldText is String && newText is String) {
+      return _DiffCard(oldText: oldText, newText: newText);
+    }
+  } else if (name == 'Write') {
+    final content = input['content'];
+    if (content is String) {
+      return _DiffCard(oldText: null, newText: content);
+    }
+  }
+  return _JsonDetail(input: input);
+}
+
+/// The pretty-printed tool input on the code surface: horizontally scrollable
+/// so long lines never overflow, and height-capped with an inner vertical
+/// scroll so a large map never dominates the transcript. Stateful so the
+/// (non-trivial) encode is cached across the 2s poll's rebuilds.
+class _JsonDetail extends StatefulWidget {
+  const _JsonDetail({required this.input});
+
+  final Map<String, dynamic> input;
+
+  @override
+  State<_JsonDetail> createState() => _JsonDetailState();
+}
+
+class _JsonDetailState extends State<_JsonDetail> {
+  late String _pretty = _encode(widget.input);
+
+  static String _encode(Map<String, dynamic> input) {
+    // Transcript input is untrusted: out-of-range JSON literals (e.g. 1e999)
+    // decode to double.infinity/NaN, which the plain encoder rejects. The
+    // toEncodable fallback stringifies whatever it can't serialise, and the
+    // catch-all guards anything still unencodable so an expanded chip can never
+    // become an ErrorWidget.
+    try {
+      return JsonEncoder.withIndent('  ', (o) => o.toString()).convert(input);
+    } catch (_) {
+      return input.toString();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_JsonDetail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The loader keeps entry instances across polls, so the input map is a
+    // stable instance; only re-encode when a genuinely different one lands.
+    if (!identical(oldWidget.input, widget.input)) {
+      _pretty = _encode(widget.input);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxHeight: 240),
+      decoration: BoxDecoration(
+        color: _codeSurface,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: SingleChildScrollView(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.all(12),
+          child: Text(
+            _pretty,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 12,
+              height: 1.4,
+              color: _transcriptFg,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A naive diff card: every old line (red-tinted, '-' gutter) then every new
+/// line (green-tinted, '+' gutter) — no LCS. [oldText] is null for a Write.
+/// Horizontally scrollable and height-capped with an inner vertical scroll.
+class _DiffCard extends StatelessWidget {
+  const _DiffCard({required this.oldText, required this.newText});
+
+  final String? oldText;
+  final String? newText;
+
+  // A huge Write/Edit would otherwise build thousands of rows on every poll.
+  // Cap the rendered lines and summarise the rest in a footer.
+  static const _maxLines = 200;
+
+  static List<String> _lines(String text) {
+    final trimmed = text.endsWith('\n')
+        ? text.substring(0, text.length - 1)
+        : text;
+    return trimmed.split('\n');
+  }
+
+  Widget _line(String gutter, String text, Color background) {
+    return Container(
+      color: background,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+      child: Text(
+        '$gutter $text',
+        softWrap: false,
+        style: const TextStyle(
+          fontFamily: 'monospace',
+          fontSize: 12,
+          height: 1.4,
+          color: _transcriptFg,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final oldLines = oldText != null && oldText!.isNotEmpty
+        ? _lines(oldText!)
+        : const <String>[];
+    final newLines = newText != null && newText!.isNotEmpty
+        ? _lines(newText!)
+        : const <String>[];
+    final total = oldLines.length + newLines.length;
+    final rows = <Widget>[];
+    for (final line in oldLines) {
+      if (rows.length >= _maxLines) break;
+      rows.add(_line('-', line, _diffRemoveBg));
+    }
+    for (final line in newLines) {
+      if (rows.length >= _maxLines) break;
+      rows.add(_line('+', line, _diffAddBg));
+    }
+    if (total > _maxLines) {
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          child: Text(
+            '… +${total - _maxLines} lines',
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 12,
+              color: _transcriptFgDim,
+            ),
+          ),
+        ),
+      );
+    }
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxHeight: 240),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: _codeSurface,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: SingleChildScrollView(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          // IntrinsicWidth stretches every row to the widest so the tints paint
+          // a continuous block rather than ragged per-line rectangles.
+          child: IntrinsicWidth(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: rows,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A thinking block as a dimmed, italic one-line label that expands to the
+/// full thinking text. Stateful so expansion survives the 2s poll; collapsed
+/// by default.
+class _ThinkingRow extends StatefulWidget {
+  const _ThinkingRow({super.key, required this.text});
+
+  final String text;
+
+  @override
+  State<_ThinkingRow> createState() => _ThinkingRowState();
+}
+
+class _ThinkingRowState extends State<_ThinkingRow> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Text(
+              l10n.agentThinking,
+              style: const TextStyle(
+                color: _transcriptFgDim,
+                fontStyle: FontStyle.italic,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ),
+        if (_expanded)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              widget.text,
+              style: const TextStyle(
+                color: _transcriptFgDim,
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

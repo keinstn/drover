@@ -326,6 +326,12 @@ abstract class AppLocalizations {
   /// **'Live terminal'**
   String get agentLiveTerminal;
 
+  /// No description provided for @agentThinking.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking…'**
+  String get agentThinking;
+
   /// No description provided for @agentHistoryBeginning.
   ///
   /// In en, this message translates to:

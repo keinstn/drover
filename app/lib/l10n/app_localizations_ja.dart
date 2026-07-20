@@ -125,6 +125,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get agentLiveTerminal => 'ライブターミナル';
 
   @override
+  String get agentThinking => '思考中…';
+
+  @override
   String get agentHistoryBeginning => '保持されているターミナル履歴の先頭に到達しました';
 
   @override
