@@ -111,8 +111,16 @@ CommandResult blockedPromptResponse(String command) {
   return ok('{"id":"1","result":{}}');
 }
 
+// Includes a couple of wide lines — one long unbroken line and a small
+// box-drawing snippet — so the live terminal's horizontal scroll (it must not
+// re-wrap TUI output) is visible in the preview. The mode line stays last so
+// parseAgentMode keeps working.
 const idleWithModeText =
     'Working on the task…\n'
+    'Fetching https://example.com/some/very/long/path/that/keeps/going/well/past/a/phone/screen/width/to/exercise/horizontal/scroll\n'
+    '┌─────────────────────┬──────────┐\n'
+    '│ Model                │ Sonnet 5 │\n'
+    '└─────────────────────┴──────────┘\n'
     '  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle)\n';
 
 CommandResult idleWithModeResponse(String command) {
