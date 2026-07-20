@@ -659,13 +659,8 @@ class _Transcript extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final spans = parseAnsi(ansiText);
-    // TUI screens (the `/model` selector, box-drawing rules, permission
-    // dialogs) are laid out for a fixed terminal width; re-wrapping them at
-    // the phone's width mangles them. Scroll horizontally instead, so each
-    // line renders at its intrinsic width (same idiom as _FencedCode) and
-    // stays left-aligned rather than being stretched or wrapped.
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    return Align(
+      alignment: Alignment.topLeft,
       child: SelectableText.rich(
         TextSpan(
           style: const TextStyle(
