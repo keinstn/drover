@@ -1561,6 +1561,12 @@ class _Composer extends StatelessWidget {
                     onPressed: () => onAction(() => client.cycleMode(paneId)),
                   ),
                 ],
+                const SizedBox(width: 8),
+                _EscapeButton(
+                  sending: sending,
+                  onPressed: () =>
+                      onAction(() => client.sendKeys(paneId, 'esc')),
+                ),
                 const Spacer(),
                 _MicrophoneButton(
                   starting: dictationStarting,
@@ -1739,6 +1745,45 @@ class _ModeButton extends StatelessWidget {
             side: BorderSide(color: color),
           ),
           child: const Icon(Icons.tune, size: 20),
+        ),
+      ),
+    );
+  }
+}
+
+/// An always-available escape hatch that sends a raw Esc key to the agent.
+/// Unlike the send/stop button (which only offers Esc while the agent is
+/// working), this stays enabled whatever the agent's status, so the user can
+/// dismiss a full-screen interactive TUI (e.g. a `/usage` slash-command
+/// screen) even when the agent is idle or blocked. Disabled only while a send
+/// is in flight ([sending]).
+class _EscapeButton extends StatelessWidget {
+  const _EscapeButton({required this.sending, required this.onPressed});
+
+  final bool sending;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: Tooltip(
+        message: l10n.agentSendEscape,
+        child: OutlinedButton(
+          key: const ValueKey('send_escape_button'),
+          onPressed: sending ? null : onPressed,
+          style: OutlinedButton.styleFrom(
+            shape: const CircleBorder(),
+            padding: EdgeInsets.zero,
+            foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+            side: BorderSide(color: Theme.of(context).colorScheme.outline),
+          ),
+          child: const Text(
+            'Esc',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
         ),
       ),
     );

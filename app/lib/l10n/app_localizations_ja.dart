@@ -119,6 +119,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get agentDictateMessage => '音声入力';
 
   @override
+  String get agentSendEscape => 'Esc キーを送信';
+
+  @override
   String get agentNativeHistory => '会話履歴';
 
   @override
