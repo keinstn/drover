@@ -250,6 +250,11 @@ class HerdrClient {
         .toList();
   }
 
+  /// Rename workspace [workspaceId] to [label].
+  Future<void> renameWorkspace(String workspaceId, String label) async {
+    await _run(['workspace', 'rename', workspaceId, label]);
+  }
+
   /// Launch [argv] as a new herdr-managed agent named [name] in [cwd]. When
   /// [workspaceId] is given the agent is placed in that workspace, otherwise
   /// herdr creates a new one. The `agent_started` envelope omits the `agent`
@@ -274,6 +279,11 @@ class HerdrClient {
       '--',
       ...argv,
     ]);
+  }
+
+  /// Rename the agent identified by [target] to [name].
+  Future<void> renameAgent(String target, String name) async {
+    await _run(['agent', 'rename', target, name]);
   }
 
   /// List the entries of the directory at [path]. Raw transport/SFTP

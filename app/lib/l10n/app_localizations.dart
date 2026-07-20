@@ -362,6 +362,30 @@ abstract class AppLocalizations {
   /// **'No agents found'**
   String get herdNoAgents;
 
+  /// No description provided for @herdRenameWorkspaceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename workspace'**
+  String get herdRenameWorkspaceTitle;
+
+  /// No description provided for @herdRenameWorkspaceField.
+  ///
+  /// In en, this message translates to:
+  /// **'Workspace name'**
+  String get herdRenameWorkspaceField;
+
+  /// No description provided for @herdRenameAgentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename agent'**
+  String get herdRenameAgentTitle;
+
+  /// No description provided for @herdRenameAgentField.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent name'**
+  String get herdRenameAgentField;
+
   /// No description provided for @launchButton.
   ///
   /// In en, this message translates to:

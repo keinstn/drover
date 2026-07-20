@@ -69,6 +69,10 @@
     }
   },
   "herdNoAgents": "No agents found",
+  "herdRenameWorkspaceTitle": "Rename workspace",
+  "herdRenameWorkspaceField": "Workspace name",
+  "herdRenameAgentTitle": "Rename agent",
+  "herdRenameAgentField": "Agent name",
 
   "launchButton": "Launch",
   "launchNoAgents": "No launchable agents found on the host",

@@ -48,6 +48,10 @@
   "herdStopDialogTitle": "エージェントを停止しますか？",
   "herdStopDialogBody": "{name} ({paneId}) を停止します。実行中の作業は中断されます。",
   "herdNoAgents": "エージェントが見つかりません",
+  "herdRenameWorkspaceTitle": "ワークスペース名を変更",
+  "herdRenameWorkspaceField": "ワークスペース名",
+  "herdRenameAgentTitle": "エージェント名を変更",
+  "herdRenameAgentField": "エージェント名",
 
   "launchButton": "起動",
   "launchNoAgents": "ホストに起動可能なエージェントが見つかりません",
