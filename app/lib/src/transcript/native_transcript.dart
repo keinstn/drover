@@ -212,7 +212,7 @@ class NativeTranscriptLoader implements NativeTranscriptAdapter {
     // single-quoted. Limit the search to Claude's one-level project folders.
     final fileName = '$sessionId.jsonl';
     final result = await _runner.run(
-      'find "\$HOME/.claude/projects" -mindepth 2 -maxdepth 2 -type f '
+      'command find "\$HOME/.claude/projects" -mindepth 2 -maxdepth 2 -type f '
       '-name ${shQuote(fileName)} -print -quit',
     );
     if (result.exitCode != 0) {

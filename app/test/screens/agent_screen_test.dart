@@ -121,7 +121,7 @@ class NativeHistoryRunner extends StubCommandRunner {
   bool failNativeStat = false;
 
   static CommandResult _response(String command) {
-    if (command.startsWith('find ')) {
+    if (command.startsWith('command find ')) {
       return ok(
         '/home/dev/.claude/projects/-tmp-proj/'
         'c7c50b87-4d4c-4a92-9396-2cfa4158612d.jsonl\n',

@@ -223,13 +223,15 @@ void main() {
       expect(runner.uploads[2].path, '/tmp/proj/.drover/.gitignore');
       expect(utf8.decode(runner.uploads[2].bytes), '*\n');
       expect(
-        runner.commands.where((c) => c == "mkdir -p '/tmp/proj/.drover'"),
+        runner.commands.where(
+          (c) => c == "command mkdir -p '/tmp/proj/.drover'",
+        ),
         hasLength(1),
       );
       expect(
         runner.commands,
         containsAllInOrder([
-          "mkdir -p '/tmp/proj/.drover'",
+          "command mkdir -p '/tmp/proj/.drover'",
           "~/.local/bin/herdr 'agent' 'send' 'wB:p1' "
               "'look at this\n/tmp/proj/.drover/img-42-0.png\n"
               "/tmp/proj/.drover/img-42-1.jpg'",
