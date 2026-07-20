@@ -6,6 +6,7 @@ import 'package:dartssh2/dartssh2.dart';
 import '../herdr/command_runner.dart';
 import '../models/host_config.dart';
 import '../models/remote_dir_entry.dart';
+import '../utils/mutex.dart';
 
 /// Composes a diagnostic message from an SSH auth failure and any notices the
 /// server sent during the attempt (userauth banner or keyboard-interactive
@@ -43,7 +44,9 @@ class SshAuthException implements Exception {
 /// executing it is NEVER retried: `herdr agent send` / `pane send-keys` are
 /// not idempotent, and re-sending after an SSH drop mid-execute could
 /// double-type keystrokes into an agent's pane (e.g. answering the same
-/// permission prompt twice).
+/// permission prompt twice). Channel-using operations are serialized via
+/// [_mutex] so only one channel is ever open at a time on the shared
+/// connection.
 class SshCommandRunner implements CommandRunner {
   SshCommandRunner(this._config);
 
@@ -51,6 +54,7 @@ class SshCommandRunner implements CommandRunner {
   SSHClient? _client;
   Future<SSHClient>? _connecting;
   final _authNotices = <String>[];
+  final _mutex = Mutex();
 
   Future<SSHClient> _connect() async {
     _authNotices.clear();
@@ -109,92 +113,104 @@ class SshCommandRunner implements CommandRunner {
   }
 
   @override
-  Future<CommandResult> run(String command) async {
-    final client = await _ensureClient();
-    return _execute(client, command);
+  Future<CommandResult> run(String command) {
+    return _mutex.run(() async {
+      final client = await _ensureClient();
+      return _execute(client, command);
+    });
   }
 
   @override
-  Future<void> uploadFile(String remotePath, List<int> bytes) async {
-    final client = await _ensureClient();
-    final sftp = await client.sftp();
-    try {
-      final file = await sftp.open(
-        remotePath,
-        mode:
-            SftpFileOpenMode.create |
-            SftpFileOpenMode.write |
-            SftpFileOpenMode.truncate,
-      );
+  Future<void> uploadFile(String remotePath, List<int> bytes) {
+    return _mutex.run(() async {
+      final client = await _ensureClient();
+      final sftp = await client.sftp();
       try {
-        await file.writeBytes(Uint8List.fromList(bytes));
+        final file = await sftp.open(
+          remotePath,
+          mode:
+              SftpFileOpenMode.create |
+              SftpFileOpenMode.write |
+              SftpFileOpenMode.truncate,
+        );
+        try {
+          await file.writeBytes(Uint8List.fromList(bytes));
+        } finally {
+          await file.close();
+        }
       } finally {
-        await file.close();
+        sftp.close();
       }
-    } finally {
-      sftp.close();
-    }
+    });
   }
 
   @override
-  Future<List<RemoteDirEntry>> listDirectory(String path) async {
-    final client = await _ensureClient();
-    final sftp = await client.sftp();
-    try {
-      final names = await sftp.listdir(path);
-      return names
-          .where((n) => n.filename != '.' && n.filename != '..')
-          .map(
-            (n) => RemoteDirEntry(
-              name: n.filename,
-              isDirectory: n.attr.isDirectory,
-            ),
-          )
-          .toList();
-    } finally {
-      sftp.close();
-    }
-  }
-
-  @override
-  Future<String> resolvePath(String path) async {
-    final client = await _ensureClient();
-    final sftp = await client.sftp();
-    try {
-      return await sftp.absolute(path);
-    } finally {
-      sftp.close();
-    }
-  }
-
-  @override
-  Future<RemoteFileStat> statFile(String path) async {
-    final client = await _ensureClient();
-    final sftp = await client.sftp();
-    try {
-      final attrs = await sftp.stat(path);
-      final size = attrs.size;
-      if (size == null) throw StateError('Remote file size is unavailable');
-      return RemoteFileStat(size: size);
-    } finally {
-      sftp.close();
-    }
-  }
-
-  @override
-  Future<List<int>> readFile(String path, {int offset = 0}) async {
-    final client = await _ensureClient();
-    final sftp = await client.sftp();
-    try {
-      final file = await sftp.open(path);
+  Future<List<RemoteDirEntry>> listDirectory(String path) {
+    return _mutex.run(() async {
+      final client = await _ensureClient();
+      final sftp = await client.sftp();
       try {
-        return await file.readBytes(offset: offset);
+        final names = await sftp.listdir(path);
+        return names
+            .where((n) => n.filename != '.' && n.filename != '..')
+            .map(
+              (n) => RemoteDirEntry(
+                name: n.filename,
+                isDirectory: n.attr.isDirectory,
+              ),
+            )
+            .toList();
       } finally {
-        await file.close();
+        sftp.close();
       }
-    } finally {
-      sftp.close();
-    }
+    });
+  }
+
+  @override
+  Future<String> resolvePath(String path) {
+    return _mutex.run(() async {
+      final client = await _ensureClient();
+      final sftp = await client.sftp();
+      try {
+        return await sftp.absolute(path);
+      } finally {
+        sftp.close();
+      }
+    });
+  }
+
+  @override
+  Future<RemoteFileStat> statFile(String path) {
+    return _mutex.run(() async {
+      final client = await _ensureClient();
+      final sftp = await client.sftp();
+      try {
+        final attrs = await sftp.stat(path);
+        final size = attrs.size;
+        if (size == null) throw StateError('Remote file size is unavailable');
+        return RemoteFileStat(size: size);
+      } finally {
+        sftp.close();
+      }
+    });
+  }
+
+  @override
+  Future<List<int>> readFile(String path, {int offset = 0}) {
+    return _mutex.run(() async {
+      final client = await _ensureClient();
+      final sftp = await client.sftp();
+      try {
+        final file = await sftp.open(path);
+        try {
+          return await file.readBytes(offset: offset);
+        } finally {
+          await file.close();
+        }
+      } finally {
+        sftp.close();
+      }
+    });
   }
 
   @override
