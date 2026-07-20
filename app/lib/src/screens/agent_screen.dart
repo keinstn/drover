@@ -231,15 +231,19 @@ class _AgentScreenState extends State<AgentScreen> {
   /// type.
   Future<void> _attachImage(ImageAttachSource source) async {
     if (_sending || _dictationStarting || _dictating) return;
-    final PickedImage? picked;
     try {
-      picked = await _imagePicker.pickImage(source);
+      if (source == ImageAttachSource.camera) {
+        final picked = await _imagePicker.pickImage(source);
+        if (picked == null) return; // user cancelled
+        if (mounted) setState(() => _pendingImages.add(picked));
+      } else {
+        final picked = await _imagePicker.pickImages();
+        if (picked.isEmpty) return; // user cancelled
+        if (mounted) setState(() => _pendingImages.addAll(picked));
+      }
     } catch (e) {
       if (mounted) showTopToast(context, e.toString());
-      return;
     }
-    if (picked == null) return; // user cancelled
-    if (mounted) setState(() => _pendingImages.add(picked!));
   }
 
   void _removePendingImage(int index) =>

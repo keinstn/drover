@@ -13,10 +13,14 @@ class PickedImage {
 /// platforms that support it (iOS); the gallery is always available.
 enum ImageAttachSource { gallery, camera }
 
-/// App-scoped interface for picking a single image. Returns null if the user
-/// cancels.
+/// App-scoped interface for picking images. Returns null (single) or an
+/// empty list (multi) if the user cancels.
 abstract interface class ImagePickerPort {
   Future<PickedImage?> pickImage(ImageAttachSource source);
+
+  /// Picks one or more images from the gallery. Returns an empty list if the
+  /// user cancels.
+  Future<List<PickedImage>> pickImages();
 }
 
 /// Backs [ImagePickerPort] with the image_picker plugin.
@@ -24,6 +28,7 @@ class SystemImagePicker implements ImagePickerPort {
   SystemImagePicker({ImagePicker? picker}) : _picker = picker ?? ImagePicker();
   final ImagePicker _picker;
 
+  /// Picks a single image; used for both gallery and camera capture.
   @override
   Future<PickedImage?> pickImage(ImageAttachSource source) async {
     final file = await _picker.pickImage(
@@ -32,6 +37,16 @@ class SystemImagePicker implements ImagePickerPort {
           : ImageSource.gallery,
     );
     if (file == null) return null;
+    return _toPickedImage(file);
+  }
+
+  @override
+  Future<List<PickedImage>> pickImages() async {
+    final files = await _picker.pickMultiImage();
+    return [for (final file in files) await _toPickedImage(file)];
+  }
+
+  Future<PickedImage> _toPickedImage(XFile file) async {
     final bytes = await file.readAsBytes();
     final dot = file.name.lastIndexOf('.');
     final ext = dot == -1 ? 'png' : file.name.substring(dot + 1).toLowerCase();
