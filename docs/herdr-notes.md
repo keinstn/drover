@@ -11,8 +11,10 @@ Observed against **herdr 0.7.1** unless noted otherwise.
 
 - `herdr api snapshot` is **not yet released** (docs/next only). Use
   `agent list` for the listing.
-- There is no CLI wrapper for `agent prompt`. "Text + Enter" is sent as two
-  calls: `agent send <target> <text>` followed by `pane send-keys <pane> enter`.
+- `agent send` was removed in herdr 0.7.5, replaced by `agent prompt <target>
+  <text>`, which types the text and submits it in a single atomic call.
+  drover's `HerdrClient.prompt` uses `agent prompt` directly (no fallback, no
+  version detection — herdr 0.7.5+ only).
 
 ## Behaviours / gotchas
 
