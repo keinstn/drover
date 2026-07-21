@@ -8,6 +8,26 @@ channel, the `agent_session` mechanism), see `../herdr-notes.md`.
 Observed against **Copilot CLI 1.0.72** and **herdr integration v2** unless
 noted otherwise.
 
+## Scrollbar glyph strands a floating `|` in wrapped pane text
+
+- **Copilot CLI's scrollbar strands a floating `|` when drover wraps the pane
+  text.** (Copilot CLI 1.0.73) Copilot CLI draws a scrollbar as a `┃`
+  (U+2503) glyph at one fixed display-cell column on **every** history-viewport
+  row (reverse-video for the thumb, plain for the track) — not a per-message
+  panel border. Verified against a live pane via `herdr agent read <target>
+  --source recent --format ansi`: every row shared the same cell column while
+  CJK rows reached it at different rune offsets. When drover soft-wraps those
+  padded rows at phone width, the scrollbar glyph lands on its own wrapped
+  line, appearing as a lone `|` detached from its content. **Fix:** turn the
+  scrollbar off in Copilot CLI itself — run its `/config` slash command and
+  toggle **scrollbar** off (persisted as `"scrollbar": false` in
+  `~/.copilot/settings.json`). With the column no longer drawn, the pane text
+  drover reads has no trailing border to strand and transcripts wrap cleanly;
+  no drover-side rendering workaround is needed. Confirmed on an iPhone
+  simulator against a live Copilot pane. (General lesson: probe the agent
+  CLI's own settings for a source-side fix before building a rendering-side
+  workaround.)
+
 ## Mode cycling and footer
 
 - **Mode cycling and footer.** (2026-07-21) With the composer focused, the raw
