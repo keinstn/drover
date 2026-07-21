@@ -126,7 +126,7 @@ void main() {
         const transcriptB = NativeTranscript([
           TranscriptMessage(speaker: TranscriptSpeaker.user, text: 'B'),
         ]);
-        final resolvedFor = <String>[];
+        final resolvedFor = <String?>[];
         AgentAdapter? resolve(AgentInfo agent) {
           resolvedFor.add(agent.agent);
           return switch (agent.agent) {
