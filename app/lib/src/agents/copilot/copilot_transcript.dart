@@ -200,11 +200,12 @@ class CopilotTranscriptLoader implements NativeTranscriptAdapter {
     // candidate path is tested for existence, honoring COPILOT_HOME when the
     // host sets it. A missing session directory/file (normal before the
     // session's first turn) yields empty stdout and exit 0 rather than an
-    // error, since the `if` has no `else` branch.
-    final result = await _runner.run(
+    // error, since the `if` has no `else` branch. Run this POSIX shell
+    // snippet through `sh` because the SSH account's login shell can be fish.
+    final script =
       'p="\${COPILOT_HOME:-\$HOME/.copilot}/session-state/$sessionId/events.jsonl"; '
-      'if [ -f "\$p" ]; then command printf "%s" "\$p"; fi',
-    );
+      'if [ -f "\$p" ]; then command printf "%s" "\$p"; fi';
+    final result = await _runner.run('sh -lc ${shQuote(script)}');
     if (result.exitCode != 0) {
       throw StateError('Unable to locate Copilot transcript: ${result.stderr}');
     }
