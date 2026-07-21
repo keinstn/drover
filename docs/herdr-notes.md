@@ -92,12 +92,17 @@ Observed against **herdr 0.7.1** unless noted otherwise.
     `◉ Working - plan esc interrupt` or
     `Working - autopilot esc interrupt`.
 
+  On narrow panes, the idle footer can wrap across physical terminal lines;
+  an update notice can also land between its `next` and `tab` words. Drover
+  therefore recognizes the footer from its trailing area rather than requiring
+  its chrome to remain on one line.
+
   `interactive` shows neither word in either form. **Caveat:** raw backtab
   only cycles the mode while the composer is focused — if focus is on the
   top-nav instead (whose focused state shows `Session | Issues | Pull
   requests | Gists`), the same keystroke changes the nav selection instead,
   and neither footer form is on-screen at all. So drover's Copilot mode
-  parser anchors on the idle footer's `commands`/`help`/`next tab` words or
+  parser anchors on the idle footer's `commands`/`help`/`next`/`tab` words or
   the working footer's `Working`/`interrupt` words together, rather than
   scanning for the bare words `plan`/`autopilot` anywhere in the pane, which
   could otherwise misfire on an unrelated nav label. Copilot's `autopilot` is
