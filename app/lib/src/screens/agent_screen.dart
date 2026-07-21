@@ -103,6 +103,7 @@ class AgentScreen extends StatefulWidget {
     this.speechInput,
     this.imagePicker,
     this.draftStore,
+    this.nativeTranscriptHistory,
     this.pollInterval = const Duration(seconds: 2),
   });
 
@@ -113,6 +114,12 @@ class AgentScreen extends StatefulWidget {
   final SpeechInput? speechInput;
   final ImagePickerPort? imagePicker;
   final AgentDraftStore? draftStore;
+  // A pane-scoped history/loader instance the caller (e.g. `HerdScreen`'s
+  // per-pane cache) may inject so reopening the same pane resumes from its
+  // already-loaded window/offset state instead of starting from zero. When
+  // omitted (standalone use, previews, tests) a fresh instance is created
+  // per screen instance, matching the pre-cache behavior.
+  final NativeTranscriptHistory? nativeTranscriptHistory;
   final Duration pollInterval;
 
   @override
@@ -164,7 +171,9 @@ class _AgentScreenState extends State<AgentScreen> {
     _speechInput = widget.speechInput ?? SpeechInputController();
     _imagePicker = widget.imagePicker ?? SystemImagePicker();
     _draftStore = widget.draftStore ?? AgentDraftStore.shared;
-    _nativeTranscriptHistory = NativeTranscriptHistory(widget.client.runner);
+    _nativeTranscriptHistory =
+        widget.nativeTranscriptHistory ??
+        NativeTranscriptHistory(widget.client.runner);
     // Restore any draft left over from a previous visit to this pane's screen
     // (the route is popped/re-pushed on navigation, disposing the controller).
     final draft = _draftStore.read(widget.paneId);
@@ -315,12 +324,15 @@ class _AgentScreenState extends State<AgentScreen> {
   /// independently of the pane-text fetch in [_load], so a slow native load
   /// never delays already-fetched pane output.
   ///
-  /// Single-flights against itself: the underlying adapter keeps incremental
-  /// parse state (byte offset, partial line) that isn't safe to touch from
-  /// two overlapping loads, so a poll tick that lands while a previous native
-  /// load is still in flight simply skips starting another one — the next
-  /// tick retries. This preserves the same effective serialization the
-  /// previous fully-sequential `_load` gave native history for free.
+  /// Single-flights against itself (and against `_loadOlderNativeHistory`,
+  /// which shares the same `_nativeHistoryLoading` flag): the underlying
+  /// adapter keeps incremental parse state (byte offset, partial line) that
+  /// isn't safe to touch from two overlapping loads — e.g. a poll's
+  /// truncation-triggered reset racing a pull-to-load-more's read — so a
+  /// poll tick that lands while a previous native load (of either kind) is
+  /// still in flight simply skips starting another one — the next tick
+  /// retries. This preserves the same effective serialization the previous
+  /// fully-sequential `_load` gave native history for free.
   Future<void> _loadNativeHistory(AgentInfo agent) async {
     if (_nativeHistoryLoading) return;
     _nativeHistoryLoading = true;
@@ -441,12 +453,77 @@ class _AgentScreenState extends State<AgentScreen> {
 
   Future<void> _loadMore() async {
     // Gate on entries (not just chat messages) so a tool_use- or thinking-only
-    // history stops pull-to-load-more, matching hasNativeHistory.
-    if ((_nativeHistory?.entries.isNotEmpty ?? false) || _paneEndReached) {
+    // history counts, matching hasNativeHistory. Also dispatch whenever the
+    // adapter itself still reports older history even with zero entries
+    // currently loaded — an oversized last record can leave the current
+    // native snapshot empty while there's still earlier, reachable history
+    // to page into (see `JsonlTranscriptWindow`); without this, such a pane
+    // would fall through to the (irrelevant) pane load-more path forever.
+    final hasNativeEntries = _nativeHistory?.entries.isNotEmpty ?? false;
+    if (hasNativeEntries || _nativeTranscriptHistory.hasOlderHistory) {
+      // Native history exists: page further back into it instead of falling
+      // back to the pane. `_loadOlderNativeHistory` itself no-ops once the
+      // beginning of that history has been reached. The pane load-more path
+      // below is reserved for when there is no native history to page
+      // through at all.
+      await _loadOlderNativeHistory();
+      return;
+    }
+    if (_paneEndReached) {
       return;
     }
     setState(() => _lines = min(_maxPaneLines, _lines + _lineStep));
     await _load(loadMore: true);
+  }
+
+  /// Prepends the next older bounded chunk of native transcript history (see
+  /// `NativeTranscriptHistory.loadOlder`), preserving the scroll position
+  /// relative to the bottom of the currently visible content — the same
+  /// anchor-from-bottom technique `_load`'s pane load-more uses — so the
+  /// newly-prepended older entries push the viewport down without a visible
+  /// jump. A no-op once the beginning of the native history has been reached
+  /// (`hasOlderHistory` false) or before any agent/history has loaded.
+  ///
+  /// Shares the same `_nativeHistoryLoading` single-flight guard as
+  /// `_loadNativeHistory`: both ultimately mutate the same underlying
+  /// `JsonlTranscriptWindow` (byte offset/partial-line/window state), which
+  /// is not safe to touch from two overlapping calls — e.g. a poll tick
+  /// landing (and possibly resetting state after a detected truncation)
+  /// while a pull-to-load-more is still awaiting its own read. A tick or
+  /// pull that finds the flag already set simply skips this round; a poll
+  /// tick retries on its next interval, and a skipped pull-to-load-more
+  /// gesture leaves `hasOlderHistory` unchanged for the user to retry.
+  Future<void> _loadOlderNativeHistory() async {
+    final agent = _agent;
+    if (agent == null ||
+        !_nativeTranscriptHistory.hasOlderHistory ||
+        _nativeHistoryLoading) {
+      return;
+    }
+    _nativeHistoryLoading = true;
+    final anchorFromBottom = _scrollController.hasClients
+        ? _scrollController.position.maxScrollExtent -
+              _scrollController.position.pixels
+        : null;
+    try {
+      final updated = await _nativeTranscriptHistory.loadOlder(agent);
+      if (!mounted || updated == null) return;
+      setState(() => _nativeHistory = updated);
+      if (anchorFromBottom != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_scrollController.hasClients) return;
+          final target =
+              (_scrollController.position.maxScrollExtent - anchorFromBottom)
+                  .clamp(0.0, _scrollController.position.maxScrollExtent);
+          _scrollController.jumpTo(target);
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _nativeHistoryError = e.toString());
+    } finally {
+      _nativeHistoryLoading = false;
+    }
   }
 
   Future<bool> _send(Future<void> Function() action) async {

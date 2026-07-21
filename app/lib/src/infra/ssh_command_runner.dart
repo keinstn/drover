@@ -208,13 +208,13 @@ class SshCommandRunner implements CommandRunner {
   }
 
   @override
-  Future<List<int>> readFile(String path, {int offset = 0}) {
+  Future<List<int>> readFile(String path, {int offset = 0, int? length}) {
     return _withClient((client) async {
       final sftp = await client.sftp();
       try {
         final file = await sftp.open(path);
         try {
-          return await file.readBytes(offset: offset);
+          return await file.readBytes(offset: offset, length: length);
         } finally {
           await file.close();
         }

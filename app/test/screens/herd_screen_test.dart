@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
@@ -61,6 +63,113 @@ CommandResult _respond(String command) {
     return ok('{"id":"1","result":{"type":"ok"}}');
   }
   return ok(_listEnvelope);
+}
+
+/// A [CommandRunner] backing two Claude agent panes with genuine native
+/// session files (served via [statFile]/[readFile]), so `HerdScreen`'s
+/// per-pane `NativeTranscriptHistory` cache can be exercised through the real
+/// `ClaudeTranscriptLoader`/registry path (not a test double), the same as
+/// production. Each pane's session-file "locate" (`find`) lookup is recorded
+/// so a test can tell whether opening a pane reused an already-resolved
+/// loader/path or re-resolved one from scratch.
+class NativeHistoryHerdRunner extends CommandRunner {
+  final commands = <String>[];
+
+  /// pane id -> claude session id
+  final sessions = <String, String>{
+    'wA:p1': 'aaaaaaaa-0000-4000-8000-000000000001',
+    'wB:p1': 'bbbbbbbb-0000-4000-8000-000000000002',
+  };
+
+  /// claude session id -> that session's JSONL contents.
+  final sessionContents = <String, String>{
+    'aaaaaaaa-0000-4000-8000-000000000001':
+        '{"type":"user","message":{"role":"user","content":"Hello from A"}}\n',
+    'bbbbbbbb-0000-4000-8000-000000000002':
+        '{"type":"user","message":{"role":"user","content":"Hello from B"}}\n',
+  };
+
+  @override
+  Future<CommandResult> run(String command) async {
+    commands.add(command);
+    if (command.contains("'workspace' 'list'")) {
+      return ok(
+        '{"id":"1","result":{"workspaces":['
+        '{"workspace_id":"wA","label":"Project A"},'
+        '{"workspace_id":"wB","label":"Project B"}'
+        ']}}',
+      );
+    }
+    if (command.contains("'agent' 'list'")) {
+      final entries = sessions.keys.map((paneId) {
+        final workspaceId = paneId.split(':').first;
+        return '{"agent":"claude","agent_status":"idle",'
+            '"cwd":"/tmp/proj","focused":false,"pane_id":"$paneId",'
+            '"tab_id":"$workspaceId:t1","workspace_id":"$workspaceId",'
+            '"name":"Agent $paneId"}';
+      });
+      return ok('{"id":"1","result":{"agents":[${entries.join(',')}]}}');
+    }
+    if (command.contains("'agent' 'get'")) {
+      final paneId = sessions.keys.firstWhere(
+        (id) => command.contains("'$id'"),
+      );
+      final workspaceId = paneId.split(':').first;
+      final sessionId = sessions[paneId];
+      return ok(
+        '{"id":"1","result":{"agent":{"agent":"claude","agent_status":"idle",'
+        '"cwd":"/tmp/proj","focused":false,"pane_id":"$paneId",'
+        '"tab_id":"$workspaceId:t1","workspace_id":"$workspaceId",'
+        '"name":"Agent $paneId",'
+        '"agent_session":{"source":"claude","agent":"claude","kind":"id",'
+        '"value":"$sessionId"}}}}',
+      );
+    }
+    if (command.contains("'agent' 'read'")) {
+      return ok('{"id":"1","result":{"read":{"text":"working…"}}}');
+    }
+    if (command.startsWith('command find ')) {
+      final match = RegExp(r"-name '([^']+)\.jsonl'").firstMatch(command);
+      final sessionId = match?.group(1);
+      return ok('/home/dev/.claude/projects/-tmp-proj/$sessionId.jsonl\n');
+    }
+    return ok('{"id":"1","result":{}}');
+  }
+
+  String? _sessionIdFromPath(String path) {
+    final fileName = path.split('/').last;
+    return fileName.endsWith('.jsonl')
+        ? fileName.substring(0, fileName.length - '.jsonl'.length)
+        : null;
+  }
+
+  @override
+  Future<RemoteFileStat> statFile(String path) async {
+    final text = sessionContents[_sessionIdFromPath(path)] ?? '';
+    return RemoteFileStat(size: utf8.encode(text).length);
+  }
+
+  @override
+  Future<List<int>> readFile(String path, {int offset = 0, int? length}) async {
+    final text = sessionContents[_sessionIdFromPath(path)] ?? '';
+    final bytes = utf8.encode(text);
+    final end = length == null
+        ? bytes.length
+        : (offset + length).clamp(0, bytes.length);
+    return bytes.sublist(offset, end);
+  }
+
+  @override
+  Future<void> uploadFile(String remotePath, List<int> bytes) async {}
+
+  @override
+  Future<List<RemoteDirEntry>> listDirectory(String path) async => [];
+
+  @override
+  Future<String> resolvePath(String path) async => path;
+
+  @override
+  Future<void> dispose() async {}
 }
 
 void main() {
@@ -159,6 +268,67 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(seconds: 1));
       expect(listCalls(), greaterThan(afterPop));
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'reuses a pane\'s native transcript history/loader across leaving and '
+    'reopening its AgentScreen, keeping a separate one per pane',
+    (tester) async {
+      final runner = NativeHistoryHerdRunner();
+      final client = HerdrClient(runner);
+      final sessionA = runner.sessions['wA:p1']!;
+      final sessionB = runner.sessions['wB:p1']!;
+
+      int locateCallsFor(String sessionId) => runner.commands
+          .where((c) => c.contains("-name '$sessionId.jsonl'"))
+          .length;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HerdScreen(
+            client: client,
+            onOpenSettings: () {},
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Open pane A: its native history loads (one session-file locate).
+      await tester.tap(find.text('Agent wA:p1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Hello from A'), findsOneWidget);
+      expect(locateCallsFor(sessionA), 1);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      // Reopening the very same pane must reuse the cached
+      // NativeTranscriptHistory/loader instance (resuming from its
+      // already-known path/offset) rather than re-locating the session file
+      // from scratch.
+      await tester.tap(find.text('Agent wA:p1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Hello from A'), findsOneWidget);
+      expect(locateCallsFor(sessionA), 1);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      // A different pane gets its own, independent history/loader: opening
+      // it locates its own session file, and pane A's cached state (and
+      // locate count) is unaffected.
+      await tester.tap(find.text('Agent wB:p1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Hello from B'), findsOneWidget);
+      expect(locateCallsFor(sessionB), 1);
+      expect(locateCallsFor(sessionA), 1);
 
       await tester.pumpWidget(const SizedBox());
     },

@@ -2,14 +2,19 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:drover/l10n/app_localizations.dart';
+import 'package:drover/src/agents/agent_adapter.dart';
+import 'package:drover/src/agents/agent_capabilities.dart';
+import 'package:drover/src/agents/agent_native_history.dart';
 import 'package:drover/src/dev/stub_herdr.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/image/image_input.dart';
+import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/screens/agent_draft_store.dart';
 import 'package:drover/src/screens/agent_screen.dart';
 import 'package:drover/src/screens/structured_prompt_sheet.dart';
 import 'package:drover/src/speech/speech_input.dart';
+import 'package:drover/src/transcript/native_transcript.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -178,6 +183,7 @@ class NativeHistoryRunner extends StubCommandRunner {
       '{"type":"thinking","thinking":"hidden"},'
       '{"type":"text","text":"Native reply"}]}}\n';
   final readOffsets = <int>[];
+  final readLengths = <int?>[];
   bool failNativeStat = false;
 
   static CommandResult _response(String command) {
@@ -208,9 +214,14 @@ class NativeHistoryRunner extends StubCommandRunner {
   }
 
   @override
-  Future<List<int>> readFile(String path, {int offset = 0}) async {
+  Future<List<int>> readFile(String path, {int offset = 0, int? length}) async {
     readOffsets.add(offset);
-    return utf8.encode(contents).sublist(offset);
+    readLengths.add(length);
+    final bytes = utf8.encode(contents);
+    final end = length == null
+        ? bytes.length
+        : (offset + length).clamp(0, bytes.length);
+    return bytes.sublist(offset, end);
   }
 }
 
@@ -478,6 +489,108 @@ String _thinkingJsonl(String text) =>
         ],
       },
     })}\n';
+
+/// A [NativeTranscriptAdapter] test double whose [load] returns a fixed
+/// "recent" window and whose [loadOlder] pages through [olderChunks] one at a
+/// time, prepending each in order — standing in for the real bounded-window
+/// loaders (`ClaudeTranscriptLoader`/`CopilotTranscriptLoader`) so AgentScreen's
+/// pull-to-load-more dispatch/anchoring can be tested without a multi-hundred
+/// KiB fixture.
+class _PagedNativeAdapter implements NativeTranscriptAdapter {
+  _PagedNativeAdapter(this._transcript);
+
+  NativeTranscript _transcript;
+  final olderChunks = <List<TranscriptEntry>>[];
+  var loadOlderCalls = 0;
+
+  @override
+  Future<NativeTranscript?> load(AgentInfo agent) async => _transcript;
+
+  @override
+  bool get hasOlderHistory => loadOlderCalls < olderChunks.length;
+
+  @override
+  Future<NativeTranscript?> loadOlder(AgentInfo agent) async {
+    if (!hasOlderHistory) return null;
+    final chunk = olderChunks[loadOlderCalls];
+    loadOlderCalls++;
+    _transcript = NativeTranscript([...chunk, ..._transcript.entries]);
+    return _transcript;
+  }
+}
+
+/// An [AgentAdapter] that always hands back [history] as the native-history
+/// capability, regardless of [agent].
+class _FixedNativeHistoryAdapter extends AgentAdapter {
+  _FixedNativeHistoryAdapter(this.history);
+
+  final NativeTranscriptAdapter history;
+
+  @override
+  bool supports(AgentInfo agent) => true;
+
+  @override
+  NativeHistoryCapability? createNativeHistory(
+    CommandRunner runner,
+    AgentInfo agent,
+  ) => history;
+}
+
+/// A [NativeTranscriptAdapter] test double standing in for a real adapter's
+/// single, shared `JsonlTranscriptWindow` — [load] and [loadOlder] both
+/// record entry/exit into [_busy] and flag [concurrentAccessDetected] if
+/// either is called while the other is still in flight, exactly the hazard
+/// a real window's byte-offset/entries state can't survive. [load] pauses on
+/// [pendingLoad] (when set) before resolving, letting a test hold a poll
+/// "mid-flight" to prove a concurrent pull-to-load-more is correctly gated
+/// out rather than racing it.
+class _GatedNativeAdapter implements NativeTranscriptAdapter {
+  _GatedNativeAdapter(this._transcript);
+
+  NativeTranscript _transcript;
+  final olderChunks = <List<TranscriptEntry>>[];
+  Completer<void>? pendingLoad;
+  var loadCalls = 0;
+  var loadOlderCalls = 0;
+  var _busy = false;
+  var concurrentAccessDetected = false;
+
+  @override
+  Future<NativeTranscript?> load(AgentInfo agent) async {
+    loadCalls++;
+    return _guarded(() async {
+      final gate = pendingLoad;
+      if (gate != null) await gate.future;
+      return _transcript;
+    });
+  }
+
+  @override
+  bool get hasOlderHistory => loadOlderCalls < olderChunks.length;
+
+  @override
+  Future<NativeTranscript?> loadOlder(AgentInfo agent) {
+    if (!hasOlderHistory) return Future.value(null);
+    return _guarded(() async {
+      final chunk = olderChunks[loadOlderCalls];
+      loadOlderCalls++;
+      _transcript = NativeTranscript([...chunk, ..._transcript.entries]);
+      return _transcript;
+    });
+  }
+
+  Future<NativeTranscript?> _guarded(
+    Future<NativeTranscript?> Function() body,
+  ) async {
+    if (_busy) concurrentAccessDetected = true;
+    _busy = true;
+    try {
+      return await body();
+    } finally {
+      _busy = false;
+    }
+  }
+}
 
 void main() {
   // Tests that don't inject their own store fall back to AgentDraftStore.shared,
@@ -2075,6 +2188,219 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'pulling down with native history pages older entries in order, and '
+    'no-ops (no pane fallback) once the beginning is reached',
+    (tester) async {
+      final runner = StubCommandRunner(workingResponse);
+      final client = HerdrClient(runner);
+      // All entries use the user speaker so they render as plain
+      // (non-Markdown) bubbles, findable via `find.text` directly.
+      final recent = List.generate(
+        6,
+        (i) => TranscriptMessage(
+          speaker: TranscriptSpeaker.user,
+          text:
+              'Recent turn $i, with enough filler text to give this row '
+              'real height in the transcript list.',
+        ),
+      );
+      final olderChunk1 = List.generate(
+        6,
+        (i) => TranscriptMessage(
+          speaker: TranscriptSpeaker.user,
+          text:
+              'Older-1 turn $i, with enough filler text to give this row '
+              'real height in the transcript list.',
+        ),
+      );
+      const oldestMessage = TranscriptMessage(
+        speaker: TranscriptSpeaker.user,
+        text: 'Oldest turn — the very beginning of history.',
+      );
+      final adapter = _PagedNativeAdapter(NativeTranscript(recent))
+        ..olderChunks.addAll([
+          olderChunk1,
+          [oldestMessage],
+        ]);
+      final history = NativeTranscriptHistory(
+        runner,
+        resolveAdapter: (agent) => _FixedNativeHistoryAdapter(adapter),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+            nativeTranscriptHistory: history,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Recent turn 0'), findsOneWidget);
+      expect(find.textContaining('Older-1 turn 0'), findsNothing);
+
+      Future<void> pullToLoadMore() async {
+        await tester.drag(
+          find.byKey(const ValueKey('transcript_scroll')),
+          const Offset(0, 1000),
+        );
+        await tester.pump();
+        await tester.fling(
+          find.byKey(const ValueKey('transcript_scroll')),
+          const Offset(0, 300),
+          1000,
+        );
+        await tester.pumpAndSettle();
+      }
+
+      // First pull: dispatches to the native adapter's `loadOlder` (not the
+      // pane load-more fallback) and prepends the first older chunk above
+      // the already-visible recent entries, in order.
+      await pullToLoadMore();
+      expect(adapter.loadOlderCalls, 1);
+      expect(find.textContaining('Older-1 turn 0'), findsOneWidget);
+      final olderTop = tester
+          .getTopLeft(find.textContaining('Older-1 turn 0'))
+          .dy;
+      final recentTop = tester
+          .getTopLeft(find.textContaining('Recent turn 0'))
+          .dy;
+      expect(olderTop, lessThan(recentTop));
+
+      // Second pull: pages in the final (oldest) chunk and reaches the
+      // beginning of the native history.
+      await pullToLoadMore();
+      expect(adapter.loadOlderCalls, 2);
+      expect(
+        find.textContaining('the very beginning of history'),
+        findsOneWidget,
+      );
+      expect(adapter.hasOlderHistory, isFalse);
+
+      // A further pull is a no-op: no more loadOlder calls, and — since
+      // native entries are present — no pane load-more fallback either.
+      final paneReadCallsBefore = runner.commands
+          .where((c) => c.contains("'agent' 'read'"))
+          .length;
+      await pullToLoadMore();
+      expect(adapter.loadOlderCalls, 2);
+      expect(
+        runner.commands.where((c) => c.contains("'agent' 'read'")).length,
+        paneReadCallsBefore,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'a pull-to-load-more that lands while a native poll is still in flight '
+    'is gated out rather than racing it, and proceeds normally once the '
+    'poll completes',
+    (tester) async {
+      final runner = StubCommandRunner(workingResponse);
+      final client = HerdrClient(runner);
+      final recent = List.generate(
+        6,
+        (i) => TranscriptMessage(
+          speaker: TranscriptSpeaker.user,
+          text:
+              'Recent turn $i, with enough filler text to give this row '
+              'real height in the transcript list.',
+        ),
+      );
+      final olderChunk = List.generate(
+        6,
+        (i) => TranscriptMessage(
+          speaker: TranscriptSpeaker.user,
+          text:
+              'Older turn $i, with enough filler text to give this row '
+              'real height in the transcript list.',
+        ),
+      );
+      final adapter = _GatedNativeAdapter(NativeTranscript(recent))
+        ..olderChunks.add(olderChunk);
+      final history = NativeTranscriptHistory(
+        runner,
+        resolveAdapter: (agent) => _FixedNativeHistoryAdapter(adapter),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(seconds: 1),
+            nativeTranscriptHistory: history,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(adapter.loadCalls, 1);
+
+      // Hold the *next* native load (a poll tick) mid-flight, simulating a
+      // slow read racing a truncation-triggered reset.
+      adapter.pendingLoad = Completer<void>();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+      expect(adapter.loadCalls, 2);
+
+      // A pull-to-load-more gesture landing now must not call into the
+      // adapter's `loadOlder` while that poll is still awaiting its gate —
+      // it should be gated out by the shared `_nativeHistoryLoading` flag
+      // (see `AgentScreen._loadOlderNativeHistory`) instead of racing it.
+      // `pumpAndSettle` is safe here even with the poll's own load stuck:
+      // only that detached `load()` future is pending, and it isn't tied to
+      // any animation, so the pull gesture's own frames settle normally.
+      await tester.drag(
+        find.byKey(const ValueKey('transcript_scroll')),
+        const Offset(0, 1000),
+      );
+      await tester.pump();
+      await tester.fling(
+        find.byKey(const ValueKey('transcript_scroll')),
+        const Offset(0, 300),
+        1000,
+      );
+      await tester.pumpAndSettle();
+
+      expect(adapter.loadOlderCalls, 0);
+      expect(adapter.concurrentAccessDetected, isFalse);
+
+      // Release the poll; it completes normally, and pull-to-load-more now
+      // proceeds (un-gated) without ever having overlapped the poll.
+      adapter.pendingLoad!.complete();
+      await tester.pumpAndSettle();
+      expect(adapter.concurrentAccessDetected, isFalse);
+
+      await tester.drag(
+        find.byKey(const ValueKey('transcript_scroll')),
+        const Offset(0, 1000),
+      );
+      await tester.pump();
+      await tester.fling(
+        find.byKey(const ValueKey('transcript_scroll')),
+        const Offset(0, 300),
+        1000,
+      );
+      await tester.pumpAndSettle();
+
+      expect(adapter.loadOlderCalls, 1);
+      expect(adapter.concurrentAccessDetected, isFalse);
+      expect(find.textContaining('Older turn 0'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('auto-presents the AskUserQuestion sheet when one is pending', (
     tester,

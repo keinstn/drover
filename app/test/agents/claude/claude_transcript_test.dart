@@ -17,6 +17,7 @@ class MemoryRunner extends CommandRunner {
   String lookupError = '';
   final commands = <String>[];
   final readOffsets = <int>[];
+  final readLengths = <int?>[];
   final statSizes = <int>[];
   static const path =
       '/home/dev/.claude/projects/-home-dev-project/c7c50b87-4d4c-4a92-9396-2cfa4158612d.jsonl';
@@ -39,9 +40,14 @@ class MemoryRunner extends CommandRunner {
   );
 
   @override
-  Future<List<int>> readFile(String path, {int offset = 0}) async {
+  Future<List<int>> readFile(String path, {int offset = 0, int? length}) async {
     readOffsets.add(offset);
-    return utf8.encode(contents).sublist(offset);
+    readLengths.add(length);
+    final bytes = utf8.encode(contents);
+    final end = length == null
+        ? bytes.length
+        : (offset + length).clamp(0, bytes.length);
+    return bytes.sublist(offset, end);
   }
 
   @override
@@ -893,6 +899,179 @@ void main() {
 
         expect(transcript?.messages.map((message) => message.text), ['New']);
         expect(runner.readOffsets, [0, 0]);
+      },
+    );
+  });
+
+  group('ClaudeTranscriptLoader bounded window', () {
+    // A small custom window (a few uniform-length lines wide) forces the
+    // bounded tail/older-chunk paths deterministically, without needing a
+    // multi-hundred-KiB fixture to exceed the real 512 KiB default.
+    String uniformLine(int i) => jsonEncode({
+      'type': 'user',
+      'message': {
+        'role': 'user',
+        'content': 'entry-${i.toString().padLeft(3, '0')}',
+      },
+    });
+
+    const lineCount = 12;
+    final lines = List.generate(lineCount, uniformLine);
+    final lineBytes = utf8.encode('${lines.first}\n').length;
+    final contents = '${lines.join('\n')}\n';
+    final totalSize = utf8.encode(contents).length;
+    // Just under 4 lines wide, so a tail/older read never lands exactly on a
+    // line boundary and always has a genuine partial leading record to
+    // discard.
+    final windowBytes = lineBytes * 4 - (lineBytes ~/ 2);
+
+    String textOf(String line) =>
+        ((jsonDecode(line) as Map<String, dynamic>)['message']
+                as Map<String, dynamic>)['content']
+            as String;
+
+    List<String> expectedFrom(int firstIndex) =>
+        lines.sublist(firstIndex).map(textOf).toList();
+
+    test('bounds the very first read of a large file to a tail window, '
+        'discarding only the partial leading record', () async {
+      final runner = MemoryRunner(contents);
+      final loader = ClaudeTranscriptLoader(
+        runner,
+        window: JsonlTranscriptWindow(windowBytes: windowBytes),
+      );
+
+      final transcript = await loader.load(claudeAgent());
+
+      // Exactly one bounded read: the offset skips straight to the tail,
+      // never the whole file from 0.
+      expect(runner.readOffsets, hasLength(1));
+      final offset = runner.readOffsets.single;
+      expect(offset, totalSize - windowBytes);
+      expect(offset, greaterThan(0));
+      expect(runner.readLengths.single, windowBytes);
+
+      final firstIncluded = (offset ~/ lineBytes) + 1;
+      expect(
+        transcript?.messages.map((message) => message.text),
+        expectedFrom(firstIncluded),
+      );
+    });
+
+    test('append-only polling after the initial bounded tail transfers only '
+        'newly-written bytes', () async {
+      final runner = MemoryRunner(contents);
+      final loader = ClaudeTranscriptLoader(
+        runner,
+        window: JsonlTranscriptWindow(windowBytes: windowBytes),
+      );
+
+      await loader.load(claudeAgent());
+      expect(runner.readOffsets, hasLength(1));
+
+      final appendedLine = uniformLine(lineCount);
+      runner.contents += '$appendedLine\n';
+      final transcript = await loader.load(claudeAgent());
+
+      // The second read starts exactly at the previously-known EOF and is
+      // unbounded (reads to the new EOF) — never re-fetching earlier bytes.
+      expect(runner.readOffsets, [totalSize - windowBytes, totalSize]);
+      expect(runner.readLengths.last, isNull);
+      expect(transcript?.messages.last.text, textOf(appendedLine));
+    });
+
+    test(
+      'loadOlder prepends the next bounded chunk in chronological order',
+      () async {
+        final runner = MemoryRunner(contents);
+        final loader = ClaudeTranscriptLoader(
+          runner,
+          window: JsonlTranscriptWindow(windowBytes: windowBytes),
+        );
+
+        await loader.load(claudeAgent());
+        expect(loader.hasOlderHistory, isTrue);
+
+        final transcript = await loader.loadOlder(claudeAgent());
+
+        expect(runner.readOffsets, hasLength(2));
+        final olderOffset = runner.readOffsets[1];
+        expect(olderOffset, lessThan(runner.readOffsets[0]));
+        final firstIncluded = (olderOffset ~/ lineBytes) + 1;
+        expect(
+          transcript?.messages.map((message) => message.text),
+          expectedFrom(firstIncluded),
+        );
+      },
+    );
+
+    test(
+      'loadOlder is a no-op once the beginning of history is reached',
+      () async {
+        final runner = MemoryRunner(contents);
+        final loader = ClaudeTranscriptLoader(
+          runner,
+          window: JsonlTranscriptWindow(windowBytes: windowBytes),
+        );
+
+        await loader.load(claudeAgent());
+        NativeTranscript? last;
+        var guard = 0;
+        while (loader.hasOlderHistory && guard < lineCount + 2) {
+          last = await loader.loadOlder(claudeAgent());
+          guard++;
+        }
+
+        expect(loader.hasOlderHistory, isFalse);
+        expect(last?.messages.map((message) => message.text), expectedFrom(0));
+
+        final callsBeforeNoOp = runner.readOffsets.length;
+        final noOpResult = await loader.loadOlder(claudeAgent());
+
+        expect(noOpResult, isNull);
+        expect(runner.readOffsets, hasLength(callsBeforeNoOp));
+      },
+    );
+
+    test('resets the window when the file is truncated (e.g. a replaced '
+        'session file)', () async {
+      final runner = MemoryRunner(contents);
+      final loader = ClaudeTranscriptLoader(
+        runner,
+        window: JsonlTranscriptWindow(windowBytes: windowBytes),
+      );
+
+      await loader.load(claudeAgent());
+
+      const replacement =
+          '{"type":"user","message":{"role":"user","content":"Replaced"}}\n';
+      runner.contents = replacement;
+      final transcript = await loader.load(claudeAgent());
+
+      expect(transcript?.messages.map((message) => message.text), ['Replaced']);
+      expect(loader.hasOlderHistory, isFalse);
+    });
+
+    test(
+      'still loads a small file in full from offset 0 (window unused)',
+      () async {
+        final small = '${lines.take(3).join('\n')}\n';
+        final smallSize = utf8.encode(small).length;
+        final runner = MemoryRunner(small);
+        final loader = ClaudeTranscriptLoader(
+          runner,
+          window: JsonlTranscriptWindow(windowBytes: smallSize),
+        );
+
+        final transcript = await loader.load(claudeAgent());
+
+        expect(runner.readOffsets, [0]);
+        expect(runner.readLengths, [null]);
+        expect(
+          transcript?.messages.map((message) => message.text),
+          expectedFrom(0).take(3),
+        );
+        expect(loader.hasOlderHistory, isFalse);
       },
     );
   });

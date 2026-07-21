@@ -212,10 +212,18 @@ class ClaudeTranscriptParser {
 }
 
 /// Loads Claude's exact, herdr-reported session file and caches its parsed
-/// prefix. A poll transfers only bytes appended since the last read.
+/// prefix. The very first load of a large file fetches only a bounded tail
+/// (see `nativeTranscriptWindowBytes`); a poll thereafter transfers only
+/// bytes appended since the last read, and [loadOlder] fetches earlier
+/// bounded chunks on demand — see `JsonlTranscriptWindow` for the shared
+/// byte-window/offset/partial-line bookkeeping.
 class ClaudeTranscriptLoader implements NativeTranscriptAdapter {
-  ClaudeTranscriptLoader(this._runner, {ClaudeTranscriptParser? parser})
-    : _parser = parser ?? const ClaudeTranscriptParser();
+  ClaudeTranscriptLoader(
+    this._runner, {
+    ClaudeTranscriptParser? parser,
+    JsonlTranscriptWindow? window,
+  }) : _parser = parser ?? const ClaudeTranscriptParser(),
+       _window = window ?? JsonlTranscriptWindow();
 
   static final _claudeSessionId = RegExp(
     r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
@@ -225,10 +233,7 @@ class ClaudeTranscriptLoader implements NativeTranscriptAdapter {
   final ClaudeTranscriptParser _parser;
   String? _sessionId;
   String? _path;
-  var _size = 0;
-  var _remainder = '';
-  var _remainderParsed = false;
-  final _entries = <TranscriptEntry>[];
+  final JsonlTranscriptWindow _window;
 
   static bool supportsAgent(AgentInfo agent) {
     final session = agent.agentSession;
@@ -246,65 +251,36 @@ class ClaudeTranscriptLoader implements NativeTranscriptAdapter {
     }
     final id = agent.agentSession!.value;
     if (_sessionId != id) {
-      _reset(id);
+      _sessionId = id;
+      _path = null;
+      _window.reset();
     }
     final path = _path ?? await _locate(id);
     if (path == null) {
       return null;
     }
     _path = path;
-    final stat = await _runner.statFile(path);
-    if (stat.size < _size) {
-      _resetIncrementalState();
-    }
-    if (stat.size == _size) {
-      return NativeTranscript(List.unmodifiable(_entries));
-    }
-
-    final bytes = await _runner.readFile(path, offset: _size);
-    _size += bytes.length;
-    final appended = utf8.decode(bytes, allowMalformed: true);
-    final completesParsedRemainder =
-        _remainderParsed && appended.startsWith('\n');
-    if (completesParsedRemainder) {
-      _remainder = '';
-      _remainderParsed = false;
-    }
-    final input = completesParsedRemainder
-        ? appended.substring(1)
-        : '$_remainder$appended';
-    final lastNewline = input.lastIndexOf('\n');
-    if (lastNewline < 0) {
-      _remainder = input;
-      final entries = _parser.parseLine(input);
-      if (entries.isNotEmpty && !_remainderParsed) {
-        _entries.addAll(entries);
-        _remainderParsed = true;
-      }
-    } else {
-      _entries.addAll(_parser.parseLines(input.substring(0, lastNewline)));
-      _remainder = input.substring(lastNewline + 1);
-      _remainderParsed = false;
-      final entries = _parser.parseLine(_remainder);
-      if (entries.isNotEmpty) {
-        _entries.addAll(entries);
-        _remainderParsed = true;
-      }
-    }
-    return NativeTranscript(List.unmodifiable(_entries));
+    return _window.loadOrAppend(
+      statSize: () async => (await _runner.statFile(path)).size,
+      readRange: (offset, length) =>
+          _runner.readFile(path, offset: offset, length: length),
+      parseLines: _parser.parseLines,
+      parseLine: _parser.parseLine,
+    );
   }
 
-  void _reset(String id) {
-    _sessionId = id;
-    _path = null;
-    _resetIncrementalState();
-  }
+  @override
+  bool get hasOlderHistory => _window.hasOlder;
 
-  void _resetIncrementalState() {
-    _size = 0;
-    _remainder = '';
-    _remainderParsed = false;
-    _entries.clear();
+  @override
+  Future<NativeTranscript?> loadOlder(AgentInfo agent) {
+    final path = _path;
+    if (path == null || !_window.hasOlder) return Future.value(null);
+    return _window.loadOlder(
+      readRange: (offset, length) =>
+          _runner.readFile(path, offset: offset, length: length),
+      parseLines: _parser.parseLines,
+    );
   }
 
   Future<String?> _locate(String sessionId) async {

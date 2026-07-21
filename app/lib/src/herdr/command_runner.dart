@@ -38,9 +38,13 @@ abstract class CommandRunner {
   Future<RemoteFileStat> statFile(String path) =>
       Future.error(UnsupportedError('Remote file stats are unavailable'));
 
-  /// Reads a byte range from [path]. Implementations should use SFTP where
+  /// Reads a byte range from [path], starting at [offset]. When [length] is
+  /// null, reads through to EOF (the original, still-default behavior); when
+  /// given, reads at most [length] bytes, letting a caller bound the
+  /// transfer for a large remote file (e.g. a multi-MiB transcript) instead
+  /// of always reading to EOF. Implementations should use SFTP where
   /// possible, rather than invoking a shell command.
-  Future<List<int>> readFile(String path, {int offset = 0}) =>
+  Future<List<int>> readFile(String path, {int offset = 0, int? length}) =>
       Future.error(UnsupportedError('Remote file reads are unavailable'));
 
   Future<void> dispose();
