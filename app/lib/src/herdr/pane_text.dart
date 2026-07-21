@@ -24,9 +24,12 @@ final _csiToken = RegExp('\x1B\\[[0-9;?]*[A-Za-z]');
 // restricted to │/┃/║ (not ASCII `|`) so Markdown tables and prose are never
 // candidates, and to ASCII spaces (not tabs) since a tab's visible column
 // depends on terminal tab-stop state we don't track, so it can't be counted
-// reliably.
+// reliably. The optional trailing `\r` is essential: herdr pane text arrives
+// with CRLF line endings, and after splitting on '\n' each line keeps its
+// '\r', so without the `\r?` the `$` anchor would never match real pane
+// rows.
 final _borderRowPattern = RegExp(
-  r'^(?<content>.*?)(?<pad> +)(?<border>[│┃║]) *$',
+  r'^(?<content>.*?)(?<pad> +)(?<border>[│┃║]) *\r?$',
 );
 
 // Below this column (in display cells), treat a border as belonging to a
@@ -63,9 +66,11 @@ const _minPanelRun = 2;
 /// zero-width escapes are retained so the exact post-line terminal SGR state
 /// is preserved. A style-start with no reset intentionally carries across
 /// newline, just as in the original terminal; resets are also retained.
-/// Leading borders/content and all newlines are untouched. The transform is
-/// idempotent: a cleaned line no longer matches [_borderRowPattern], so
-/// re-running it is a no-op.
+/// Leading borders/content and all newlines are untouched. On CRLF input a
+/// cleaned line's trailing '\r' is dropped along with the padding (it sits
+/// past the kept runes); unmatched lines keep theirs verbatim. The transform
+/// is idempotent: a cleaned line has neither border nor '\r', so it no
+/// longer matches [_borderRowPattern] and re-running is a no-op.
 String stripPanelPadding(String text) {
   final lines = text.split('\n');
   final matches = lines

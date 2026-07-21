@@ -129,6 +129,50 @@ void main() {
       expect(stripPanelPadding(fixture), fixture);
     });
 
+    test('strips a CRLF panel exactly like the LF version, dropping the CR '
+        'on cleaned rows and keeping it verbatim on unmatched ones', () {
+      // herdr pane text arrives with CRLF line endings; after splitting on
+      // '\n' every non-final line keeps a trailing '\r'.
+      String cellRow(String content) =>
+          '$content${' ' * (69 - displayWidth(content))}┃';
+
+      final rows = [
+        'Ordinary prose above the panel, no border on this line.',
+        cellRow('  An ASCII panel row.'),
+        cellRow('  日本語の行で幅を確認します。'),
+        cellRow('  Another ASCII panel row.'),
+        'Ordinary prose below the panel.',
+      ];
+
+      final result = stripPanelPadding(rows.join('\r\n'));
+
+      expect(result.split('\n'), [
+        'Ordinary prose above the panel, no border on this line.\r',
+        '  An ASCII panel row.',
+        '  日本語の行で幅を確認します。',
+        '  Another ASCII panel row.',
+        'Ordinary prose below the panel.',
+      ]);
+      // Modulo the CRs kept on unmatched lines, the outcome is identical to
+      // the same fixture with LF endings.
+      expect(result.replaceAll('\r', ''), stripPanelPadding(rows.join('\n')));
+    });
+
+    test('is idempotent on CRLF input', () {
+      String cellRow(String content) =>
+          '$content${' ' * (69 - displayWidth(content))}┃';
+
+      final fixture = [
+        cellRow('  first row of the panel'),
+        cellRow('  second row, check 完了.'),
+        'trailing prose keeps its CR.',
+        '',
+      ].join('\r\n');
+
+      final once = stripPanelPadding(fixture);
+      expect(stripPanelPadding(once), once);
+    });
+
     test('is idempotent: reapplying makes no further change', () {
       final fixture =
           '${_panelRow('one two three')}\n${_panelRow('four five six')}';
