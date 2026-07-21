@@ -45,10 +45,16 @@ class StubCommandRunner extends CommandRunner {
   }
 
   @override
-  Future<List<int>> readFile(String path, {int offset = 0}) async {
+  Future<List<int>> readFile(String path, {int offset = 0, int? length}) async {
     final contents = _files[path];
-    if (contents == null) return super.readFile(path, offset: offset);
-    return utf8.encode(contents).sublist(offset);
+    if (contents == null) {
+      return super.readFile(path, offset: offset, length: length);
+    }
+    final bytes = utf8.encode(contents);
+    final end = length == null
+        ? bytes.length
+        : (offset + length).clamp(0, bytes.length);
+    return bytes.sublist(offset, end);
   }
 
   @override

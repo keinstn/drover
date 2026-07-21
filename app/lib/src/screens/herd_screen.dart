@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../agents/agent_native_history.dart';
 import '../app_theme.dart';
 import '../herdr/herdr_client.dart';
 import '../i18n/status_label.dart';
@@ -69,6 +70,14 @@ class _HerdScreenState extends State<HerdScreen> {
   final _previousStatus = <String, AgentStatus>{};
   Map<String, String> _workspaceLabels = {};
   final _stoppingPaneIds = <String>{};
+  // One `NativeTranscriptHistory` per pane, owned by this screen (not
+  // global/static state) and injected into `AgentScreen` on open so
+  // reopening the same pane resumes from its already-loaded window/offset
+  // state instead of re-fetching from scratch. Each instance still
+  // re-resolves/resets itself when that pane's agent session identity
+  // changes (see `NativeTranscriptHistory`); entries for panes no longer
+  // reported by the herd are dropped in [_load].
+  final _nativeHistoryCache = <String, NativeTranscriptHistory>{};
 
   @override
   void initState() {
@@ -99,6 +108,14 @@ class _HerdScreenState extends State<HerdScreen> {
     _timer = null;
   }
 
+  /// The cached native-history/loader instance for [paneId], creating one on
+  /// first use.
+  NativeTranscriptHistory _nativeHistoryFor(String paneId) =>
+      _nativeHistoryCache.putIfAbsent(
+        paneId,
+        () => NativeTranscriptHistory(widget.client.runner),
+      );
+
   Future<void> _load() async {
     if (_loading) return;
     _loading = true;
@@ -110,6 +127,10 @@ class _HerdScreenState extends State<HerdScreen> {
         _agents = agents;
         _error = null;
       });
+      // Drop any cached history for a pane the herd no longer reports (the
+      // agent stopped/exited), so the cache doesn't grow unboundedly.
+      final panes = agents.map((agent) => agent.paneId).toSet();
+      _nativeHistoryCache.removeWhere((paneId, _) => !panes.contains(paneId));
       if (!_workspaceLabelsFailed &&
           agents.any(
             (agent) => !_workspaceLabels.containsKey(agent.workspaceId),
@@ -229,6 +250,7 @@ class _HerdScreenState extends State<HerdScreen> {
           paneId: agent.paneId,
           initialAgent: agent,
           initialWorkspaceLabel: _workspaceLabels[agent.workspaceId],
+          nativeTranscriptHistory: _nativeHistoryFor(agent.paneId),
         ),
       ),
     );
