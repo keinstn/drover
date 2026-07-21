@@ -357,9 +357,9 @@ void main() {
       var transcript = await loader.load(copilotAgent());
       expect(transcript?.messages.map((m) => m.text), ['One']);
       expect(runner.commands, [
-        'p="\${COPILOT_HOME:-\$HOME/.copilot}/session-state/$_sessionId/'
-            'events.jsonl"; if [ -f "\$p" ]; then command printf "%s" '
-            '"\$p"; fi',
+        'sh -lc \'p="\${COPILOT_HOME:-\$HOME/.copilot}/session-state/'
+            '$_sessionId/events.jsonl"; if [ -f "\$p" ]; then command '
+            'printf "%s" "\$p"; fi\'',
       ]);
       expect(runner.readOffsets, [0]);
 
@@ -380,6 +380,7 @@ void main() {
       final runner = MemoryRunner('');
       await CopilotTranscriptLoader(runner).load(copilotAgent());
 
+      expect(runner.commands.single, startsWith('sh -lc '));
       expect(
         runner.commands.single,
         contains(r'${COPILOT_HOME:-$HOME/.copilot}'),

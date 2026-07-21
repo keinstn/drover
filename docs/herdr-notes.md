@@ -148,6 +148,9 @@ Observed against **herdr 0.7.1** unless noted otherwise.
   case (falls back to pane-text history), not a genuine read failure.
   `session.db` in the same session-state directory is Copilot CLI's own
   internal state store, not transcript storage, and drover never reads it.
+  The lookup command is run through `sh -lc`, rather than the SSH account's
+  login shell, because valid hosts can use fish, which rejects the POSIX
+  variable assignment and parameter expansion needed to resolve `COPILOT_HOME`.
   Each line of `events.jsonl` is one JSON event
   `{type, data, id, timestamp, parentId, agentId?}`. Only four `type`s carry
   user-visible content: `user.message` (`data.content`, plus an
