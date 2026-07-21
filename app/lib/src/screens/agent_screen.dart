@@ -24,6 +24,7 @@ import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
 import '../transcript/native_transcript.dart';
 import '../widgets/top_toast.dart';
+import 'agent_draft_store.dart';
 import 'structured_prompt_sheet.dart';
 import 'herd_screen.dart' show statusColor;
 
@@ -100,6 +101,7 @@ class AgentScreen extends StatefulWidget {
     this.initialWorkspaceLabel,
     this.speechInput,
     this.imagePicker,
+    this.draftStore,
     this.pollInterval = const Duration(seconds: 2),
   });
 
@@ -109,6 +111,7 @@ class AgentScreen extends StatefulWidget {
   final String? initialWorkspaceLabel;
   final SpeechInput? speechInput;
   final ImagePickerPort? imagePicker;
+  final AgentDraftStore? draftStore;
   final Duration pollInterval;
 
   @override
@@ -147,6 +150,7 @@ class _AgentScreenState extends State<AgentScreen> {
   final _messageController = TextEditingController();
   late final SpeechInput _speechInput;
   late final ImagePickerPort _imagePicker;
+  late final AgentDraftStore _draftStore;
   late final NativeTranscriptHistory _nativeTranscriptHistory;
   var _dictationSession = 0;
   var _draftBeforeDictation = '';
@@ -156,7 +160,17 @@ class _AgentScreenState extends State<AgentScreen> {
     super.initState();
     _speechInput = widget.speechInput ?? SpeechInputController();
     _imagePicker = widget.imagePicker ?? SystemImagePicker();
+    _draftStore = widget.draftStore ?? AgentDraftStore.shared;
     _nativeTranscriptHistory = NativeTranscriptHistory(widget.client.runner);
+    // Restore any draft left over from a previous visit to this pane's screen
+    // (the route is popped/re-pushed on navigation, disposing the controller).
+    final draft = _draftStore.read(widget.paneId);
+    if (draft != null) {
+      _messageController.value = TextEditingValue(
+        text: draft,
+        selection: TextSelection.collapsed(offset: draft.length),
+      );
+    }
     _agent = widget.initialAgent;
     _workspaceLabel = widget.initialWorkspaceLabel;
     _load();
@@ -170,6 +184,9 @@ class _AgentScreenState extends State<AgentScreen> {
     if (_dictationStarting || _dictating) {
       unawaited(_speechInput.cancel());
     }
+    // Persist the in-progress draft before the controller is torn down so it
+    // survives navigating away from and back to this pane.
+    _draftStore.write(widget.paneId, _messageController.text);
     _scrollController.dispose();
     _messageController.dispose();
     super.dispose();
@@ -439,6 +456,7 @@ class _AgentScreenState extends State<AgentScreen> {
     );
     if (ok) {
       _messageController.clear();
+      _draftStore.clear(widget.paneId);
       HapticFeedback.lightImpact();
       if (mounted) setState(() => _pendingImages.clear());
     }

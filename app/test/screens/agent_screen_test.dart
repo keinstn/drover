@@ -5,6 +5,7 @@ import 'package:drover/src/dev/stub_herdr.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/image/image_input.dart';
+import 'package:drover/src/screens/agent_draft_store.dart';
 import 'package:drover/src/screens/agent_screen.dart';
 import 'package:drover/src/screens/structured_prompt_sheet.dart';
 import 'package:drover/src/speech/speech_input.dart';
@@ -431,6 +432,12 @@ String _thinkingJsonl(String text) =>
     })}\n';
 
 void main() {
+  // Tests that don't inject their own store fall back to AgentDraftStore.shared,
+  // and any draft a test types is persisted there on dispose. Reset the shared
+  // draft for the common paneId before each test so that leak never carries a
+  // stale draft into a later test's composer.
+  setUp(() => AgentDraftStore.shared.clear('wB:p1'));
+
   testWidgets('renders native Claude history with a separated live terminal', (
     tester,
   ) async {
@@ -2108,4 +2115,71 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('restores the composer draft after leaving and returning', (
+    tester,
+  ) async {
+    final store = AgentDraftStore();
+
+    Widget screen() => MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: AgentScreen(
+        client: HerdrClient(StubCommandRunner(blockedPromptResponse)),
+        paneId: 'wB:p1',
+        draftStore: store,
+        pollInterval: const Duration(hours: 1),
+      ),
+    );
+
+    await tester.pumpWidget(screen());
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'half typed message');
+
+    // Leave the screen (dispose the route), then return to a fresh instance
+    // built with the same paneId and store.
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(screen());
+    await tester.pump();
+
+    expect(find.text('half typed message'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('clears the stored draft after a successful send', (
+    tester,
+  ) async {
+    final store = AgentDraftStore()..write('wB:p1', 'stale draft');
+    final runner = StubCommandRunner(blockedPromptResponse);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          draftStore: store,
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // The seeded draft is restored into the composer.
+    expect(find.text('stale draft'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('send_message_button')));
+    await tester.pump();
+    await tester.pump();
+
+    // A successful send both empties the composer and drops the stored draft,
+    // so a later visit starts blank rather than re-restoring the sent text.
+    expect(store.read('wB:p1'), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
 }
