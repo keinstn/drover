@@ -1,5 +1,0 @@
-# Copy to ~/.config/drover-push/config (or to Herdr's plugin config dir) and edit.
-# ntfy topic to publish to. Use a long random string — anyone who knows a
-# public ntfy.sh topic can read its notifications. Or self-host and set NTFY_SERVER.
-NTFY_TOPIC=drover-CHANGE-ME-to-something-random
-# NTFY_SERVER=https://ntfy.sh
