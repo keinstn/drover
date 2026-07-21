@@ -270,6 +270,17 @@ class _AgentScreenState extends State<AgentScreen> {
     return agent == null ? null : resolveAgentAdapter(agent)?.images;
   }
 
+  /// Delivers a plain-text prompt, routing through the resolved agent
+  /// adapter's [AgentAdapter.deliverPrompt] when one exists (e.g. Copilot's
+  /// background-focus workaround) or the generic [HerdrClient.prompt]
+  /// otherwise.
+  Future<void> _deliverPrompt(String text) {
+    final agent = _agent;
+    final adapter = agent == null ? null : resolveAgentAdapter(agent);
+    return adapter?.deliverPrompt(widget.client, widget.paneId, text) ??
+        widget.client.prompt(widget.paneId, text);
+  }
+
   Future<void> _loadWorkspaceLabel() async {
     if (_workspaceLabelLoading) return;
     final workspaceId = _agent?.workspaceId;
@@ -581,7 +592,7 @@ class _AgentScreenState extends State<AgentScreen> {
     }
     final ok = await _send(
       () => _pendingImages.isEmpty
-          ? widget.client.prompt(widget.paneId, text)
+          ? _deliverPrompt(text)
           : images!.send(
               widget.client,
               agent!,
