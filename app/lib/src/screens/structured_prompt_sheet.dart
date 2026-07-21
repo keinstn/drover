@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../transcript/native_transcript.dart';
+import '../widgets/text_context_menu.dart';
 
 /// Modal bottom sheet that stages and submits a user's answers to an agent's
 /// interactive structured prompt (e.g. Claude Code's AskUserQuestion tool).
@@ -259,6 +260,7 @@ class _StructuredPromptSheetState extends State<StructuredPromptSheet> {
               autofocus: true,
               minLines: 1,
               maxLines: 4,
+              contextMenuBuilder: noScanTextContextMenuBuilder,
               onChanged: (value) => _onCustomChanged(index, value),
               decoration: InputDecoration(
                 hintText: l10n.agentAskUserCustomHint,

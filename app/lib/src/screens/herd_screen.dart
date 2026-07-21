@@ -10,6 +10,7 @@ import '../i18n/status_label.dart';
 import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
 import '../utils/path.dart';
+import '../widgets/text_context_menu.dart';
 import '../widgets/top_toast.dart';
 import 'agent_screen.dart';
 import 'launch_agent_sheet.dart';
@@ -251,6 +252,7 @@ class _HerdScreenState extends State<HerdScreen> {
           content: TextField(
             controller: controller,
             autofocus: true,
+            contextMenuBuilder: noScanTextContextMenuBuilder,
             decoration: InputDecoration(
               border: const OutlineInputBorder(),
               labelText: fieldLabel,
