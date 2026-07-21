@@ -7,8 +7,9 @@ global `~/.claude/CLAUDE.md` rules — those still apply.
 
 - `app/` — the Flutter app (iOS/macOS) plus `app/tool/spike.dart`, a CLI probe for the SSH/herdr path.
 
-See `README.md` for the concept and layout, and `docs/herdr-notes.md` for herdr
-CLI behaviours/gotchas drover relies on.
+See `README.md` for the concept and layout, `docs/herdr-notes.md` for herdr
+CLI behaviours/gotchas drover relies on, and `docs/agents/` for per-agent CLI
+notes (`claude-notes.md`, `copilot-notes.md`).
 
 ## One-time host setup
 
