@@ -64,6 +64,27 @@ void main() {
       expect(info.foregroundCwd, isNull);
     });
 
+    test('tolerates a transient new agent without an agent label', () {
+      final json = {
+        'agent_status': null,
+        'cwd': '/Users/administrator/Projects/ideas',
+        'focused': true,
+        'pane_id': 'wB:p4',
+        'tab_id': 'wB:t1',
+        'workspace_id': 'wB',
+      };
+
+      final info = AgentInfo.fromJson(json);
+
+      expect(info.agent, isNull);
+      expect(info.status, AgentStatus.unknown);
+      expect(info.cwd, '/Users/administrator/Projects/ideas');
+      expect(info.paneId, 'wB:p4');
+      expect(info.tabId, 'wB:t1');
+      expect(info.workspaceId, 'wB');
+      expect(info.focused, isTrue);
+    });
+
     test('parses optional typed agent session metadata', () {
       final info = AgentInfo.fromJson({
         'agent': 'claude',

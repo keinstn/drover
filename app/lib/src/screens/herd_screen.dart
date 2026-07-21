@@ -146,7 +146,8 @@ class _HerdScreenState extends State<HerdScreen> {
   String _workspaceLabel(String workspaceId) =>
       _workspaceLabels[workspaceId] ?? workspaceId;
 
-  String _agentDisplayName(AgentInfo agent) => agent.name ?? agent.agent;
+  String _agentDisplayName(AgentInfo agent) =>
+      agent.name ?? agent.agent ?? agent.paneId;
 
   void _checkBlockedTransitions(List<AgentInfo> agents) {
     for (final agent in agents) {

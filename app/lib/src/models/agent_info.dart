@@ -72,7 +72,7 @@ class AgentInfo {
       paneId: json['pane_id'] as String,
       workspaceId: json['workspace_id'] as String,
       tabId: json['tab_id'] as String,
-      agent: json['agent'] as String,
+      agent: json['agent'] as String?,
       name: json['name'] as String?,
       status: AgentStatus.fromName(json['agent_status'] as String?),
       cwd: json['cwd'] as String,
@@ -85,7 +85,7 @@ class AgentInfo {
   final String paneId;
   final String workspaceId;
   final String tabId;
-  final String agent;
+  final String? agent;
   final String? name;
   final AgentStatus status;
   final String cwd;
