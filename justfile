@@ -38,16 +38,6 @@ preview name='gallery' *args:
 spike *args:
     fvm dart run tool/spike.dart {{args}}
 
-# --- Plugin (herdr → ntfy push notifications, plugin/) ---
-
-# Run the herdr→ntfy plugin shell tests.
-plugin-test:
-    sh plugin/test/notify_test.sh
-
-# Send a real test push to your configured ntfy topic (check your phone).
-plugin-send-test:
-    sh plugin/send-test-notification.sh
-
 # --- Aggregate ---
 
-check: analyze test plugin-test
+check: analyze test

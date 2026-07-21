@@ -6,7 +6,6 @@ global `~/.claude/CLAUDE.md` rules — those still apply.
 ## Repo layout
 
 - `app/` — the Flutter app (iOS/macOS) plus `app/tool/spike.dart`, a CLI probe for the SSH/herdr path.
-- `plugin/` — the Herdr → ntfy push-notification plugin.
 
 See `README.md` for the concept and layout, and `docs/herdr-notes.md` for herdr
 CLI behaviours/gotchas drover relies on.

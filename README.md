@@ -26,9 +26,6 @@ server to run — your phone talks directly to the machine your agents live on.
   raw output, with TUI chrome stripped.
 - **Answer permission prompts as buttons** instead of typing into a raw pane.
 - **Steer the agent** — cycle its mode, send follow-ups, and dictate by voice.
-- **Get pushed when it matters** — a Herdr plugin notifies your phone (via
-  [ntfy](https://ntfy.sh)) when an agent goes `blocked` or `done`, so you don't
-  have to keep the app open.
 
 ## Repo layout
 
@@ -37,7 +34,6 @@ drover/
 ├── app/       # the Flutter app (fvm-pinned; iOS/macOS)
 │   ├── lib/   # app source
 │   └── tool/  # tool/spike.dart — SSH/herdr CLI probe used during bring-up
-├── plugin/    # Herdr → ntfy push-notification plugin
 └── docs/      # herdr-notes.md — herdr CLI behaviours & gotchas drover relies on
 ```
 
@@ -53,11 +49,8 @@ A `justfile` wraps the common recipes (`just` to list them):
 
 ```bash
 just get                    # pub get
-just check                  # analyze + test + plugin tests
+just check                  # analyze + test
 just run -d macos           # fast iteration during development
 just run -d <iphone>        # on a real device (free Apple ID: signing expires after 7 days)
 just spike --host <host> agents   # probe a host from the CLI, no UI
 ```
-
-Push notifications are optional and set up separately — see
-[`plugin/README.md`](plugin/README.md).
