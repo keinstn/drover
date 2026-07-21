@@ -60,6 +60,12 @@
       "error": { "type": "String" }
     }
   },
+  "agentLoadError": "Couldn't load agent: {error}",
+  "@agentLoadError": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
 
   "agentAskUserSend": "Send",
   "agentAskUserClose": "Close",

@@ -75,13 +75,28 @@ class _HerdScreenState extends State<HerdScreen> {
     super.initState();
     _load();
     _loadWorkspaceLabels();
-    _timer = Timer.periodic(widget.pollInterval, (_) => _load());
+    _startPolling();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     super.dispose();
+  }
+
+  /// Starts (or restarts) the periodic [_load] poll. A no-op if already
+  /// running: [_load] itself is guarded by [_loading], so calling this twice
+  /// in a row would otherwise leak the original [Timer].
+  void _startPolling() {
+    _timer ??= Timer.periodic(widget.pollInterval, (_) => _load());
+  }
+
+  /// Stops the periodic poll without touching an in-flight [_load] call,
+  /// which remains safe to finish on its own (it checks [mounted] and guards
+  /// re-entrancy via [_loading]).
+  void _stopPolling() {
+    _timer?.cancel();
+    _timer = null;
   }
 
   Future<void> _load() async {
@@ -195,6 +210,31 @@ class _HerdScreenState extends State<HerdScreen> {
       ),
     );
     if (launched == true) _load();
+  }
+
+  /// Pushes the detail screen for [agent], suspending the periodic
+  /// [_load]/[listAgents] poll for the duration of that route. `HerdScreen`
+  /// stays mounted (and visible) behind the pushed route, so without this its
+  /// 2-second poll would keep contending for the single mutex-serialized SSH
+  /// channel that `AgentScreen` needs for its own (now progressive) loading.
+  /// Polling resumes, and an immediate refresh is kicked off, once the route
+  /// is popped.
+  Future<void> _openAgentScreen(AgentInfo agent) async {
+    _stopPolling();
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AgentScreen(
+          client: widget.client,
+          speechInput: widget.speechInput,
+          paneId: agent.paneId,
+          initialAgent: agent,
+          initialWorkspaceLabel: _workspaceLabels[agent.workspaceId],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    _startPolling();
+    _load();
   }
 
   Future<bool> _confirmAndStop(AgentInfo agent) async {
@@ -423,21 +463,7 @@ class _HerdScreenState extends State<HerdScreen> {
                                   : () => _renameAgent(agent),
                               onTap: _stoppingPaneIds.contains(agent.paneId)
                                   ? null
-                                  : () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute<void>(
-                                          builder: (_) => AgentScreen(
-                                            client: widget.client,
-                                            speechInput: widget.speechInput,
-                                            paneId: agent.paneId,
-                                            initialAgent: agent,
-                                            initialWorkspaceLabel:
-                                                _workspaceLabels[agent
-                                                    .workspaceId],
-                                          ),
-                                        ),
-                                      );
-                                    },
+                                  : () => _openAgentScreen(agent),
                             ),
                           ),
                       ],

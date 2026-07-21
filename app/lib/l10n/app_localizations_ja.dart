@@ -151,6 +151,11 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String agentLoadError(String error) {
+    return 'エージェントを読み込めませんでした: $error';
+  }
+
+  @override
   String get agentAskUserSend => '送信';
 
   @override

@@ -129,6 +129,8 @@ class _AgentScreenState extends State<AgentScreen> {
   NativeTranscript? _nativeHistory;
   String? _nativeHistorySessionIdentity;
   String? _nativeHistoryError;
+  bool _nativeHistoryLoading = false;
+  String? _loadError;
   bool _paneEndReached = false;
   bool _dictationStarting = false;
   bool _dictating = false;
@@ -259,18 +261,12 @@ class _AgentScreenState extends State<AgentScreen> {
               _scrollController.position.pixels
         : null;
     try {
+      // Fetch and publish the fast pane path first: agent metadata and the
+      // pane's own tail. Native transcript history (a locate/stat/read/parse
+      // sequence over the same mutex-serialized SSH channel) can be much
+      // slower, so it's kicked off separately below rather than awaited here
+      // — a slow host must never leave the visible transcript blank.
       final agent = await widget.client.getAgent(widget.paneId);
-      final nativeHistorySessionIdentity =
-          NativeTranscriptHistory.sessionIdentityFor(agent);
-      final nativeHistorySessionChanged =
-          nativeHistorySessionIdentity != _nativeHistorySessionIdentity;
-      NativeTranscript? nativeHistory;
-      String? nativeHistoryError;
-      try {
-        nativeHistory = await _nativeTranscriptHistory.load(agent);
-      } catch (e) {
-        nativeHistoryError = e.toString();
-      }
       final text = await widget.client.readAgent(widget.paneId, lines: _lines);
       if (!mounted) return;
       final paneEndReached =
@@ -278,12 +274,7 @@ class _AgentScreenState extends State<AgentScreen> {
       setState(() {
         _agent = agent;
         _text = text;
-        _nativeHistory =
-            nativeHistoryError != null && !nativeHistorySessionChanged
-            ? _nativeHistory
-            : nativeHistory;
-        _nativeHistorySessionIdentity = nativeHistorySessionIdentity;
-        _nativeHistoryError = nativeHistoryError;
+        _loadError = null;
         if (paneEndReached) {
           _paneEndReached = true;
         }
@@ -308,12 +299,55 @@ class _AgentScreenState extends State<AgentScreen> {
           _scrollController.jumpTo(target);
         });
       }
-      _syncStructuredPromptSheet();
-    } catch (_) {
-      // Keep last known state on read/poll errors; the transcript stays
-      // visible and the next tick will retry.
+      unawaited(_loadNativeHistory(agent));
+    } catch (e) {
+      // Keep last known transcript content on read/poll errors, but surface
+      // the failure so it isn't silently swallowed; the next tick, or the
+      // banner's retry action, will try again.
+      if (!mounted) return;
+      setState(() => _loadError = e.toString());
     } finally {
       _loading = false;
+    }
+  }
+
+  /// Loads native transcript history for [agent] and publishes it
+  /// independently of the pane-text fetch in [_load], so a slow native load
+  /// never delays already-fetched pane output.
+  ///
+  /// Single-flights against itself: the underlying adapter keeps incremental
+  /// parse state (byte offset, partial line) that isn't safe to touch from
+  /// two overlapping loads, so a poll tick that lands while a previous native
+  /// load is still in flight simply skips starting another one — the next
+  /// tick retries. This preserves the same effective serialization the
+  /// previous fully-sequential `_load` gave native history for free.
+  Future<void> _loadNativeHistory(AgentInfo agent) async {
+    if (_nativeHistoryLoading) return;
+    _nativeHistoryLoading = true;
+    try {
+      final nativeHistorySessionIdentity =
+          NativeTranscriptHistory.sessionIdentityFor(agent);
+      final nativeHistorySessionChanged =
+          nativeHistorySessionIdentity != _nativeHistorySessionIdentity;
+      NativeTranscript? nativeHistory;
+      String? nativeHistoryError;
+      try {
+        nativeHistory = await _nativeTranscriptHistory.load(agent);
+      } catch (e) {
+        nativeHistoryError = e.toString();
+      }
+      if (!mounted) return;
+      setState(() {
+        _nativeHistory =
+            nativeHistoryError != null && !nativeHistorySessionChanged
+            ? _nativeHistory
+            : nativeHistory;
+        _nativeHistorySessionIdentity = nativeHistorySessionIdentity;
+        _nativeHistoryError = nativeHistoryError;
+      });
+      _syncStructuredPromptSheet();
+    } finally {
+      _nativeHistoryLoading = false;
     }
   }
 
@@ -583,6 +617,15 @@ class _AgentScreenState extends State<AgentScreen> {
         nativeHistory != null && nativeHistory.entries.isNotEmpty;
     final paneText = stripTuiChrome(_text);
     final liveTerminalText = _liveTerminalText(paneText, nativeHistory);
+    // Neither the pane nor the native transcript have produced anything to
+    // show yet: while the very first load is still in flight (and hasn't
+    // already failed — that gets its own retryable banner below) show a
+    // spinner instead of an indefinitely blank transcript surface.
+    final hasTranscriptContent =
+        hasNativeHistory ||
+        (liveTerminalText != null && liveTerminalText.trim().isNotEmpty);
+    final showInitialLoading =
+        !hasTranscriptContent && _firstLoad && _loadError == null;
 
     return Scaffold(
       appBar: AppBar(
@@ -622,6 +665,13 @@ class _AgentScreenState extends State<AgentScreen> {
                 ),
               ],
             ),
+          if (_loadError != null)
+            MaterialBanner(
+              content: Text(l10n.agentLoadError(_loadError!)),
+              actions: [
+                TextButton(onPressed: _load, child: Text(l10n.commonRetry)),
+              ],
+            ),
           if (_nativeHistoryError != null)
             MaterialBanner(
               content: Text(l10n.agentNativeHistoryError(_nativeHistoryError!)),
@@ -633,43 +683,52 @@ class _AgentScreenState extends State<AgentScreen> {
             child: Container(
               width: double.infinity,
               color: _transcriptBg,
-              child: RefreshIndicator(
-                onRefresh: _loadMore,
-                child: SingleChildScrollView(
-                  key: const ValueKey('transcript_scroll'),
-                  controller: _scrollController,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (hasNativeHistory) ...[
-                        _TranscriptSectionLabel(label: l10n.agentNativeHistory),
-                        _NativeTranscript(entries: nativeHistory.entries),
-                      ],
-                      if (liveTerminalText != null &&
-                          liveTerminalText.trim().isNotEmpty) ...[
-                        if (hasNativeHistory) const SizedBox(height: 20),
-                        if (hasNativeHistory)
-                          _TranscriptSectionLabel(
-                            label: l10n.agentLiveTerminal,
-                          ),
-                        _Transcript(ansiText: liveTerminalText),
-                      ],
-                      if (!hasNativeHistory && _paneEndReached) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          l10n.agentHistoryBeginning,
-                          style: const TextStyle(
-                            color: _transcriptFg,
-                            fontSize: 12,
-                          ),
+              child: showInitialLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        key: ValueKey('transcript_initial_loading'),
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _loadMore,
+                      child: SingleChildScrollView(
+                        key: const ValueKey('transcript_scroll'),
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (hasNativeHistory) ...[
+                              _TranscriptSectionLabel(
+                                label: l10n.agentNativeHistory,
+                              ),
+                              _NativeTranscript(entries: nativeHistory.entries),
+                            ],
+                            if (liveTerminalText != null &&
+                                liveTerminalText.trim().isNotEmpty) ...[
+                              if (hasNativeHistory) const SizedBox(height: 20),
+                              if (hasNativeHistory)
+                                _TranscriptSectionLabel(
+                                  label: l10n.agentLiveTerminal,
+                                ),
+                              _Transcript(ansiText: liveTerminalText),
+                            ],
+                            if (!hasNativeHistory && _paneEndReached) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                l10n.agentHistoryBeginning,
+                                style: const TextStyle(
+                                  color: _transcriptFg,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
+                      ),
+                    ),
             ),
           ),
           if (question != null)
