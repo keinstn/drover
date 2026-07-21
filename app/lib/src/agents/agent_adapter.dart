@@ -3,6 +3,7 @@
 // than a raw agent-name lookup.
 
 import '../herdr/command_runner.dart';
+import '../herdr/herdr_client.dart';
 import '../models/agent_info.dart';
 import 'agent_capabilities.dart';
 
@@ -37,4 +38,10 @@ abstract class AgentAdapter {
   /// Sends staged images to this agent, or null if it has no attachment
   /// convention.
   ImageAttachmentCapability? get images => null;
+
+  /// Delivers a plain text prompt to [paneId]. Defaults to the generic
+  /// [HerdrClient.prompt]; an adapter overrides this only when its agent needs
+  /// special delivery handling.
+  Future<void> deliverPrompt(HerdrClient client, String paneId, String text) =>
+      client.prompt(paneId, text);
 }
