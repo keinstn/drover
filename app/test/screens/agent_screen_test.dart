@@ -629,6 +629,14 @@ void main() {
     );
     expect(find.text('Live terminal'), findsOneWidget);
     expect(find.text('working…'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Conversation history')).dy,
+      lessThan(tester.getTopLeft(find.text('Live terminal')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Live terminal')).dy,
+      lessThan(tester.getTopLeft(find.text('working…')).dy),
+    );
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -1065,6 +1073,190 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'builds only nearby native Markdown entries until they are scrolled into view',
+    (tester) async {
+      final runner = StubCommandRunner(workingResponse);
+      final entries = List.generate(
+        300,
+        (index) => TranscriptMessage(
+          speaker: TranscriptSpeaker.assistant,
+          text: 'Far assistant turn $index',
+        ),
+      );
+      final adapter = _PagedNativeAdapter(NativeTranscript(entries));
+      final history = NativeTranscriptHistory(
+        runner,
+        resolveAdapter: (agent) => _FixedNativeHistoryAdapter(adapter),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: HerdrClient(runner),
+            paneId: 'wB:p1',
+            pollInterval: const Duration(seconds: 1),
+            nativeTranscriptHistory: history,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The screen opens at the live bottom. A SliverList only creates the
+      // viewport's Markdown widgets rather than all 300 parsed entries.
+      expect(find.byType(GptMarkdown).evaluate().length, lessThan(40));
+      expect(
+        find.textContaining('Far assistant turn 0', findRichText: true),
+        findsNothing,
+      );
+
+      // A poll rebuilding the screen leaves that bound intact.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.byType(GptMarkdown).evaluate().length, lessThan(40));
+
+      final scroll = find.byKey(const ValueKey('transcript_scroll'));
+      await tester.drag(scroll, const Offset(0, 100000));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Far assistant turn 0', findRichText: true),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'preserves the native viewport anchor when an older page is prepended',
+    (tester) async {
+      final runner = StubCommandRunner(workingResponse);
+      final recent = List.generate(
+        10,
+        (index) => TranscriptMessage(
+          speaker: TranscriptSpeaker.user,
+          text:
+              'Recent anchor turn $index, with enough filler to occupy a '
+              'distinct transcript row.',
+        ),
+      );
+      final older = List.generate(
+        10,
+        (index) => TranscriptMessage(
+          speaker: TranscriptSpeaker.user,
+          text:
+              'Older anchor turn $index, with enough filler to occupy a '
+              'distinct transcript row.',
+        ),
+      );
+      final adapter = _PagedNativeAdapter(NativeTranscript(recent))
+        ..olderChunks.add(older);
+      final history = NativeTranscriptHistory(
+        runner,
+        resolveAdapter: (agent) => _FixedNativeHistoryAdapter(adapter),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: HerdrClient(runner),
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+            nativeTranscriptHistory: history,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final scroll = find.byKey(const ValueKey('transcript_scroll'));
+      await tester.drag(scroll, const Offset(0, 10000));
+      await tester.pumpAndSettle();
+      final anchor = find.textContaining('Recent anchor turn 0');
+      final before = tester.getTopLeft(anchor).dy;
+
+      await tester.fling(scroll, const Offset(0, 300), 1000);
+      await tester.pumpAndSettle();
+
+      expect(adapter.loadOlderCalls, 1);
+      expect(anchor, findsOneWidget);
+      expect(tester.getTopLeft(anchor).dy, closeTo(before, 1));
+      await tester.drag(scroll, const Offset(0, 100000));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Older anchor turn 0'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'keeps tool and thinking expansion with their entries across poll and prepend',
+    (tester) async {
+      final runner = StubCommandRunner(workingResponse);
+      final tool = TranscriptToolUse(
+        name: 'Bash',
+        input: {'command': 'echo retained expansion'},
+      );
+      const thinking = TranscriptThinking('retained private reasoning');
+      final adapter = _PagedNativeAdapter(NativeTranscript([tool, thinking]))
+        ..olderChunks.add(
+          List.generate(
+            4,
+            (index) => TranscriptMessage(
+              speaker: TranscriptSpeaker.user,
+              text: 'Older entry $index',
+            ),
+          ),
+        );
+      final history = NativeTranscriptHistory(
+        runner,
+        resolveAdapter: (agent) => _FixedNativeHistoryAdapter(adapter),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: HerdrClient(runner),
+            paneId: 'wB:p1',
+            pollInterval: const Duration(seconds: 1),
+            nativeTranscriptHistory: history,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Bash'));
+      await tester.tap(find.text('Thinking…'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('"command"'), findsOneWidget);
+      expect(find.textContaining('retained private reasoning'), findsOneWidget);
+
+      // The poll returns the same entry objects, so both expanded rows remain
+      // expanded before history is prepended.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('"command"'), findsOneWidget);
+      expect(find.textContaining('retained private reasoning'), findsOneWidget);
+
+      final scroll = find.byKey(const ValueKey('transcript_scroll'));
+      await tester.fling(scroll, const Offset(0, 300), 1000);
+      await tester.pumpAndSettle();
+
+      // Prepending shifts the entries' indices, but their ObjectKeys and the
+      // delegate's index lookup keep the state on the matching entries.
+      expect(adapter.loadOlderCalls, 1);
+      expect(find.textContaining('"command"'), findsOneWidget);
+      expect(find.textContaining('retained private reasoning'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets(
     'hides the live terminal when the pane duplicates native history',
@@ -2243,7 +2435,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Recent turn 0'), findsOneWidget);
+      // The lazy list starts at the live bottom, so only the recent tail is
+      // built until the pull gesture moves it toward the older edge.
+      expect(find.textContaining('Recent turn 5'), findsOneWidget);
       expect(find.textContaining('Older-1 turn 0'), findsNothing);
 
       Future<void> pullToLoadMore() async {
@@ -2262,22 +2456,27 @@ void main() {
 
       // First pull: dispatches to the native adapter's `loadOlder` (not the
       // pane load-more fallback) and prepends the first older chunk above
-      // the already-visible recent entries, in order.
+      // the recent entries. The restored anchor keeps the prior oldest
+      // visible item in place; then scrolling reaches the just-prepended page.
       await pullToLoadMore();
       expect(adapter.loadOlderCalls, 1);
+      expect(find.textContaining('Recent turn 0'), findsOneWidget);
+      await tester.drag(
+        find.byKey(const ValueKey('transcript_scroll')),
+        const Offset(0, 100000),
+      );
+      await tester.pumpAndSettle();
       expect(find.textContaining('Older-1 turn 0'), findsOneWidget);
-      final olderTop = tester
-          .getTopLeft(find.textContaining('Older-1 turn 0'))
-          .dy;
-      final recentTop = tester
-          .getTopLeft(find.textContaining('Recent turn 0'))
-          .dy;
-      expect(olderTop, lessThan(recentTop));
 
       // Second pull: pages in the final (oldest) chunk and reaches the
       // beginning of the native history.
       await pullToLoadMore();
       expect(adapter.loadOlderCalls, 2);
+      await tester.drag(
+        find.byKey(const ValueKey('transcript_scroll')),
+        const Offset(0, 100000),
+      );
+      await tester.pumpAndSettle();
       expect(
         find.textContaining('the very beginning of history'),
         findsOneWidget,
@@ -2396,6 +2595,11 @@ void main() {
 
       expect(adapter.loadOlderCalls, 1);
       expect(adapter.concurrentAccessDetected, isFalse);
+      await tester.drag(
+        find.byKey(const ValueKey('transcript_scroll')),
+        const Offset(0, 100000),
+      );
+      await tester.pumpAndSettle();
       expect(find.textContaining('Older turn 0'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());

@@ -210,6 +210,45 @@ class _AgentScreenState extends State<AgentScreen> {
     return position.pixels >= position.maxScrollExtent - 40;
   }
 
+  /// Applies a scroll restoration after the slivers have received their new
+  /// geometry. A second frame accounts for a lazy list refining its estimated
+  /// extent once it lays out children around the first target. It only runs
+  /// while the first jump remains in place, so a user scroll between frames is
+  /// never overridden.
+  void _restoreScrollAfterLayout({
+    bool stickToBottom = false,
+    double? anchorFromBottom,
+  }) {
+    if (!stickToBottom && anchorFromBottom == null) return;
+
+    double targetFor(ScrollPosition position) => stickToBottom
+        ? position.maxScrollExtent
+        : (position.maxScrollExtent - anchorFromBottom!)
+              .clamp(0.0, position.maxScrollExtent)
+              .toDouble();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      final firstTarget = targetFor(position);
+      if ((position.pixels - firstTarget).abs() > 0.5) {
+        _scrollController.jumpTo(firstTarget);
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        final settledPosition = _scrollController.position;
+        // Do not turn a user gesture that lands between the two layout passes
+        // into an unexpected snap to the old target.
+        if ((settledPosition.pixels - firstTarget).abs() > 0.5) return;
+        final settledTarget = targetFor(settledPosition);
+        if ((settledPosition.pixels - settledTarget).abs() > 0.5) {
+          _scrollController.jumpTo(settledTarget);
+        }
+      });
+    });
+  }
+
   /// The resolved agent-specific capabilities for [_agent], or null when the
   /// agent hasn't loaded yet, no adapter supports it, or the adapter doesn't
   /// implement that capability. AgentScreen only ever consumes capabilities
@@ -294,20 +333,10 @@ class _AgentScreenState extends State<AgentScreen> {
           !_workspaceLabelLoading) {
         _loadWorkspaceLabel();
       }
-      if (stickToBottom) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!_scrollController.hasClients) return;
-          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-        });
-      } else if (anchorFromBottom != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!_scrollController.hasClients) return;
-          final target =
-              (_scrollController.position.maxScrollExtent - anchorFromBottom)
-                  .clamp(0.0, _scrollController.position.maxScrollExtent);
-          _scrollController.jumpTo(target);
-        });
-      }
+      _restoreScrollAfterLayout(
+        stickToBottom: stickToBottom,
+        anchorFromBottom: anchorFromBottom,
+      );
       unawaited(_loadNativeHistory(agent));
     } catch (e) {
       // Keep last known transcript content on read/poll errors, but surface
@@ -336,6 +365,7 @@ class _AgentScreenState extends State<AgentScreen> {
   Future<void> _loadNativeHistory(AgentInfo agent) async {
     if (_nativeHistoryLoading) return;
     _nativeHistoryLoading = true;
+    final stickToBottom = _wasAtBottom;
     try {
       final nativeHistorySessionIdentity =
           NativeTranscriptHistory.sessionIdentityFor(agent);
@@ -357,6 +387,7 @@ class _AgentScreenState extends State<AgentScreen> {
         _nativeHistorySessionIdentity = nativeHistorySessionIdentity;
         _nativeHistoryError = nativeHistoryError;
       });
+      _restoreScrollAfterLayout(stickToBottom: stickToBottom);
       _syncStructuredPromptSheet();
     } finally {
       _nativeHistoryLoading = false;
@@ -509,15 +540,7 @@ class _AgentScreenState extends State<AgentScreen> {
       final updated = await _nativeTranscriptHistory.loadOlder(agent);
       if (!mounted || updated == null) return;
       setState(() => _nativeHistory = updated);
-      if (anchorFromBottom != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!_scrollController.hasClients) return;
-          final target =
-              (_scrollController.position.maxScrollExtent - anchorFromBottom)
-                  .clamp(0.0, _scrollController.position.maxScrollExtent);
-          _scrollController.jumpTo(target);
-        });
-      }
+      _restoreScrollAfterLayout(anchorFromBottom: anchorFromBottom);
     } catch (e) {
       if (!mounted) return;
       setState(() => _nativeHistoryError = e.toString());
@@ -769,41 +792,73 @@ class _AgentScreenState extends State<AgentScreen> {
                     )
                   : RefreshIndicator(
                       onRefresh: _loadMore,
-                      child: SingleChildScrollView(
+                      child: CustomScrollView(
                         key: const ValueKey('transcript_scroll'),
                         controller: _scrollController,
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (hasNativeHistory) ...[
-                              _TranscriptSectionLabel(
-                                label: l10n.agentNativeHistory,
+                        slivers: [
+                          const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                          if (hasNativeHistory) ...[
+                            SliverPadding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
                               ),
-                              _NativeTranscript(entries: nativeHistory.entries),
-                            ],
-                            if (liveTerminalText != null &&
-                                liveTerminalText.trim().isNotEmpty) ...[
-                              if (hasNativeHistory) const SizedBox(height: 20),
-                              if (hasNativeHistory)
-                                _TranscriptSectionLabel(
-                                  label: l10n.agentLiveTerminal,
-                                ),
-                              _Transcript(ansiText: liveTerminalText),
-                            ],
-                            if (!hasNativeHistory && _paneEndReached) ...[
-                              const SizedBox(height: 12),
-                              Text(
-                                l10n.agentHistoryBeginning,
-                                style: const TextStyle(
-                                  color: _transcriptFg,
-                                  fontSize: 12,
+                              sliver: SliverToBoxAdapter(
+                                child: _TranscriptSectionLabel(
+                                  label: l10n.agentNativeHistory,
                                 ),
                               ),
-                            ],
+                            ),
+                            SliverPadding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              sliver: _NativeTranscript(
+                                entries: nativeHistory.entries,
+                              ),
+                            ),
                           ],
-                        ),
+                          if (liveTerminalText != null &&
+                              liveTerminalText.trim().isNotEmpty) ...[
+                            if (hasNativeHistory)
+                              const SliverToBoxAdapter(
+                                child: SizedBox(height: 20),
+                              ),
+                            if (hasNativeHistory)
+                              SliverPadding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                sliver: SliverToBoxAdapter(
+                                  child: _TranscriptSectionLabel(
+                                    label: l10n.agentLiveTerminal,
+                                  ),
+                                ),
+                              ),
+                            SliverPadding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              sliver: SliverToBoxAdapter(
+                                child: _Transcript(ansiText: liveTerminalText),
+                              ),
+                            ),
+                          ],
+                          if (!hasNativeHistory && _paneEndReached)
+                            SliverPadding(
+                              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                              sliver: SliverToBoxAdapter(
+                                child: Text(
+                                  l10n.agentHistoryBeginning,
+                                  style: const TextStyle(
+                                    color: _transcriptFg,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                        ],
                       ),
                     ),
             ),
@@ -907,46 +962,57 @@ class _NativeTranscript extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // JsonlTranscriptWindow retains entry instances across polls and prepends
+    // older instances rather than recreating the existing window. ObjectKey
+    // therefore gives every parsed entry a stable identity without inventing
+    // or exposing a transport-level transcript id. The index callback lets
+    // SliverList move an existing element to its new index on prepend, keeping
+    // expansion state with that entry instead of the former position.
+    final indexByEntry = <TranscriptEntry, int>{
+      for (final (index, entry) in entries.indexed) entry: index,
+    };
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) => _NativeTranscriptEntry(
+          key: ObjectKey(entries[index]),
+          entry: entries[index],
+        ),
+        childCount: entries.length,
+        findChildIndexCallback: (key) {
+          final value = key is ObjectKey ? key.value : null;
+          return value is TranscriptEntry ? indexByEntry[value] : null;
+        },
+      ),
+    );
+  }
+}
+
+class _NativeTranscriptEntry extends StatelessWidget {
+  const _NativeTranscriptEntry({super.key, required this.entry});
+
+  final TranscriptEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
     return LayoutBuilder(
-      builder: (context, constraints) {
-        final maxBubbleWidth = constraints.maxWidth * 0.8;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final (index, entry) in entries.indexed)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: switch (entry) {
-                  TranscriptMessage(:final speaker, :final text) =>
-                    speaker == TranscriptSpeaker.user
-                        ? _UserBubble(text: text, maxWidth: maxBubbleWidth)
-                        : _AssistantMessage(text: text),
-                  // Position is a stable identity while history is append-only;
-                  // folding name + summary into the key drops the expansion
-                  // state for most different entries that land at this index
-                  // (e.g. after a session reset). It's name/summary-level
-                  // identity, so a genuinely different entry that happens to
-                  // share this index, name, and summary would still inherit it.
-                  TranscriptToolUse(:final name, :final input) => _ToolUseChip(
-                    key: ValueKey(
-                      'tool_${index}_${name}_${toolUseSummary(name, input).hashCode}',
-                    ),
-                    name: name,
-                    input: input,
-                  ),
-                  TranscriptThinking(:final text) => _ThinkingRow(
-                    key: ValueKey('thinking_${index}_${text.hashCode}'),
-                    text: text,
-                  ),
-                  // A tool_result marker is only used to detect an answered
-                  // structured prompt (e.g. Claude's AskUserQuestion); it has
-                  // no chat-visible rendering.
-                  TranscriptToolResult() => const SizedBox.shrink(),
-                },
-              ),
-          ],
-        );
-      },
+      builder: (context, constraints) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: switch (entry) {
+          TranscriptMessage(:final speaker, :final text) =>
+            speaker == TranscriptSpeaker.user
+                ? _UserBubble(text: text, maxWidth: constraints.maxWidth * 0.8)
+                : _AssistantMessage(text: text),
+          TranscriptToolUse(:final name, :final input) => _ToolUseChip(
+            name: name,
+            input: input,
+          ),
+          TranscriptThinking(:final text) => _ThinkingRow(text: text),
+          // A tool_result marker is only used to detect an answered
+          // structured prompt (e.g. Claude's AskUserQuestion); it has no
+          // chat-visible rendering.
+          TranscriptToolResult() => const SizedBox.shrink(),
+        },
+      ),
     );
   }
 }
@@ -955,7 +1021,7 @@ class _NativeTranscript extends StatelessWidget {
 /// that expands to a detail panel (a diff card for Edit/Write, otherwise the
 /// pretty-printed input). Stateful so the expansion survives the 2s poll.
 class _ToolUseChip extends StatefulWidget {
-  const _ToolUseChip({super.key, required this.name, required this.input});
+  const _ToolUseChip({required this.name, required this.input});
 
   final String name;
   final Map<String, dynamic> input;
@@ -1210,7 +1276,7 @@ class _DiffCard extends StatelessWidget {
 /// full thinking text. Stateful so expansion survives the 2s poll; collapsed
 /// by default.
 class _ThinkingRow extends StatefulWidget {
-  const _ThinkingRow({super.key, required this.text});
+  const _ThinkingRow({required this.text});
 
   final String text;
 
@@ -1297,8 +1363,7 @@ class _UserBubble extends StatelessWidget {
 
 // Chat-scale heading sizes (the gpt_markdown defaults are display-sized) with
 // the auto h1 divider disabled. Built once from constants — the factory is
-// costly (it builds a full ThemeData + Typography) and _AssistantMessage
-// rebuilds on every 2s poll.
+// costly (it builds a full ThemeData + Typography).
 final _assistantMarkdownTheme = GptMarkdownThemeData(
   brightness: Brightness.dark,
   h1: const TextStyle(
@@ -1334,13 +1399,33 @@ final _assistantMarkdownTheme = GptMarkdownThemeData(
   autoAddDividerLineAfterH1: false,
 );
 
-class _AssistantMessage extends StatelessWidget {
+class _AssistantMessage extends StatefulWidget {
   const _AssistantMessage({required this.text});
 
   final String text;
 
   @override
-  Widget build(BuildContext context) {
+  State<_AssistantMessage> createState() => _AssistantMessageState();
+}
+
+class _AssistantMessageState extends State<_AssistantMessage> {
+  late Widget _markdown;
+
+  @override
+  void initState() {
+    super.initState();
+    _markdown = _buildMarkdown(widget.text);
+  }
+
+  @override
+  void didUpdateWidget(_AssistantMessage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _markdown = _buildMarkdown(widget.text);
+    }
+  }
+
+  Widget _buildMarkdown(String text) {
     return SelectionArea(
       child: GptMarkdownTheme(
         gptThemeData: _assistantMarkdownTheme,
@@ -1407,6 +1492,9 @@ class _AssistantMessage extends StatelessWidget {
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) => _markdown;
 }
 
 /// A flat, isolate-transferable highlighted run: its text plus the theme
