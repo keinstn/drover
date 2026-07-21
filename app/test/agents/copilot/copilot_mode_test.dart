@@ -45,7 +45,7 @@ plan · / commands · ? help · tab next tab''';
 const autopilotIdleFixture = '''
 Session
 › Type a message
-autopilot · / commands · ? help · tab next tab''';
+autopilot · / commands · tab next tab''';
 
 const defaultWorkingFixture = '''
 › Type a message
@@ -140,6 +140,30 @@ commands · ? help · tab next tab''';
 
     test('reads autopilot mode from the idle footer', () {
       expect(parseCopilotMode(autopilotIdleFixture), AgentMode.autoAccept);
+    });
+
+    test('reads autopilot mode when its prefix wraps before commands', () {
+      const wrappedPrefix = '''
+› Type a message
+autopilot · /
+commands · tab next tab''';
+
+      expect(parseCopilotMode(wrappedPrefix), AgentMode.autoAccept);
+    });
+
+    test('does not treat an autopilot composer draft as idle chrome', () {
+      const draft = '''
+› autopilot
+/ commands · tab next tab''';
+
+      expect(parseCopilotMode(draft), isNull);
+    });
+
+    test('does not treat an autopilot-like composer row as idle chrome', () {
+      const draft = '''
+› autopilot · / commands · tab next tab''';
+
+      expect(parseCopilotMode(draft), isNull);
     });
 
     test('reads autopilot mode from the working footer', () {

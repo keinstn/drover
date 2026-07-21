@@ -86,8 +86,8 @@ Observed against **herdr 0.7.1** unless noted otherwise.
   back to `interactive`. The composer's footer comes in two forms, and both
   name `plan`/`autopilot` explicitly when active:
   - idle: `/ commands · ? help · tab next tab`, becoming
-    `plan · / commands · ? help · tab next tab` or
-    `autopilot · / commands · ? help · tab next tab`.
+    `plan · / commands · ? help · tab next tab`; autopilot instead shows
+    `autopilot · / commands · tab next tab` (without `? help`).
   - working: `◎ Working esc interrupt`, becoming
     `◉ Working - plan esc interrupt` or
     `Working - autopilot esc interrupt`.
@@ -102,8 +102,9 @@ Observed against **herdr 0.7.1** unless noted otherwise.
   top-nav instead (whose focused state shows `Session | Issues | Pull
   requests | Gists`), the same keystroke changes the nav selection instead,
   and neither footer form is on-screen at all. So drover's Copilot mode
-  parser anchors on the idle footer's `commands`/`help`/`next`/`tab` words or
-  the working footer's `Working`/`interrupt` words together, rather than
+  parser anchors on the idle footer's `commands`/`next`/`tab` words, requiring
+  `help` except for the autopilot-specific form, or the working footer's
+  `Working`/`interrupt` words together, rather than
   scanning for the bare words `plan`/`autopilot` anywhere in the pane, which
   could otherwise misfire on an unrelated nav label. Copilot's `autopilot` is
   mapped to the existing `AgentMode.autoAccept` (no new enum value); Copilot
