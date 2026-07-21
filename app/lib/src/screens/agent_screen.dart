@@ -23,6 +23,7 @@ import '../image/image_input.dart';
 import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
 import '../transcript/native_transcript.dart';
+import '../widgets/text_context_menu.dart';
 import '../widgets/top_toast.dart';
 import 'structured_prompt_sheet.dart';
 import 'herd_screen.dart' show statusColor;
@@ -1591,6 +1592,7 @@ class _Composer extends StatelessWidget {
               minLines: 1,
               maxLines: 8,
               textInputAction: TextInputAction.newline,
+              contextMenuBuilder: noScanTextContextMenuBuilder,
               style: const TextStyle(fontSize: 15),
               decoration: InputDecoration(
                 hintText: l10n.agentComposerHint,

@@ -5,6 +5,7 @@ import '../herdr/herdr_client.dart';
 import '../models/agent_preset.dart';
 import '../models/workspace_info.dart';
 import '../utils/path.dart';
+import '../widgets/text_context_menu.dart';
 import 'directory_picker_sheet.dart';
 
 enum _WorkspaceMode { newWorkspace, existing }
@@ -328,6 +329,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
           key: const ValueKey('cwd_field'),
           controller: _cwdController,
           enabled: !_busy,
+          contextMenuBuilder: noScanTextContextMenuBuilder,
           decoration: InputDecoration(
             labelText: l10n.launchWorkingDir,
             border: const OutlineInputBorder(),
@@ -351,6 +353,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
       key: const ValueKey('agent_name_field'),
       controller: _nameController,
       enabled: !_busy,
+      contextMenuBuilder: noScanTextContextMenuBuilder,
       decoration: InputDecoration(
         labelText: l10n.launchAgentName,
         border: const OutlineInputBorder(),
@@ -402,6 +405,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
               key: const ValueKey('workspace_name_field'),
               controller: _workspaceNameController,
               enabled: !_busy,
+              contextMenuBuilder: noScanTextContextMenuBuilder,
               decoration: InputDecoration(
                 labelText: l10n.launchWorkspaceName,
                 border: const OutlineInputBorder(),
