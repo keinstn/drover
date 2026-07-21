@@ -126,10 +126,6 @@ class HerdrClient {
     return read['text'] as String;
   }
 
-  Future<void> sendText(String paneId, String text) async {
-    await _run(['agent', 'send', paneId, text]);
-  }
-
   Future<void> sendKeys(String paneId, String key) async {
     await _runOk(['pane', 'send-keys', paneId, key]);
   }
@@ -148,9 +144,11 @@ class HerdrClient {
     await _run(['pane', 'close', paneId]);
   }
 
+  /// Type [text] into [paneId] and submit it, atomically, via herdr's
+  /// `agent prompt` (which replaced the removed `agent send` + a separate
+  /// `pane send-keys enter`).
   Future<void> prompt(String paneId, String text) async {
-    await sendText(paneId, text);
-    await sendKeys(paneId, 'enter');
+    await _runOk(['agent', 'prompt', paneId, text]);
   }
 
   /// Probe the host PATH for which of [presets] are installed, returning the

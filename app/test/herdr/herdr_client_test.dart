@@ -140,19 +140,7 @@ void main() {
     });
   });
 
-  group('HerdrClient.sendText / sendKeys / prompt', () {
-    test('sendText builds the agent send command', () async {
-      final runner = FakeCommandRunner((_) => ok('{"id":"1","result":{}}'));
-      final client = HerdrClient(runner);
-
-      await client.sendText('wB:p4', "it's a test");
-
-      expect(
-        runner.commands.single,
-        r"~/.local/bin/herdr 'agent' 'send' 'wB:p4' 'it'\''s a test'",
-      );
-    });
-
+  group('HerdrClient.sendKeys / prompt', () {
     test('sendKeys tolerates herdr\'s empty ok response', () async {
       // `pane send-keys` prints nothing on success (exit 0, empty stdout); the
       // client must not treat that as an unparseable response.
@@ -181,20 +169,18 @@ void main() {
       );
     });
 
-    test('prompt sends text then enter', () async {
-      // agent send returns an envelope; pane send-keys returns empty stdout.
-      final runner = FakeCommandRunner(
-        (c) =>
-            c.contains("'send-keys'") ? ok('') : ok('{"id":"1","result":{}}'),
-      );
+    test('prompt builds a single agent prompt command', () async {
+      // `agent prompt` prints nothing on success (exit 0, empty stdout), like
+      // send-keys; the client must tolerate that and build a single command.
+      final runner = FakeCommandRunner((_) => ok(''));
       final client = HerdrClient(runner);
 
       await client.prompt('wB:p4', 'go');
 
-      expect(runner.commands, [
-        "~/.local/bin/herdr 'agent' 'send' 'wB:p4' 'go'",
-        "~/.local/bin/herdr 'pane' 'send-keys' 'wB:p4' 'enter'",
-      ]);
+      expect(
+        runner.commands.single,
+        "~/.local/bin/herdr 'agent' 'prompt' 'wB:p4' 'go'",
+      );
     });
   });
 

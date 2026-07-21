@@ -125,9 +125,8 @@ void main() {
           runner.commands,
           containsAllInOrder([
             "command mkdir -p '/tmp/proj/.drover'",
-            "~/.local/bin/herdr 'agent' 'send' 'wB:p1' "
+            "~/.local/bin/herdr 'agent' 'prompt' 'wB:p1' "
                 "'@.drover/img-42-0.png @.drover/img-42-1.jpg'",
-            "~/.local/bin/herdr 'pane' 'send-keys' 'wB:p1' 'enter'",
           ]),
         );
       },
@@ -152,9 +151,8 @@ void main() {
       expect(
         runner.commands,
         containsAllInOrder([
-          "~/.local/bin/herdr 'agent' 'send' 'wB:p1' "
+          "~/.local/bin/herdr 'agent' 'prompt' 'wB:p1' "
               "'look at this\n@.drover/img-42-0.png'",
-          "~/.local/bin/herdr 'pane' 'send-keys' 'wB:p1' 'enter'",
         ]),
       );
     });
@@ -190,9 +188,8 @@ void main() {
         runner.commands,
         containsAllInOrder([
           "command mkdir -p '/tmp/my proj/.drover'",
-          "~/.local/bin/herdr 'agent' 'send' 'wB:p1' "
+          "~/.local/bin/herdr 'agent' 'prompt' 'wB:p1' "
               "'look at this\n@.drover/img-42-0.png'",
-          "~/.local/bin/herdr 'pane' 'send-keys' 'wB:p1' 'enter'",
         ]),
       );
     });

@@ -87,10 +87,9 @@ void main() {
         runner.commands,
         containsAllInOrder([
           "command mkdir -p '/tmp/proj/.drover'",
-          "~/.local/bin/herdr 'agent' 'send' 'wB:p1' "
+          "~/.local/bin/herdr 'agent' 'prompt' 'wB:p1' "
               "'look at this\n/tmp/proj/.drover/img-42-0.png\n"
               "/tmp/proj/.drover/img-42-1.jpg'",
-          "~/.local/bin/herdr 'pane' 'send-keys' 'wB:p1' 'enter'",
         ]),
       );
     });

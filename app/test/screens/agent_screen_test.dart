@@ -1603,13 +1603,7 @@ void main() {
 
     expect(
       runner.commands.any(
-        (c) => c.contains("agent' 'send'") && c.contains("'1'"),
-      ),
-      isTrue,
-    );
-    expect(
-      runner.commands.any(
-        (c) => c.contains('send-keys') && c.contains("'enter'"),
+        (c) => c.contains("agent' 'prompt'") && c.contains("'1'"),
       ),
       isTrue,
     );
@@ -1621,7 +1615,7 @@ void main() {
     tester,
   ) async {
     CommandResult respondFailingSend(String command) {
-      if (command.contains("'agent' 'send'")) {
+      if (command.contains("'agent' 'prompt'")) {
         return const CommandResult(exitCode: 1, stdout: '', stderr: 'boom');
       }
       return blockedPromptResponse(command);
@@ -2233,21 +2227,15 @@ void main() {
       isTrue,
     );
     expect(
-      runner.commands.where((c) => c.contains("'agent' 'send'")).length,
+      runner.commands.where((c) => c.contains("'agent' 'prompt'")).length,
       1,
     );
     expect(
       runner.commands.any(
         (c) =>
-            c.contains("'agent' 'send'") &&
+            c.contains("'agent' 'prompt'") &&
             c.contains('.drover') &&
             c.contains('look at this'),
-      ),
-      isTrue,
-    );
-    expect(
-      runner.commands.any(
-        (c) => c.contains('send-keys') && c.contains("'enter'"),
       ),
       isTrue,
     );
@@ -2802,7 +2790,7 @@ void main() {
 
       expect(
         runner.commands.any(
-          (c) => c.contains("agent' 'send'") && c.contains("'1'"),
+          (c) => c.contains("agent' 'prompt'") && c.contains("'1'"),
         ),
         isTrue,
       );
