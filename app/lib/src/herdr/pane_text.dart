@@ -4,6 +4,7 @@
 // dedicated structured-prompt capability).
 
 import 'ansi_text.dart';
+import 'text_width.dart';
 
 final _dashRule = RegExp(r'^[─]{5,}\s*$');
 final _modeLine = RegExp(r'^\s*[⏸⏵]');
@@ -28,9 +29,10 @@ final _borderRowPattern = RegExp(
   r'^(?<content>.*?)(?<pad> +)(?<border>[│┃║]) *$',
 );
 
-// Below this column, treat a border as belonging to a small, legitimate box
-// (e.g. a short confirmation dialog) rather than an artificially wide,
-// fixed-column panel -- those don't need de-padding to wrap sanely.
+// Below this column (in display cells), treat a border as belonging to a
+// small, legitimate box (e.g. a short confirmation dialog) rather than an
+// artificially wide, fixed-column panel -- those don't need de-padding to
+// wrap sanely.
 const _minPanelColumn = 40;
 
 // Need at least this many consecutive matching rows sharing the same border
@@ -46,7 +48,9 @@ const _minPanelRun = 2;
 /// Detection is conservative and block-based, not a per-line regex: a line
 /// only qualifies as "padding" if it ends in ASCII spaces followed by a
 /// Unicode vertical border, *and* at least [_minPanelRun] consecutive lines
-/// share the exact same border column, *and* that column is wide enough
+/// share the exact same border column -- measured in display cells, the unit
+/// the emitting TUI laid the panel out in, so rows containing CJK (2 cells
+/// per rune) group with ASCII rows -- *and* that column is wide enough
 /// ([_minPanelColumn]) to rule out short, legitimately narrow boxes. That
 /// combination is what a fixed-width panel looks like structurally, and it's
 /// what keeps this from touching Markdown tables (ASCII `|`), source/tree
@@ -97,14 +101,15 @@ String stripPanelPadding(String text) {
   return result.join('\n');
 }
 
-/// A line's parsed "padding + trailing Unicode border" shape, in visible
-/// (post-ANSI-stripping) *rune* offsets -- not UTF-16 code units, so a
-/// non-BMP character (e.g. an emoji) in "content" counts as one column, not
-/// two, matching how [_truncateVisible] counts runes when it consumes this
-/// value. `RegExpMatch` only exposes the start/end of the whole match, not of
-/// individual groups, so these offsets are derived from group rune counts
-/// instead (safe because `_borderRowPattern` is anchored at `^`, so the match
-/// -- and its "content" group -- always starts at offset 0).
+/// A line's parsed "padding + trailing Unicode border" shape, measured on
+/// the visible (post-ANSI-stripping) text. The two fields deliberately use
+/// different units: [keepVisibleCount] is in *runes* because it feeds
+/// [_truncateVisible], which walks runes; [borderColumn] is in *display
+/// cells* because the emitting TUI aligns the border by cells, where an
+/// East Asian Wide rune occupies two -- comparing rune offsets instead
+/// would put CJK rows at a different column than their ASCII neighbours and
+/// break the panel-run grouping. Neither is a UTF-16 offset: a non-BMP
+/// character counts once, not per surrogate half.
 class _BorderRowMatch {
   const _BorderRowMatch({
     required this.keepVisibleCount,
@@ -114,18 +119,19 @@ class _BorderRowMatch {
   /// Visible runes to keep -- i.e. the rune count of "content".
   final int keepVisibleCount;
 
-  /// Visible column (in runes) of the trailing border character.
+  /// Visible column (in display cells) of the trailing border character.
   final int borderColumn;
 }
 
 _BorderRowMatch? _matchBorderRow(String plainLine) {
   final match = _borderRowPattern.firstMatch(plainLine);
   if (match == null) return null;
-  final contentLength = match.namedGroup('content')!.runes.length;
-  final padLength = match.namedGroup('pad')!.runes.length;
+  final content = match.namedGroup('content')!;
+  final padLength = match.namedGroup('pad')!.length;
+  // Padding is ASCII spaces (one cell each), so its length is its width.
   return _BorderRowMatch(
-    keepVisibleCount: contentLength,
-    borderColumn: contentLength + padLength,
+    keepVisibleCount: content.runes.length,
+    borderColumn: displayWidth(content) + padLength,
   );
 }
 

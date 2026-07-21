@@ -1,5 +1,6 @@
 import 'package:drover/src/herdr/ansi_text.dart';
 import 'package:drover/src/herdr/pane_text.dart';
+import 'package:drover/src/herdr/text_width.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const permissionPromptFixture = '''
@@ -58,12 +59,13 @@ void main() {
     test('removes right padding + trailing border from a multi-row panel '
         'whose content has non-BMP emoji, keeping every emoji and losing no '
         'padding/border', () {
-      // Built with rune-derived (not UTF-16-length-derived) padding, unlike
-      // `_panelRow`, so the fixture itself is exactly [width] visible columns
-      // wide regardless of the surrogate-pair emoji it contains.
+      // Built with display-cell-derived (not UTF-16-length-derived) padding,
+      // unlike `_panelRow`, so the fixture itself is exactly [width] visible
+      // cells wide regardless of the double-width surrogate-pair emoji it
+      // contains -- just as a real terminal panel would be.
       String emojiPanelRow(String content, {int width = 90}) {
         final inner = '┃ $content';
-        final pad = width - inner.runes.length - 1;
+        final pad = width - displayWidth(inner) - 1;
         assert(pad >= 0, 'content too long for width $width');
         return '$inner${' ' * pad}┃';
       }
@@ -80,6 +82,51 @@ void main() {
         '┃ A plain second row, no emoji here.',
       );
       expect(result, isNot(contains('  ┃'))); // no orphaned right border
+    });
+
+    test('removes padding + border from a panel mixing ASCII and CJK rows '
+        'that share one display-cell border column, reverse-video border '
+        'included', () {
+      // Modeled on a live Copilot CLI capture in a 71-column pane: a ┃
+      // scrollbar sits at display-cell column 69 on every row, some rows
+      // with a reverse-video SGR immediately before the glyph. The CJK rows
+      // reach that cell column with fewer runes than the ASCII rows, so
+      // only a cell-based column measure groups them into one panel.
+      String scrollbarRow(String content, {bool reverseVideo = false}) {
+        final pad = ' ' * (69 - displayWidth(content));
+        return reverseVideo ? '$content$pad\x1B[7m┃\x1B[0m' : '$content$pad┃';
+      }
+
+      final fixture = [
+        scrollbarRow(' ● Tip: /feedback, an ASCII-only row'),
+        scrollbarRow(
+          '    日本語の行で幅を確認します。 line 3 mixed: width=幅',
+          reverseVideo: true,
+        ),
+        scrollbarRow('    check 完了. Do not run any tools or commands.'),
+        scrollbarRow('   width=幅 check 完了.', reverseVideo: true),
+      ].join('\n');
+
+      final result = stripPanelPadding(fixture);
+
+      expect(result.split('\n'), [
+        ' ● Tip: /feedback, an ASCII-only row',
+        '    日本語の行で幅を確認します。 line 3 mixed: width=幅\x1B[7m\x1B[0m',
+        '    check 完了. Do not run any tools or commands.',
+        '   width=幅 check 完了.\x1B[7m\x1B[0m',
+      ]);
+      expect(stripAnsi(result), isNot(contains('┃')));
+    });
+
+    test('leaves rows alone whose display-cell border columns differ, even '
+        'when their rune columns coincide', () {
+      // Same rune column (50) on both rows -- the old rune-based measure
+      // would have grouped and stripped them -- but different cell columns
+      // (55 vs 50), so they are not one fixed-width panel.
+      final fixture =
+          '日本語メモ${' ' * 45}┃\n'
+          'abcde${' ' * 45}┃';
+      expect(stripPanelPadding(fixture), fixture);
     });
 
     test('is idempotent: reapplying makes no further change', () {
