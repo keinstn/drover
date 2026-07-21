@@ -107,6 +107,63 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets(
+    'suspends periodic list polling while AgentScreen is open, resumes '
+    'after popping',
+    (tester) async {
+      final runner = FakeCommandRunner(_respond);
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HerdScreen(
+            client: client,
+            onOpenSettings: () {},
+            pollInterval: const Duration(seconds: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      int listCalls() =>
+          runner.commands.where((c) => c.contains("'agent' 'list'")).length;
+
+      // Two polling ticks confirm the periodic poll is indeed running before
+      // the detail route is pushed.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      final beforePush = listCalls();
+      expect(beforePush, greaterThan(1));
+
+      await tester.tap(find.text('Agent One'));
+      await tester.pumpAndSettle();
+      final atPush = listCalls();
+
+      // While AgentScreen is open (pushed on top), further elapsed poll
+      // intervals must not issue any more `agent list` calls.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(listCalls(), atPush);
+
+      // Popping back resumes polling — an immediate refresh fires right
+      // away, without waiting for the next tick.
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(listCalls(), greaterThan(atPush));
+
+      final afterPop = listCalls();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(listCalls(), greaterThan(afterPop));
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('shows the launch-agent FAB', (tester) async {
     final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);

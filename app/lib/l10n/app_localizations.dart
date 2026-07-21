@@ -374,6 +374,12 @@ abstract class AppLocalizations {
   /// **'Native history unavailable: {error}'**
   String agentNativeHistoryError(String error);
 
+  /// No description provided for @agentLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load agent: {error}'**
+  String agentLoadError(String error);
+
   /// No description provided for @agentAskUserSend.
   ///
   /// In en, this message translates to:

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:drover/l10n/app_localizations.dart';
@@ -217,6 +218,53 @@ class BrokenNativeHistoryRunner extends NativeHistoryRunner {
   @override
   Future<RemoteFileStat> statFile(String path) =>
       Future.error(StateError('transcript access denied'));
+}
+
+/// A native-history runner whose `statFile` call (part of the
+/// locate/stat/read/parse sequence) blocks on [nativeGate] until the test
+/// completes it, so a widget test can assert on state while native history is
+/// still loading without a real (unbounded) delay. An optional [readGate]
+/// additionally blocks the pane `agent read` call, for asserting on the
+/// state before *any* content (pane or native) has arrived.
+class GatedNativeHistoryRunner extends NativeHistoryRunner {
+  final nativeGate = Completer<void>();
+  Completer<void>? readGate;
+
+  @override
+  Future<CommandResult> run(String command) async {
+    if (command.contains("'agent' 'read'") && readGate != null) {
+      await readGate!.future;
+    }
+    return super.run(command);
+  }
+
+  @override
+  Future<RemoteFileStat> statFile(String path) async {
+    await nativeGate.future;
+    return super.statFile(path);
+  }
+}
+
+/// Fails the very first `agent get` call (as a herdr error envelope) and
+/// succeeds on every call after, so a test can drive AgentScreen's first-load
+/// outer-error path and then its retry.
+class FlakyGetAgentRunner extends NativeHistoryRunner {
+  var getAgentCalls = 0;
+
+  @override
+  Future<CommandResult> run(String command) async {
+    if (command.contains("'agent' 'get'")) {
+      getAgentCalls++;
+      if (getAgentCalls == 1) {
+        commands.add(command);
+        return ok(
+          '{"id":"1","result":{"error":{"code":"transport",'
+          '"message":"boom"}}}',
+        );
+      }
+    }
+    return super.run(command);
+  }
 }
 
 /// Serves a pane read whose lines are all present in the native conversation
@@ -981,6 +1029,123 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('shows pane text while native history is still loading', (
+    tester,
+  ) async {
+    final runner = GatedNativeHistoryRunner();
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+
+    // The fast pane path (agent get + pane read) resolves without waiting on
+    // native history, whose `statFile` call is still gated shut.
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('working…'), findsOneWidget);
+    expect(find.text('Native question'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('transcript_initial_loading')),
+      findsNothing,
+    );
+
+    runner.nativeGate.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Native question'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('shows an initial loading state before any content arrives', (
+    tester,
+  ) async {
+    final runner = GatedNativeHistoryRunner();
+    final client = HerdrClient(runner);
+    final gate = Completer<void>();
+    runner.readGate = gate;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('transcript_initial_loading')),
+      findsOneWidget,
+    );
+    expect(find.text('working…'), findsNothing);
+
+    gate.complete();
+    runner.nativeGate.complete();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('transcript_initial_loading')),
+      findsNothing,
+    );
+    expect(find.text('working…'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'surfaces a first-load outer failure with a retry action, without '
+    'a silent blank screen',
+    (tester) async {
+      final runner = FlakyGetAgentRunner();
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining("Couldn't load agent"), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('transcript_initial_loading')),
+        findsNothing,
+      );
+      expect(find.text('working…'), findsNothing);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Retry'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining("Couldn't load agent"), findsNothing);
+      expect(find.text('working…'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('keeps native history visible when a later native stat fails', (
     tester,

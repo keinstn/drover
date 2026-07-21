@@ -159,6 +159,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String agentLoadError(String error) {
+    return 'Couldn\'t load agent: $error';
+  }
+
+  @override
   String get agentAskUserSend => 'Send';
 
   @override
