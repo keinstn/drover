@@ -80,8 +80,62 @@ void main() {
       expect(parseCopilotMode(planIdleFixture), AgentMode.plan);
     });
 
+    test('reads plan mode from a terminal-wrapped idle footer', () {
+      const wrapped = '''
+› Type a message
+v1.0.73 available · run / · plan · / commands · ? help · tab
+next
+update                                      tab
+GPT-5.6 Sol''';
+
+      expect(parseCopilotMode(wrapped), AgentMode.plan);
+    });
+
+    test('reads plan mode when its prefix wraps before commands', () {
+      const wrappedPrefix = '''
+› Type a message
+plan · /
+commands · ? help · tab next tab''';
+
+      expect(parseCopilotMode(wrappedPrefix), AgentMode.plan);
+    });
+
     test('reads plan mode from the working footer', () {
       expect(parseCopilotMode(planWorkingFixture), AgentMode.plan);
+    });
+
+    test('does not read a mode word from output above a working footer', () {
+      const outputThenNormalWorking = '''
+I will make a plan before editing.
+› Type a message
+◎ Working esc interrupt''';
+
+      expect(parseCopilotMode(outputThenNormalWorking), AgentMode.normal);
+    });
+
+    test('prefers a trailing idle footer to earlier working-like output', () {
+      const workingThenNormalIdle = '''
+Working - autopilot esc interrupt
+› Type a message
+/ commands · ? help · tab next tab''';
+
+      expect(parseCopilotMode(workingThenNormalIdle), AgentMode.normal);
+    });
+
+    test('does not read plan mode from the composer draft', () {
+      const planDraftThenNormalIdle = '''
+› plan
+/ commands · ? help · tab next tab''';
+
+      expect(parseCopilotMode(planDraftThenNormalIdle), AgentMode.normal);
+    });
+
+    test('does not read a wrapped plan marker from the composer draft', () {
+      const planDraftThenNormalIdle = '''
+› plan · /
+commands · ? help · tab next tab''';
+
+      expect(parseCopilotMode(planDraftThenNormalIdle), AgentMode.normal);
     });
 
     test('reads autopilot mode from the idle footer', () {
