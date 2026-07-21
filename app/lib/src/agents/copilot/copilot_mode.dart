@@ -38,8 +38,9 @@ final _autopilotWrappedIdlePrefix = RegExp(
 ///
 /// Copilot CLI 1.0.72's composer footer comes in two forms, each of which
 /// names a non-default mode explicitly:
-/// - idle: `/ commands · ? help · tab next tab`, with `plan ·` or
-///   `autopilot ·` prefixed when that mode is active.
+/// - idle: `/ commands · ? help · tab next tab`, with `plan ·` prefixed in
+///   plan mode; autopilot omits `? help`:
+///   `autopilot · / commands · tab next tab`.
 /// - working: `◎ Working esc interrupt`, becoming `◉ Working - plan esc
 ///   interrupt` or `Working - autopilot esc interrupt` for those modes.
 ///
@@ -60,14 +61,24 @@ AgentMode? parseCopilotMode(String text) {
   final trailingRawLines = lines.sublist(start);
   final trailingLines = trailingRawLines.map(_normalize).toList();
   final footer = trailingLines.join(' ');
-  final isIdleFooter =
+  final hasIdleChrome =
       footer.contains('commands') &&
-      footer.contains('help') &&
       footer.contains('next') &&
       footer.contains('tab');
   final idleModeIndex = trailingLines.lastIndexWhere(
     (line) => line.contains('commands'),
   );
+  final idleModeLine = idleModeIndex < 0 ? '' : trailingLines[idleModeIndex];
+  final idleRawLine = idleModeIndex < 0 ? '' : trailingRawLines[idleModeIndex];
+  final precedingIdleLine = idleModeIndex <= 0
+      ? ''
+      : trailingRawLines[idleModeIndex - 1];
+  final isComposerRow = idleRawLine.trimLeft().startsWith('›');
+  final isAutopilotIdleFooter =
+      (!isComposerRow && _autopilotIdleFooter.hasMatch(idleModeLine)) ||
+      _autopilotWrappedIdlePrefix.hasMatch(precedingIdleLine);
+  final isIdleFooter =
+      hasIdleChrome && (footer.contains('help') || isAutopilotIdleFooter);
   final idleEnd = trailingLines.lastIndexWhere((line) => line.contains('tab'));
   final workingIndex = trailingLines.lastIndexWhere(
     (line) => line.contains('working') && line.contains('interrupt'),
@@ -84,18 +95,9 @@ AgentMode? parseCopilotMode(String text) {
   if (!isIdleFooter) return null;
 
   // The mode prefix is on the `commands` row or wraps immediately before it
-  // as `<mode> · /`; a draft ending in "plan" lacks that footer delimiter.
-  final idleModeLine = trailingLines[idleModeIndex];
-  final precedingIdleLine = idleModeIndex == 0
-      ? ''
-      : trailingRawLines[idleModeIndex - 1];
-  if (_autopilotIdleFooter.hasMatch(idleModeLine)) {
-    return AgentMode.autoAccept;
-  }
+  // as `<mode> · /`; a draft ending in a mode word lacks that delimiter.
+  if (isAutopilotIdleFooter) return AgentMode.autoAccept;
   if (_planIdleFooter.hasMatch(idleModeLine)) return AgentMode.plan;
-  if (_autopilotWrappedIdlePrefix.hasMatch(precedingIdleLine)) {
-    return AgentMode.autoAccept;
-  }
   if (_planWrappedIdlePrefix.hasMatch(precedingIdleLine)) {
     return AgentMode.plan;
   }
