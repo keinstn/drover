@@ -1,3 +1,4 @@
+import 'package:drover/src/herdr/ansi_text.dart';
 import 'package:drover/src/herdr/pane_text.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -23,7 +24,174 @@ const chromeFixture = '''
 ─────────────────────────────────────────
   -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents''';
 
+/// A fixed-width "┃ content ┃"-style panel row like Copilot CLI draws: a
+/// leading border, the content, then space padding out to [width] visible
+/// columns, then the trailing border. [width] is chosen well above the
+/// helper's short-box threshold.
+String _panelRow(String content, {int width = 90}) {
+  final inner = '┃ $content';
+  final pad = width - inner.length - 1;
+  assert(pad >= 0, 'content too long for width $width');
+  return '$inner${' ' * pad}┃';
+}
+
 void main() {
+  group('stripPanelPadding', () {
+    test('removes right padding + trailing border from a multi-row panel, '
+        'keeping content, leading border and newlines', () {
+      final fixture =
+          '${_panelRow('Hello there, human! How can I help?')}\n'
+          '${_panelRow('This is a second line of assistant output.')}\n'
+          '${_panelRow('And a third, just to be sure.')}';
+
+      final result = stripPanelPadding(fixture);
+
+      expect(
+        result,
+        '┃ Hello there, human! How can I help?\n'
+        '┃ This is a second line of assistant output.\n'
+        '┃ And a third, just to be sure.',
+      );
+      expect(result, isNot(contains('  ┃'))); // no orphaned right border
+    });
+
+    test('removes right padding + trailing border from a multi-row panel '
+        'whose content has non-BMP emoji, keeping every emoji and losing no '
+        'padding/border', () {
+      // Built with rune-derived (not UTF-16-length-derived) padding, unlike
+      // `_panelRow`, so the fixture itself is exactly [width] visible columns
+      // wide regardless of the surrogate-pair emoji it contains.
+      String emojiPanelRow(String content, {int width = 90}) {
+        final inner = '┃ $content';
+        final pad = width - inner.runes.length - 1;
+        assert(pad >= 0, 'content too long for width $width');
+        return '$inner${' ' * pad}┃';
+      }
+
+      final fixture =
+          '${emojiPanelRow('Shipped it 🚀🎉! Emoji: 😀 done')}\n'
+          '${emojiPanelRow('A plain second row, no emoji here.')}';
+
+      final result = stripPanelPadding(fixture);
+
+      expect(
+        result,
+        '┃ Shipped it 🚀🎉! Emoji: 😀 done\n'
+        '┃ A plain second row, no emoji here.',
+      );
+      expect(result, isNot(contains('  ┃'))); // no orphaned right border
+    });
+
+    test('is idempotent: reapplying makes no further change', () {
+      final fixture =
+          '${_panelRow('one two three')}\n${_panelRow('four five six')}';
+      final once = stripPanelPadding(fixture);
+      final twice = stripPanelPadding(once);
+      expect(twice, once);
+    });
+
+    test('preserves an ANSI reset embedded in the removed suffix so styling '
+        "doesn't leak into the next line", () {
+      // Bold is switched on mid-content and never explicitly turned off
+      // before the padding; only a reset sitting right before the border
+      // (i.e. inside the removed span) closes it. Padded to the same
+      // visible width (90) as row2 below so both are recognized as one
+      // panel block: content "┃ ALERT" is 7 visible chars, so 82 spaces
+      // of padding reach column 89 (width 90 minus the border itself).
+      final row1 =
+          '┃ \x1B[1mALERT${' ' * 82}\x1B[0m┃'; // width 90, bold left open
+      final row2 = _panelRow('follow-up line', width: 90);
+      final fixture = '$row1\n$row2';
+
+      final result = stripPanelPadding(fixture);
+      final lines = result.split('\n');
+
+      // The border/padding characters are gone but the reset survived.
+      expect(lines[0], '┃ \x1B[1mALERT\x1B[0m');
+      expect(lines[1], '┃ follow-up line');
+
+      // And parseAnsi (which carries style state across newlines, as a
+      // terminal would) confirms bold does not leak into the second line.
+      final spans = parseAnsi(result);
+      final followUpSpan = spans.firstWhere(
+        (span) => span.text.contains('follow-up'),
+      );
+      expect(followUpSpan.bold, isFalse);
+    });
+
+    test('preserves a style-opening SGR in the removed suffix with no reset, '
+        'carrying it across the newline as terminal semantics dictate', () {
+      // Bold is switched on inside the padding (the removed suffix) and never
+      // closed. The border/padding must be removed, but the bold SGR is
+      // retained so that parseAnsi sees it and correctly carries bold into
+      // the next line. Padded to width 90: content "┃ text" is 6 visible
+      // chars, so 83 spaces of padding reach column 89 (width 90 minus the
+      // border itself).
+      final row1 =
+          '┃ text${' ' * 83}\x1B[1m┃'; // width 90, bold opened in padding
+      final row2 = _panelRow('next line after bold', width: 90);
+      final fixture = '$row1\n$row2';
+
+      final result = stripPanelPadding(fixture);
+      final lines = result.split('\n');
+
+      // The border/padding characters and the spaces are gone, but the bold
+      // SGR that was inside the removed span is preserved.
+      expect(lines[0], '┃ text\x1B[1m');
+      expect(lines[1], '┃ next line after bold');
+
+      // parseAnsi carries the bold state across the newline, as a terminal
+      // would, so the next line inherits the bold from the previous line.
+      final spans = parseAnsi(result);
+      final nextLineSpan = spans.firstWhere(
+        (span) => span.text.contains('next line'),
+      );
+      expect(nextLineSpan.bold, isTrue);
+    });
+
+    test('leaves ordinary long prose untouched', () {
+      const prose =
+          'This is a perfectly ordinary long line of assistant prose that '
+          'happens to be wider than a phone screen but contains no '
+          'box-drawing characters at all, so it should wrap normally '
+          'without any special handling from this helper whatsoever.';
+      expect(stripPanelPadding(prose), prose);
+    });
+
+    test('leaves a Markdown table (ASCII pipes) untouched', () {
+      const table =
+          '| Column A | Column B | Column C that is deliberately long |\n'
+          '| -------- | -------- | ----------------------------------- |\n'
+          '| value 1  | value 2  | a rather long value in this cell    |';
+      expect(stripPanelPadding(table), table);
+    });
+
+    test('leaves source/tree output with a non-trailing border untouched', () {
+      const tree =
+          'project/\n'
+          '├── lib/\n'
+          '│   └── main.dart\n'
+          '└── test/\n'
+          '    └── main_test.dart';
+      expect(stripPanelPadding(tree), tree);
+    });
+
+    test('leaves a single suspicious padded-and-bordered line untouched '
+        'without adjacent panel context', () {
+      final lonely = _panelRow('only one row, no siblings');
+      expect(stripPanelPadding(lonely), lonely);
+    });
+
+    test('leaves a short Unicode box untouched', () {
+      const box =
+          '┌────────┐\n'
+          '│ Hi Bob │\n'
+          '│ 2nd row │\n'
+          '└────────┘';
+      expect(stripPanelPadding(box), box);
+    });
+  });
+
   group('stripTuiChrome', () {
     test('strips trailing rule + mode line but keeps a draft with content', () {
       final result = stripTuiChrome(chromeFixture);

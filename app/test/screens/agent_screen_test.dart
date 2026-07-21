@@ -78,6 +78,43 @@ CommandResult workingResponse(String command) {
   return ok('{"id":"1","result":{}}');
 }
 
+/// Builds a "┃ content ┃" panel row padded out to [width] visible columns,
+/// mirroring the fixed-width rows a bordered-panel TUI (e.g. Copilot CLI)
+/// draws -- the shape `stripPanelPadding` (wired into `AgentScreen`'s live
+/// terminal render path) is meant to clean up. See drover issue #16.
+String _panelRow(String content, {int width = 90}) {
+  final inner = '┃ $content';
+  final pad = width - inner.length - 1;
+  return '$inner${' ' * pad}┃';
+}
+
+/// A pane whose live terminal text is a multi-row fixed-width panel (as
+/// Copilot CLI draws), so `_Transcript` should only ever see it de-padded.
+CommandResult panelPaddingResponse(String command) {
+  if (command.contains("'workspace' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"workspaces":['
+      '{"workspace_id":"wB","label":"Project B"}'
+      ']}}',
+    );
+  }
+  if (command.contains("'agent' 'get'")) {
+    return ok(
+      '{"id":"1","result":{"agent":{"agent":"codex",'
+      '"agent_status":"working","cwd":"/tmp/proj","focused":false,'
+      '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+      '"name":"Agent Three"}}}',
+    );
+  }
+  if (command.contains("'agent' 'read'")) {
+    final text =
+        '${_panelRow('Hello there, human! How can I help?')}\n'
+        '${_panelRow('This is a second line of assistant output.')}';
+    return ok('{"id":"1","result":{"read":{"text":${jsonEncode(text)}}}}');
+  }
+  return ok('{"id":"1","result":{}}');
+}
+
 /// An unrecognized agent ("codex", say) whose pane happens to contain
 /// Claude's own mode-line wording verbatim — no [AgentAdapter] supports it, so
 /// its `AgentModeCapability`/`ImageAttachmentCapability` are both resolved as
@@ -1285,6 +1322,62 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('de-pads a fixed-width panel in the live terminal without ever '
+      'horizontally scrolling it', (tester) async {
+    final client = HerdrClient(StubCommandRunner(panelPaddingResponse));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final transcriptText = find.byWidgetPredicate(
+      (widget) =>
+          widget is SelectableText &&
+          (widget.textSpan?.toPlainText() ?? '').contains(
+            'Hello there, human! How can I help?',
+          ),
+    );
+    expect(transcriptText, findsOneWidget);
+
+    final plainText = tester
+        .widget<SelectableText>(transcriptText)
+        .textSpan!
+        .toPlainText();
+    expect(
+      plainText,
+      '┃ Hello there, human! How can I help?\n'
+      '┃ This is a second line of assistant output.',
+    );
+    // No orphaned trailing border / leftover right-padding survived.
+    expect(plainText, isNot(contains('┃\n')));
+    expect(plainText, isNot(contains('   ┃')));
+
+    // The live terminal keeps soft-wrapping (no horizontal scroll) -- only
+    // the artificial padding/border was removed, not wrapping itself.
+    expect(
+      find.ancestor(
+        of: transcriptText,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is SingleChildScrollView &&
+              widget.scrollDirection == Axis.horizontal,
+        ),
+      ),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('falls back to pane history when native metadata is absent', (
     tester,

@@ -717,6 +717,12 @@ class _AgentScreenState extends State<AgentScreen> {
         nativeHistory != null && nativeHistory.entries.isNotEmpty;
     final paneText = stripTuiChrome(_text);
     final liveTerminalText = _liveTerminalText(paneText, nativeHistory);
+    // Only the rendered copy is de-padded: mode/prompt parsing above, the
+    // native-duplicate check in `_liveTerminalText`, and the raw pane state
+    // all keep using their existing (unmodified) text.
+    final liveTerminalDisplayText = liveTerminalText == null
+        ? null
+        : stripPanelPadding(liveTerminalText);
     // Neither the pane nor the native transcript have produced anything to
     // show yet: while the very first load is still in flight (and hasn't
     // already failed — that gets its own retryable banner below) show a
@@ -840,7 +846,9 @@ class _AgentScreenState extends State<AgentScreen> {
                                 horizontal: 12,
                               ),
                               sliver: SliverToBoxAdapter(
-                                child: _Transcript(ansiText: liveTerminalText),
+                                child: _Transcript(
+                                  ansiText: liveTerminalDisplayText!,
+                                ),
                               ),
                             ),
                           ],
