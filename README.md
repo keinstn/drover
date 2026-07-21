@@ -34,7 +34,7 @@ drover/
 ├── app/       # the Flutter app (fvm-pinned; iOS/macOS)
 │   ├── lib/   # app source
 │   └── tool/  # tool/spike.dart — SSH/herdr CLI probe used during bring-up
-└── docs/      # herdr-notes.md — herdr CLI behaviours & gotchas drover relies on
+└── docs/      # herdr-notes.md (herdr CLI behaviours & gotchas) + agents/ (per-agent CLI notes)
 ```
 
 ## Getting started
