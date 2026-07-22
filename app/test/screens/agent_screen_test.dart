@@ -937,7 +937,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('task_complete'), findsNothing);
-    expect(find.text('⏺'), findsNothing);
+    expect(find.byIcon(Icons.build), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -952,7 +952,7 @@ void main() {
 
     expect(find.text('Conversation history'), findsOneWidget);
     expect(find.text('task_complete'), findsOneWidget);
-    expect(find.text('⏺'), findsOneWidget);
+    expect(find.byIcon(Icons.build), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
