@@ -5,9 +5,9 @@
 // actually happened, and ABORTS (throws) on any state it cannot recognize
 // rather than sending keys blindly.
 
-import '../../herdr/ansi_text.dart';
 import '../../transcript/native_transcript.dart';
 import '../agent_capabilities.dart';
+import '../structured_prompt_helpers.dart';
 
 /// Thrown when the dialog is not in the expected state — the initial screen
 /// isn't the dialog, a question can't be matched, an expected transition never
@@ -22,7 +22,6 @@ class AskUserQuestionSubmitError implements StructuredPromptSubmitError {
   @override
   String toString() => 'AskUserQuestionSubmitError: $message';
 }
-
 /// Submits a staged answer set for a [StructuredPrompt] by injecting
 /// keystrokes into the live TUI dialog. Depends only on three transport
 /// closures (satisfied by [HerdrClient.readAgent]/`sendPaneText`/`sendKeys`),
@@ -198,21 +197,21 @@ class AskUserQuestionSubmitter {
   }
 
   /// Re-reads the pane up to [maxPolls] times until [predicate] holds, throwing
-  /// [AskUserQuestionSubmitError] with [failure] if it never does.
+  /// [AskUserQuestionSubmitError] with [failure] if it never does. The pane
+  /// output is ANSI-stripped and whitespace-normalized before the predicate.
   Future<void> _confirm(
     String paneId,
     bool Function(String text) predicate,
     String failure,
-  ) async {
-    for (var attempt = 0; attempt < maxPolls; attempt++) {
-      if (attempt > 0) {
-        await Future<void>.delayed(pollInterval);
-      }
-      final text = stripAnsi(await readPane(paneId));
-      if (predicate(text)) return;
-    }
-    throw AskUserQuestionSubmitError(failure);
-  }
+  ) => pollUntil(
+    readPane: readPane,
+    paneId: paneId,
+    predicate: predicate,
+    makeError: AskUserQuestionSubmitError.new,
+    failure: failure,
+    maxPolls: maxPolls,
+    pollInterval: pollInterval,
+  );
 
   /// The active tab renders its question's full text in the dialog body (the
   /// tab bar only shows headers), so the question text identifies the active
@@ -220,27 +219,22 @@ class AskUserQuestionSubmitter {
   /// whitespace-normalized before matching — the match is agnostic to how (or
   /// whether) the read was wrapped.
   bool _showsQuestion(String text, StructuredPromptQuestion question) =>
-      _normalize(text).contains(_normalize(question.question));
+      text.contains(normalizePaneText(question.question));
 
   /// The final review step lists "1. Submit answers / 2. Cancel". Matched on
   /// "Submit answers" so the tab bar's bare "Submit" label and the post-answer
   /// echo (neither contains that exact phrase) can't false-trigger.
-  bool _isReviewScreen(String text) =>
-      _normalize(text).contains('Submit answers');
+  bool _isReviewScreen(String text) => text.contains('Submit answers');
 
   /// Whether a question dialog is still open. Keyed off the selection chrome —
   /// every open AskUserQuestion tab renders the "Esc to cancel" footer — NOT
   /// off question-text presence: after a submit Claude echoes "User answered
   /// Claude's questions: … `<question>` → `<answer>`", so the question text
   /// reappears even though the dialog is gone.
-  bool _dialogOpen(String text) => _normalize(text).contains('Esc to cancel');
+  bool _dialogOpen(String text) => text.contains('Esc to cancel');
 
   /// True once the dialog is gone: neither an open question tab nor the review
   /// screen is showing.
   bool _dialogClosed(String text) =>
       !_dialogOpen(text) && !_isReviewScreen(text);
-
-  /// Collapses every run of whitespace (spaces + newlines) to a single space
-  /// and trims, so terminal wrapping doesn't defeat a substring match.
-  String _normalize(String text) => text.replaceAll(RegExp(r'\s+'), ' ').trim();
 }

@@ -59,7 +59,10 @@ class CopilotAgentAdapter extends AgentAdapter {
     String text,
   ) async {
     await client.sendPaneText(paneId, _focusGained);
-    await client.prompt(paneId, text);
-    await client.sendPaneText(paneId, _focusLost);
+    try {
+      await client.prompt(paneId, text);
+    } finally {
+      await client.sendPaneText(paneId, _focusLost);
+    }
   }
 }

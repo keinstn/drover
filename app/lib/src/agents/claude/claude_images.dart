@@ -12,18 +12,18 @@ import '../agent_image_upload.dart';
 class ClaudeImageAttachmentCapability implements ImageAttachmentCapability {
   const ClaudeImageAttachmentCapability();
 
-  /// Upload [images] into [agent]'s working directory and prompt the agent
-  /// to read them by their absolute paths. Placing the files under the
-  /// agent's cwd keeps Claude Code's file reads from triggering an
-  /// out-of-workspace permission prompt (reads within the workspace are
-  /// allowed). [caption], if non-empty, is sent on the line above the paths.
-  /// Returns the remote paths in order. [timestampMs] is injectable only so
-  /// tests get a deterministic filename.
+  /// Upload [images] into [agent]'s working directory and call [deliver] with
+  /// the composed prompt text: absolute paths preceded by [caption] when
+  /// non-empty. Placing the files under the agent's cwd keeps Claude Code's
+  /// file reads from triggering an out-of-workspace permission prompt (reads
+  /// within the workspace are allowed). Returns the remote paths in order.
+  /// [timestampMs] is injectable only so tests get a deterministic filename.
   @override
   Future<List<String>> send(
     HerdrClient client,
     AgentInfo agent, {
     required List<PickedImage> images,
+    required Future<void> Function(String) deliver,
     String caption = '',
     int? timestampMs,
   }) async {
@@ -38,7 +38,7 @@ class ClaudeImageAttachmentCapability implements ImageAttachmentCapability {
     final text = trimmed.isEmpty
         ? paths.join('\n')
         : '${caption.trimRight()}\n${paths.join('\n')}';
-    await client.prompt(agent.paneId, text);
+    await deliver(text);
     return paths;
   }
 }

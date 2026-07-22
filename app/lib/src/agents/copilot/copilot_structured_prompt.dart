@@ -12,6 +12,7 @@
 import '../../herdr/herdr_client.dart';
 import '../../transcript/native_transcript.dart';
 import '../agent_capabilities.dart';
+import '../structured_prompt_helpers.dart';
 import 'copilot_askuser_submitter.dart';
 
 /// Parses a Copilot CLI `ask_user` tool_use into the shared [StructuredPrompt]
@@ -44,7 +45,6 @@ StructuredPrompt? parseAskUser(TranscriptToolUse toolUse) {
     ],
   );
 }
-
 class CopilotStructuredPromptCapability implements StructuredPromptCapability {
   const CopilotStructuredPromptCapability();
 
@@ -53,19 +53,8 @@ class CopilotStructuredPromptCapability implements StructuredPromptCapability {
   /// were asked).
   @override
   StructuredPrompt? pendingPrompt(NativeTranscript history) {
-    final answeredIds = history.entries
-        .whereType<TranscriptToolResult>()
-        .map((result) => result.toolUseId)
-        .toSet();
-    for (final entry in history.entries.reversed) {
-      if (entry is TranscriptToolUse &&
-          entry.name == 'ask_user' &&
-          entry.id != null &&
-          !answeredIds.contains(entry.id)) {
-        return parseAskUser(entry);
-      }
-    }
-    return null;
+    final toolUse = findLastUnansweredToolUse(history, 'ask_user');
+    return toolUse == null ? null : parseAskUser(toolUse);
   }
 
   @override

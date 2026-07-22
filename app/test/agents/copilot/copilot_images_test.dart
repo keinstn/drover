@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:drover/src/agents/copilot/copilot_adapter.dart';
 import 'package:drover/src/agents/copilot/copilot_images.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
@@ -66,6 +67,7 @@ void main() {
             PickedImage(bytes: Uint8List.fromList([1, 2, 3]), extension: 'png'),
             PickedImage(bytes: Uint8List.fromList([4, 5, 6]), extension: 'jpg'),
           ],
+          deliver: (text) => client.prompt(agent.paneId, text),
           timestampMs: 42,
         );
 
@@ -97,6 +99,7 @@ void main() {
         images: [
           PickedImage(bytes: Uint8List.fromList([1]), extension: 'png'),
         ],
+        deliver: (text) => client.prompt(agent.paneId, text),
         timestampMs: 7,
       );
 
@@ -118,6 +121,7 @@ void main() {
             PickedImage(bytes: Uint8List.fromList([1, 2, 3]), extension: 'png'),
             PickedImage(bytes: Uint8List.fromList([4, 5, 6]), extension: 'jpg'),
           ],
+          deliver: (text) => client.prompt(agent.paneId, text),
           timestampMs: 42,
         );
 
@@ -144,6 +148,7 @@ void main() {
         images: [
           PickedImage(bytes: Uint8List.fromList([1, 2, 3]), extension: 'png'),
         ],
+        deliver: (text) => client.prompt(agent.paneId, text),
         caption: 'look at this',
         timestampMs: 42,
       );
@@ -178,6 +183,7 @@ void main() {
         images: [
           PickedImage(bytes: Uint8List.fromList([1, 2, 3]), extension: 'png'),
         ],
+        deliver: (text) => client.prompt(spacedAgent.paneId, text),
         caption: 'look at this',
         timestampMs: 42,
       );
@@ -193,5 +199,51 @@ void main() {
         ]),
       );
     });
+  });
+
+  group('CopilotImageAttachmentCapability with CopilotAgentAdapter', () {
+    test(
+      'brackets the prompt with focus-gained/focus-lost when delivered via '
+      'CopilotAgentAdapter.deliverPrompt',
+      () async {
+        final runner = FakeCommandRunner((_) => ok('{"id":"1","result":{}}'));
+        final client = HerdrClient(runner);
+        const capability = CopilotImageAttachmentCapability();
+
+        await capability.send(
+          client,
+          agent,
+          images: [
+            PickedImage(
+              bytes: Uint8List.fromList([1, 2, 3]),
+              extension: 'png',
+            ),
+          ],
+          deliver: (text) =>
+              const CopilotAgentAdapter().deliverPrompt(client, agent.paneId, text),
+          timestampMs: 42,
+        );
+
+        final promptIdx = runner.commands.indexWhere(
+          (c) => c.contains("'agent' 'prompt'"),
+        );
+        expect(promptIdx, isNot(-1), reason: 'prompt command must be present');
+        expect(
+          runner.commands[promptIdx - 1],
+          contains('\x1b[I'),
+          reason: 'focus-gained must precede the prompt',
+        );
+        expect(
+          runner.commands[promptIdx],
+          contains("'@.drover/img-42-0.png'"),
+          reason: 'prompt must contain the image mention',
+        );
+        expect(
+          runner.commands[promptIdx + 1],
+          contains('\x1b[O'),
+          reason: 'focus-lost must follow the prompt',
+        );
+      },
+    );
   });
 }

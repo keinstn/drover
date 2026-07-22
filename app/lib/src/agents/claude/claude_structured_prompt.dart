@@ -5,9 +5,55 @@
 import '../../herdr/herdr_client.dart';
 import '../../transcript/native_transcript.dart';
 import '../agent_capabilities.dart';
+import '../structured_prompt_helpers.dart';
 import 'claude_askuser_submitter.dart';
-import 'claude_transcript.dart' show parseAskUserQuestion;
 
+/// Parses an AskUserQuestion tool_use's input into the common
+/// [StructuredPrompt] shape. Returns null unless [toolUse] is an
+/// AskUserQuestion with an id and at least one well-shaped question;
+/// malformed questions/options are skipped rather than thrown.
+StructuredPrompt? parseAskUserQuestion(TranscriptToolUse toolUse) {
+  final toolUseId = toolUse.id;
+  if (toolUse.name != 'AskUserQuestion' || toolUseId == null) return null;
+  final rawQuestions = toolUse.input['questions'];
+  if (rawQuestions is! List) return null;
+  final questions = <StructuredPromptQuestion>[];
+  for (final rawQuestion in rawQuestions) {
+    if (rawQuestion is! Map) continue;
+    final question = rawQuestion['question'];
+    // A blank question defeats the downstream substring safety gate
+    // (contains("") is always true), so treat it as malformed.
+    if (question is! String || question.trim().isEmpty) continue;
+    final header = rawQuestion['header'];
+    final multiSelect = rawQuestion['multiSelect'];
+    final rawOptions = rawQuestion['options'];
+    final options = <StructuredPromptOption>[];
+    if (rawOptions is List) {
+      for (final rawOption in rawOptions) {
+        if (rawOption is! Map) continue;
+        final label = rawOption['label'];
+        if (label is! String) continue;
+        final description = rawOption['description'];
+        options.add(
+          StructuredPromptOption(
+            label: label,
+            description: description is String ? description : null,
+          ),
+        );
+      }
+    }
+    questions.add(
+      StructuredPromptQuestion(
+        question: question,
+        header: header is String ? header : '',
+        multiSelect: multiSelect is bool ? multiSelect : false,
+        options: options,
+      ),
+    );
+  }
+  if (questions.isEmpty) return null;
+  return StructuredPrompt(id: toolUseId, questions: questions);
+}
 class ClaudeStructuredPromptCapability implements StructuredPromptCapability {
   const ClaudeStructuredPromptCapability();
 
@@ -16,19 +62,8 @@ class ClaudeStructuredPromptCapability implements StructuredPromptCapability {
   /// answered (or none were asked).
   @override
   StructuredPrompt? pendingPrompt(NativeTranscript history) {
-    final answeredIds = history.entries
-        .whereType<TranscriptToolResult>()
-        .map((result) => result.toolUseId)
-        .toSet();
-    for (final entry in history.entries.reversed) {
-      if (entry is TranscriptToolUse &&
-          entry.name == 'AskUserQuestion' &&
-          entry.id != null &&
-          !answeredIds.contains(entry.id)) {
-        return parseAskUserQuestion(entry);
-      }
-    }
-    return null;
+    final toolUse = findLastUnansweredToolUse(history, 'AskUserQuestion');
+    return toolUse == null ? null : parseAskUserQuestion(toolUse);
   }
 
   @override

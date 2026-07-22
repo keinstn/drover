@@ -521,6 +521,99 @@ class JsonlTranscriptWindow {
   }
 }
 
+/// Returns true if [value] matches the UUID v1–v5 pattern used as a
+/// native-transcript session identity by Claude Code and Copilot CLI.
+/// Both agents validate their session ids against this same pattern; sharing
+/// it here avoids the two copies drifting apart.
+bool isNativeTranscriptSessionId(String value) =>
+    _sessionIdPattern.hasMatch(value);
+
+final _sessionIdPattern = RegExp(
+  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+);
+
+/// Shared session-identity / path-cache / window orchestration for JSONL
+/// native transcript loaders (see `ClaudeTranscriptLoader`,
+/// `CopilotTranscriptLoader`). An agent's own loader owns locating/validating
+/// the remote path and parsing JSONL lines into [TranscriptEntry] values; this
+/// class owns:
+///
+///  - tracking the current session identity and resetting the path cache and
+///    window whenever it changes (session switch or first call);
+///  - caching the resolved path across polls so [locate] is called only once
+///    per session identity rather than on every poll;
+///  - delegating stat/range I/O and line parsing to the caller-supplied
+///    functions so [JsonlTranscriptWindow]'s bounded-tail/append/older-page
+///    logic applies uniformly.
+///
+/// This is a compositional helper, not a base class. Each concrete loader
+/// constructs one instance and calls [load] / [loadOlder] with its own
+/// [locate] and parser functions; agent-specific behaviour (session
+/// validation, path construction, line parsing) stays entirely in the
+/// agent's module.
+class JsonlSessionLoader {
+  /// [window] is exposed so tests can inject a small-window instance without
+  /// needing a multi-hundred-KiB fixture; production loaders omit it.
+  JsonlSessionLoader({JsonlTranscriptWindow? window})
+      : _window = window ?? JsonlTranscriptWindow();
+
+  final JsonlTranscriptWindow _window;
+  String? _sessionId;
+  String? _path;
+
+  /// Whether an older, not-yet-loaded chunk of history exists before the
+  /// window [load] has fetched so far — delegates to [JsonlTranscriptWindow.hasOlder].
+  bool get hasOlderHistory => _window.hasOlder;
+
+  /// Loads or appends transcript data for [sessionId].
+  ///
+  /// Resets the window and clears the cached path when [sessionId] differs
+  /// from the previous call. Calls [locate] only on the first load for each
+  /// new [sessionId] (or after a reset); subsequent polls for the same
+  /// session reuse the cached path. Returns null if [locate] returns null
+  /// (e.g. the session file does not exist yet).
+  Future<NativeTranscript?> load({
+    required String sessionId,
+    required Future<String?> Function(String id) locate,
+    required Future<int> Function(String path) statSize,
+    required Future<List<int>> Function(String path, int offset, int? length)
+        readRange,
+    required List<TranscriptEntry> Function(String input) parseLines,
+    required List<TranscriptEntry> Function(String line) parseLine,
+  }) async {
+    if (_sessionId != sessionId) {
+      _sessionId = sessionId;
+      _path = null;
+      _window.reset();
+    }
+    final path = _path ?? await locate(sessionId);
+    if (path == null) return null;
+    _path = path;
+    return _window.loadOrAppend(
+      statSize: () => statSize(path),
+      readRange: (offset, length) => readRange(path, offset, length),
+      parseLines: parseLines,
+      parseLine: parseLine,
+    );
+  }
+
+  /// Fetches and prepends the next older bounded chunk — delegates to
+  /// [JsonlTranscriptWindow.loadOlder] with the cached path. Returns null
+  /// when [hasOlderHistory] is false or no path has been resolved yet.
+  Future<NativeTranscript?> loadOlder({
+    required Future<List<int>> Function(String path, int offset, int? length)
+        readRange,
+    required List<TranscriptEntry> Function(String input) parseLines,
+  }) {
+    final path = _path;
+    if (path == null || !_window.hasOlder) return Future.value(null);
+    return _window.loadOlder(
+      readRange: (offset, length) => readRange(path, offset, length),
+      parseLines: parseLines,
+    );
+  }
+}
+
 /// One raw bounded range read, before any record-boundary interpretation is
 /// applied — see [JsonlTranscriptWindow._readRaw].
 class _RawRead {

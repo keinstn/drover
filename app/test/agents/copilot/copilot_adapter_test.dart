@@ -27,6 +27,22 @@ class FakeCommandRunner extends CommandRunner {
   Future<void> dispose() async {}
 }
 
+/// Records commands like [FakeCommandRunner] but throws on the first command
+/// that contains [throwOn], without recording that command.
+class ThrowingCommandRunner extends FakeCommandRunner {
+  ThrowingCommandRunner({required this.throwOn});
+
+  final String throwOn;
+
+  @override
+  Future<CommandResult> run(String command) async {
+    if (command.contains(throwOn)) {
+      throw Exception('simulated failure: $command');
+    }
+    return super.run(command);
+  }
+}
+
 void main() {
   group('CopilotAgentAdapter.deliverPrompt', () {
     test(
@@ -37,11 +53,42 @@ void main() {
 
         await const CopilotAgentAdapter().deliverPrompt(client, 'wB:p1', 'hi');
 
-        expect(runner.commands, [
-          "~/.local/bin/herdr 'pane' 'send-text' 'wB:p1' '[I'",
-          "~/.local/bin/herdr 'agent' 'prompt' 'wB:p1' 'hi'",
-          "~/.local/bin/herdr 'pane' 'send-text' 'wB:p1' '[O'",
-        ]);
+        expect(runner.commands, hasLength(3));
+        expect(runner.commands[0], contains('send-text'));
+        expect(runner.commands[0], contains('\x1b[I'));
+        expect(runner.commands[1], contains("'agent' 'prompt' 'wB:p1' 'hi'"));
+        expect(runner.commands[2], contains('send-text'));
+        expect(runner.commands[2], contains('\x1b[O'));
+      },
+    );
+
+    test(
+      'still sends focus-lost even when the prompt operation throws',
+      () async {
+        final runner = ThrowingCommandRunner(throwOn: "'agent' 'prompt'");
+        final client = HerdrClient(runner);
+
+        await expectLater(
+          () => const CopilotAgentAdapter().deliverPrompt(
+            client,
+            'wB:p1',
+            'hi',
+          ),
+          throwsException,
+        );
+
+        // focus-gained was sent (the throw hadn't happened yet)
+        expect(runner.commands, hasLength(2));
+        expect(runner.commands[0], contains('send-text'));
+        expect(runner.commands[0], contains('\x1b[I'));
+        // focus-lost was sent as cleanup despite the failure
+        expect(runner.commands[1], contains('send-text'));
+        expect(runner.commands[1], contains('\x1b[O'));
+        // the prompt itself never completed
+        expect(
+          runner.commands.any((c) => c.contains("'agent' 'prompt'")),
+          isFalse,
+        );
       },
     );
   });
@@ -53,9 +100,9 @@ void main() {
 
       await const ClaudeAgentAdapter().deliverPrompt(client, 'wB:p1', 'hi');
 
-      expect(runner.commands, [
-        "~/.local/bin/herdr 'agent' 'prompt' 'wB:p1' 'hi'",
-      ]);
+      expect(runner.commands, hasLength(1));
+      expect(runner.commands[0], contains("'agent' 'prompt' 'wB:p1' 'hi'"));
+      expect(runner.commands[0], isNot(contains('send-text')));
     });
   });
 }
