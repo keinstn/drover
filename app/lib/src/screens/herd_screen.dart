@@ -184,7 +184,13 @@ class _HerdScreenState extends State<HerdScreen> {
       _workspaceLabels[workspaceId] ?? workspaceId;
 
   String _agentDisplayName(AgentInfo agent) =>
-      agent.name ?? agent.agent ?? agent.paneId;
+      agent.sessionTitle ?? agent.name ?? agent.agent ?? agent.paneId;
+
+  String _agentMetadata(AgentInfo agent) {
+    final cwd = agent.foregroundCwd ?? agent.cwd;
+    final agentType = agent.agent ?? 'agent';
+    return '$agentType · ${lastPathSegment(cwd)}';
+  }
 
   void _checkBlockedTransitions(List<AgentInfo> agents) {
     for (final agent in agents) {
@@ -479,6 +485,7 @@ class _HerdScreenState extends State<HerdScreen> {
                             child: _AgentTile(
                               agent: agent,
                               displayName: _agentDisplayName(agent),
+                              metadata: _agentMetadata(agent),
                               onLongPress:
                                   _stoppingPaneIds.contains(agent.paneId)
                                   ? null
@@ -510,19 +517,20 @@ class _AgentTile extends StatelessWidget {
   const _AgentTile({
     required this.agent,
     required this.displayName,
+    required this.metadata,
     required this.onTap,
     required this.onLongPress,
   });
 
   final AgentInfo agent;
   final String displayName;
+  final String metadata;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final cwd = agent.foregroundCwd ?? agent.cwd;
     return ListTile(
       leading: Column(
         mainAxisSize: MainAxisSize.min,
@@ -536,7 +544,12 @@ class _AgentTile extends StatelessWidget {
         ],
       ),
       title: Text(displayName),
-      subtitle: Text(lastPathSegment(cwd)),
+      subtitle: Text(
+        metadata,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
       onTap: onTap,
       onLongPress: onLongPress,
     );

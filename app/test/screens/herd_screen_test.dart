@@ -173,7 +173,7 @@ class NativeHistoryHerdRunner extends CommandRunner {
 }
 
 void main() {
-  testWidgets('shows agents grouped by workspace, blocked above idle', (
+  testWidgets('shows session titles grouped by workspace, blocked above idle', (
     tester,
   ) async {
     final runner = FakeCommandRunner(_respond);
@@ -202,6 +202,8 @@ void main() {
     expect(find.text('wB'), findsNothing);
     expect(find.textContaining('p1'), findsNothing);
     expect(find.textContaining('p2'), findsNothing);
+    expect(find.text('claude · proj-a'), findsNWidgets(2));
+    expect(find.text('claude · proj-b'), findsOneWidget);
 
     final blockedTop = tester.getTopLeft(find.textContaining('Agent Two')).dy;
     final idleTop = tester.getTopLeft(find.textContaining('Agent One')).dy;
@@ -210,7 +212,7 @@ void main() {
     await tester.tap(find.text('Agent Three'));
     await tester.pumpAndSettle();
 
-    expect(find.text('working · Project B'), findsOneWidget);
+    expect(find.text('working · claude · Project B'), findsOneWidget);
     expect(find.textContaining('p1'), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
@@ -268,6 +270,53 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(seconds: 1));
       expect(listCalls(), greaterThan(afterPop));
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'shows the agent CLI terminal title (CLI suffix stripped) as the tile '
+    'title',
+    (tester) async {
+      const envelope =
+          '{"id":"1","result":{"agents":['
+          '{"agent":"copilot","agent_status":"working","cwd":"/tmp/proj-b",'
+          '"focused":false,"pane_id":"wB:p1","tab_id":"wB:t1",'
+          '"workspace_id":"wB",'
+          '"terminal_title_stripped":"Herd の session 表示を設計 - GitHub Copilot"}'
+          ']}}';
+      final runner = FakeCommandRunner((command) {
+        if (command.contains("'workspace' 'list'")) {
+          return ok(
+            '{"id":"1","result":{"workspaces":['
+            '{"workspace_id":"wB","label":"Project B"}]}}',
+          );
+        }
+        return ok(envelope);
+      });
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HerdScreen(
+            client: client,
+            onOpenSettings: () {},
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Herd の session 表示を設計'), findsOneWidget);
+      expect(
+        find.textContaining('GitHub Copilot'),
+        findsNothing,
+        reason: 'the CLI-specific suffix is stripped from the title',
+      );
 
       await tester.pumpWidget(const SizedBox());
     },

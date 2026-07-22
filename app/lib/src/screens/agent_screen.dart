@@ -705,8 +705,10 @@ class _AgentScreenState extends State<AgentScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final agent = _agent;
-    final displayName = agent?.name ?? agent?.agent ?? widget.paneId;
+    final displayName =
+        agent?.sessionTitle ?? agent?.name ?? agent?.agent ?? widget.paneId;
     final workspaceLabel = _workspaceLabel ?? agent?.workspaceId;
+    final agentType = agent?.agent ?? 'agent';
     final plain = stripAnsi(_text);
     final nativeHistory = _nativeHistory;
     final structuredPrompt = _structuredPrompt;
@@ -757,7 +759,7 @@ class _AgentScreenState extends State<AgentScreen> {
                       size: 12,
                     ),
                     label: Text(
-                      '${agentStatusLabel(l10n, agent.status)} · $workspaceLabel',
+                      '${agentStatusLabel(l10n, agent.status)} · $agentType · $workspaceLabel',
                     ),
                   ),
               ],

@@ -64,13 +64,15 @@ const _herdListEnvelope =
     '{"id":"1","result":{"agents":['
     '{"agent":"claude","agent_status":"idle","cwd":"/tmp/proj-a",'
     '"focused":false,"pane_id":"wA:p1","tab_id":"wA:t1",'
-    '"workspace_id":"wA","name":"Agent One"},'
+    '"workspace_id":"wA","terminal_title_stripped":"OAuth callback を実装"},'
     '{"agent":"claude","agent_status":"blocked","cwd":"/tmp/proj-a",'
     '"focused":false,"pane_id":"wA:p2","tab_id":"wA:t1",'
-    '"workspace_id":"wA","name":"Agent Two"},'
-    '{"agent":"claude","agent_status":"working","cwd":"/tmp/proj-b",'
+    '"workspace_id":"wA",'
+    '"terminal_title_stripped":"データベース migration をレビュー"},'
+    '{"agent":"copilot","agent_status":"working","cwd":"/tmp/proj-b",'
     '"focused":false,"pane_id":"wB:p1","tab_id":"wB:t1",'
-    '"workspace_id":"wB","name":"Agent Three"}'
+    '"workspace_id":"wB",'
+    '"terminal_title_stripped":"Herd の session 表示を設計 - GitHub Copilot"}'
     ']}}';
 
 const _herdAgentReadText =
@@ -96,10 +98,10 @@ CommandResult _herdResponder(String command) {
   }
   if (command.contains("'agent' 'get'")) {
     return ok(
-      '{"id":"1","result":{"agent":{"agent":"claude",'
+      '{"id":"1","result":{"agent":{"agent":"copilot",'
       '"agent_status":"working","cwd":"/tmp/proj-b","focused":false,'
       '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-      '"name":"Agent Three"}}}',
+      '"terminal_title_stripped":"Herd の session 表示を設計 - GitHub Copilot"}}}',
     );
   }
   if (command.contains("'agent' 'read'")) {

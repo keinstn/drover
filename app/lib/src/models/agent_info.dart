@@ -55,6 +55,7 @@ class AgentInfo {
     this.foregroundCwd,
     required this.focused,
     this.agentSession,
+    this.terminalTitle,
   });
 
   factory AgentInfo.fromJson(Map<String, dynamic> json) {
@@ -79,6 +80,7 @@ class AgentInfo {
       foregroundCwd: json['foreground_cwd'] as String?,
       focused: json['focused'] as bool? ?? false,
       agentSession: agentSession,
+      terminalTitle: json['terminal_title_stripped'] as String?,
     );
   }
 
@@ -92,4 +94,35 @@ class AgentInfo {
   final String? foregroundCwd;
   final bool focused;
   final AgentSession? agentSession;
+
+  /// The agent CLI's own terminal title (e.g. Claude/Copilot set a short
+  /// summary of the current conversation via a terminal title escape), as
+  /// captured and cleaned by herdr's `terminal_title_stripped`. drover never
+  /// writes this — the CLI keeps it current, so it tracks the live
+  /// conversation (and a resume/switch) instead of going stale.
+  final String? terminalTitle;
+
+  /// A human-readable session title for display: the agent's own
+  /// [terminalTitle] with any CLI-specific suffix stripped, or null when the
+  /// CLI has not set a usable title yet.
+  String? get sessionTitle {
+    final title = terminalTitle?.trim();
+    if (title == null || title.isEmpty) return null;
+    return stripAgentTitleSuffix(title);
+  }
+}
+
+/// CLI-specific decorations appended to a terminal title that carry no
+/// per-session meaning, so they are dropped from the displayed session title.
+const _agentTitleSuffixes = <String>[' - GitHub Copilot'];
+
+/// Removes a known trailing CLI decoration (see [_agentTitleSuffixes]) from a
+/// terminal [title]. A no-op when none matches.
+String stripAgentTitleSuffix(String title) {
+  for (final suffix in _agentTitleSuffixes) {
+    if (title.endsWith(suffix)) {
+      return title.substring(0, title.length - suffix.length).trimRight();
+    }
+  }
+  return title;
 }

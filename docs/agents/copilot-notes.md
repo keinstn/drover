@@ -8,6 +8,21 @@ channel, the `agent_session` mechanism), see `../herdr-notes.md`.
 Observed against **Copilot CLI 1.0.72** and **herdr integration v2** unless
 noted otherwise.
 
+## Terminal title suffix (` - GitHub Copilot`)
+
+- **Copilot CLI appends ` - GitHub Copilot` to its OSC terminal title.**
+  (2026-07-22) The window title Copilot sets (surfaced by herdr as
+  `terminal_title` / `terminal_title_stripped`) is `<conversation summary> -
+  GitHub Copilot`, e.g. `Discuss Herd Screen Agent Order - GitHub Copilot`.
+  herdr does not strip trailing suffixes (it only removes a leading activity
+  glyph — see `../herdr-notes.md`), so the ` - GitHub Copilot` tail is present
+  in `terminal_title_stripped`. drover uses the title as the session name and
+  removes this suffix client-side via `stripAgentTitleSuffix` (the
+  `_agentTitleSuffixes` list in `lib/src/models/agent_info.dart`). Codex and
+  Claude add no comparable suffix (Claude's decoration is a leading `✳ `/spinner
+  that herdr already strips), so Copilot is currently the only entry in that
+  list.
+
 ## Mode cycling and footer
 
 - **Mode cycling and footer.** (2026-07-21) With the composer focused, the raw

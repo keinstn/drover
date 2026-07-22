@@ -34,6 +34,13 @@ which agent is running in the pane.
   than a JSON response envelope. Consumers must use stdout directly and pass
   its SGR escapes to their ANSI renderer.
 - `agent wait --status` was renamed to `agent wait --until` in herdr 0.7.5.
+- **An agent's `name` (from `agent rename`) is a slug, not a display title.**
+  herdr validates it as `^[a-z][a-z0-9_-]{0,31}$` — must start with a lowercase
+  letter and contain only lowercase letters, digits, `-` or `_`, 1–32 chars
+  (`src/app/agents.rs:11-17`; error `invalid_agent_name`). It therefore cannot
+  hold spaces, uppercase, or multibyte text (a Japanese/emoji name is rejected,
+  verified live on 0.7.5). So drover must not treat `name` as a human-readable
+  session title — for that, use `terminal_title_stripped` (see below).
 
 ## Behaviours / gotchas
 
@@ -94,6 +101,25 @@ which agent is running in the pane.
   not an error. The concrete shape of `agent_session` (its `source`/`kind`/
   `value`) and where each agent's transcript file lives are agent-specific —
   see the agent notes under `docs/agents/`.
+- **`terminal_title_stripped` is the agent CLI's own conversation title, and
+  herdr strips only a leading activity glyph — never a trailing suffix.**
+  (2026-07-22, herdr 0.7.5) `agent list`/`agent get` expose `terminal_title`
+  (the raw OSC 0/2 window title the agent CLI itself sets — Claude/Codex/Copilot
+  each write a short summary of the current conversation) and
+  `terminal_title_stripped`. herdr captures the raw title unchanged apart from
+  sanitising (UTF-8 lossy, drop control chars, 256-char cap;
+  `src/pane/osc.rs`), and the *stripped* variant removes **only one leading
+  activity/spinner glyph** — a Braille char `U+2800..=U+28FF` or one of
+  `·✢✳✶✻✽` — followed by whitespace, then trims (`src/terminal/title.rs`). It
+  does **not** strip any trailing app-name suffix. So Claude's idle `✳ ` prefix
+  and every agent's Braille spinner are gone, but suffixes like Copilot's
+  ` - GitHub Copilot`, Grok's ` - grok`, or Amp's ` - amp - ` remain. Because
+  this value is CLI-maintained (drover never writes it) it tracks the live
+  conversation and updates on resume/switch — unlike the manual `name` slug it
+  never goes stale. drover uses `terminal_title_stripped` as the session title
+  in the herd/agent screens and strips known CLI-specific suffixes client-side
+  (see `AgentInfo.sessionTitle` / `stripAgentTitleSuffix`); the per-agent
+  suffixes are noted under `docs/agents/`.
 
 ## Measurements (Stage 0, 2026-07-18, localhost loopback, Claude Code agent)
 

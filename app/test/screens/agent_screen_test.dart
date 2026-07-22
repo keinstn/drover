@@ -1624,7 +1624,7 @@ void main() {
 
     expect(find.widgetWithText(FilledButton, '1. Yes'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '3. No'), findsOneWidget);
-    expect(find.text('blocked · Project B'), findsOneWidget);
+    expect(find.text('blocked · claude · Project B'), findsOneWidget);
     expect(find.textContaining('p1'), findsNothing);
 
     await tester.tap(find.widgetWithText(FilledButton, '1. Yes'));
@@ -2773,7 +2773,7 @@ void main() {
       await tester.pump();
 
       // The screen renders normally...
-      expect(find.text('idle · Project B'), findsOneWidget);
+      expect(find.text('idle · mystery · Project B'), findsOneWidget);
       // ...but no adapter supports "mystery", so neither optional capability is
       // resolved and neither control renders, regardless of the pane text
       // containing Claude's own mode-line wording (`idleWithModeText`).
@@ -2809,7 +2809,7 @@ void main() {
       // text) still renders for an agent with no adapter at all.
       expect(find.widgetWithText(FilledButton, '1. Yes'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, '3. No'), findsOneWidget);
-      expect(find.text('blocked · Project B'), findsOneWidget);
+      expect(find.text('blocked · mystery · Project B'), findsOneWidget);
       // Still no mode/image controls, matching an unsupported agent.
       expect(find.byKey(const ValueKey('attach_image_button')), findsNothing);
       expect(find.byKey(const ValueKey('cycle_mode_button')), findsNothing);
