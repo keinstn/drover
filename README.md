@@ -58,3 +58,18 @@ just run -d macos           # fast iteration during development
 just run -d <iphone>        # on a real device (free Apple ID: signing expires after 7 days)
 just spike --host <host> agents   # probe a host from the CLI, no UI
 ```
+
+## Firebase setup
+
+Drover uses Firebase Authentication for an anonymous device identity. Before
+running the app, register the iOS and macOS apps in Firebase and add their
+respective `GoogleService-Info.plist` files to the Runner targets:
+
+```text
+app/ios/Runner/GoogleService-Info.plist
+app/macos/Runner/GoogleService-Info.plist
+```
+
+Enable the Anonymous sign-in provider in Firebase Authentication. The plist
+files are environment-specific and intentionally excluded from version control;
+provide them locally and inject the appropriate file during Xcode builds.
