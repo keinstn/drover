@@ -79,13 +79,19 @@ abstract interface class StructuredPromptCapability {
 /// with no attachment convention leave this null, hiding the composer's
 /// attach-image affordance entirely.
 abstract interface class ImageAttachmentCapability {
-  /// Uploads [images] and prompts [agent] to read them, optionally preceded
-  /// by [caption]. Returns the remote paths in upload order. [timestampMs] is
-  /// injectable only so tests get a deterministic filename.
+  /// Uploads [images], composes the agent-specific prompt text (with
+  /// [caption] prepended when non-empty), and delivers the final prompt via
+  /// [deliver]. [deliver] is the adapter's delivery path — callers pass
+  /// [AgentAdapter.deliverPrompt] so Copilot's background-focus workaround
+  /// and any other adapter-level delivery behaviour applies to image turns
+  /// exactly as it does to plain-text turns. Returns the remote paths in
+  /// upload order. [timestampMs] is injectable only so tests get a
+  /// deterministic filename.
   Future<List<String>> send(
     HerdrClient client,
     AgentInfo agent, {
     required List<PickedImage> images,
+    required Future<void> Function(String) deliver,
     String caption = '',
     int? timestampMs,
   });

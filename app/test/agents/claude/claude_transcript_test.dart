@@ -64,6 +64,7 @@ class MemoryRunner extends CommandRunner {
 }
 
 const _sessionId = 'c7c50b87-4d4c-4a92-9396-2cfa4158612d';
+const _otherSessionId = '11111111-2222-4333-8444-555555555555';
 
 AgentInfo claudeAgent({String sessionId = _sessionId}) => AgentInfo(
   paneId: 'w:p',
@@ -899,6 +900,37 @@ void main() {
 
         expect(transcript?.messages.map((message) => message.text), ['New']);
         expect(runner.readOffsets, [0, 0]);
+      },
+    );
+
+    test(
+      'resets and re-locates when the agent session id switches '
+      '(e.g. a new pane/session)',
+      () async {
+        final runner = MemoryRunner(
+          '{"type":"user","message":{"role":"user","content":"From session A"}}\n',
+        );
+        final loader = ClaudeTranscriptLoader(runner);
+
+        var transcript = await loader.load(claudeAgent());
+        expect(transcript?.messages.map((message) => message.text), [
+          'From session A',
+        ]);
+        expect(runner.commands, hasLength(1));
+
+        runner.contents =
+            '{"type":"user","message":{"role":"user","content":"From session B"}}\n';
+        runner.lookupOutput =
+            '/home/dev/.claude/projects/-home-dev-project/'
+            '$_otherSessionId.jsonl\n';
+        transcript = await loader.load(claudeAgent(sessionId: _otherSessionId));
+
+        expect(transcript?.messages.map((message) => message.text), [
+          'From session B',
+        ]);
+        // A fresh session id re-triggers the lookup rather than reusing the
+        // previous session's cached path.
+        expect(runner.commands, hasLength(2));
       },
     );
   });

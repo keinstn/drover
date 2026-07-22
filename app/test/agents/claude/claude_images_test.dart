@@ -63,6 +63,7 @@ void main() {
           PickedImage(bytes: Uint8List.fromList([1, 2, 3]), extension: 'png'),
           PickedImage(bytes: Uint8List.fromList([4, 5, 6]), extension: 'jpg'),
         ],
+        deliver: (text) => client.prompt(agent.paneId, text),
         caption: 'look at this',
         timestampMs: 42,
       );

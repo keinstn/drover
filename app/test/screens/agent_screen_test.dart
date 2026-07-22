@@ -2858,4 +2858,141 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'Copilot plain-text send routes through focus-gained/focus-lost brackets',
+    (tester) async {
+      CommandResult copilotIdleResponse(String command) {
+        if (command.contains("'workspace' 'list'")) {
+          return ok(
+            '{"id":"1","result":{"workspaces":['
+            '{"workspace_id":"wB","label":"Project B"}'
+            ']}}',
+          );
+        }
+        if (command.contains("'agent' 'get'")) {
+          return ok(
+            '{"id":"1","result":{"agent":{"agent":"copilot",'
+            '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
+            '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+            '"name":"Copilot Agent"}}}',
+          );
+        }
+        if (command.contains("'agent' 'read'")) {
+          return ok('Copilot idle');
+        }
+        return ok('{"id":"1","result":{}}');
+      }
+
+      final runner = StubCommandRunner(copilotIdleResponse);
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), 'hello copilot');
+      await tester.tap(find.byKey(const ValueKey('send_message_button')));
+      await tester.pump();
+      await tester.pump();
+
+      final promptIdx = runner.commands.indexWhere(
+        (c) => c.contains("'agent' 'prompt'"),
+      );
+      expect(promptIdx, isNot(-1), reason: 'prompt command must be present');
+      expect(
+        runner.commands[promptIdx - 1],
+        contains('\x1b[I'),
+        reason: 'focus-gained must precede the prompt',
+      );
+      expect(
+        runner.commands[promptIdx + 1],
+        contains('\x1b[O'),
+        reason: 'focus-lost must follow the prompt',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'Copilot image send routes through focus-gained/focus-lost brackets',
+    (tester) async {
+      CommandResult copilotIdleResponse(String command) {
+        if (command.contains("'workspace' 'list'")) {
+          return ok(
+            '{"id":"1","result":{"workspaces":['
+            '{"workspace_id":"wB","label":"Project B"}'
+            ']}}',
+          );
+        }
+        if (command.contains("'agent' 'get'")) {
+          return ok(
+            '{"id":"1","result":{"agent":{"agent":"copilot",'
+            '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
+            '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+            '"name":"Copilot Agent"}}}',
+          );
+        }
+        if (command.contains("'agent' 'read'")) {
+          return ok('Copilot idle');
+        }
+        return ok('{"id":"1","result":{}}');
+      }
+
+      final runner = StubCommandRunner(copilotIdleResponse);
+      final client = HerdrClient(runner);
+      final imagePicker = FakeImagePicker();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            imagePicker: imagePicker,
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Stage an image and send it.
+      await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('send_message_button')));
+      await tester.pump();
+      await tester.pump();
+
+      final promptIdx = runner.commands.indexWhere(
+        (c) => c.contains("'agent' 'prompt'"),
+      );
+      expect(promptIdx, isNot(-1), reason: 'image prompt command must be sent');
+      expect(
+        runner.commands[promptIdx - 1],
+        contains('\x1b[I'),
+        reason: 'focus-gained must precede the image prompt',
+      );
+      expect(
+        runner.commands[promptIdx + 1],
+        contains('\x1b[O'),
+        reason: 'focus-lost must follow the image prompt',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }

@@ -505,4 +505,170 @@ void main() {
       },
     );
   });
+
+  group('JsonlSessionLoader', () {
+    const fakePath = '/remote/session.jsonl';
+    var locateCalls = 0;
+
+    setUp(() {
+      locateCalls = 0;
+    });
+
+    Future<String?> countingLocate(String id) async {
+      locateCalls++;
+      return fakePath;
+    }
+
+    Future<String?> missingLocate(String _) async => null;
+
+    test('calls locate once per session identity and caches the path',
+        () async {
+      final file = _FakeFile('line-000\nline-001\n');
+      final loader = JsonlSessionLoader();
+
+      await loader.load(
+        sessionId: 'sess-a',
+        locate: countingLocate,
+        statSize: (_) => file.statSize(),
+        readRange: (_, o, l) => file.readRange(o, l),
+        parseLines: _parseLines,
+        parseLine: _parseLine,
+      );
+      expect(locateCalls, 1);
+
+      // Second poll for the same session: locate must NOT be called again.
+      await loader.load(
+        sessionId: 'sess-a',
+        locate: countingLocate,
+        statSize: (_) => file.statSize(),
+        readRange: (_, o, l) => file.readRange(o, l),
+        parseLines: _parseLines,
+        parseLine: _parseLine,
+      );
+      expect(locateCalls, 1);
+    });
+
+    test('resets window and re-runs locate when session identity changes',
+        () async {
+      final file = _FakeFile('line-000\n');
+      final loader = JsonlSessionLoader();
+
+      await loader.load(
+        sessionId: 'sess-a',
+        locate: countingLocate,
+        statSize: (_) => file.statSize(),
+        readRange: (_, o, l) => file.readRange(o, l),
+        parseLines: _parseLines,
+        parseLine: _parseLine,
+      );
+      expect(locateCalls, 1);
+      expect(file.offsets, hasLength(1));
+
+      // Different session id: must trigger a fresh locate and a fresh read
+      // from offset 0 (window reset).
+      file.contents = 'line-999\n';
+      final transcript = await loader.load(
+        sessionId: 'sess-b',
+        locate: countingLocate,
+        statSize: (_) => file.statSize(),
+        readRange: (_, o, l) => file.readRange(o, l),
+        parseLines: _parseLines,
+        parseLine: _parseLine,
+      );
+
+      expect(locateCalls, 2);
+      expect(file.offsets.last, 0);
+      expect(_texts(transcript!), ['line-999']);
+    });
+
+    test('returns null when locate returns null (file not yet present)',
+        () async {
+      final file = _FakeFile('');
+      final loader = JsonlSessionLoader();
+
+      final transcript = await loader.load(
+        sessionId: 'sess-a',
+        locate: missingLocate,
+        statSize: (_) => file.statSize(),
+        readRange: (_, o, l) => file.readRange(o, l),
+        parseLines: _parseLines,
+        parseLine: _parseLine,
+      );
+
+      expect(transcript, isNull);
+      expect(file.offsets, isEmpty);
+    });
+
+    test('loadOlder returns null before any load has resolved a path',
+        () async {
+      final file = _FakeFile('line-000\n');
+      final loader = JsonlSessionLoader();
+
+      final result = await loader.loadOlder(
+        readRange: (_, o, l) => file.readRange(o, l),
+        parseLines: _parseLines,
+      );
+
+      expect(result, isNull);
+      expect(file.offsets, isEmpty);
+    });
+
+    test(
+      'hasOlderHistory is false before any load and true once the window has '
+      'older history to page through',
+      () async {
+        final allLines = List.generate(10, (i) => 'ln-$i');
+        final lineBytes = utf8.encode('${allLines.first}\n').length;
+        final contents = '${allLines.join('\n')}\n';
+        final windowBytes = lineBytes * 4 - (lineBytes ~/ 2);
+        final file = _FakeFile(contents);
+        final loader = JsonlSessionLoader(
+          window: JsonlTranscriptWindow(windowBytes: windowBytes),
+        );
+
+        expect(loader.hasOlderHistory, isFalse);
+
+        await loader.load(
+          sessionId: 'sess-a',
+          locate: countingLocate,
+          statSize: (_) => file.statSize(),
+          readRange: (_, o, l) => file.readRange(o, l),
+          parseLines: _parseLines,
+          parseLine: _parseLine,
+        );
+
+        expect(loader.hasOlderHistory, isTrue);
+      },
+    );
+
+    test('appends only newly-written bytes on repeat polls', () async {
+      final file = _FakeFile('line-000\n');
+      final loader = JsonlSessionLoader();
+
+      var transcript = await loader.load(
+        sessionId: 'sess-a',
+        locate: countingLocate,
+        statSize: (_) => file.statSize(),
+        readRange: (_, o, l) => file.readRange(o, l),
+        parseLines: _parseLines,
+        parseLine: _parseLine,
+      );
+      expect(_texts(transcript!), ['line-000']);
+      final offsetAfterFirst = file.offsets.last;
+
+      file.contents += 'line-001\n';
+      transcript = await loader.load(
+        sessionId: 'sess-a',
+        locate: countingLocate,
+        statSize: (_) => file.statSize(),
+        readRange: (_, o, l) => file.readRange(o, l),
+        parseLines: _parseLines,
+        parseLine: _parseLine,
+      );
+
+      expect(_texts(transcript!), ['line-000', 'line-001']);
+      // The second read starts exactly at the previously-known EOF.
+      expect(file.offsets.last, greaterThan(offsetAfterFirst));
+    });
+  });
 }

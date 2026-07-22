@@ -20,16 +20,13 @@ import '../agent_image_upload.dart';
 class CopilotImageAttachmentCapability implements ImageAttachmentCapability {
   const CopilotImageAttachmentCapability();
 
-  /// Upload [images] into [agent]'s working directory and prompt Copilot to
-  /// attach them by `@.drover/<filename>` mention, relative to the agent's
-  /// cwd. Placing the files under the agent's cwd (in `.drover`, alongside a
-  /// `.gitignore` excluding it) keeps the upload out of an out-of-workspace
-  /// permission prompt, matching Claude Code's convention. Mentions are
-  /// relative rather than absolute because live Copilot CLI fails to parse
-  /// an absolute-path mention whose path contains a space (see
+  /// Upload [images] into [agent]'s working directory and call [deliver] with
+  /// the composed prompt text: `@.drover/<filename>` mentions (relative to
+  /// the agent's cwd), preceded by [caption] on its own line when non-empty.
+  /// Mentions are relative rather than absolute because live Copilot CLI
+  /// fails to parse an absolute-path mention whose path contains a space (see
   /// docs/herdr-notes.md), while relative mentions resolve correctly
-  /// regardless. [caption], if non-empty, is sent on the line above the
-  /// mentions. Returns the uploaded files' absolute remote paths in order,
+  /// regardless. Returns the uploaded files' absolute remote paths in order,
   /// unaffected by the relative mention syntax used in the prompt.
   /// [timestampMs] is injectable only so tests get a deterministic filename.
   @override
@@ -37,6 +34,7 @@ class CopilotImageAttachmentCapability implements ImageAttachmentCapability {
     HerdrClient client,
     AgentInfo agent, {
     required List<PickedImage> images,
+    required Future<void> Function(String) deliver,
     String caption = '',
     int? timestampMs,
   }) async {
@@ -54,7 +52,7 @@ class CopilotImageAttachmentCapability implements ImageAttachmentCapability {
     final text = trimmed.isEmpty
         ? mentions
         : '${caption.trimRight()}\n$mentions';
-    await client.prompt(agent.paneId, text);
+    await deliver(text);
     return paths;
   }
 }

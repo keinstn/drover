@@ -598,6 +598,7 @@ class _AgentScreenState extends State<AgentScreen> {
               agent!,
               images: _pendingImages,
               caption: text,
+              deliver: _deliverPrompt,
             ),
     );
     if (ok) {

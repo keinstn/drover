@@ -8,9 +8,9 @@
 // exactly one single-select question (see docs/herdr-notes.md), so there is
 // no question-tab-advance or multi-question review step to drive.
 
-import '../../herdr/ansi_text.dart';
 import '../../transcript/native_transcript.dart';
 import '../agent_capabilities.dart';
+import '../structured_prompt_helpers.dart';
 
 /// Thrown when the dialog is not in the expected state — the initial screen
 /// isn't the ask_user dialog, an expected transition never appears, or the
@@ -25,7 +25,6 @@ class CopilotAskUserSubmitError implements StructuredPromptSubmitError {
   @override
   String toString() => 'CopilotAskUserSubmitError: $message';
 }
-
 /// Submits a staged answer for a Copilot CLI `ask_user` [StructuredPrompt] by
 /// injecting keystrokes into the live TUI dialog. Depends only on three
 /// transport closures (satisfied by
@@ -228,20 +227,21 @@ class CopilotAskUserSubmitter {
 
   /// Re-reads the pane up to [maxPolls] times until [predicate] holds,
   /// throwing [CopilotAskUserSubmitError] with [failure] if it never does.
+  /// The pane output is ANSI-stripped and whitespace-normalized before the
+  /// predicate.
   Future<void> _confirm(
     String paneId,
     bool Function(String text) predicate,
     String failure,
-  ) async {
-    for (var attempt = 0; attempt < maxPolls; attempt++) {
-      if (attempt > 0) {
-        await Future<void>.delayed(pollInterval);
-      }
-      final text = stripAnsi(await readPane(paneId));
-      if (predicate(text)) return;
-    }
-    throw CopilotAskUserSubmitError(failure);
-  }
+  ) => pollUntil(
+    readPane: readPane,
+    paneId: paneId,
+    predicate: predicate,
+    makeError: CopilotAskUserSubmitError.new,
+    failure: failure,
+    maxPolls: maxPolls,
+    pollInterval: pollInterval,
+  );
 
   /// Whether the pane shows the ask_user dialog open on [question] with the
   /// exact [footer] this question's shape (choices vs. freeform) is expected
@@ -251,18 +251,15 @@ class CopilotAskUserSubmitter {
     String text,
     StructuredPromptQuestion question, {
     required String footer,
-  }) {
-    final normalized = _normalize(text);
-    return normalized.contains(_header) &&
-        normalized.contains(_normalize(question.question)) &&
-        normalized.contains(footer);
-  }
+  }) =>
+      text.contains(_header) &&
+      text.contains(normalizePaneText(question.question)) &&
+      text.contains(footer);
 
   /// Whether the dialog's full question text is visible, regardless of
-  /// footer. The pane wraps long questions at terminal width, so both sides
-  /// are whitespace-normalized before matching.
+  /// footer. Both sides are whitespace-normalized before matching.
   bool _showsQuestion(String text, StructuredPromptQuestion question) =>
-      _normalize(text).contains(_normalize(question.question));
+      text.contains(normalizePaneText(question.question));
 
   /// The closed-form "Other" row label for [question], e.g.
   /// `3. Other (type your answer)` for a two-option question. Present only
@@ -280,27 +277,19 @@ class CopilotAskUserSubmitter {
   /// "Other" row label having disappeared is checked too, as corroborating
   /// evidence, but is deliberately not the only signal (in case some other
   /// on-screen text incidentally still contains it).
-  bool _showsCustomAnswerField(String text, StructuredPromptQuestion question) {
-    final normalized = _normalize(text);
-    return _showsQuestion(text, question) &&
-        !_dialogClosed(text) &&
-        normalized.contains(_customAnswerPlaceholder) &&
-        !normalized.contains(_otherRowLabel(question));
-  }
+  bool _showsCustomAnswerField(String text, StructuredPromptQuestion question) =>
+      _showsQuestion(text, question) &&
+      !_dialogClosed(text) &&
+      text.contains(_customAnswerPlaceholder) &&
+      !text.contains(_otherRowLabel(question));
 
   /// Whether the dialog is gone: neither the `Question` header nor either
   /// known footer is on screen. Scrollback may retain the question text (and
   /// a `● Asked user` summary), so closure must never be judged on
   /// question-text absence alone — only on the chrome (header/footer)
   /// disappearing.
-  bool _dialogClosed(String text) {
-    final normalized = _normalize(text);
-    return !normalized.contains(_header) &&
-        !normalized.contains(_choiceFooter) &&
-        !normalized.contains(_freeformFooter);
-  }
-
-  /// Collapses every run of whitespace (spaces + newlines) to a single space
-  /// and trims, so terminal wrapping doesn't defeat a substring match.
-  String _normalize(String text) => text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  bool _dialogClosed(String text) =>
+      !text.contains(_header) &&
+      !text.contains(_choiceFooter) &&
+      !text.contains(_freeformFooter);
 }

@@ -97,26 +97,20 @@ class CopilotTranscriptParser {
 /// caches its parsed prefix. The very first load of a large file fetches
 /// only a bounded tail (see `nativeTranscriptWindowBytes`); a poll
 /// thereafter transfers only bytes appended since the last read, and
-/// [loadOlder] fetches earlier bounded chunks on demand — see
-/// `JsonlTranscriptWindow` for the shared byte-window/offset/partial-line
-/// bookkeeping.
+/// [loadOlder] fetches earlier bounded chunks on demand. Session/path/window
+/// orchestration is delegated to [JsonlSessionLoader]; only Copilot-specific
+/// session validation, path location, and JSONL parsing remain here.
 class CopilotTranscriptLoader implements NativeTranscriptAdapter {
   CopilotTranscriptLoader(
     this._runner, {
     CopilotTranscriptParser? parser,
     JsonlTranscriptWindow? window,
   }) : _parser = parser ?? const CopilotTranscriptParser(),
-       _window = window ?? JsonlTranscriptWindow();
-
-  static final _copilotSessionId = RegExp(
-    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
-  );
+       _loader = JsonlSessionLoader(window: window);
 
   final CommandRunner _runner;
   final CopilotTranscriptParser _parser;
-  String? _sessionId;
-  String? _path;
-  final JsonlTranscriptWindow _window;
+  final JsonlSessionLoader _loader;
 
   static bool supportsAgent(AgentInfo agent) {
     final session = agent.agentSession;
@@ -124,28 +118,18 @@ class CopilotTranscriptLoader implements NativeTranscriptAdapter {
         session?.agent == 'copilot' &&
         session?.kind == 'id' &&
         session != null &&
-        _copilotSessionId.hasMatch(session.value);
+        isNativeTranscriptSessionId(session.value);
   }
 
   @override
-  Future<NativeTranscript?> load(AgentInfo agent) async {
-    if (!supportsAgent(agent)) {
-      return null;
-    }
+  Future<NativeTranscript?> load(AgentInfo agent) {
+    if (!supportsAgent(agent)) return Future.value(null);
     final id = agent.agentSession!.value;
-    if (_sessionId != id) {
-      _sessionId = id;
-      _path = null;
-      _window.reset();
-    }
-    final path = _path ?? await _locate(id);
-    if (path == null) {
-      return null;
-    }
-    _path = path;
-    return _window.loadOrAppend(
-      statSize: () async => (await _runner.statFile(path)).size,
-      readRange: (offset, length) =>
+    return _loader.load(
+      sessionId: id,
+      locate: _locate,
+      statSize: (path) async => (await _runner.statFile(path)).size,
+      readRange: (path, offset, length) =>
           _runner.readFile(path, offset: offset, length: length),
       parseLines: _parser.parseLines,
       parseLine: _parser.parseLine,
@@ -153,14 +137,12 @@ class CopilotTranscriptLoader implements NativeTranscriptAdapter {
   }
 
   @override
-  bool get hasOlderHistory => _window.hasOlder;
+  bool get hasOlderHistory => _loader.hasOlderHistory;
 
   @override
   Future<NativeTranscript?> loadOlder(AgentInfo agent) {
-    final path = _path;
-    if (path == null || !_window.hasOlder) return Future.value(null);
-    return _window.loadOlder(
-      readRange: (offset, length) =>
+    return _loader.loadOlder(
+      readRange: (path, offset, length) =>
           _runner.readFile(path, offset: offset, length: length),
       parseLines: _parser.parseLines,
     );

@@ -8,53 +8,6 @@ import '../../herdr/command_runner.dart';
 import '../../models/agent_info.dart';
 import '../../transcript/native_transcript.dart';
 
-/// Parses an AskUserQuestion tool_use's input into the common
-/// [StructuredPrompt] shape. Returns null unless [toolUse] is an
-/// AskUserQuestion with an id and at least one well-shaped question;
-/// malformed questions/options are skipped rather than thrown.
-StructuredPrompt? parseAskUserQuestion(TranscriptToolUse toolUse) {
-  final toolUseId = toolUse.id;
-  if (toolUse.name != 'AskUserQuestion' || toolUseId == null) return null;
-  final rawQuestions = toolUse.input['questions'];
-  if (rawQuestions is! List) return null;
-  final questions = <StructuredPromptQuestion>[];
-  for (final rawQuestion in rawQuestions) {
-    if (rawQuestion is! Map) continue;
-    final question = rawQuestion['question'];
-    // A blank question defeats the downstream substring safety gate
-    // (contains("") is always true), so treat it as malformed.
-    if (question is! String || question.trim().isEmpty) continue;
-    final header = rawQuestion['header'];
-    final multiSelect = rawQuestion['multiSelect'];
-    final rawOptions = rawQuestion['options'];
-    final options = <StructuredPromptOption>[];
-    if (rawOptions is List) {
-      for (final rawOption in rawOptions) {
-        if (rawOption is! Map) continue;
-        final label = rawOption['label'];
-        if (label is! String) continue;
-        final description = rawOption['description'];
-        options.add(
-          StructuredPromptOption(
-            label: label,
-            description: description is String ? description : null,
-          ),
-        );
-      }
-    }
-    questions.add(
-      StructuredPromptQuestion(
-        question: question,
-        header: header is String ? header : '',
-        multiSelect: multiSelect is bool ? multiSelect : false,
-        options: options,
-      ),
-    );
-  }
-  if (questions.isEmpty) return null;
-  return StructuredPrompt(id: toolUseId, questions: questions);
-}
-
 /// Parses the user-visible portion of Claude Code's JSONL session format.
 class ClaudeTranscriptParser {
   const ClaudeTranscriptParser();
@@ -215,25 +168,20 @@ class ClaudeTranscriptParser {
 /// prefix. The very first load of a large file fetches only a bounded tail
 /// (see `nativeTranscriptWindowBytes`); a poll thereafter transfers only
 /// bytes appended since the last read, and [loadOlder] fetches earlier
-/// bounded chunks on demand — see `JsonlTranscriptWindow` for the shared
-/// byte-window/offset/partial-line bookkeeping.
+/// bounded chunks on demand. Session/path/window orchestration is delegated
+/// to [JsonlSessionLoader]; only Claude-specific session validation, path
+/// location, and JSONL parsing remain here.
 class ClaudeTranscriptLoader implements NativeTranscriptAdapter {
   ClaudeTranscriptLoader(
     this._runner, {
     ClaudeTranscriptParser? parser,
     JsonlTranscriptWindow? window,
   }) : _parser = parser ?? const ClaudeTranscriptParser(),
-       _window = window ?? JsonlTranscriptWindow();
-
-  static final _claudeSessionId = RegExp(
-    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
-  );
+       _loader = JsonlSessionLoader(window: window);
 
   final CommandRunner _runner;
   final ClaudeTranscriptParser _parser;
-  String? _sessionId;
-  String? _path;
-  final JsonlTranscriptWindow _window;
+  final JsonlSessionLoader _loader;
 
   static bool supportsAgent(AgentInfo agent) {
     final session = agent.agentSession;
@@ -241,28 +189,18 @@ class ClaudeTranscriptLoader implements NativeTranscriptAdapter {
         session?.agent == 'claude' &&
         session?.kind == 'id' &&
         session != null &&
-        _claudeSessionId.hasMatch(session.value);
+        isNativeTranscriptSessionId(session.value);
   }
 
   @override
-  Future<NativeTranscript?> load(AgentInfo agent) async {
-    if (!supportsAgent(agent)) {
-      return null;
-    }
+  Future<NativeTranscript?> load(AgentInfo agent) {
+    if (!supportsAgent(agent)) return Future.value(null);
     final id = agent.agentSession!.value;
-    if (_sessionId != id) {
-      _sessionId = id;
-      _path = null;
-      _window.reset();
-    }
-    final path = _path ?? await _locate(id);
-    if (path == null) {
-      return null;
-    }
-    _path = path;
-    return _window.loadOrAppend(
-      statSize: () async => (await _runner.statFile(path)).size,
-      readRange: (offset, length) =>
+    return _loader.load(
+      sessionId: id,
+      locate: _locate,
+      statSize: (path) async => (await _runner.statFile(path)).size,
+      readRange: (path, offset, length) =>
           _runner.readFile(path, offset: offset, length: length),
       parseLines: _parser.parseLines,
       parseLine: _parser.parseLine,
@@ -270,14 +208,12 @@ class ClaudeTranscriptLoader implements NativeTranscriptAdapter {
   }
 
   @override
-  bool get hasOlderHistory => _window.hasOlder;
+  bool get hasOlderHistory => _loader.hasOlderHistory;
 
   @override
   Future<NativeTranscript?> loadOlder(AgentInfo agent) {
-    final path = _path;
-    if (path == null || !_window.hasOlder) return Future.value(null);
-    return _window.loadOlder(
-      readRange: (offset, length) =>
+    return _loader.loadOlder(
+      readRange: (path, offset, length) =>
           _runner.readFile(path, offset: offset, length: length),
       parseLines: _parser.parseLines,
     );
