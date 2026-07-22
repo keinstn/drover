@@ -16,6 +16,14 @@
 //   watch <target> [--status blocked] [--timeout 60000]
 //                                           状態変化を long-poll で待つ
 //   bench [N]                               agent list を N 回計測 (default 5)
+//   probe-start [opts]                      create/split 直後の agent start を実測
+//     --kind KIND        起動する agent 種別 (default claude)
+//     --cwd PATH         pane の cwd (default .)
+//     --existing WS_ID   既存 WS を split して起動 (省略時は新規 WS を作成)
+//     --delay MS         create/split 後、最初の start までの待ち (default 0)
+//     --attempts N       agent_pane_busy 時の最大試行回数 (default 8)
+//     --backoff MS       リトライ初期バックオフ、以降倍々 (default 250)
+//     --no-cleanup       起動した pane/WS を後始末しない (手動調査用)
 //
 // Options:
 //   --host HOST        接続先 (env DROVER_HOST でも可)
@@ -195,6 +203,8 @@ Future<void> main(List<String> args) async {
         await cmdWatch(r, rest);
       case 'bench':
         await cmdBench(r, rest);
+      case 'probe-start':
+        await cmdProbeStart(r, rest);
       default:
         stderr.writeln('unknown command: $cmd');
         usage();
@@ -307,4 +317,178 @@ Future<void> cmdBench(Remote r, List<String> rest) async {
   stdout.writeln(
     '# agent list ×$n — min ${samples.first}ms / avg ${avg.toStringAsFixed(0)}ms / max ${samples.last}ms',
   );
+}
+
+/// herdr の失敗時 envelope ({"error":{"code":...,"message":...}}) からコードを
+/// 取り出す。stderr/stdout どちらに出ても拾えるよう両方を見る。
+(String?, String?) parseError(String out, String err) {
+  for (final s in [err, out]) {
+    final t = s.trim();
+    if (t.isEmpty) continue;
+    try {
+      final obj = jsonDecode(t) as Map<String, dynamic>;
+      final e = obj['error'];
+      if (e is Map<String, dynamic>) {
+        return (e['code'] as String?, e['message'] as String?);
+      }
+    } catch (_) {
+      // JSON でなければスキップ。
+    }
+  }
+  return (null, null);
+}
+
+Future<void> cmdProbeStart(Remote r, List<String> rest) async {
+  var kind = 'claude';
+  var cwd = '.';
+  String? existingWs;
+  var delayMs = 0;
+  var attempts = 8;
+  var backoffMs = 250;
+  var cleanup = true;
+  for (var i = 0; i < rest.length; i++) {
+    switch (rest[i]) {
+      case '--kind':
+        kind = rest[++i];
+      case '--cwd':
+        cwd = rest[++i];
+      case '--existing':
+        existingWs = rest[++i];
+      case '--delay':
+        delayMs = int.parse(rest[++i]);
+      case '--attempts':
+        attempts = int.parse(rest[++i]);
+      case '--backoff':
+        backoffMs = int.parse(rest[++i]);
+      case '--no-cleanup':
+        cleanup = false;
+      default:
+        stderr.writeln('unknown probe-start option: ${rest[i]}');
+        exit(2);
+    }
+  }
+
+  final name = 'drover-probe-${DateTime.now().millisecondsSinceEpoch}';
+  String? createdWs;
+  String? paneId;
+
+  // 1) pane を用意する — drover と同じ2フローを再現。
+  final setupSw = Stopwatch()..start();
+  if (existingWs != null) {
+    stdout.writeln('# existing-WS flow: split a pane in $existingWs');
+    final (listRes, listMs) = await r.herdrJson([
+      'pane', 'list', '--workspace', existingWs, //
+    ]);
+    final panes = (listRes['panes'] as List? ?? []).cast<Map<String, dynamic>>();
+    if (panes.isEmpty) {
+      stderr.writeln('workspace $existingWs に split 元の pane がありません');
+      exit(1);
+    }
+    final src = panes.first['pane_id'] as String;
+    final (splitRes, splitMs) = await r.herdrJson([
+      'pane', 'split', src, //
+      '--direction', 'right', '--cwd', cwd, '--no-focus',
+    ]);
+    paneId = (splitRes['pane'] as Map<String, dynamic>)['pane_id'] as String;
+    stdout.writeln(
+      '# pane list ${listMs}ms, pane split ${splitMs}ms → pane $paneId',
+    );
+  } else {
+    stdout.writeln('# new-WS flow: workspace create');
+    final (createRes, createMs) = await r.herdrJson([
+      'workspace', 'create', //
+      '--label', name, '--cwd', cwd, '--no-focus',
+    ]);
+    createdWs =
+        (createRes['workspace'] as Map<String, dynamic>)['workspace_id']
+            as String;
+    paneId =
+        (createRes['root_pane'] as Map<String, dynamic>)['pane_id'] as String;
+    stdout.writeln(
+      '# workspace create ${createMs}ms → ws $createdWs, root_pane $paneId',
+    );
+  }
+  setupSw.stop();
+  final sinceSetup = Stopwatch()..start();
+
+  if (delayMs > 0) {
+    stdout.writeln('# sleeping ${delayMs}ms before first start…');
+    await Future<void>.delayed(Duration(milliseconds: delayMs));
+  }
+
+  // 2) agent start を試行 → agent_pane_busy ならバックオフして再試行。
+  var started = false;
+  var attempt = 0;
+  var busyCount = 0;
+  var backoff = backoffMs;
+  try {
+    while (attempt < attempts) {
+      attempt++;
+      final tSincePane = sinceSetup.elapsedMilliseconds;
+      final (code, out, err, ms) = await r.herdr([
+        'agent', 'start', name, '--kind', kind, '--pane', paneId, //
+      ]);
+      if (code == 0) {
+        stdout.writeln(
+          '# ✅ attempt $attempt OK in ${ms}ms '
+          '(${tSincePane}ms after pane ready)',
+        );
+        started = true;
+        break;
+      }
+      final (errCode, errMsg) = parseError(out, err);
+      stdout.writeln(
+        '# ✗ attempt $attempt failed in ${ms}ms '
+        '(${tSincePane}ms after pane ready) — '
+        'code=${errCode ?? '?'} msg=${errMsg ?? err.trim()}',
+      );
+      if (errCode == 'agent_pane_busy') busyCount++;
+      if (attempt < attempts) {
+        stdout.writeln('#   backing off ${backoff}ms…');
+        await Future<void>.delayed(Duration(milliseconds: backoff));
+        backoff *= 2;
+      }
+    }
+
+    // 3) 結論を出す。
+    stdout.writeln('#');
+    stdout.writeln(
+      '# SUMMARY: pane setup ${setupSw.elapsedMilliseconds}ms, '
+      'attempts $attempt (busy $busyCount)',
+    );
+    if (started && attempt == 1) {
+      stdout.writeln('# → 初回で成功。このホストではレース(A)は再現せず。');
+    } else if (started) {
+      stdout.writeln(
+        '# → 再試行で成功 = レース(A)。案2(agent_pane_busy 限定リトライ)が有効。',
+      );
+    } else {
+      stdout.writeln(
+        '# → 全試行失敗。時間で解消しない = 恒常(B)。pane 再利用/種別を要調査。',
+      );
+    }
+  } finally {
+    // 4) 後始末 — 起動した agent/pane/WS を残さない。
+    if (cleanup) {
+      if (createdWs != null) {
+        final (code, _, err, _) = await r.herdr([
+          'workspace', 'close', createdWs, //
+        ]);
+        stdout.writeln(
+          code == 0
+              ? '# cleanup: workspace close $createdWs'
+              : '# cleanup FAILED (workspace close): ${err.trim()}',
+        );
+      } else {
+        final (code, _, err, _) = await r.herdr(['pane', 'close', paneId]);
+        stdout.writeln(
+          code == 0
+              ? '# cleanup: pane close $paneId'
+              : '# cleanup FAILED (pane close): ${err.trim()}',
+        );
+      }
+    } else {
+      stdout.writeln('# --no-cleanup: pane $paneId / ws $createdWs を残します');
+    }
+  }
 }
