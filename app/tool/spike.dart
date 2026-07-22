@@ -2,7 +2,7 @@
 //
 // 実測したいこと:
 //   1. `agent read` の生出力がどれだけ読めるか(chat 整形ギャップ)
-//   2. `agent send` + Enter で許可プロンプト(y/n/1/2)に応答できるか
+//   2. `agent prompt` でテキストを送信できるか
 //   3. SSH 接続・コマンドのレイテンシ(ポーリング間隔の根拠)
 //   4. `agent wait` が long-poll として使えるか(push-within-session の前身)
 //
@@ -94,8 +94,10 @@ class Remote {
   final String herdrBin;
 
   /// herdr サブコマンドを実行し (exitCode, stdout, stderr, elapsedMs) を返す。
-  Future<(int, String, String, int)> herdr(List<String> args,
-      {Duration? timeout}) async {
+  Future<(int, String, String, int)> herdr(
+    List<String> args, {
+    Duration? timeout,
+  }) async {
     // herdrBin は ~ 展開のため quote しない。引数は quote する。
     final cmd = '$herdrBin ${args.map(shq).join(' ')}';
     final sw = Stopwatch()..start();
@@ -161,8 +163,11 @@ Future<void> main(List<String> args) async {
   final connectSw = Stopwatch()..start();
   final SSHClient client;
   try {
-    final socket = await SSHSocket.connect(o.host!, o.port,
-        timeout: const Duration(seconds: 10));
+    final socket = await SSHSocket.connect(
+      o.host!,
+      o.port,
+      timeout: const Duration(seconds: 10),
+    );
     client = SSHClient(socket, username: o.user, identities: identities);
     await client.authenticated;
   } catch (e) {
@@ -171,7 +176,8 @@ Future<void> main(List<String> args) async {
   }
   connectSw.stop();
   stdout.writeln(
-      '# connected ${o.user}@${o.host}:${o.port} in ${connectSw.elapsedMilliseconds}ms');
+    '# connected ${o.user}@${o.host}:${o.port} in ${connectSw.elapsedMilliseconds}ms',
+  );
 
   final r = Remote(client, o.herdrBin);
   final cmd = o.rest.first;
@@ -207,12 +213,14 @@ Future<void> cmdAgents(Remote r) async {
   stdout.writeln('PANE      STATUS    AGENT      WS   FOCUSED  CWD');
   for (final a in agents) {
     final cwd = (a['foreground_cwd'] ?? a['cwd'] ?? '') as String;
-    stdout.writeln('${(a['pane_id'] ?? '').toString().padRight(10)}'
-        '${(a['agent_status'] ?? '?').toString().padRight(10)}'
-        '${(a['agent'] ?? '?').toString().padRight(11)}'
-        '${(a['workspace_id'] ?? '').toString().padRight(5)}'
-        '${(a['focused'] ?? false).toString().padRight(9)}'
-        '${cwd.split('/').last}');
+    stdout.writeln(
+      '${(a['pane_id'] ?? '').toString().padRight(10)}'
+      '${(a['agent_status'] ?? '?').toString().padRight(10)}'
+      '${(a['agent'] ?? '?').toString().padRight(11)}'
+      '${(a['workspace_id'] ?? '').toString().padRight(5)}'
+      '${(a['focused'] ?? false).toString().padRight(9)}'
+      '${cwd.split('/').last}',
+    );
   }
 }
 
@@ -251,43 +259,12 @@ Future<void> cmdSend(Remote r, List<String> rest) async {
   final target = rest.first;
   final text = rest.sublist(1).join(' ');
 
-  // target(名前でも可)から pane_id を解決して Enter を送る。
-  final (info, _) = await r.herdrJson(['agent', 'get', target]);
-  final paneId = findPaneId(info);
-  if (paneId == null) {
-    stderr.writeln('pane_id を解決できません: ${jsonEncode(info)}');
+  final (code, _, err, ms) = await r.herdr(['agent', 'prompt', target, text]);
+  if (code != 0) {
+    stderr.writeln('prompt failed: ${err.trim()}');
     exit(1);
   }
-
-  final (c1, _, e1, ms1) = await r.herdr(['agent', 'send', target, text]);
-  if (c1 != 0) {
-    stderr.writeln('send failed: ${e1.trim()}');
-    exit(1);
-  }
-  final (c2, _, e2, ms2) = await r.herdr(['pane', 'send-keys', paneId, 'enter']);
-  if (c2 != 0) {
-    stderr.writeln('send-keys enter failed: ${e2.trim()}');
-    exit(1);
-  }
-  stdout.writeln('# sent to $target ($paneId): text ${ms1}ms + enter ${ms2}ms');
-}
-
-String? findPaneId(Object? node) {
-  if (node is Map) {
-    final v = node['pane_id'];
-    if (v is String) return v;
-    for (final child in node.values) {
-      final found = findPaneId(child);
-      if (found != null) return found;
-    }
-  }
-  if (node is List) {
-    for (final child in node) {
-      final found = findPaneId(child);
-      if (found != null) return found;
-    }
-  }
-  return null;
+  stdout.writeln('# prompted $target in ${ms}ms');
 }
 
 Future<void> cmdWatch(Remote r, List<String> rest) async {
@@ -303,10 +280,15 @@ Future<void> cmdWatch(Remote r, List<String> rest) async {
     if (rest[i] == '--timeout' && i + 1 < rest.length) timeout = rest[++i];
   }
   stdout.writeln('# waiting for $target → $status (timeout ${timeout}ms)…');
-  final (code, out, err, ms) = await r.herdr(
-    ['agent', 'wait', target, '--status', status, '--timeout', timeout],
-    timeout: Duration(milliseconds: int.parse(timeout) + 10000),
-  );
+  final (code, out, err, ms) = await r.herdr([
+    'agent',
+    'wait',
+    target,
+    '--until',
+    status,
+    '--timeout',
+    timeout,
+  ], timeout: Duration(milliseconds: int.parse(timeout) + 10000));
   stdout.writeln('# returned in ${ms}ms (exit $code)');
   if (out.trim().isNotEmpty) stdout.writeln(out.trim());
   if (err.trim().isNotEmpty) stderr.writeln(err.trim());
@@ -323,5 +305,6 @@ Future<void> cmdBench(Remote r, List<String> rest) async {
   samples.sort();
   final avg = samples.reduce((a, b) => a + b) / samples.length;
   stdout.writeln(
-      '# agent list ×$n — min ${samples.first}ms / avg ${avg.toStringAsFixed(0)}ms / max ${samples.last}ms');
+    '# agent list ×$n — min ${samples.first}ms / avg ${avg.toStringAsFixed(0)}ms / max ${samples.last}ms',
+  );
 }

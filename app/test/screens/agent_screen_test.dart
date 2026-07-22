@@ -73,7 +73,7 @@ CommandResult workingResponse(String command) {
     );
   }
   if (command.contains("'agent' 'read'")) {
-    return ok('{"id":"1","result":{"read":{"text":"working…"}}}');
+    return ok('working…');
   }
   return ok('{"id":"1","result":{}}');
 }
@@ -99,9 +99,7 @@ CommandResult unsupportedAgentModeResponse(String command) {
     );
   }
   if (command.contains("'agent' 'read'")) {
-    return ok(
-      '{"id":"1","result":{"read":{"text":${jsonEncode(idleWithModeText)}}}}',
-    );
+    return ok(idleWithModeText);
   }
   return ok('{"id":"1","result":{}}');
 }
@@ -126,9 +124,7 @@ CommandResult unsupportedAgentBlockedResponse(String command) {
     );
   }
   if (command.contains("'agent' 'read'")) {
-    return ok(
-      '{"id":"1","result":{"read":{"text":${jsonEncode(blockedPromptText)}}}}',
-    );
+    return ok(blockedPromptText);
   }
   return ok('{"id":"1","result":{}}');
 }
@@ -286,10 +282,7 @@ class DuplicatePaneRunner extends NativeHistoryRunner {
   Future<CommandResult> run(String command) async {
     if (command.contains("'agent' 'read'")) {
       commands.add(command);
-      return ok(
-        '{"id":"1","result":{"read":{"text":'
-        '"Native question\\nNative reply\\n"}}}',
-      );
+      return ok('Native question\nNative reply\n');
     }
     return super.run(command);
   }
@@ -360,7 +353,7 @@ class AskUserSubmitRunner extends NativeHistoryRunner {
       final text = _answerSent
           ? 'All set.'
           : '$_askUserQuestionText\nEsc to cancel';
-      return ok('{"id":"1","result":{"read":{"text":${jsonEncode(text)}}}}');
+      return ok(text);
     }
     return super.run(command);
   }

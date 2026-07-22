@@ -136,23 +136,34 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
       final name = _nameController.text.trim().isEmpty
           ? preset.bin
           : _nameController.text.trim();
-      final wsId = _mode == _WorkspaceMode.newWorkspace
+      final workspace = _mode == _WorkspaceMode.newWorkspace
           ? await widget.client.createWorkspace(
               label: _workspaceNameController.text.trim(),
               cwd: cwd,
             )
-          : _selectedWorkspaceId!;
+          : null;
+      final wsId = workspace?.workspaceId ?? _selectedWorkspaceId!;
+      String? splitPaneId;
       try {
+        final paneId =
+            workspace?.paneId ??
+            (splitPaneId = await widget.client.splitPane(
+              workspaceId: wsId,
+              cwd: cwd,
+            ));
         await widget.client.startAgent(
           name: name,
-          argv: preset.argv,
-          cwd: cwd,
-          workspaceId: wsId,
+          kind: preset.kind,
+          paneId: paneId,
         );
       } catch (e) {
         if (_mode == _WorkspaceMode.newWorkspace) {
           try {
             await widget.client.closeWorkspace(wsId);
+          } catch (_) {}
+        } else if (splitPaneId != null) {
+          try {
+            await widget.client.closeAgent(splitPaneId);
           } catch (_) {}
         }
         rethrow;

@@ -110,9 +110,7 @@ CommandResult blockedPromptResponse(String command) {
     );
   }
   if (command.contains("'agent' 'read'")) {
-    return ok(
-      '{"id":"1","result":{"read":{"text":${jsonEncodeString(blockedPromptText)}}}}',
-    );
+    return ok(blockedPromptText);
   }
   return ok('{"id":"1","result":{}}');
 }
@@ -138,9 +136,7 @@ CommandResult idleWithModeResponse(String command) {
     );
   }
   if (command.contains("'agent' 'read'")) {
-    return ok(
-      '{"id":"1","result":{"read":{"text":${jsonEncodeString(idleWithModeText)}}}}',
-    );
+    return ok(idleWithModeText);
   }
   return ok('{"id":"1","result":{}}');
 }
@@ -320,9 +316,7 @@ CommandResult nativeHistoryResponse(String command) {
     );
   }
   if (command.contains("'agent' 'read'")) {
-    return ok(
-      '{"id":"1","result":{"read":{"text":${jsonEncodeString(_nativeReadText)}}}}',
-    );
+    return ok(_nativeReadText);
   }
   return ok('{"id":"1","result":{}}');
 }

@@ -17,6 +17,14 @@ class HerdrException implements Exception {
   String toString() => 'HerdrException($code): $message';
 }
 
+/// A newly-created workspace and its initial shell pane.
+class CreatedWorkspace {
+  const CreatedWorkspace({required this.workspaceId, required this.paneId});
+
+  final String workspaceId;
+  final String paneId;
+}
+
 /// Talks to the `herdr` CLI over a [CommandRunner], parsing its single-line
 /// JSON envelope responses.
 class HerdrClient {
@@ -108,7 +116,7 @@ class HerdrClient {
   /// Reads the recent transcript for [target] as ANSI-coloured text (SGR
   /// escapes only, from the `recent` source).
   Future<String> readAgent(String target, {int lines = 120}) async {
-    final result = await _run([
+    final result = await _exec([
       'agent',
       'read',
       target,
@@ -119,11 +127,7 @@ class HerdrClient {
       '--format',
       'ansi',
     ]);
-    final read = result['read'];
-    if (read is! Map<String, dynamic> || read['text'] is! String) {
-      throw const HerdrException('transport', 'missing read.text field');
-    }
-    return read['text'] as String;
+    return result.stdout;
   }
 
   Future<void> sendKeys(String paneId, String key) async {
@@ -175,7 +179,10 @@ class HerdrClient {
     return presets.where((p) => found.contains(p.bin)).toList();
   }
 
-  Future<String> createWorkspace({required String label, String? cwd}) async {
+  Future<CreatedWorkspace> createWorkspace({
+    required String label,
+    String? cwd,
+  }) async {
     final result = await _run([
       'workspace',
       'create',
@@ -188,7 +195,14 @@ class HerdrClient {
     if (ws is! Map<String, dynamic> || ws['workspace_id'] is! String) {
       throw const HerdrException('transport', 'missing workspace.workspace_id');
     }
-    return ws['workspace_id'] as String;
+    final rootPane = result['root_pane'];
+    if (rootPane is! Map<String, dynamic> || rootPane['pane_id'] is! String) {
+      throw const HerdrException('transport', 'missing root_pane.pane_id');
+    }
+    return CreatedWorkspace(
+      workspaceId: ws['workspace_id'] as String,
+      paneId: rootPane['pane_id'] as String,
+    );
   }
 
   /// Close the workspace [workspaceId]. Used to roll back a workspace created
@@ -214,30 +228,47 @@ class HerdrClient {
     await _run(['workspace', 'rename', workspaceId, label]);
   }
 
-  /// Launch [argv] as a new herdr-managed agent named [name] in [cwd]. When
-  /// [workspaceId] is given the agent is placed in that workspace, otherwise
-  /// herdr creates a new one. The `agent_started` envelope omits the `agent`
-  /// label key, so the result is intentionally not parsed — the herd list
-  /// reflects the new agent on its next poll.
-  Future<void> startAgent({
-    required String name,
-    required List<String> argv,
+  /// Creates a shell pane in [workspaceId] at [cwd] and returns its id.
+  Future<String> splitPane({
+    required String workspaceId,
     required String cwd,
-    String? workspaceId,
-    String? tabId,
   }) async {
-    await _run([
-      'agent',
-      'start',
-      name,
+    final result = await _run(['pane', 'list', '--workspace', workspaceId]);
+    final panes = result['panes'];
+    if (panes is! List ||
+        panes.isEmpty ||
+        panes.first is! Map<String, dynamic>) {
+      throw const HerdrException('transport', 'missing panes field');
+    }
+    final sourcePaneId = (panes.first as Map<String, dynamic>)['pane_id'];
+    if (sourcePaneId is! String) {
+      throw const HerdrException('transport', 'missing pane.pane_id');
+    }
+
+    final split = await _run([
+      'pane',
+      'split',
+      sourcePaneId,
+      '--direction',
+      'right',
       '--cwd',
       cwd,
-      if (workspaceId != null) ...['--workspace', workspaceId],
-      if (tabId != null) ...['--tab', tabId],
       '--no-focus',
-      '--',
-      ...argv,
     ]);
+    final pane = split['pane'];
+    if (pane is! Map<String, dynamic> || pane['pane_id'] is! String) {
+      throw const HerdrException('transport', 'missing pane.pane_id');
+    }
+    return pane['pane_id'] as String;
+  }
+
+  /// Starts an agent of [kind] in an existing interactive shell [paneId].
+  Future<void> startAgent({
+    required String name,
+    required String kind,
+    required String paneId,
+  }) async {
+    await _run(['agent', 'start', name, '--kind', kind, '--pane', paneId]);
   }
 
   /// Rename the agent identified by [target] to [name].

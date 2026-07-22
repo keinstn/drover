@@ -24,6 +24,15 @@ which agent is running in the pane.
   <text>`, which types the text and submits it in a single atomic call.
   drover's `HerdrClient.prompt` uses `agent prompt` directly (no fallback, no
   version detection — herdr 0.7.5+ only).
+- In herdr 0.7.5, `agent start` requires an existing shell pane:
+  `agent start <name> --kind <kind> --pane <id>`. The former `--cwd`,
+  `--workspace`, and `--no-focus` options are gone. Drover creates a workspace
+  first for new launches and uses its `root_pane`; for an existing workspace,
+  it splits a new shell pane before starting the agent.
+- In herdr 0.7.5, `agent read --format ansi` prints raw terminal output rather
+  than a JSON response envelope. Consumers must use stdout directly and pass
+  its SGR escapes to their ANSI renderer.
+- `agent wait --status` was renamed to `agent wait --until` in herdr 0.7.5.
 
 ## Behaviours / gotchas
 

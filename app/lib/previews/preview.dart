@@ -44,8 +44,15 @@ CommandResult _launchResponder(String command) {
   }
   if (command.contains("'workspace' 'create'")) {
     return ok(
-      '{"id":"1","result":{"workspace":{"workspace_id":"wZ","label":"x"}}}',
+      '{"id":"1","result":{"workspace":{"workspace_id":"wZ","label":"x"},'
+      '"root_pane":{"pane_id":"wZ:p1"}}}',
     );
+  }
+  if (command.contains("'pane' 'list'")) {
+    return ok('{"id":"1","result":{"panes":[{"pane_id":"wA:p1"}]}}');
+  }
+  if (command.contains("'pane' 'split'")) {
+    return ok('{"id":"1","result":{"pane":{"pane_id":"wA:p2"}}}');
   }
   if (command.contains("'agent' 'start'")) {
     return ok('{"id":"1","result":{"type":"agent_started"}}');
@@ -96,9 +103,7 @@ CommandResult _herdResponder(String command) {
     );
   }
   if (command.contains("'agent' 'read'")) {
-    return ok(
-      '{"id":"1","result":{"read":{"text":${jsonEncodeString(_herdAgentReadText)}}}}',
-    );
+    return ok(_herdAgentReadText);
   }
   return ok('{"id":"1","result":{}}');
 }
