@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -63,11 +64,13 @@ class SpeechInputController implements SpeechInput {
   SpeechInputController({
     SpeechToText? speech,
     OnDeviceSpeechSupport? onDeviceSupport,
+    this.recognitionLocaleId,
   }) : _speech = speech ?? SpeechToText(),
        _onDeviceSupport = onDeviceSupport ?? PlatformOnDeviceSpeechSupport();
 
   final SpeechToText _speech;
   final OnDeviceSpeechSupport _onDeviceSupport;
+  final String? recognitionLocaleId;
   Future<bool>? _initialization;
   SpeechInputResultListener? _onResult;
   SpeechInputStatusListener? _onStatus;
@@ -130,6 +133,7 @@ class SpeechInputController implements SpeechInput {
           autoPunctuation: true,
           cancelOnError: true,
           onDevice: true,
+          localeId: _recognitionLocaleId,
         ),
       );
       if (request != _request) {
@@ -158,6 +162,13 @@ class SpeechInputController implements SpeechInput {
         '$error$cancellationDetails',
       );
     }
+  }
+
+  String? get _recognitionLocaleId {
+    if (recognitionLocaleId != null) return recognitionLocaleId;
+    return ui.PlatformDispatcher.instance.locale.languageCode == 'ja'
+        ? 'ja_JP'
+        : null;
   }
 
   Future<bool> _supportsOnDeviceRecognition() async {
