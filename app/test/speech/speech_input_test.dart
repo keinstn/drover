@@ -13,6 +13,7 @@ class FakeSpeechToText extends SpeechToText {
   var initializeCalls = 0;
   var listenCalls = 0;
   var cancelCalls = 0;
+  String? listenedLocaleId;
 
   @override
   Future<bool> initialize({
@@ -43,6 +44,7 @@ class FakeSpeechToText extends SpeechToText {
     SpeechListenOptions? listenOptions,
   }) async {
     listenCalls++;
+    listenedLocaleId = listenOptions?.localeId;
     final error = listenError;
     if (error != null) throw error;
   }
@@ -124,6 +126,25 @@ void main() {
     expect(second.started, isTrue);
     expect(speech.initializeCalls, 2);
     expect(speech.listenCalls, 1);
+  });
+
+  test('uses the configured Japanese recognition locale', () async {
+    final speech = FakeSpeechToText()
+      ..initializationResults.add(Future.value(true));
+    final input = SpeechInputController(
+      speech: speech,
+      onDeviceSupport: FakeOnDeviceSpeechSupport(true),
+      recognitionLocaleId: 'ja_JP',
+    );
+
+    final result = await input.start(
+      onResult: ignoreResult,
+      onStatus: ignoreStatus,
+      onError: ignoreError,
+    );
+
+    expect(result.started, isTrue);
+    expect(speech.listenedLocaleId, 'ja_JP');
   });
 
   test(
