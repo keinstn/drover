@@ -1080,9 +1080,10 @@ class _ToolUseChipState extends State<_ToolUseChip> {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               child: Row(
                 children: [
-                  const Text(
-                    '⏺',
-                    style: TextStyle(color: _transcriptFgDim, fontSize: 12),
+                  const Icon(
+                    Icons.build,
+                    size: 13,
+                    color: _transcriptFgDim,
                   ),
                   const SizedBox(width: 8),
                   Text(
