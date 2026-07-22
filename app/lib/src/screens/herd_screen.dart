@@ -309,6 +309,7 @@ class _HerdScreenState extends State<HerdScreen> {
     required String title,
     required String fieldLabel,
     required String initialValue,
+    String? hintText,
   }) async {
     final controller = TextEditingController(text: initialValue);
     final next = await showDialog<String>(
@@ -324,6 +325,7 @@ class _HerdScreenState extends State<HerdScreen> {
             decoration: InputDecoration(
               border: const OutlineInputBorder(),
               labelText: fieldLabel,
+              hintText: hintText,
             ),
             onSubmitted: (value) => Navigator.of(context).pop(value),
           ),
@@ -369,6 +371,7 @@ class _HerdScreenState extends State<HerdScreen> {
       title: l10n.herdRenameAgentTitle,
       fieldLabel: l10n.herdRenameAgentField,
       initialValue: current,
+      hintText: agent.agent,
     );
     if (next == null || next.isEmpty || next == current || !mounted) return;
     try {

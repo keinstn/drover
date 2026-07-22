@@ -603,4 +603,59 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets(
+    'rename dialog hints the CLI name when the agent has no slug name yet',
+    (tester) async {
+      const envelope =
+          '{"id":"1","result":{"agents":['
+          '{"agent":"copilot","agent_status":"working","cwd":"/tmp/proj-b",'
+          '"focused":false,"pane_id":"wB:p1","tab_id":"wB:t1",'
+          '"workspace_id":"wB",'
+          '"terminal_title_stripped":"Herd の session 表示を設計 - GitHub Copilot"}'
+          ']}}';
+      final runner = FakeCommandRunner((command) {
+        if (command.contains("'workspace' 'list'")) {
+          return ok(
+            '{"id":"1","result":{"workspaces":['
+            '{"workspace_id":"wB","label":"Project B"}]}}',
+          );
+        }
+        return ok(envelope);
+      });
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HerdScreen(
+            client: client,
+            onOpenSettings: () {},
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.longPress(find.byKey(const ValueKey('agent-wB:p1')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rename agent'), findsOneWidget);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(
+        field.controller?.text,
+        isEmpty,
+        reason: 'an unnamed agent starts with a blank field',
+      );
+      expect(
+        field.decoration?.hintText,
+        'copilot',
+        reason: 'the CLI kind hints what to type',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }
