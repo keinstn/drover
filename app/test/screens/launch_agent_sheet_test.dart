@@ -130,6 +130,10 @@ void main() {
 
     expect(find.text('Claude Code'), findsOneWidget);
     expect(find.byKey(const ValueKey('preset_claude')), findsOneWidget);
+    expect(find.text('pi'), findsNothing);
+    expect(find.text('oh-my-pi'), findsNothing);
+    expect(find.byKey(const ValueKey('preset_pi')), findsNothing);
+    expect(find.byKey(const ValueKey('preset_omp')), findsNothing);
   });
 
   testWidgets(
