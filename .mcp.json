@@ -5,8 +5,8 @@
       "args": []
     },
     "dart": {
-      "command": "dart",
-      "args": ["mcp-server"]
+      "command": "fvm",
+      "args": ["dart", "mcp-server"]
     }
   }
 }
