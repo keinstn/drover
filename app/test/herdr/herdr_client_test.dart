@@ -320,10 +320,16 @@ void main() {
 
   group('HerdrClient.startAgent', () {
     test('builds the 0.7.5 start command for an existing pane', () async {
+      final sleeps = <Duration>[];
       final runner = FakeCommandRunner(
         (_) => ok('{"id":"1","result":{"type":"agent_started"}}'),
       );
-      final client = HerdrClient(runner);
+      final client = HerdrClient(
+        runner,
+        sleep: (duration) async {
+          sleeps.add(duration);
+        },
+      );
 
       await client.startAgent(name: 'proj', kind: 'claude', paneId: 'wJ:p1');
 
@@ -332,8 +338,111 @@ void main() {
         "~/.local/bin/herdr 'agent' 'start' 'proj' '--kind' 'claude' "
         "'--pane' 'wJ:p1'",
       );
+      expect(sleeps, isEmpty);
+    });
+  });
+
+  group('HerdrClient.startAgent retry', () {
+    int agentStartCalls(FakeCommandRunner runner) => runner.commands
+        .where((command) => command.contains("'agent' 'start'"))
+        .length;
+
+    test('retries on agent_pane_busy then succeeds', () async {
+      var starts = 0;
+      final sleeps = <Duration>[];
+      final runner = FakeCommandRunner((command) {
+        if (command.contains("'agent' 'start'")) {
+          starts++;
+          if (starts <= 2) {
+            return ok(
+              '{"id":"1","error":{"code":"agent_pane_busy",'
+              '"message":"agent target pane is not an available shell"}}',
+            );
+          }
+          return ok('{"id":"1","result":{"type":"agent_started"}}');
+        }
+        throw StateError('unexpected command: $command');
+      });
+      final client = HerdrClient(
+        runner,
+        sleep: (duration) async {
+          sleeps.add(duration);
+        },
+      );
+
+      await client.startAgent(name: 'proj', kind: 'claude', paneId: 'wJ:p1');
+
+      expect(agentStartCalls(runner), 3);
+      expect(sleeps, [
+        const Duration(milliseconds: 250),
+        const Duration(milliseconds: 500),
+      ]);
     });
 
+    test('does not retry on a different error code', () async {
+      final sleeps = <Duration>[];
+      final runner = FakeCommandRunner(
+        (_) => ok(
+          '{"id":"1","error":{"code":"some_other_error",'
+          '"message":"not pane busy"}}',
+        ),
+      );
+      final client = HerdrClient(
+        runner,
+        sleep: (duration) async {
+          sleeps.add(duration);
+        },
+      );
+
+      await expectLater(
+        client.startAgent(name: 'proj', kind: 'claude', paneId: 'wJ:p1'),
+        throwsA(
+          isA<HerdrException>()
+              .having((e) => e.code, 'code', 'some_other_error')
+              .having((e) => e.message, 'message', 'not pane busy'),
+        ),
+      );
+
+      expect(agentStartCalls(runner), 1);
+      expect(sleeps, isEmpty);
+    });
+
+    test('gives up after the max attempts', () async {
+      final sleeps = <Duration>[];
+      final runner = FakeCommandRunner(
+        (_) => ok(
+          '{"id":"1","error":{"code":"agent_pane_busy",'
+          '"message":"still busy"}}',
+        ),
+      );
+      final client = HerdrClient(
+        runner,
+        sleep: (duration) async {
+          sleeps.add(duration);
+        },
+      );
+
+      await expectLater(
+        client.startAgent(name: 'proj', kind: 'claude', paneId: 'wJ:p1'),
+        throwsA(
+          isA<HerdrException>()
+              .having((e) => e.code, 'code', 'agent_pane_busy')
+              .having((e) => e.message, 'message', 'still busy'),
+        ),
+      );
+
+      expect(agentStartCalls(runner), 6);
+      expect(sleeps, [
+        const Duration(milliseconds: 250),
+        const Duration(milliseconds: 500),
+        const Duration(milliseconds: 1000),
+        const Duration(milliseconds: 2000),
+        const Duration(milliseconds: 4000),
+      ]);
+    });
+  });
+
+  group('HerdrClient.splitPane', () {
     test('splits a pane in the requested workspace', () async {
       final runner = FakeCommandRunner((command) {
         if (command.contains("'pane' 'list'")) {

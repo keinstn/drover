@@ -28,9 +28,24 @@ class CreatedWorkspace {
 /// Talks to the `herdr` CLI over a [CommandRunner], parsing its single-line
 /// JSON envelope responses.
 class HerdrClient {
-  HerdrClient(this._runner, {this.herdrBin = kDefaultHerdrBin});
+  HerdrClient(
+    this._runner, {
+    this.herdrBin = kDefaultHerdrBin,
+    Future<void> Function(Duration duration)? sleep,
+  }) : _sleep = sleep ?? Future<void>.delayed;
+
+  static const _startAgentPaneBusyBackoffs = [
+    Duration(milliseconds: 250),
+    Duration(milliseconds: 500),
+    Duration(milliseconds: 1000),
+    Duration(milliseconds: 2000),
+    Duration(milliseconds: 4000),
+  ];
 
   final CommandRunner _runner;
+
+  /// Injectable delay used by retry paths so tests do not wait on wall clock.
+  final Future<void> Function(Duration duration) _sleep;
   final String herdrBin;
 
   /// Transport exposed for native, non-herdr data sources such as transcript
@@ -263,12 +278,26 @@ class HerdrClient {
   }
 
   /// Starts an agent of [kind] in an existing interactive shell [paneId].
+  ///
+  /// Herdr may briefly report a newly created or split pane as
+  /// `agent_pane_busy` while its shell initializes, so retry that race only.
   Future<void> startAgent({
     required String name,
     required String kind,
     required String paneId,
   }) async {
-    await _run(['agent', 'start', name, '--kind', kind, '--pane', paneId]);
+    for (var attempt = 0; ; attempt++) {
+      try {
+        await _run(['agent', 'start', name, '--kind', kind, '--pane', paneId]);
+        return;
+      } on HerdrException catch (e) {
+        if (e.code != 'agent_pane_busy' ||
+            attempt >= _startAgentPaneBusyBackoffs.length) {
+          rethrow;
+        }
+        await _sleep(_startAgentPaneBusyBackoffs[attempt]);
+      }
+    }
   }
 
   /// Rename the agent identified by [target] to [name].
