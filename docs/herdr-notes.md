@@ -12,6 +12,7 @@ image input, structured-prompt dialogs, …) live under `docs/agents/`:
 
 - `docs/agents/claude-notes.md` — Claude Code specifics.
 - `docs/agents/copilot-notes.md` — GitHub Copilot CLI specifics.
+- `docs/agents/codex-notes.md` — OpenAI Codex CLI specifics.
 
 This file covers only behaviours of herdr itself, which apply regardless of
 which agent is running in the pane.
@@ -60,11 +61,11 @@ which agent is running in the pane.
   agent TUIs need to cycle their mode. Verified by capturing the bytes herdr
   writes to the PTY. **Workaround:** send the raw backtab escape sequence
   `ESC [ Z` (bytes `1b 5b 5a`) via `pane send-text` instead. Verified
-  end-to-end against both Claude Code and Copilot CLI: it cycles a live
-  agent's mode exactly like a physical shift+tab. `pane send-keys shift+tab`
-  must not be used for either agent. The per-agent cycle order and how drover
-  maps each position onto `AgentMode` are documented in the agent notes under
-  `docs/agents/`.
+  end-to-end against Claude Code, Copilot CLI, and Codex CLI: it cycles a
+  live agent's mode exactly like a physical shift+tab. `pane send-keys
+  shift+tab` must not be used for any agent. The per-agent cycle order and
+  how drover maps each position onto `AgentMode` are documented in the agent
+  notes under `docs/agents/`.
 - **The agent input channel is text-only — images go via SFTP + a path
   reference.** (2026-07-18) `agent send` / `pane send-text` / `pane send-keys`
   carry only text or key events; there is no attachment/image-injection

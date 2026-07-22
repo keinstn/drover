@@ -1,6 +1,7 @@
 import 'package:drover/src/agents/agent_adapter.dart';
 import 'package:drover/src/agents/agent_registry.dart';
 import 'package:drover/src/agents/claude/claude_adapter.dart';
+import 'package:drover/src/agents/codex/codex_adapter.dart';
 import 'package:drover/src/agents/copilot/copilot_adapter.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/models/agent_info.dart';
@@ -50,8 +51,14 @@ void main() {
       expect(adapter, isA<CopilotAgentAdapter>());
     });
 
+    test('resolves a Codex agent to CodexAgentAdapter', () {
+      final adapter = resolveAgentAdapter(_agent('codex'));
+
+      expect(adapter, isA<CodexAgentAdapter>());
+    });
+
     test('returns null for an unrecognized agent', () {
-      expect(resolveAgentAdapter(_agent('codex')), isNull);
+      expect(resolveAgentAdapter(_agent('unknown-agent')), isNull);
     });
   });
 
@@ -146,9 +153,54 @@ void main() {
     );
   });
 
+  group('CodexAgentAdapter capabilities', () {
+    const adapter = CodexAgentAdapter();
+
+    test('supports only the codex agent', () {
+      expect(adapter.supports(_agent('codex')), isTrue);
+      expect(adapter.supports(_agent('claude')), isFalse);
+      expect(adapter.supports(_agent('copilot')), isFalse);
+    });
+
+    test('exposes mode, structured-prompt, and image capabilities', () {
+      expect(adapter.mode, isNotNull);
+      expect(adapter.structuredPrompt, isNotNull);
+      expect(adapter.images, isNotNull);
+    });
+
+    test(
+      'createNativeHistory returns null without a matching agent session',
+      () {
+        final loader = adapter.createNativeHistory(
+          _FakeCommandRunner(),
+          _agent('codex'),
+        );
+
+        expect(loader, isNull);
+      },
+    );
+
+    test('createNativeHistory returns a loader for a valid Codex session', () {
+      final loader = adapter.createNativeHistory(
+        _FakeCommandRunner(),
+        _agent(
+          'codex',
+          agentSession: const AgentSession(
+            source: 'herdr:codex',
+            agent: 'codex',
+            kind: 'id',
+            value: 'c7c50b87-4d4c-4a92-9396-2cfa4158612d',
+          ),
+        ),
+      );
+
+      expect(loader, isNotNull);
+    });
+  });
+
   group('unsupported agent fallback', () {
     test('has no adapter, so every optional capability is absent', () {
-      final agent = _agent('codex');
+      final agent = _agent('unknown-agent');
       final adapter = resolveAgentAdapter(agent);
 
       expect(adapter, isNull);
