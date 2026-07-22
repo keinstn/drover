@@ -920,6 +920,43 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('renders task_complete summary as assistant transcript text', (
+    tester,
+  ) async {
+    await _pumpNative(
+      tester,
+      _toolUseJsonl('task_complete', {
+        'summary': '  All requested changes are now complete.  ',
+        'other': 'kept in input',
+      }),
+    );
+
+    expect(find.text('Conversation history'), findsOneWidget);
+    expect(
+      find.text('All requested changes are now complete.'),
+      findsOneWidget,
+    );
+    expect(find.text('task_complete'), findsNothing);
+    expect(find.text('⏺'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('falls back to chip for task_complete without valid summary', (
+    tester,
+  ) async {
+    await _pumpNative(
+      tester,
+      _toolUseJsonl('task_complete', {'summary': '   '}),
+    );
+
+    expect(find.text('Conversation history'), findsOneWidget);
+    expect(find.text('task_complete'), findsOneWidget);
+    expect(find.text('⏺'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('renders a tool_use chip and toggles its detail on tap', (
     tester,
   ) async {
