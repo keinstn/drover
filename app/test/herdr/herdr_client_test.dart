@@ -123,15 +123,13 @@ void main() {
   });
 
   group('HerdrClient.readAgent', () {
-    test('returns result.read.text and builds the read command', () async {
-      final runner = FakeCommandRunner(
-        (_) => ok('{"id":"1","result":{"read":{"text":"some output"}}}'),
-      );
+    test('returns raw terminal output and builds the read command', () async {
+      final runner = FakeCommandRunner((_) => ok('\x1b[31msome output\x1b[0m'));
       final client = HerdrClient(runner);
 
       final text = await client.readAgent('wB:p4', lines: 50);
 
-      expect(text, 'some output');
+      expect(text, '\x1b[31msome output\x1b[0m');
       expect(
         runner.commands.single,
         "~/.local/bin/herdr 'agent' 'read' 'wB:p4' '--source' 'recent' "
@@ -225,30 +223,37 @@ void main() {
   });
 
   group('HerdrClient.createWorkspace', () {
-    test('returns workspace_id and builds the create command', () async {
-      final runner = FakeCommandRunner(
-        (_) => ok(
-          '{"id":"1","result":{"workspace":{"workspace_id":"wJ",'
-          '"label":"proj"}}}',
-        ),
-      );
-      final client = HerdrClient(runner);
+    test(
+      'returns workspace and root pane ids and builds the create command',
+      () async {
+        final runner = FakeCommandRunner(
+          (_) => ok(
+            '{"id":"1","result":{"workspace":{"workspace_id":"wJ",'
+            '"label":"proj"},"root_pane":{"pane_id":"wJ:p1"}}}',
+          ),
+        );
+        final client = HerdrClient(runner);
 
-      final id = await client.createWorkspace(label: 'proj', cwd: '/tmp/proj');
+        final workspace = await client.createWorkspace(
+          label: 'proj',
+          cwd: '/tmp/proj',
+        );
 
-      expect(id, 'wJ');
-      expect(
-        runner.commands.single,
-        "~/.local/bin/herdr 'workspace' 'create' '--label' 'proj' "
-        "'--cwd' '/tmp/proj' '--no-focus'",
-      );
-    });
+        expect(workspace.workspaceId, 'wJ');
+        expect(workspace.paneId, 'wJ:p1');
+        expect(
+          runner.commands.single,
+          "~/.local/bin/herdr 'workspace' 'create' '--label' 'proj' "
+          "'--cwd' '/tmp/proj' '--no-focus'",
+        );
+      },
+    );
 
     test('omits --cwd when not given', () async {
       final runner = FakeCommandRunner(
         (_) => ok(
           '{"id":"1","result":{"workspace":{"workspace_id":"wJ",'
-          '"label":"proj"}}}',
+          '"label":"proj"},"root_pane":{"pane_id":"wJ:p1"}}}',
         ),
       );
       final client = HerdrClient(runner);
@@ -314,38 +319,61 @@ void main() {
   });
 
   group('HerdrClient.startAgent', () {
-    test('builds the start command with a workspace id', () async {
+    test('builds the 0.7.5 start command for an existing pane', () async {
       final runner = FakeCommandRunner(
         (_) => ok('{"id":"1","result":{"type":"agent_started"}}'),
       );
       final client = HerdrClient(runner);
 
-      await client.startAgent(
-        name: 'proj',
-        argv: ['claude'],
-        cwd: '/tmp/proj',
-        workspaceId: 'wJ',
-      );
+      await client.startAgent(name: 'proj', kind: 'claude', paneId: 'wJ:p1');
 
       expect(
         runner.commands.single,
-        "~/.local/bin/herdr 'agent' 'start' 'proj' '--cwd' '/tmp/proj' "
-        "'--workspace' 'wJ' '--no-focus' '--' 'claude'",
+        "~/.local/bin/herdr 'agent' 'start' 'proj' '--kind' 'claude' "
+        "'--pane' 'wJ:p1'",
       );
     });
 
-    test('omits --workspace when not given', () async {
+    test('splits a pane in the requested workspace', () async {
+      final runner = FakeCommandRunner((command) {
+        if (command.contains("'pane' 'list'")) {
+          return ok('{"id":"1","result":{"panes":[{"pane_id":"wJ:p1"}]}}');
+        }
+        if (command.contains("'pane' 'split'")) {
+          return ok('{"id":"1","result":{"pane":{"pane_id":"wJ:p2"}}}');
+        }
+        throw StateError('unexpected command: $command');
+      });
+      final client = HerdrClient(runner);
+
+      final paneId = await client.splitPane(
+        workspaceId: 'wJ',
+        cwd: '/tmp/proj',
+      );
+
+      expect(paneId, 'wJ:p2');
+      expect(runner.commands, [
+        "~/.local/bin/herdr 'pane' 'list' '--workspace' 'wJ'",
+        "~/.local/bin/herdr 'pane' 'split' 'wJ:p1' '--direction' 'right' "
+            "'--cwd' '/tmp/proj' '--no-focus'",
+      ]);
+    });
+
+    test('rejects a workspace with no pane to split', () async {
       final runner = FakeCommandRunner(
-        (_) => ok('{"id":"1","result":{"type":"agent_started"}}'),
+        (_) => ok('{"id":"1","result":{"panes":[]}}'),
       );
       final client = HerdrClient(runner);
 
-      await client.startAgent(name: 'proj', argv: ['claude'], cwd: '/tmp/proj');
-
-      expect(
-        runner.commands.single,
-        "~/.local/bin/herdr 'agent' 'start' 'proj' '--cwd' '/tmp/proj' "
-        "'--no-focus' '--' 'claude'",
+      await expectLater(
+        client.splitPane(workspaceId: 'wJ', cwd: '/tmp/proj'),
+        throwsA(
+          isA<HerdrException>().having(
+            (e) => e.message,
+            'message',
+            'missing panes field',
+          ),
+        ),
       );
     });
   });

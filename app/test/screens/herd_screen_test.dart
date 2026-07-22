@@ -126,7 +126,7 @@ class NativeHistoryHerdRunner extends CommandRunner {
       );
     }
     if (command.contains("'agent' 'read'")) {
-      return ok('{"id":"1","result":{"read":{"text":"working…"}}}');
+      return ok('working…');
     }
     if (command.startsWith('command find ')) {
       final match = RegExp(r"-name '([^']+)\.jsonl'").firstMatch(command);

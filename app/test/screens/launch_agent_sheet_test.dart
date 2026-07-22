@@ -49,7 +49,8 @@ CommandResult _response(String command) {
   if (command.contains("'workspace' 'create'")) {
     return ok(
       '{"id":"1","result":{"workspace":'
-      '{"workspace_id":"wZ","label":"proj"}}}',
+      '{"workspace_id":"wZ","label":"proj"},'
+      '"root_pane":{"pane_id":"wZ:p1"}}}',
     );
   }
   if (command.contains("'workspace' 'list'")) {
@@ -58,6 +59,12 @@ CommandResult _response(String command) {
       '{"workspace_id":"wA","label":"Project A"},'
       '{"workspace_id":"wB","label":"Project B"}]}}',
     );
+  }
+  if (command.contains("'pane' 'list'")) {
+    return ok('{"id":"1","result":{"panes":[{"pane_id":"wA:p1"}]}}');
+  }
+  if (command.contains("'pane' 'split'")) {
+    return ok('{"id":"1","result":{"pane":{"pane_id":"wA:p2"}}}');
   }
   if (command.contains("'agent' 'start'")) {
     return ok('{"id":"1","result":{"type":"agent_started"}}');
@@ -169,8 +176,9 @@ void main() {
       );
       expect(createIndex, greaterThanOrEqualTo(0));
       expect(startIndex, greaterThan(createIndex));
-      expect(runner.commands[startIndex], contains("'--workspace'"));
-      expect(runner.commands[startIndex], contains("'claude'"));
+      expect(runner.commands[startIndex], contains("'--kind' 'claude'"));
+      expect(runner.commands[startIndex], contains("'--pane' 'wZ:p1'"));
+      expect(runner.commands.any((c) => c.contains("'pane' 'split'")), isFalse);
 
       final state = tester.state<_HarnessState>(find.byType(_Harness));
       expect(state.poppedValue, true);
@@ -202,6 +210,51 @@ void main() {
     final state = tester.state<_HarnessState>(find.byType(_Harness));
     expect(state.poppedValue, false);
     expect(runner.commands.any((c) => c.contains("'agent' 'start'")), isFalse);
+  });
+
+  testWidgets('existing-workspace launch splits a pane then starts the agent', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_response);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: _Harness(client: client),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('cwd_field')),
+      '/tmp/proj',
+    );
+    await tester.tap(find.byKey(const ValueKey('ws_mode_existing')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ws_dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Project A').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('launch_button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      runner.commands.any((c) => c.contains("'workspace' 'create'")),
+      isFalse,
+    );
+    final splitIndex = runner.commands.indexWhere(
+      (c) => c.contains("'pane' 'split'"),
+    );
+    final startIndex = runner.commands.indexWhere(
+      (c) => c.contains("'agent' 'start'"),
+    );
+    expect(splitIndex, greaterThanOrEqualTo(0));
+    expect(startIndex, greaterThan(splitIndex));
+    expect(runner.commands[startIndex], contains("'--pane' 'wA:p2'"));
   });
 
   testWidgets('new workspace name defaults to the cwd segment', (tester) async {
