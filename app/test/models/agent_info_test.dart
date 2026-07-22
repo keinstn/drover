@@ -122,5 +122,52 @@ void main() {
 
       expect(info.agentSession, isNull);
     });
+
+    test('parses terminal_title_stripped as the session title', () {
+      final info = AgentInfo.fromJson({
+        'agent': 'claude',
+        'agent_status': 'idle',
+        'cwd': '/tmp',
+        'focused': false,
+        'pane_id': 'wB:p4',
+        'tab_id': 'wB:t1',
+        'workspace_id': 'wB',
+        'terminal_title_stripped': 'OAuth callback を実装',
+      });
+
+      expect(info.terminalTitle, 'OAuth callback を実装');
+      expect(info.sessionTitle, 'OAuth callback を実装');
+    });
+
+    test('strips a CLI-specific suffix from the session title', () {
+      final info = AgentInfo.fromJson({
+        'agent': 'copilot',
+        'agent_status': 'working',
+        'cwd': '/tmp',
+        'focused': false,
+        'pane_id': 'wB:p4',
+        'tab_id': 'wB:t1',
+        'workspace_id': 'wB',
+        'terminal_title_stripped': 'Herd の session 表示を設計 - GitHub Copilot',
+      });
+
+      expect(info.sessionTitle, 'Herd の session 表示を設計');
+    });
+
+    test('has no session title when the terminal title is absent or blank', () {
+      AgentInfo build(Object? title) => AgentInfo.fromJson({
+        'agent': 'claude',
+        'agent_status': 'idle',
+        'cwd': '/tmp',
+        'focused': false,
+        'pane_id': 'wB:p4',
+        'tab_id': 'wB:t1',
+        'workspace_id': 'wB',
+        'terminal_title_stripped': ?title,
+      });
+
+      expect(build(null).sessionTitle, isNull);
+      expect(build('   ').sessionTitle, isNull);
+    });
   });
 }
