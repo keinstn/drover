@@ -108,6 +108,14 @@ noted otherwise.
   parser already produces (not Copilot-specific types), so a later ask_user
   detector can work across agents without new plumbing.
 
+- **`task_complete` tool output should read as a user-facing conclusion, not a
+  raw tool chip.** (2026-07-22) Some Copilot runs emit a `task_complete`
+  tool call whose `arguments.summary` contains the final conclusion text. In
+  drover's transcript UI, this should render as assistant message content
+  when `summary` is a non-empty string, so users can read the result at a
+  glance. If `summary` is missing/blank/wrong-shaped, drover should keep the
+  existing generic tool-chip fallback for `task_complete`.
+
 ## The `ask_user` tool and TUI dialog
 
 - **Copilot CLI's `ask_user` tool and TUI dialog.** (2026-07-21) The prompt is
