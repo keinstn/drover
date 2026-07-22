@@ -1006,6 +1006,13 @@ class _NativeTranscriptEntry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final taskCompleteSummary = switch (entry) {
+      TranscriptToolUse(:final name, :final input) => _taskCompleteSummary(
+        name,
+        input,
+      ),
+      _ => null,
+    };
     return LayoutBuilder(
       builder: (context, constraints) => Padding(
         padding: const EdgeInsets.only(bottom: 12),
@@ -1014,6 +1021,8 @@ class _NativeTranscriptEntry extends StatelessWidget {
             speaker == TranscriptSpeaker.user
                 ? _UserBubble(text: text, maxWidth: constraints.maxWidth * 0.8)
                 : _AssistantMessage(text: text),
+          TranscriptToolUse() when taskCompleteSummary != null =>
+            _AssistantMessage(text: taskCompleteSummary),
           TranscriptToolUse(:final name, :final input) => _ToolUseChip(
             name: name,
             input: input,
@@ -1027,6 +1036,14 @@ class _NativeTranscriptEntry extends StatelessWidget {
       ),
     );
   }
+}
+
+String? _taskCompleteSummary(String name, Map<String, dynamic> input) {
+  if (name != 'task_complete') return null;
+  final summary = input['summary'];
+  if (summary is! String) return null;
+  final trimmedSummary = summary.trim();
+  return trimmedSummary.isEmpty ? null : trimmedSummary;
 }
 
 /// A compact, collapsible tool invocation: a single glyph + name + summary row
