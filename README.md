@@ -40,10 +40,14 @@ drover/
 ## Getting started
 
 You need a Herdr host reachable over SSH with key-based auth (on macOS: System
-Settings → Sharing → Remote Login), with the `claude` Herdr integration
-installed (`herdr integration install claude`) so full transcript history
-works, plus Flutter via `fvm`. One-time host setup and the full command
-reference live in [`CLAUDE.md`](CLAUDE.md).
+Settings → Sharing → Remote Login). Install a herdr integration for each agent
+you want native transcript history for — for example,
+`herdr integration install claude`, `herdr integration install codex`, or
+`herdr integration install copilot`. Without an integration, drover falls back
+to pane-text history (bounded by herdr's retained pane buffer); the integration
+must be installed before starting the session (it only takes effect from the
+next `SessionStart`). Full setup and command reference live in
+[`CLAUDE.md`](CLAUDE.md).
 
 A `justfile` wraps the common recipes (`just` to list them):
 

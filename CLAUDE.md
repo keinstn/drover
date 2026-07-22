@@ -9,7 +9,7 @@ global `~/.claude/CLAUDE.md` rules — those still apply.
 
 See `README.md` for the concept and layout, `docs/herdr-notes.md` for herdr
 CLI behaviours/gotchas drover relies on, and `docs/agents/` for per-agent CLI
-notes (`claude-notes.md`, `copilot-notes.md`).
+notes (`claude-notes.md`, `copilot-notes.md`, `codex-notes.md`).
 
 ## One-time host setup
 
@@ -18,11 +18,14 @@ notes (`claude-notes.md`, `copilot-notes.md`).
 - [marionette_mcp](https://pub.dev/packages/marionette_mcp) (lets Claude Code
   inspect/tap/screenshot the running app via the Dart VM service): `dart pub global
   activate marionette_mcp`, then ensure `~/.pub-cache/bin` is on PATH.
-- On the Herdr host (the SSH target running your agents): `herdr integration
-  install claude`, so `agent_session` is reported and drover's native
-  transcript history (full session history, no pull-to-load-more needed) works
-  for Claude Code agents. See `docs/herdr-notes.md` for the gotchas — notably,
-  it only takes effect for sessions started after the install.
+- On the Herdr host (the SSH target running your agents): install a herdr
+  integration for each agent you want native transcript history for:
+  `herdr integration install claude`, `herdr integration install codex`,
+  `herdr integration install copilot`. Without an integration, drover falls
+  back to pane-text history. See `docs/herdr-notes.md` for the gotchas —
+  notably, it only takes effect for sessions started after the install. For
+  Codex specifically, the first launch after install may show a Hooks review
+  panel; trust/enable the hook there, then start a fresh session.
 
 ## Marionette MCP
 

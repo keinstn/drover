@@ -78,7 +78,7 @@ CommandResult workingResponse(String command) {
   return ok('{"id":"1","result":{}}');
 }
 
-/// An unrecognized agent ("codex", say) whose pane happens to contain
+/// An unrecognized agent ("mystery", say) whose pane happens to contain
 /// Claude's own mode-line wording verbatim — no [AgentAdapter] supports it, so
 /// its `AgentModeCapability`/`ImageAttachmentCapability` are both resolved as
 /// null regardless of what the pane text looks like.
@@ -92,7 +92,7 @@ CommandResult unsupportedAgentModeResponse(String command) {
   }
   if (command.contains("'agent' 'get'")) {
     return ok(
-      '{"id":"1","result":{"agent":{"agent":"codex",'
+      '{"id":"1","result":{"agent":{"agent":"mystery",'
       '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
       '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
       '"name":"Agent Three"}}}',
@@ -117,7 +117,7 @@ CommandResult unsupportedAgentBlockedResponse(String command) {
   }
   if (command.contains("'agent' 'get'")) {
     return ok(
-      '{"id":"1","result":{"agent":{"agent":"codex",'
+      '{"id":"1","result":{"agent":{"agent":"mystery",'
       '"agent_status":"blocked","cwd":"/tmp/proj","focused":false,'
       '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
       '"name":"Agent Three"}}}',
@@ -2737,7 +2737,7 @@ void main() {
 
       // The screen renders normally...
       expect(find.text('idle · Project B'), findsOneWidget);
-      // ...but no adapter supports "codex", so neither optional capability is
+      // ...but no adapter supports "mystery", so neither optional capability is
       // resolved and neither control renders, regardless of the pane text
       // containing Claude's own mode-line wording (`idleWithModeText`).
       expect(find.byKey(const ValueKey('attach_image_button')), findsNothing);
