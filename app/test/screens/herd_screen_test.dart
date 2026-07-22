@@ -549,4 +549,58 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'rename dialog prefills with the agent slug name, not the session title',
+    (tester) async {
+      const envelope =
+          '{"id":"1","result":{"agents":['
+          '{"agent":"copilot","agent_status":"working","cwd":"/tmp/proj-b",'
+          '"focused":false,"pane_id":"wB:p1","tab_id":"wB:t1",'
+          '"workspace_id":"wB","name":"scout",'
+          '"terminal_title_stripped":"Herd の session 表示を設計 - GitHub Copilot"}'
+          ']}}';
+      final runner = FakeCommandRunner((command) {
+        if (command.contains("'workspace' 'list'")) {
+          return ok(
+            '{"id":"1","result":{"workspaces":['
+            '{"workspace_id":"wB","label":"Project B"}]}}',
+          );
+        }
+        return ok(envelope);
+      });
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HerdScreen(
+            client: client,
+            onOpenSettings: () {},
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.longPress(find.byKey(const ValueKey('agent-wB:p1')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rename agent'), findsOneWidget);
+      expect(
+        find.widgetWithText(TextField, 'scout'),
+        findsOneWidget,
+        reason: 'the field prefills with the editable slug name',
+      );
+      expect(
+        find.widgetWithText(TextField, 'Herd の session 表示を設計'),
+        findsNothing,
+        reason: 'the read-only session title is never used as the edit value',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }

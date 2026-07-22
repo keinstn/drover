@@ -364,7 +364,7 @@ class _HerdScreenState extends State<HerdScreen> {
 
   Future<void> _renameAgent(AgentInfo agent) async {
     final l10n = AppLocalizations.of(context)!;
-    final current = _agentDisplayName(agent);
+    final current = agent.name ?? '';
     final next = await _promptRename(
       title: l10n.herdRenameAgentTitle,
       fieldLabel: l10n.herdRenameAgentField,
