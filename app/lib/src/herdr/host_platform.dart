@@ -67,6 +67,16 @@ abstract class HostPlatform {
   /// identically on both OSes).
   String detectAgentsCommand(List<String> bins);
 
+  /// Exec line printing the absolute path of [bin] resolved on the host
+  /// PATH, or nothing when absent. Login-shell PATH on Unix (so the result
+  /// matches what a human's own shell would see), PATH on Windows.
+  String whichCommand(String bin);
+
+  /// Exec line invoking [program] with [args] (each quoted for this OS's
+  /// exec channel). stdin is the caller's responsibility (via
+  /// [CommandRunner.runWithStdin]) — this only assembles the command line.
+  String runProgramCommand(String program, List<String> args);
+
   /// Exec line printing the absolute path of the first file matching
   /// [namePattern] at exactly [depth] levels below the search root, or
   /// nothing. The root is `$HOME/<homeFallback>` (POSIX) unless [envVar] is
@@ -122,6 +132,16 @@ class UnixHostPlatform extends HostPlatform {
         'for a in $quoted; do command -v "\$a" >/dev/null 2>&1 && echo "\$a"; done';
     return 'sh -lc ${shQuote(script)}';
   }
+
+  @override
+  String whichCommand(String bin) =>
+      // `sh -lc` for the same reasons as [detectAgentsCommand]: a login
+      // shell's PATH, `command -v` is POSIX, and some hosts have no bash.
+      'sh -lc ${shQuote('command -v ${shQuote(bin)}')}';
+
+  @override
+  String runProgramCommand(String program, List<String> args) =>
+      [program, ...args].map(shQuote).join(' ');
 
   @override
   String findFileAtDepthCommand({
@@ -240,6 +260,31 @@ class WindowsHostPlatform extends HostPlatform {
         '$_prelude'
         'foreach(\$a in @(${bins.map(_psQuote).join(',')}))'
         r'{if(Get-Command $a -ErrorAction SilentlyContinue){Write-Output $a}}';
+    return _wrap(script);
+  }
+
+  @override
+  String whichCommand(String bin) {
+    // The resolved path is fed back to [runProgramCommand] as a native
+    // Windows program path, so — unlike [_emitPosixPath] — it is printed
+    // verbatim (no `/C:/` SFTP normalization). `[Console]::Out.Write`
+    // avoids Write-Output's trailing CRLF.
+    final script =
+        '$_prelude'
+        '\$p=(Get-Command ${_psQuote(bin)} '
+        '-ErrorAction SilentlyContinue).Source;'
+        r'if($p){[Console]::Out.Write($p)}';
+    return _wrap(script);
+  }
+
+  @override
+  String runProgramCommand(String program, List<String> args) {
+    // `& ` call operator so a program path with spaces (e.g. under
+    // `C:\Program Files`) runs when single-quoted; `exit $LASTEXITCODE`
+    // as in [herdrCommand].
+    final script =
+        '$_prelude& ${_psQuote(program)} ${args.map(_psQuote).join(' ')};'
+        r'exit $LASTEXITCODE';
     return _wrap(script);
   }
 

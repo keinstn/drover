@@ -41,14 +41,14 @@ class PluginAutoPairer {
   }) async {
     final node = await _resolveNodeBin();
     final configDir = await _herdrClient.pluginConfigDir(_droverNotifyPluginId);
-    final command = [
-      shQuote(node),
-      shQuote('${plugin.pluginRoot}/bin/pair.mjs'),
+    final platform = await _herdrClient.hostPlatform;
+    final command = platform.runProgramCommand(node, [
+      '${plugin.pluginRoot}/bin/pair.mjs',
       '--completion-url',
-      shQuote(pairing.completionUrl),
+      pairing.completionUrl,
       '--config-dir',
-      shQuote(configDir),
-    ].join(' ');
+      configDir,
+    ]);
     final CommandResult result;
     try {
       result = await _herdrClient.runner.runWithStdin(command, pairing.code);
@@ -62,13 +62,15 @@ class PluginAutoPairer {
     }
   }
 
-  /// Resolves the absolute path to `node` by probing an interactive login
-  /// shell (so `PATH` matches what a human's own shell would see) — the
-  /// same probe pattern `HerdrClient.detectAgents` uses for agent binaries.
-  /// A non-interactive SSH exec channel otherwise often lacks the PATH
-  /// entries a manual terminal session would have.
+  /// Resolves the absolute path to `node` via the host platform's PATH
+  /// probe (a login shell on Unix, so `PATH` matches what a human's own
+  /// shell would see; `Get-Command` on Windows) — the same probe pattern
+  /// `HerdrClient.detectAgents` uses for agent binaries. A non-interactive
+  /// SSH exec channel otherwise often lacks the PATH entries a manual
+  /// terminal session would have.
   Future<String> _resolveNodeBin() async {
-    final command = 'bash -lc ${shQuote('command -v node')}';
+    final platform = await _herdrClient.hostPlatform;
+    final command = platform.whichCommand('node');
     final CommandResult result;
     try {
       result = await _herdrClient.runner.run(command);
