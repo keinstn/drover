@@ -218,6 +218,12 @@ abstract class AppLocalizations {
   /// **'Couldn\'t enable notifications. Try opening Drover again.'**
   String get notificationRegistrationFailed;
 
+  /// No description provided for @notificationTargetUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The agent from this notification is no longer available.'**
+  String get notificationTargetUnavailable;
+
   /// No description provided for @commonRetry.
   ///
   /// In en, this message translates to:

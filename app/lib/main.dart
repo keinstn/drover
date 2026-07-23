@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -12,8 +13,11 @@ import 'src/app_theme.dart';
 import 'src/herdr/herdr_client.dart';
 import 'src/infra/host_store.dart';
 import 'src/infra/ssh_command_runner.dart';
+import 'src/models/agent_info.dart';
 import 'src/models/host_config.dart';
 import 'src/notifications/notification_registration.dart';
+import 'src/notifications/notification_target.dart';
+import 'src/screens/agent_screen.dart';
 import 'src/screens/herd_screen.dart';
 import 'src/screens/host_setup_screen.dart';
 import 'src/speech/speech_input.dart';
@@ -69,6 +73,8 @@ class _DroverAppState extends State<DroverApp> {
   late final SpeechInput _speechInput;
   late final NotificationRegistration _notificationRegistration;
   StreamSubscription<Object>? _notificationFailures;
+  StreamSubscription<RemoteMessage>? _notificationOpens;
+  final _handledNotificationEvents = <String>{};
 
   @override
   void initState() {
@@ -79,6 +85,10 @@ class _DroverAppState extends State<DroverApp> {
     _notificationFailures = _notificationRegistration.failures.listen(
       (_) => _showNotificationRegistrationFailure(),
     );
+    _notificationOpens = FirebaseMessaging.onMessageOpenedApp.listen(
+      _handleNotificationOpen,
+    );
+    unawaited(_handleInitialNotification());
     _config = widget.initialConfig;
     if (_config != null) {
       _runner = SshCommandRunner(_config!);
@@ -89,6 +99,7 @@ class _DroverAppState extends State<DroverApp> {
 
   @override
   void dispose() {
+    _notificationOpens?.cancel();
     _notificationFailures?.cancel();
     _notificationRegistration.dispose();
     _runner?.dispose();
@@ -131,6 +142,68 @@ class _DroverAppState extends State<DroverApp> {
     showTopToast(
       context,
       AppLocalizations.of(context)!.notificationRegistrationFailed,
+    );
+  }
+
+  Future<void> _handleInitialNotification() async {
+    final message = await FirebaseMessaging.instance.getInitialMessage();
+    if (message != null) _handleNotificationOpen(message);
+  }
+
+  void _handleNotificationOpen(RemoteMessage message) {
+    final target = NotificationTarget.fromData(message.data);
+    if (target == null) return;
+    final eventId = target.eventId ?? message.messageId;
+    if (eventId != null && !_handledNotificationEvents.add(eventId)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_openNotificationTarget(target));
+    });
+  }
+
+  Future<void> _openNotificationTarget(NotificationTarget target) async {
+    final client = _client;
+    if (client == null) {
+      _showNotificationTargetUnavailable();
+      return;
+    }
+
+    final List<AgentInfo> agents;
+    try {
+      agents = await client.listAgents();
+    } on HerdrException {
+      _showNotificationTargetUnavailable();
+      return;
+    }
+    if (_client != client || !mounted) return;
+
+    final agent = agents.where((agent) => agent.paneId == target.paneId);
+    if (agent.isEmpty) {
+      _showNotificationTargetUnavailable();
+      return;
+    }
+
+    final navigator = _navKey.currentState;
+    if (navigator == null) return;
+    navigator.popUntil((route) => route.isFirst);
+    await navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => AgentScreen(
+          client: client,
+          paneId: agent.first.paneId,
+          initialAgent: agent.first,
+          speechInput: _speechInput,
+        ),
+      ),
+    );
+  }
+
+  void _showNotificationTargetUnavailable() {
+    if (!mounted) return;
+    final context = _navKey.currentContext;
+    if (context == null) return;
+    showTopToast(
+      context,
+      AppLocalizations.of(context)!.notificationTargetUnavailable,
     );
   }
 

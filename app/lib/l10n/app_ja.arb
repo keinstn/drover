@@ -20,6 +20,7 @@
   "commonReset": "リセット",
   "testConnectionOk": "OK — エージェント {count} 件",
   "notificationRegistrationFailed": "通知を有効にできませんでした。Drover を開き直して再試行してください。",
+  "notificationTargetUnavailable": "この通知のエージェントは利用できなくなりました。",
 
   "commonRetry": "再試行",
   "commonStop": "停止",

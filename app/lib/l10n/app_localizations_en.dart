@@ -79,6 +79,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn\'t enable notifications. Try opening Drover again.';
 
   @override
+  String get notificationTargetUnavailable =>
+      'The agent from this notification is no longer available.';
+
+  @override
   String get commonRetry => 'Retry';
 
   @override
