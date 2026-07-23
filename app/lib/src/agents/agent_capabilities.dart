@@ -13,10 +13,18 @@ import '../transcript/native_transcript.dart';
 /// cycled by an [AgentModeCapability]. Not every agent exposes a mode; the UI
 /// hides mode controls when the resolved [AgentModeCapability] is null (or
 /// returns null from [AgentModeCapability.parseMode]) for the current agent.
+///
+/// [acceptEdit] and [auto] are distinct Claude Code cycle stops (`accept
+/// edits on` vs `auto mode on`) — they used to be collapsed into one value,
+/// which was itself a mistake carried from an early assumption that they
+/// were just alternate wordings for the same state (see issue #62). Copilot
+/// CLI has no `accept edit`/`bypass` equivalents; its single "runs on its own"
+/// autopilot state maps to [auto].
 enum AgentMode {
   normal('normal'),
-  autoAccept('auto-accept'),
+  acceptEdit('accept-edit'),
   plan('plan'),
+  auto('auto'),
   bypass('bypass');
 
   const AgentMode(this.label);

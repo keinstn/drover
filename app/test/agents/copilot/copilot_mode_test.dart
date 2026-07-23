@@ -139,7 +139,7 @@ commands · ? help · tab next tab''';
     });
 
     test('reads autopilot mode from the idle footer', () {
-      expect(parseCopilotMode(autopilotIdleFixture), AgentMode.autoAccept);
+      expect(parseCopilotMode(autopilotIdleFixture), AgentMode.auto);
     });
 
     test('reads autopilot mode when its prefix wraps before commands', () {
@@ -148,7 +148,7 @@ commands · ? help · tab next tab''';
 autopilot · /
 commands · tab next tab''';
 
-      expect(parseCopilotMode(wrappedPrefix), AgentMode.autoAccept);
+      expect(parseCopilotMode(wrappedPrefix), AgentMode.auto);
     });
 
     test('does not treat an autopilot composer draft as idle chrome', () {
@@ -167,7 +167,7 @@ commands · tab next tab''';
     });
 
     test('reads autopilot mode from the working footer', () {
-      expect(parseCopilotMode(autopilotWorkingFixture), AgentMode.autoAccept);
+      expect(parseCopilotMode(autopilotWorkingFixture), AgentMode.auto);
     });
 
     test('does not invent a mode from top-nav text lacking footer chrome', () {
@@ -190,7 +190,7 @@ plan   /commands  ?help  tab  next  tab''';
       const upper = '''
 › Type a message
 Working - AUTOPILOT esc interrupt''';
-      expect(parseCopilotMode(upper), AgentMode.autoAccept);
+      expect(parseCopilotMode(upper), AgentMode.auto);
     });
 
     test('only scans the trailing few lines, ignoring a stale scrolled-off '
@@ -207,7 +207,7 @@ Working - AUTOPILOT esc interrupt''';
   group('CopilotModeCapability', () {
     test('parseMode delegates to parseCopilotMode', () {
       const capability = CopilotModeCapability();
-      expect(capability.parseMode(autopilotIdleFixture), AgentMode.autoAccept);
+      expect(capability.parseMode(autopilotIdleFixture), AgentMode.auto);
     });
 
     test('cycleMode sends the raw backtab escape sequence', () async {

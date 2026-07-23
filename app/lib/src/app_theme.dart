@@ -41,3 +41,8 @@ const statusUnknown = Color(0xFF6C7681);
 // mode and agent-status never share meaning by accident.
 const modeAcceptEdit = Color(0xFF9B7EC7);
 const modePlan = Color(0xFF5FAF82);
+// Matches Claude Code's own "auto mode on" mode-line color (SGR
+// 38;2;255;193;7, captured live from a real session) rather than a color
+// picked to sit apart from statusWorking.
+const modeAuto = Color(0xFFFFC107);
+const modeBypass = Color(0xFFE5695E);

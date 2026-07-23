@@ -51,14 +51,14 @@ const chromeFixture = '''
 
 void main() {
   group('parseAgentMode', () {
-    test('reads auto-accept from the mode line', () {
-      expect(parseAgentMode(chromeFixture), AgentMode.autoAccept);
+    test('reads auto mode from the mode line', () {
+      expect(parseAgentMode(chromeFixture), AgentMode.auto);
     });
 
-    test('reads auto-accept from the "accept edits" wording', () {
+    test('reads accept-edit from the "accept edits" wording', () {
       expect(
         parseAgentMode('body\n  ⏵⏵ accept edits on (shift+tab to cycle)'),
-        AgentMode.autoAccept,
+        AgentMode.acceptEdit,
       );
     });
 
@@ -106,7 +106,7 @@ void main() {
         parseAgentMode(
           'body\n  ⏵⏵ accept edits on (shift+tab to cycle) · plan',
         ),
-        AgentMode.autoAccept,
+        AgentMode.acceptEdit,
       );
     });
 
@@ -125,7 +125,7 @@ void main() {
   group('ClaudeModeCapability', () {
     test('parseMode delegates to parseAgentMode', () {
       const capability = ClaudeModeCapability();
-      expect(capability.parseMode(chromeFixture), AgentMode.autoAccept);
+      expect(capability.parseMode(chromeFixture), AgentMode.auto);
     });
 
     test('cycleMode sends the raw backtab escape sequence', () async {

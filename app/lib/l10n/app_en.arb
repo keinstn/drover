@@ -47,9 +47,10 @@
   "agentStatusUnknown": "unknown",
 
   "agentModeNormal": "Normal",
-  "agentModeAutoAccept": "Accept Edits",
+  "agentModeAcceptEdit": "Accept Edits",
   "agentModePlan": "Plan",
-  "agentModeBypass": "Auto",
+  "agentModeAuto": "Auto",
+  "agentModeBypass": "Bypass",
 
   "agentComposerHint": "Message agent…",
   "agentCycleModeTooltip": "Cycle agent mode (shift+tab)",

@@ -21,11 +21,13 @@ final _cycleHint = RegExp(r'\(shift\+tab to cycle\)', caseSensitive: false);
 /// second `--`), so matching against the whole line missed bypass while
 /// composing a prompt (issue #62).
 ///
-/// The glyphs alone don't disambiguate (`⏵⏵` fronts both auto-accept and
-/// bypass; `⏸` fronts both plan and the default "manual" mode). Claude Code
-/// has phrased auto-accept as both `auto mode on` and `accept edits on`, so
-/// both are matched; anything else on a recognized mode line (e.g. `manual
-/// mode on`) is the default [AgentMode.normal].
+/// The glyphs alone don't disambiguate (`⏵⏵` fronts [AgentMode.acceptEdit],
+/// [AgentMode.auto], and [AgentMode.bypass]; `⏸` fronts both
+/// [AgentMode.plan] and the default "manual" mode). `accept edits on` and
+/// `auto mode on` are separate cycle stops (issue #62) and resolve to
+/// [AgentMode.acceptEdit] and [AgentMode.auto] respectively; anything else on
+/// a recognized mode line (e.g. `manual mode on`) is the default
+/// [AgentMode.normal].
 AgentMode? parseAgentMode(String text) {
   final lines = text.split('\n');
   final start = lines.length > 6 ? lines.length - 6 : 0;
@@ -50,9 +52,8 @@ AgentMode? parseAgentMode(String text) {
 
     if (modeText.contains('plan')) return AgentMode.plan;
     if (modeText.contains('bypass')) return AgentMode.bypass;
-    if (modeText.contains('auto') || modeText.contains('accept')) {
-      return AgentMode.autoAccept;
-    }
+    if (modeText.contains('accept')) return AgentMode.acceptEdit;
+    if (modeText.contains('auto')) return AgentMode.auto;
     return AgentMode.normal;
   }
   return null;

@@ -332,11 +332,11 @@ abstract class AppLocalizations {
   /// **'Normal'**
   String get agentModeNormal;
 
-  /// No description provided for @agentModeAutoAccept.
+  /// No description provided for @agentModeAcceptEdit.
   ///
   /// In en, this message translates to:
   /// **'Accept Edits'**
-  String get agentModeAutoAccept;
+  String get agentModeAcceptEdit;
 
   /// No description provided for @agentModePlan.
   ///
@@ -344,10 +344,16 @@ abstract class AppLocalizations {
   /// **'Plan'**
   String get agentModePlan;
 
-  /// No description provided for @agentModeBypass.
+  /// No description provided for @agentModeAuto.
   ///
   /// In en, this message translates to:
   /// **'Auto'**
+  String get agentModeAuto;
+
+  /// No description provided for @agentModeBypass.
+  ///
+  /// In en, this message translates to:
+  /// **'Bypass'**
   String get agentModeBypass;
 
   /// No description provided for @agentComposerHint.

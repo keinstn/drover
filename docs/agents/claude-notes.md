@@ -14,10 +14,12 @@ channel, the `agent_session` mechanism), see `../herdr-notes.md`.
   Verified end-to-end against a live Claude Code agent: it cycles the mode
   exactly like a physical shift+tab. The cycle order is:
   manual → accept edits → plan → auto → (back to manual).
-  - Caveat 1: `accept edits` and `auto` are two distinct positions in the
-    cycle, but drover's `parseAgentMode` collapses both into
-    `AgentMode.autoAccept` — a future "set to a specific mode" feature (read
-    current mode, then cycle N times) would need those two distinguished.
+  - Caveat 1 (resolved 2026-07-23, issue #62): `accept edits` and `auto` are
+    two distinct positions in the cycle. drover's `parseAgentMode` used to
+    collapse both into one `AgentMode.autoAccept` value — carried from an
+    early (incorrect) assumption in #8 that they were just alternate wordings
+    for the same state, before the cycle order above was mapped. Now resolved
+    to separate `AgentMode.acceptEdit` and `AgentMode.auto` values.
   - Caveat 2: `bypass` is not part of the shift+tab cycle (it's only reachable
     via `--dangerously-skip-permissions` at launch), so it cannot be reached
     by cycling.

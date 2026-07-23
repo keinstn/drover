@@ -42,9 +42,10 @@
   "agentStatusUnknown": "不明",
 
   "agentModeNormal": "通常",
-  "agentModeAutoAccept": "編集を承認",
+  "agentModeAcceptEdit": "編集を承認",
   "agentModePlan": "プラン",
-  "agentModeBypass": "オート",
+  "agentModeAuto": "オート",
+  "agentModeBypass": "バイパス",
 
   "agentComposerHint": "エージェントにメッセージ…",
   "agentCycleModeTooltip": "エージェントモードを切り替え (shift+tab)",
