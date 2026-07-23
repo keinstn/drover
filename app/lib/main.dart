@@ -13,6 +13,7 @@ import 'l10n/app_localizations.dart';
 import 'src/app_theme.dart';
 import 'src/firebase/app_check.dart';
 import 'src/herdr/herdr_client.dart';
+import 'src/herdr/host_platform.dart';
 import 'src/infra/best_effort.dart';
 import 'src/infra/host_store.dart';
 import 'src/infra/ssh_command_runner.dart';
@@ -114,7 +115,11 @@ class _DroverAppState extends State<DroverApp> {
     _config = widget.initialConfig;
     if (_config != null) {
       _runner = SshCommandRunner(_config!, onHostKeyLearned: _pinHostKey);
-      _client = HerdrClient(_runner!, herdrBin: _config!.herdrBin);
+      _client = HerdrClient(
+        _runner!,
+        herdrBin: _config!.herdrBin,
+        platform: HostPlatform.detect(_runner!),
+      );
       _scheduleNotificationRegistration();
     }
   }
@@ -159,7 +164,11 @@ class _DroverAppState extends State<DroverApp> {
     );
     await _runner?.dispose();
     final runner = SshCommandRunner(config, onHostKeyLearned: _pinHostKey);
-    final client = HerdrClient(runner, herdrBin: config.herdrBin);
+    final client = HerdrClient(
+      runner,
+      herdrBin: config.herdrBin,
+      platform: HostPlatform.detect(runner),
+    );
     await widget.hostStore.save(config);
     if (!mounted) return;
     setState(() {
@@ -191,7 +200,11 @@ class _DroverAppState extends State<DroverApp> {
   Future<PluginInfo?> _detectNotifyPlugin(HostConfig config) async {
     final runner = SshCommandRunner(config);
     try {
-      final client = HerdrClient(runner, herdrBin: config.herdrBin);
+      final client = HerdrClient(
+        runner,
+        herdrBin: config.herdrBin,
+        platform: HostPlatform.detect(runner),
+      );
       return await PluginAutoPairer(client).detectPlugin();
     } finally {
       await runner.dispose();
@@ -205,7 +218,11 @@ class _DroverAppState extends State<DroverApp> {
   ) async {
     final runner = SshCommandRunner(config);
     try {
-      final client = HerdrClient(runner, herdrBin: config.herdrBin);
+      final client = HerdrClient(
+        runner,
+        herdrBin: config.herdrBin,
+        platform: HostPlatform.detect(runner),
+      );
       await PluginAutoPairer(client).pair(plugin: plugin, pairing: pairing);
     } finally {
       await runner.dispose();
@@ -325,7 +342,11 @@ class _DroverAppState extends State<DroverApp> {
   Future<String> _testConnection(HostConfig c) async {
     final runner = SshCommandRunner(c);
     try {
-      final client = HerdrClient(runner, herdrBin: c.herdrBin);
+      final client = HerdrClient(
+        runner,
+        herdrBin: c.herdrBin,
+        platform: HostPlatform.detect(runner),
+      );
       final agents = await client.listAgents();
       final l10n = AppLocalizations.of(_navKey.currentContext!)!;
       return l10n.testConnectionOk(agents.length);

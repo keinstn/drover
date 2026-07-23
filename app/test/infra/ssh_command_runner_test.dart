@@ -1,7 +1,30 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:drover/src/infra/ssh_command_runner.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('decodeRemoteOutput', () {
+    test('round-trips valid UTF-8 unchanged', () async {
+      final text = 'herdr ok これは正常な出力です';
+      final stream = Stream<Uint8List>.fromIterable([
+        Uint8List.fromList(utf8.encode(text)),
+      ]);
+      expect(await decodeRemoteOutput(stream), text);
+    });
+
+    test('replaces CP932 bytes with U+FFFD instead of throwing', () async {
+      // "これ" encoded in Shift-JIS (CP932), as a Japanese-locale cmd.exe
+      // emits — invalid as UTF-8.
+      final stream = Stream<Uint8List>.fromIterable([
+        Uint8List.fromList([0x82, 0xb1, 0x82, 0xea]),
+      ]);
+      final decoded = await decodeRemoteOutput(stream);
+      expect(decoded, contains('�'));
+    });
+  });
+
   group('describeSshAuthFailure', () {
     test('returns the error unchanged when there are no notices', () {
       final error = Exception('boom');

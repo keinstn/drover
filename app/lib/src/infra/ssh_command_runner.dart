@@ -36,6 +36,12 @@ class SshAuthException implements Exception {
   String toString() => message;
 }
 
+/// Decodes a remote output stream as UTF-8, replacing malformed sequences
+/// instead of throwing: a Japanese-locale Windows host's cmd.exe emits CP932
+/// error text, which strict UTF-8 decoding rejects with a FormatException.
+Future<String> decodeRemoteOutput(Stream<Uint8List> stream) =>
+    const Utf8Decoder(allowMalformed: true).bind(stream).join();
+
 enum HostKeyDecision { accept, learn, reject }
 
 /// Decides how to treat an observed host-key [observed] fingerprint given the
@@ -180,8 +186,8 @@ class SshCommandRunner implements CommandRunner {
       session.stdin.add(utf8.encode(stdin));
       await session.stdin.close();
     }
-    final stdoutFuture = utf8.decodeStream(session.stdout);
-    final stderrFuture = utf8.decodeStream(session.stderr);
+    final stdoutFuture = decodeRemoteOutput(session.stdout);
+    final stderrFuture = decodeRemoteOutput(session.stderr);
     await session.done;
     return CommandResult(
       exitCode: session.exitCode ?? -1,

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import '../models/agent_info.dart';
@@ -7,6 +8,7 @@ import '../models/plugin_info.dart';
 import '../models/remote_dir_entry.dart';
 import '../models/workspace_info.dart';
 import 'command_runner.dart';
+import 'host_platform.dart';
 
 class HerdrException implements Exception {
   const HerdrException(this.code, this.message, {this.cause});
@@ -30,11 +32,20 @@ class CreatedWorkspace {
 /// Talks to the `herdr` CLI over a [CommandRunner], parsing its single-line
 /// JSON envelope responses.
 class HerdrClient {
+  /// [platform] assembles OS-specific command lines for the SSH target. The
+  /// host OS is a runtime property of that target, so production passes
+  /// [HostPlatform.detect] (a [Future] is accepted so construction can stay
+  /// synchronous); the Unix default preserves behavior for tests and
+  /// previews. The `..ignore()` prevents an unhandled-async-error crash if
+  /// detection fails before any command runs — later awaits still receive
+  /// the error.
   HerdrClient(
     this._runner, {
     this.herdrBin = kDefaultHerdrBin,
     Future<void> Function(Duration duration)? sleep,
-  }) : _sleep = sleep ?? Future<void>.delayed;
+    FutureOr<HostPlatform> platform = const UnixHostPlatform(),
+  }) : _sleep = sleep ?? Future<void>.delayed,
+       _platform = Future<HostPlatform>.value(platform)..ignore();
 
   static const _startAgentPaneBusyBackoffs = [
     Duration(milliseconds: 250),
@@ -49,16 +60,32 @@ class HerdrClient {
   /// Injectable delay used by retry paths so tests do not wait on wall clock.
   final Future<void> Function(Duration duration) _sleep;
   final String herdrBin;
+  final Future<HostPlatform> _platform;
 
   /// Transport exposed for native, non-herdr data sources such as transcript
   /// files. Herdr commands themselves remain encapsulated by this client.
   CommandRunner get runner => _runner;
 
+  /// Resolves the host platform, surfacing a detection failure as a
+  /// transport [HerdrException] so the existing error-screen localization
+  /// path handles it like any transport failure.
+  Future<HostPlatform> _resolvePlatform() async {
+    try {
+      return await _platform;
+    } catch (e) {
+      throw HerdrException('transport', e.toString(), cause: e);
+    }
+  }
+
   /// Runs a herdr command and returns its raw result, throwing a transport
   /// [HerdrException] on a spawn failure or a non-zero exit (herdr prints an
   /// error envelope to stderr and exits non-zero on failure).
   Future<CommandResult> _exec(List<String> args) async {
-    final command = buildHerdrCommand(herdrBin, args);
+    final platform = await _resolvePlatform();
+    final command = platform.herdrCommand(
+      platform.resolveHerdrBin(herdrBin),
+      args,
+    );
     final CommandResult result;
     try {
       result = await _runner.run(command);
@@ -173,21 +200,23 @@ class HerdrClient {
   }
 
   /// Probe the host PATH for which of [presets] are installed, returning the
-  /// subset whose [AgentPreset.bin] resolves. Runs a single read-only
-  /// `command -v` sweep under a login shell — this is a raw host probe, NOT a
-  /// herdr command, so it does not go through the JSON-envelope [_run] path.
+  /// subset whose [AgentPreset.bin] resolves. Runs the platform's single
+  /// read-only probe command — this is a raw host probe, NOT a herdr command,
+  /// so it does not go through the JSON-envelope [_run] path.
   Future<List<AgentPreset>> detectAgents(List<AgentPreset> presets) async {
     if (presets.isEmpty) return [];
-    final bins = presets.map((p) => shQuote(p.bin)).join(' ');
-    final script =
-        'for a in $bins; do command -v "\$a" >/dev/null 2>&1 && echo "\$a"; done';
-    final command = 'bash -lc ${shQuote(script)}';
+    final platform = await _resolvePlatform();
+    final command = platform.detectAgentsCommand(
+      presets.map((p) => p.bin).toList(),
+    );
     final CommandResult result;
     try {
       result = await _runner.run(command);
     } catch (e) {
       throw HerdrException('transport', e.toString(), cause: e);
     }
+    // The parse is deliberately OS-agnostic: both probes echo bare bin names
+    // one per line, and trim() handles the '\r' in Windows line endings.
     final found = result.stdout
         .split('\n')
         .map((l) => l.trim())
