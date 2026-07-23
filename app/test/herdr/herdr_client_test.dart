@@ -1,5 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
+import 'package:drover/src/herdr/host_platform.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/agent_preset.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
@@ -205,6 +209,8 @@ void main() {
 
       expect(found, [kAgentPresets[0]]);
       expect(runner.commands, hasLength(1));
+      // The Unix default probes under a POSIX login shell.
+      expect(runner.commands.single, startsWith('sh -lc '));
       expect(runner.commands.single, contains('command -v'));
       for (final preset in kAgentPresets) {
         expect(runner.commands.single, contains(preset.bin));
@@ -219,6 +225,91 @@ void main() {
 
       expect(found, isEmpty);
       expect(runner.commands, isEmpty);
+    });
+  });
+
+  group('HerdrClient platform wiring', () {
+    const encodedPrefix =
+        'powershell.exe -NoProfile -NonInteractive -EncodedCommand ';
+
+    /// Decode an `-EncodedCommand` exec line back to the PowerShell script:
+    /// base64 → UTF-16LE bytes → code units (low byte first).
+    String decodeScript(String command) {
+      expect(command, startsWith(encodedPrefix));
+      final bytes = base64.decode(command.substring(encodedPrefix.length));
+      final units = [
+        for (var i = 0; i < bytes.length; i += 2)
+          bytes[i] | (bytes[i + 1] << 8),
+      ];
+      return String.fromCharCodes(units);
+    }
+
+    const agentsEnvelope =
+        '{"id":"1","result":{"agents":[{"agent":"claude",'
+        '"agent_status":"idle","cwd":"/tmp","focused":false,'
+        '"pane_id":"wB:p4","tab_id":"wB:t1","workspace_id":"wB"}]}}';
+
+    test('WindowsHostPlatform wraps herdr commands in powershell', () async {
+      final runner = FakeCommandRunner((_) => ok(agentsEnvelope));
+      final client = HerdrClient(runner, platform: const WindowsHostPlatform());
+
+      final agents = await client.listAgents();
+
+      expect(agents, hasLength(1));
+      final script = decodeScript(runner.commands.single);
+      // Bare 'herdr' proves the default ~/.local/bin/herdr was resolved for
+      // Windows.
+      expect(script, contains("& 'herdr' 'agent' 'list'"));
+    });
+
+    test('accepts an async platform (the production detect path)', () async {
+      final runner = FakeCommandRunner((_) => ok(agentsEnvelope));
+      final client = HerdrClient(
+        runner,
+        platform: Future<HostPlatform>.value(const WindowsHostPlatform()),
+      );
+
+      final agents = await client.listAgents();
+
+      expect(agents, hasLength(1));
+      final script = decodeScript(runner.commands.single);
+      expect(script, contains("& 'herdr' 'agent' 'list'"));
+    });
+
+    test('surfaces a detection failure as a transport error', () async {
+      final runner = FakeCommandRunner((_) => ok(agentsEnvelope));
+      final client = HerdrClient(
+        runner,
+        platform: Future<HostPlatform>.error(
+          HostPlatformDetectionException('nope'),
+        )..ignore(),
+      );
+
+      await expectLater(
+        client.listAgents(),
+        throwsA(
+          isA<HerdrException>()
+              .having((e) => e.code, 'code', 'transport')
+              .having((e) => e.message, 'message', contains('nope')),
+        ),
+      );
+      expect(runner.commands, isEmpty);
+    });
+
+    test('detectAgents probes via the platform command', () async {
+      // Windows output has \r\n line endings; the shared parse must cope.
+      final runner = FakeCommandRunner((_) => ok('claude\r\ncopilot\r\n'));
+      final client = HerdrClient(runner, platform: const WindowsHostPlatform());
+
+      final found = await client.detectAgents(kAgentPresets);
+
+      expect(
+        found,
+        kAgentPresets
+            .where((p) => p.bin == 'claude' || p.bin == 'copilot')
+            .toList(),
+      );
+      expect(runner.commands.single, startsWith(encodedPrefix));
     });
   });
 
