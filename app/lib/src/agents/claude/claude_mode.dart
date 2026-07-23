@@ -4,28 +4,53 @@
 import '../../herdr/herdr_client.dart';
 import '../agent_capabilities.dart';
 
-final _modeLine = RegExp(r'^\s*[⏸⏵]');
+final _modeGlyph = RegExp(r'[⏸⏵]+');
+final _cycleHint = RegExp(r'\(shift\+tab to cycle\)', caseSensitive: false);
 
 /// Reads the current [AgentMode] from the trailing mode line of [text] (e.g.
 /// `-- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle)`). Returns null when no
 /// mode line is present. Expects plain text — strip ANSI first.
 ///
-/// Matching is by wording because the `⏵⏵`/`⏸` glyphs alone don't disambiguate
-/// (`⏵⏵` fronts both auto-accept and bypass; `⏸` fronts both plan and the
-/// default "manual" mode). Claude Code has phrased auto-accept as both
-/// `auto mode on` and `accept edits on`, so both are matched; anything else on
-/// a recognized mode line (e.g. `manual mode on`) is the default [AgentMode.normal].
+/// The mode name is read from the text between the `⏵⏵`/`⏸` glyph and the
+/// following `(shift+tab to cycle)` (or line end, if that hint is absent) —
+/// matching only within that window keeps unrelated leading/trailing text on
+/// the line (the vim-style `-- INSERT --` prefix, trailing hints like `· ←
+/// for agents`) from being mistaken for the mode name. This matters because
+/// that prefix isn't consistently formatted: in insert mode, most modes render
+/// as `-- INSERT -- ⏵⏵ ...` but bypass renders as `-- INSERT   ⏵⏵ ...` (no
+/// second `--`), so matching against the whole line missed bypass while
+/// composing a prompt (issue #62).
+///
+/// The glyphs alone don't disambiguate (`⏵⏵` fronts both auto-accept and
+/// bypass; `⏸` fronts both plan and the default "manual" mode). Claude Code
+/// has phrased auto-accept as both `auto mode on` and `accept edits on`, so
+/// both are matched; anything else on a recognized mode line (e.g. `manual
+/// mode on`) is the default [AgentMode.normal].
 AgentMode? parseAgentMode(String text) {
   final lines = text.split('\n');
   final start = lines.length > 6 ? lines.length - 6 : 0;
   for (var i = lines.length - 1; i >= start; i--) {
-    final lower = lines[i].toLowerCase();
-    final isModeLine =
-        lower.contains('-- insert --') || _modeLine.hasMatch(lines[i]);
-    if (!isModeLine) continue;
-    if (lower.contains('plan')) return AgentMode.plan;
-    if (lower.contains('bypass')) return AgentMode.bypass;
-    if (lower.contains('auto') || lower.contains('accept')) {
+    final line = lines[i];
+    final glyphMatch = _modeGlyph.firstMatch(line);
+    // Claude Code can show the vim "-- INSERT --" indicator before the mode
+    // name renders (or with no mode name at all); still count it as a
+    // recognized mode line so it resolves to AgentMode.normal below instead
+    // of falling through to null (which would hide the mode button).
+    final hasInsert = line.toLowerCase().contains('-- insert');
+    if (glyphMatch == null && !hasInsert) continue;
+
+    final afterGlyph = glyphMatch == null ? '' : line.substring(glyphMatch.end);
+    final cycleMatch = _cycleHint.firstMatch(afterGlyph);
+    final modeText =
+        (cycleMatch == null
+                ? afterGlyph
+                : afterGlyph.substring(0, cycleMatch.start))
+            .trim()
+            .toLowerCase();
+
+    if (modeText.contains('plan')) return AgentMode.plan;
+    if (modeText.contains('bypass')) return AgentMode.bypass;
+    if (modeText.contains('auto') || modeText.contains('accept')) {
       return AgentMode.autoAccept;
     }
     return AgentMode.normal;

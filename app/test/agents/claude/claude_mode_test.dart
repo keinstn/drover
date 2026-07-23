@@ -83,12 +83,42 @@ void main() {
       );
     });
 
+    test('reads bypass permissions mode while composing (issue #62): unlike '
+        'other modes, bypass in insert mode drops the second "--" before the '
+        'glyph', () {
+      expect(
+        parseAgentMode(
+          'body\n  -- INSERT   ⏵⏵ bypass permissions on '
+          '(shift+tab to cycle) · ← for agents',
+        ),
+        AgentMode.bypass,
+      );
+    });
+
     test('falls back to normal for a bare insert line', () {
       expect(parseAgentMode('body\n  -- INSERT --'), AgentMode.normal);
     });
 
+    test('ignores a keyword outside the glyph/cycle-hint window', () {
+      // Whole-line matching would hit 'plan' in the trailing hint and return
+      // AgentMode.plan; windowed matching only sees 'accept edits on'.
+      expect(
+        parseAgentMode(
+          'body\n  ⏵⏵ accept edits on (shift+tab to cycle) · plan',
+        ),
+        AgentMode.autoAccept,
+      );
+    });
+
     test('returns null when there is no mode line', () {
       expect(parseAgentMode(permissionPromptFixture), isNull);
+    });
+
+    test('does not treat prose mentioning "insert" as a mode line', () {
+      expect(
+        parseAgentMode('I will insert a row into the table\ndone'),
+        isNull,
+      );
     });
   });
 

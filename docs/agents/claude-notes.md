@@ -21,6 +21,19 @@ channel, the `agent_session` mechanism), see `../herdr-notes.md`.
   - Caveat 2: `bypass` is not part of the shift+tab cycle (it's only reachable
     via `--dangerously-skip-permissions` at launch), so it cannot be reached
     by cycling.
+  - Caveat 3 (2026-07-23, issue #62): the mode line's vim-style `-- INSERT --`
+    prefix (shown while composing a prompt) is not formatted consistently
+    across modes. Verified live against a `--dangerously-skip-permissions`
+    session: outside insert mode the line is
+    `⏵⏵ bypass permissions on (shift+tab to cycle)`, but in insert mode it's
+    `-- INSERT   ⏵⏵ bypass permissions on (shift+tab to cycle)` — a single `--`
+    before `INSERT` and no second `--` before the glyph, unlike every other
+    mode's `-- INSERT -- ⏵⏵ ...`. `parseAgentMode` used to require that second
+    `--` (or the glyph at the very start of the line) to recognize a mode line
+    at all, so bypass went undetected — no mode button shown — for as long as
+    the user was actively typing. Fixed by reading the mode name from between
+    the glyph and `(shift+tab to cycle)` instead of matching against the whole
+    line, which no longer depends on the `-- INSERT --` bookend being present.
 
 ## Image input
 
