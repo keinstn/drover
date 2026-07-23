@@ -67,8 +67,14 @@ In Firebase Console, add the debug token printed by an iOS debug build under
 App Check's debug-token management. Install a Release build on an iPhone, then
 inspect the `createPairingCode` Callable Function in Google Cloud Logging. Its
 `callable-request-verification` structured log must report
-`jsonPayload.verifications.appCheck` as `VALID`. Do not enable Callable
+`jsonPayload.verifications.app` as `VALID`. Do not enable Callable
 Functions enforcement until that verification succeeds.
+
+After verification, App Check is enforced for `registerDevice`,
+`unregisterDevice`, `sendTestNotification`, `createPairingCode`, and
+`revokeHost`. The host plugin's `completePairing` and
+`sendBlockedNotification` HTTP endpoints continue to use their pairing-code
+and host-credential authentication.
 
 ## Verify delivery
 

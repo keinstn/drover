@@ -230,121 +230,135 @@ async function consumeTestNotificationAllowance(uid: string): Promise<void> {
   });
 }
 
-export const registerDevice = onCall(async (request) => {
-  const uid = requireUid(request.auth);
-  const registration = parseDeviceRegistration(request.data);
-  if (registration == null) {
-    throw new HttpsError("invalid-argument", "Invalid device registration.");
-  }
+export const registerDevice = onCall(
+  { enforceAppCheck: true },
+  async (request) => {
+    const uid = requireUid(request.auth);
+    const registration = parseDeviceRegistration(request.data);
+    if (registration == null) {
+      throw new HttpsError("invalid-argument", "Invalid device registration.");
+    }
 
-  const ref = deviceRef(uid, registration.deviceId);
-  await db.runTransaction(async (transaction) => {
-    const [existing, devices, matchingTokens] = await Promise.all([
-      transaction.get(ref),
-      transaction.get(ref.parent),
-      transaction.get(
-        ref.parent.where("fcmToken", "==", registration.fcmToken),
-      ),
-    ]);
-    const duplicateTokenDocs = matchingTokens.docs.filter(
-      (document) => document.id !== ref.id,
+    const ref = deviceRef(uid, registration.deviceId);
+    await db.runTransaction(async (transaction) => {
+      const [existing, devices, matchingTokens] = await Promise.all([
+        transaction.get(ref),
+        transaction.get(ref.parent),
+        transaction.get(
+          ref.parent.where("fcmToken", "==", registration.fcmToken),
+        ),
+      ]);
+      const duplicateTokenDocs = matchingTokens.docs.filter(
+        (document) => document.id !== ref.id,
+      );
+      const deviceCountAfterRegistration =
+        devices.size - duplicateTokenDocs.length + (existing.exists ? 0 : 1);
+      if (deviceCountAfterRegistration > maxDevicesPerUser) {
+        throw new HttpsError(
+          "resource-exhausted",
+          "Too many registered notification devices.",
+        );
+      }
+
+      for (const document of duplicateTokenDocs) {
+        transaction.delete(document.ref);
+      }
+      transaction.set(
+        ref,
+        {
+          fcmToken: registration.fcmToken,
+          platform: registration.platform,
+          updatedAt: FieldValue.serverTimestamp(),
+          ...(existing.exists
+            ? {}
+            : { createdAt: FieldValue.serverTimestamp() }),
+        },
+        { merge: true },
+      );
+    });
+
+    return { deviceId: registration.deviceId };
+  },
+);
+
+export const unregisterDevice = onCall(
+  { enforceAppCheck: true },
+  async (request) => {
+    const uid = requireUid(request.auth);
+    const deviceId = parseDeviceId(request.data);
+    if (deviceId == null) {
+      throw new HttpsError("invalid-argument", "Invalid device ID.");
+    }
+
+    await deviceRef(uid, deviceId).delete();
+    return { deviceId };
+  },
+);
+
+export const sendTestNotification = onCall(
+  { enforceAppCheck: true },
+  async (request) => {
+    const uid = requireUid(request.auth);
+    await consumeTestNotificationAllowance(uid);
+    const delivery = await deliverNotification(
+      uid,
+      {
+        title: "Drover notifications are ready",
+        body: "This is a test notification.",
+      },
+      { type: "test" },
     );
-    const deviceCountAfterRegistration =
-      devices.size - duplicateTokenDocs.length + (existing.exists ? 0 : 1);
-    if (deviceCountAfterRegistration > maxDevicesPerUser) {
+    if (delivery.tokenCount === 0) {
       throw new HttpsError(
-        "resource-exhausted",
-        "Too many registered notification devices.",
+        "failed-precondition",
+        "No registered notification devices.",
+      );
+    }
+    if (delivery.successCount === 0 && delivery.retryableFailureCount > 0) {
+      throw new HttpsError(
+        "unavailable",
+        "Notification delivery is temporarily unavailable.",
       );
     }
 
-    for (const document of duplicateTokenDocs) {
-      transaction.delete(document.ref);
+    logger.info("Sent test notification.", {
+      uid,
+      ...delivery,
+    });
+    return delivery;
+  },
+);
+
+export const createPairingCode = onCall(
+  { enforceAppCheck: true },
+  async (request) => {
+    const uid = requireUid(request.auth);
+    const pairing = parsePairingCodeRequest(request.data);
+    if (pairing == null) {
+      throw new HttpsError("invalid-argument", "Invalid host ID.");
     }
-    transaction.set(
-      ref,
-      {
-        fcmToken: registration.fcmToken,
-        platform: registration.platform,
-        updatedAt: FieldValue.serverTimestamp(),
-        ...(existing.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
-      },
-      { merge: true },
-    );
-  });
 
-  return { deviceId: registration.deviceId };
-});
+    const existingHost = await hostRef(pairing.hostId).get();
+    if (existingHost.exists && existingHost.get("uid") !== uid) {
+      throw new HttpsError("permission-denied", "Host ID is already paired.");
+    }
 
-export const unregisterDevice = onCall(async (request) => {
-  const uid = requireUid(request.auth);
-  const deviceId = parseDeviceId(request.data);
-  if (deviceId == null) {
-    throw new HttpsError("invalid-argument", "Invalid device ID.");
-  }
+    const pairingCode = randomBytes(32).toString("base64url");
+    await pairingCodeRef(pairingCode).set({
+      uid,
+      hostId: pairing.hostId,
+      expiresAt: Timestamp.fromMillis(Date.now() + pairingCodeLifetimeMs),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return {
+      pairingCode,
+      hostId: pairing.hostId,
+      completionUrl: `${functionsBaseUrl}/completePairing`,
+    };
+  },
+);
 
-  await deviceRef(uid, deviceId).delete();
-  return { deviceId };
-});
-
-export const sendTestNotification = onCall(async (request) => {
-  const uid = requireUid(request.auth);
-  await consumeTestNotificationAllowance(uid);
-  const delivery = await deliverNotification(
-    uid,
-    {
-      title: "Drover notifications are ready",
-      body: "This is a test notification.",
-    },
-    { type: "test" },
-  );
-  if (delivery.tokenCount === 0) {
-    throw new HttpsError(
-      "failed-precondition",
-      "No registered notification devices.",
-    );
-  }
-  if (delivery.successCount === 0 && delivery.retryableFailureCount > 0) {
-    throw new HttpsError(
-      "unavailable",
-      "Notification delivery is temporarily unavailable.",
-    );
-  }
-
-  logger.info("Sent test notification.", {
-    uid,
-    ...delivery,
-  });
-  return delivery;
-});
-
-export const createPairingCode = onCall(async (request) => {
-  const uid = requireUid(request.auth);
-  const pairing = parsePairingCodeRequest(request.data);
-  if (pairing == null) {
-    throw new HttpsError("invalid-argument", "Invalid host ID.");
-  }
-
-  const existingHost = await hostRef(pairing.hostId).get();
-  if (existingHost.exists && existingHost.get("uid") !== uid) {
-    throw new HttpsError("permission-denied", "Host ID is already paired.");
-  }
-
-  const pairingCode = randomBytes(32).toString("base64url");
-  await pairingCodeRef(pairingCode).set({
-    uid,
-    hostId: pairing.hostId,
-    expiresAt: Timestamp.fromMillis(Date.now() + pairingCodeLifetimeMs),
-    createdAt: FieldValue.serverTimestamp(),
-  });
-  return {
-    pairingCode,
-    hostId: pairing.hostId,
-    completionUrl: `${functionsBaseUrl}/completePairing`,
-  };
-});
-
-export const revokeHost = onCall(async (request) => {
+export const revokeHost = onCall({ enforceAppCheck: true }, async (request) => {
   const uid = requireUid(request.auth);
   const pairing = parsePairingCodeRequest(request.data);
   if (pairing == null) {
