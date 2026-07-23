@@ -36,6 +36,11 @@ class HostStore {
   }
 
   Future<void> save(HostConfig config) async {
+    // Pre-#98 installs wrote this key with default keychain options. write()
+    // checks for an existing item using the *current* accessibility options,
+    // so it misses that stale entry and SecItemAdd then collides with it
+    // (errSecDuplicateItem). Clear any default-options leftover first.
+    await _storage.delete(key: _hostConfigKey);
     await _storage.write(
       key: _hostConfigKey,
       value: jsonEncode(config.toJson()),
