@@ -32,26 +32,20 @@ herdr plugin link /path/to/drover/plugins/drover-notify
 ```
 
 In Drover, open the host settings and select **Create notification pairing
-code**. The dialog displays a one-time pairing code, host ID, and completion
-URL. The code is valid for ten minutes.
+code**. The dialog provides copy buttons for the plugin-link command, the setup
+command, the pairing code, and the completion URL. The code is valid for ten
+minutes.
 
-On the host, save the code in a securely created temporary owner-only file,
-then pair the plugin. Keeping it out of command-line arguments avoids exposing
-it in shell history or process listings. After `cat` starts, paste the code and
-press Control-D.
+Run the setup command on the host after linking the plugin:
 
 ```sh
-pairing_file="$(mktemp)"
-chmod 600 "$pairing_file"
-trap 'rm -f "$pairing_file"' EXIT
-cat > "$pairing_file"
-config_dir="$(herdr plugin config-dir drover.notify)"
-node /path/to/drover/plugins/drover-notify/bin/pair.mjs \
+node /path/to/drover/plugins/drover-notify/bin/setup.mjs \
   --completion-url 'paste-the-completion-url-from-Drover' \
-  --config-dir "$config_dir" < "$pairing_file"
+  --herdr-bin "$HOME/.local/bin/herdr"
 ```
 
-`pair.mjs` receives a host credential from the backend and writes it to
+The script securely prompts for the pairing code, obtains the plugin's
+Herdr-managed config directory, and writes the host credential to
 `$config_dir/config.json` atomically with owner-only permissions. Do not copy
 this file between hosts or commit it. Pairing again rotates the credential for
 the same host ID. Resetting the host in Drover, or changing its address, port,

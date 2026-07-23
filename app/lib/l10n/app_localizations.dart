@@ -236,17 +236,47 @@ abstract class AppLocalizations {
   /// **'Pair the notification plugin'**
   String get hostPairingCodeTitle;
 
-  /// No description provided for @hostPairingCodeBody.
+  /// No description provided for @hostPairingCodeIntro.
   ///
   /// In en, this message translates to:
-  /// **'On the Herdr host, follow docs/push-notifications.md and provide these values:\n\nPairing code: {code}\nHost ID: {hostId}\nCompletion URL: {completionUrl}'**
-  String hostPairingCodeBody(String code, String hostId, String completionUrl);
+  /// **'On the Herdr host, copy and run these commands. Replace /path/to/drover with the checkout path. When setup asks, paste the pairing code.'**
+  String get hostPairingCodeIntro;
+
+  /// No description provided for @hostPairingLinkCommandLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'1. Link the plugin (first time only)'**
+  String get hostPairingLinkCommandLabel;
+
+  /// No description provided for @hostPairingSetupCommandLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'2. Run setup'**
+  String get hostPairingSetupCommandLabel;
+
+  /// No description provided for @hostPairingCodeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'3. Pairing code'**
+  String get hostPairingCodeLabel;
+
+  /// No description provided for @hostPairingUrlLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Completion URL'**
+  String get hostPairingUrlLabel;
 
   /// No description provided for @commonClose.
   ///
   /// In en, this message translates to:
   /// **'Close'**
   String get commonClose;
+
+  /// No description provided for @commonCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get commonCopy;
 
   /// No description provided for @commonRetry.
   ///

@@ -89,12 +89,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hostPairingCodeTitle => 'Pair the notification plugin';
 
   @override
-  String hostPairingCodeBody(String code, String hostId, String completionUrl) {
-    return 'On the Herdr host, follow docs/push-notifications.md and provide these values:\n\nPairing code: $code\nHost ID: $hostId\nCompletion URL: $completionUrl';
-  }
+  String get hostPairingCodeIntro =>
+      'On the Herdr host, copy and run these commands. Replace /path/to/drover with the checkout path. When setup asks, paste the pairing code.';
+
+  @override
+  String get hostPairingLinkCommandLabel =>
+      '1. Link the plugin (first time only)';
+
+  @override
+  String get hostPairingSetupCommandLabel => '2. Run setup';
+
+  @override
+  String get hostPairingCodeLabel => '3. Pairing code';
+
+  @override
+  String get hostPairingUrlLabel => 'Completion URL';
 
   @override
   String get commonClose => 'Close';
+
+  @override
+  String get commonCopy => 'Copy';
 
   @override
   String get commonRetry => 'Retry';

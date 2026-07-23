@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../models/host_config.dart';
@@ -107,13 +108,41 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
         context: context,
         builder: (context) {
           final l10n = AppLocalizations.of(context)!;
+          final pluginPath = '/path/to/drover/plugins/drover-notify';
+          final herdrBin = _shellCommandPath(config.herdrBin);
+          final linkCommand = '$herdrBin plugin link $pluginPath';
+          final setupCommand =
+              'node $pluginPath/bin/setup.mjs --completion-url '
+              '${_shellQuote(pairing.completionUrl)} --herdr-bin $herdrBin';
           return AlertDialog(
             title: Text(l10n.hostPairingCodeTitle),
-            content: SelectableText(
-              l10n.hostPairingCodeBody(
-                pairing.code,
-                pairing.hostId,
-                pairing.completionUrl,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(l10n.hostPairingCodeIntro),
+                  const SizedBox(height: 16),
+                  _CopyableValue(
+                    label: l10n.hostPairingLinkCommandLabel,
+                    value: linkCommand,
+                  ),
+                  const SizedBox(height: 16),
+                  _CopyableValue(
+                    label: l10n.hostPairingSetupCommandLabel,
+                    value: setupCommand,
+                  ),
+                  const SizedBox(height: 16),
+                  _CopyableValue(
+                    label: l10n.hostPairingCodeLabel,
+                    value: pairing.code,
+                  ),
+                  const SizedBox(height: 16),
+                  _CopyableValue(
+                    label: l10n.hostPairingUrlLabel,
+                    value: pairing.completionUrl,
+                  ),
+                ],
               ),
             ),
             actions: [
@@ -339,6 +368,46 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+String _shellCommandPath(String value) => value.startsWith('~/')
+    ? '\$HOME/${_shellQuote(value.substring(2))}'
+    : _shellQuote(value);
+
+String _shellQuote(String value) => "'${value.replaceAll("'", "'\"'\"'")}'";
+
+class _CopyableValue extends StatelessWidget {
+  const _CopyableValue({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: SelectableText(
+                value,
+                style: const TextStyle(fontFamily: 'monospace'),
+              ),
+            ),
+            IconButton(
+              tooltip: l10n.commonCopy,
+              icon: const Icon(Icons.copy_outlined),
+              onPressed: () => Clipboard.setData(ClipboardData(text: value)),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

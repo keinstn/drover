@@ -23,15 +23,13 @@
   "notificationTargetUnavailable": "この通知のエージェントは利用できなくなりました。",
   "hostPairNotifications": "通知用のペアリングコードを作成",
   "hostPairingCodeTitle": "通知 plugin をペアリング",
-  "hostPairingCodeBody": "Herdr host で docs/push-notifications.md の手順を実行し、次の値を渡してください。\n\nペアリングコード: {code}\nHost ID: {hostId}\n完了 URL: {completionUrl}",
-  "@hostPairingCodeBody": {
-    "placeholders": {
-      "code": { "type": "String" },
-      "hostId": { "type": "String" },
-      "completionUrl": { "type": "String" }
-    }
-  },
+  "hostPairingCodeIntro": "Herdr host で、次のコマンドをコピーして実行してください。/path/to/drover は checkout のパスに置き換えます。setup が表示した prompt にペアリングコードを貼り付けてください。",
+  "hostPairingLinkCommandLabel": "1. plugin を link（初回のみ）",
+  "hostPairingSetupCommandLabel": "2. setup を実行",
+  "hostPairingCodeLabel": "3. ペアリングコード",
+  "hostPairingUrlLabel": "完了 URL",
   "commonClose": "閉じる",
+  "commonCopy": "コピー",
 
   "commonRetry": "再試行",
   "commonStop": "停止",
