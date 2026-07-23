@@ -5,6 +5,7 @@
 import 'dart:convert';
 
 import '../../herdr/command_runner.dart';
+import '../../herdr/host_platform.dart';
 import '../../models/agent_info.dart';
 import '../../transcript/native_transcript.dart';
 
@@ -176,12 +177,14 @@ class ClaudeTranscriptLoader implements NativeTranscriptAdapter {
     this._runner, {
     ClaudeTranscriptParser? parser,
     JsonlTranscriptWindow? window,
+    this._platform = const UnixHostPlatform(),
   }) : _parser = parser ?? const ClaudeTranscriptParser(),
        _loader = JsonlSessionLoader(window: window);
 
   final CommandRunner _runner;
   final ClaudeTranscriptParser _parser;
   final JsonlSessionLoader _loader;
+  final HostPlatform _platform;
 
   static bool supportsAgent(AgentInfo agent) {
     final session = agent.agentSession;
@@ -220,12 +223,16 @@ class ClaudeTranscriptLoader implements NativeTranscriptAdapter {
   }
 
   Future<String?> _locate(String sessionId) async {
-    // The id is validated above; the only interpolated shell value remains
-    // single-quoted. Limit the search to Claude's one-level project folders.
+    // The id is validated above. Limit the search to Claude's one-level
+    // project folders; [HostPlatform] owns the OS-specific search command
+    // (and the quoting of the interpolated file name).
     final fileName = '$sessionId.jsonl';
     final result = await _runner.run(
-      'command find "\$HOME/.claude/projects" -mindepth 2 -maxdepth 2 -type f '
-      '-name ${shQuote(fileName)} -print -quit',
+      _platform.findFileAtDepthCommand(
+        homeFallback: '.claude/projects',
+        depth: 2,
+        namePattern: fileName,
+      ),
     );
     if (result.exitCode != 0) {
       throw StateError('Unable to locate Claude transcript: ${result.stderr}');

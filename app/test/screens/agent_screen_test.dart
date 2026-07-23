@@ -9,6 +9,7 @@ import 'package:drover/src/agents/agent_native_history.dart';
 import 'package:drover/src/dev/stub_herdr.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
+import 'package:drover/src/herdr/host_platform.dart';
 import 'package:drover/src/image/image_input.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/screens/agent_draft_store.dart';
@@ -528,6 +529,7 @@ class _FixedNativeHistoryAdapter extends AgentAdapter {
   @override
   NativeHistoryCapability? createNativeHistory(
     CommandRunner runner,
+    HostPlatform platform,
     AgentInfo agent,
   ) => history;
 }

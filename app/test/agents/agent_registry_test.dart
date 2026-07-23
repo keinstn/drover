@@ -4,6 +4,7 @@ import 'package:drover/src/agents/claude/claude_adapter.dart';
 import 'package:drover/src/agents/codex/codex_adapter.dart';
 import 'package:drover/src/agents/copilot/copilot_adapter.dart';
 import 'package:drover/src/herdr/command_runner.dart';
+import 'package:drover/src/herdr/host_platform.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -81,6 +82,7 @@ void main() {
       () {
         final loader = adapter.createNativeHistory(
           _FakeCommandRunner(),
+          const UnixHostPlatform(),
           _agent('claude'),
         );
 
@@ -91,6 +93,7 @@ void main() {
     test('createNativeHistory returns a loader for a valid Claude session', () {
       final loader = adapter.createNativeHistory(
         _FakeCommandRunner(),
+        const UnixHostPlatform(),
         _agent(
           'claude',
           agentSession: const AgentSession(
@@ -125,6 +128,7 @@ void main() {
       () {
         final loader = adapter.createNativeHistory(
           _FakeCommandRunner(),
+          const UnixHostPlatform(),
           _agent('copilot'),
         );
 
@@ -137,6 +141,7 @@ void main() {
       () {
         final loader = adapter.createNativeHistory(
           _FakeCommandRunner(),
+          const UnixHostPlatform(),
           _agent(
             'copilot',
             agentSession: const AgentSession(
@@ -173,6 +178,7 @@ void main() {
       () {
         final loader = adapter.createNativeHistory(
           _FakeCommandRunner(),
+          const UnixHostPlatform(),
           _agent('codex'),
         );
 
@@ -183,6 +189,7 @@ void main() {
     test('createNativeHistory returns a loader for a valid Codex session', () {
       final loader = adapter.createNativeHistory(
         _FakeCommandRunner(),
+        const UnixHostPlatform(),
         _agent(
           'codex',
           agentSession: const AgentSession(
@@ -211,7 +218,14 @@ void main() {
       expect(adapter?.mode, isNull);
       expect(adapter?.structuredPrompt, isNull);
       expect(adapter?.images, isNull);
-      expect(adapter?.createNativeHistory(_FakeCommandRunner(), agent), isNull);
+      expect(
+        adapter?.createNativeHistory(
+          _FakeCommandRunner(),
+          const UnixHostPlatform(),
+          agent,
+        ),
+        isNull,
+      );
     });
   });
 
@@ -223,7 +237,11 @@ void main() {
       expect(adapter.structuredPrompt, isNull);
       expect(adapter.images, isNull);
       expect(
-        adapter.createNativeHistory(_FakeCommandRunner(), _agent('mystery')),
+        adapter.createNativeHistory(
+          _FakeCommandRunner(),
+          const UnixHostPlatform(),
+          _agent('mystery'),
+        ),
         isNull,
       );
     });

@@ -3,6 +3,7 @@
 // capabilities behind the common [AgentAdapter] contract.
 
 import '../../herdr/command_runner.dart';
+import '../../herdr/host_platform.dart';
 import '../../models/agent_info.dart';
 import '../agent_adapter.dart';
 import '../agent_capabilities.dart';
@@ -20,10 +21,11 @@ class ClaudeAgentAdapter extends AgentAdapter {
   @override
   NativeHistoryCapability? createNativeHistory(
     CommandRunner runner,
+    HostPlatform platform,
     AgentInfo agent,
   ) {
     return ClaudeTranscriptLoader.supportsAgent(agent)
-        ? ClaudeTranscriptLoader(runner)
+        ? ClaudeTranscriptLoader(runner, platform: platform)
         : null;
   }
 

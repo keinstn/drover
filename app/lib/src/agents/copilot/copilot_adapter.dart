@@ -4,6 +4,7 @@
 
 import '../../herdr/command_runner.dart';
 import '../../herdr/herdr_client.dart';
+import '../../herdr/host_platform.dart';
 import '../../models/agent_info.dart';
 import '../agent_adapter.dart';
 import '../agent_capabilities.dart';
@@ -34,10 +35,11 @@ class CopilotAgentAdapter extends AgentAdapter {
   @override
   NativeHistoryCapability? createNativeHistory(
     CommandRunner runner,
+    HostPlatform platform,
     AgentInfo agent,
   ) {
     return CopilotTranscriptLoader.supportsAgent(agent)
-        ? CopilotTranscriptLoader(runner)
+        ? CopilotTranscriptLoader(runner, platform: platform)
         : null;
   }
 

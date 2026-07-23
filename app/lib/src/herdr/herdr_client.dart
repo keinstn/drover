@@ -66,6 +66,10 @@ class HerdrClient {
   /// files. Herdr commands themselves remain encapsulated by this client.
   CommandRunner get runner => _runner;
 
+  /// Resolved host platform, for callers assembling raw (non-herdr) host
+  /// commands — the same escape hatch as [runner].
+  Future<HostPlatform> get hostPlatform => _resolvePlatform();
+
   /// Resolves the host platform, surfacing a detection failure as a
   /// transport [HerdrException] so the existing error-screen localization
   /// path handles it like any transport failure.

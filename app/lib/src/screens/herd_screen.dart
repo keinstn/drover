@@ -116,7 +116,10 @@ class _HerdScreenState extends State<HerdScreen> {
   NativeTranscriptHistory _nativeHistoryFor(String paneId) =>
       _nativeHistoryCache.putIfAbsent(
         paneId,
-        () => NativeTranscriptHistory(widget.client.runner),
+        () => NativeTranscriptHistory(
+          widget.client.runner,
+          platform: widget.client.hostPlatform,
+        ),
       );
 
   Future<void> _load() async {

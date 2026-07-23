@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:drover/src/agents/codex/codex_transcript.dart';
 import 'package:drover/src/herdr/command_runner.dart';
+import 'package:drover/src/herdr/host_platform.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/transcript/native_transcript.dart';
@@ -705,6 +706,30 @@ void main() {
         expect(transcript?.messages.map((m) => m.text), ['One', 'Two']);
       },
     );
+
+    test('loads via the PowerShell locator and normalized /C: path on a '
+        'Windows host', () async {
+      final runner = MemoryRunner('${_userMsg('One')}\n');
+      runner.lookupOutput =
+          '/C:/Users/x/.codex/sessions/2026/01/13/'
+          'rollout-abc123-$_sessionId.jsonl';
+      final loader = CodexTranscriptLoader(
+        runner,
+        platform: const WindowsHostPlatform(),
+      );
+
+      final transcript = await loader.load(codexAgent());
+
+      expect(
+        runner.commands.single,
+        startsWith(
+          'powershell.exe -NoProfile -NonInteractive -EncodedCommand ',
+        ),
+      );
+      // A nonempty transcript proves the normalized `/C:/...` path passed
+      // the path validators and flowed into the SFTP stat/read path.
+      expect(transcript?.messages.map((m) => m.text), ['One']);
+    });
   });
 
   group('CodexTranscriptLoader bounded window', () {
