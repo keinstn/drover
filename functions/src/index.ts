@@ -116,6 +116,7 @@ interface NotificationDelivery {
   failureCount: number;
   removedTokenCount: number;
   retryableFailureCount: number;
+  failureCodes: string[];
 }
 
 async function deliverNotification(
@@ -134,6 +135,7 @@ async function deliverNotification(
   let failureCount = 0;
   let removedTokenCount = 0;
   let retryableFailureCount = 0;
+  const failureCodes = new Set<string>();
 
   for (let start = 0; start < registrations.length; start += 500) {
     const batch = registrations.slice(
@@ -161,6 +163,9 @@ async function deliverNotification(
     for (let index = 0; index < response.responses.length; index += 1) {
       const result = response.responses[index];
       const code = result.error?.code;
+      if (!result.success && code != null) {
+        failureCodes.add(code);
+      }
       if (
         !result.success &&
         code != null &&
@@ -189,6 +194,7 @@ async function deliverNotification(
     failureCount,
     removedTokenCount,
     retryableFailureCount,
+    failureCodes: Array.from(failureCodes),
   };
 }
 
