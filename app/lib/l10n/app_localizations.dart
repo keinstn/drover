@@ -488,6 +488,12 @@ abstract class AppLocalizations {
   /// **'Send Esc key'**
   String get agentSendEscape;
 
+  /// No description provided for @agentSendEnter.
+  ///
+  /// In en, this message translates to:
+  /// **'Send Enter key'**
+  String get agentSendEnter;
+
   /// No description provided for @agentNativeHistory.
   ///
   /// In en, this message translates to:

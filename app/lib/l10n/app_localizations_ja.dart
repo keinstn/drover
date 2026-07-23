@@ -213,6 +213,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get agentSendEscape => 'Esc キーを送信';
 
   @override
+  String get agentSendEnter => 'Enter キーを送信';
+
+  @override
   String get agentNativeHistory => '会話履歴';
 
   @override

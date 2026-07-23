@@ -2103,6 +2103,12 @@ class _Composer extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                 ],
+                _EnterButton(
+                  sending: sending,
+                  onPressed: () =>
+                      onAction(() => client.sendKeys(paneId, 'enter')),
+                ),
+                const SizedBox(width: 8),
                 _EscapeButton(
                   sending: sending,
                   onPressed: () =>
@@ -2302,6 +2308,41 @@ class _ModeButton extends StatelessWidget {
               Text(_modeLabel(mode, l10n)),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// An always-available way to send a raw Enter key to the agent, without
+/// typing anything in the composer. Useful for executing a prompt the agent
+/// has already staged in the pane's own input line (e.g. a suggested
+/// command), which a normal composer send can't reach. Disabled only while a
+/// send is in flight ([sending]).
+class _EnterButton extends StatelessWidget {
+  const _EnterButton({required this.sending, required this.onPressed});
+
+  final bool sending;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Tooltip(
+        message: l10n.agentSendEnter,
+        child: OutlinedButton(
+          key: const ValueKey('send_enter_button'),
+          onPressed: sending ? null : onPressed,
+          style: OutlinedButton.styleFrom(
+            shape: const CircleBorder(),
+            padding: EdgeInsets.zero,
+            foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+            side: BorderSide(color: Theme.of(context).colorScheme.outline),
+          ),
+          child: const Icon(Icons.keyboard_return, size: 18),
         ),
       ),
     );

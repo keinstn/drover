@@ -1871,6 +1871,46 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('sends Enter from the always-available enter button when idle', (
+    tester,
+  ) async {
+    final runner = StubCommandRunner(blockedPromptResponse);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // The dedicated enter button is present regardless of agent status and
+    // sends a raw Enter, letting the user execute a prompt already staged in
+    // the pane's own input line.
+    expect(find.byKey(const ValueKey('send_enter_button')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('send_enter_button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      runner.commands.any(
+        (c) => c.contains('send-keys') && c.contains("'enter'"),
+      ),
+      isTrue,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('keeps send (not stop) when a working agent has a staged image', (
     tester,
   ) async {

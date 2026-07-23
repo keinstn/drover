@@ -224,6 +224,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentSendEscape => 'Send Esc key';
 
   @override
+  String get agentSendEnter => 'Send Enter key';
+
+  @override
   String get agentNativeHistory => 'Conversation history';
 
   @override
