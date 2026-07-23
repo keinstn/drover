@@ -13,6 +13,19 @@ void showTopToast(BuildContext context, String message) {
   _managerFor(Overlay.of(context)).show(message);
 }
 
+/// Like [showTopToast] but driven by an [OverlayState] directly instead of
+/// resolving one from a [BuildContext].
+///
+/// App-level callers (the global notification callbacks in `main.dart`) only
+/// hold the root navigator key. Its `currentContext` is the `Navigator`
+/// widget's own context, and a `Navigator`'s [Overlay] is a *descendant* of
+/// it — so `Overlay.of(navigatorContext)` finds no overlay ancestor and
+/// throws "No Overlay widget found". Those callers pass
+/// `navigatorKey.currentState!.overlay` here instead.
+void showTopToastOnOverlay(OverlayState overlay, String message) {
+  _managerFor(overlay).show(message);
+}
+
 final Expando<_ToastManager> _managers = Expando('topToastManager');
 
 _ToastManager _managerFor(OverlayState overlay) =>

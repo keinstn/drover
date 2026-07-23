@@ -187,10 +187,11 @@ class _DroverAppState extends State<DroverApp> {
 
   void _showNotificationRegistrationFailure() {
     if (!mounted) return;
+    final overlay = _navKey.currentState?.overlay;
     final context = _navKey.currentContext;
-    if (context == null) return;
-    showTopToast(
-      context,
+    if (overlay == null || context == null) return;
+    showTopToastOnOverlay(
+      overlay,
       AppLocalizations.of(context)!.notificationRegistrationFailed,
     );
   }
@@ -251,10 +252,11 @@ class _DroverAppState extends State<DroverApp> {
 
   void _showNotificationTargetUnavailable() {
     if (!mounted) return;
+    final overlay = _navKey.currentState?.overlay;
     final context = _navKey.currentContext;
-    if (context == null) return;
-    showTopToast(
-      context,
+    if (overlay == null || context == null) return;
+    showTopToastOnOverlay(
+      overlay,
       AppLocalizations.of(context)!.notificationTargetUnavailable,
     );
   }
