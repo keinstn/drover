@@ -75,6 +75,7 @@
   "agentStopDictation": "Stop dictation",
   "agentDictateMessage": "Dictate message",
   "agentSendEscape": "Send Esc key",
+  "agentSendEnter": "Send Enter key",
   "agentNativeHistory": "Conversation history",
   "agentLiveTerminal": "Live terminal",
   "agentThinking": "Thinking…",
