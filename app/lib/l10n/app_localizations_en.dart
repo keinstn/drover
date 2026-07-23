@@ -123,15 +123,28 @@ class AppLocalizationsEn extends AppLocalizations {
       'This host is now paired for blocked-agent push notifications.';
 
   @override
-  String hostPairAutoFailedStatus(String error) {
-    return 'Automatic pairing failed ($error). Complete pairing manually below.';
-  }
-
-  @override
   String get commonClose => 'Close';
 
   @override
   String get commonCopy => 'Copy';
+
+  @override
+  String get errorHostKeyMismatch =>
+      'The host\'s SSH key doesn\'t match the one trusted on first connection. If you didn\'t rebuild or replace the server, the connection may be intercepted — don\'t continue.';
+
+  @override
+  String get errorSshAuth =>
+      'Couldn\'t sign in to the host. Check the username, private key, and passphrase.';
+
+  @override
+  String get errorHostConnection =>
+      'Couldn\'t reach the host. Check that it\'s online and the address and port are correct.';
+
+  @override
+  String get errorGeneric => 'Something went wrong.';
+
+  @override
+  String get errorDetailsLabel => 'Details';
 
   @override
   String get commonRetry => 'Retry';
@@ -214,16 +227,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get agentHistoryBeginning =>
       'Beginning of retained terminal history reached';
-
-  @override
-  String agentNativeHistoryError(String error) {
-    return 'Native history unavailable: $error';
-  }
-
-  @override
-  String agentLoadError(String error) {
-    return 'Couldn\'t load agent: $error';
-  }
 
   @override
   String get agentAskUserSend => 'Send';

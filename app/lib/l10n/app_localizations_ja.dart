@@ -114,15 +114,27 @@ class AppLocalizationsJa extends AppLocalizations {
       'この host はブロック中エージェントのプッシュ通知にペアリングされました。';
 
   @override
-  String hostPairAutoFailedStatus(String error) {
-    return '自動ペアリングに失敗しました（$error）。以下の手順で手動ペアリングを完了してください。';
-  }
-
-  @override
   String get commonClose => '閉じる';
 
   @override
   String get commonCopy => 'コピー';
+
+  @override
+  String get errorHostKeyMismatch =>
+      'ホストの SSH 鍵が初回接続時に信頼したものと一致しません。サーバーを作り直した・交換した覚えがなければ、通信が傍受されている可能性があります。続行しないでください。';
+
+  @override
+  String get errorSshAuth => 'ホストにサインインできませんでした。ユーザー名・秘密鍵・パスフレーズを確認してください。';
+
+  @override
+  String get errorHostConnection =>
+      'ホストに接続できませんでした。オンラインであること、アドレスとポートが正しいことを確認してください。';
+
+  @override
+  String get errorGeneric => '問題が発生しました。';
+
+  @override
+  String get errorDetailsLabel => '詳細';
 
   @override
   String get commonRetry => '再試行';
@@ -204,16 +216,6 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get agentHistoryBeginning => '保持されているターミナル履歴の先頭に到達しました';
-
-  @override
-  String agentNativeHistoryError(String error) {
-    return 'ネイティブ履歴を利用できません: $error';
-  }
-
-  @override
-  String agentLoadError(String error) {
-    return 'エージェントを読み込めませんでした: $error';
-  }
 
   @override
   String get agentAskUserSend => '送信';

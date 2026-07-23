@@ -38,14 +38,14 @@
   "hostPairAutoDetectedConfirm": "Set up",
   "hostPairAutoPairedTitle": "Notifications paired",
   "hostPairAutoPairedBody": "This host is now paired for blocked-agent push notifications.",
-  "hostPairAutoFailedStatus": "Automatic pairing failed ({error}). Complete pairing manually below.",
-  "@hostPairAutoFailedStatus": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
   "commonClose": "Close",
   "commonCopy": "Copy",
+
+  "errorHostKeyMismatch": "The host's SSH key doesn't match the one trusted on first connection. If you didn't rebuild or replace the server, the connection may be intercepted — don't continue.",
+  "errorSshAuth": "Couldn't sign in to the host. Check the username, private key, and passphrase.",
+  "errorHostConnection": "Couldn't reach the host. Check that it's online and the address and port are correct.",
+  "errorGeneric": "Something went wrong.",
+  "errorDetailsLabel": "Details",
 
   "commonRetry": "Retry",
   "commonStop": "Stop",
@@ -77,18 +77,6 @@
   "agentLiveTerminal": "Live terminal",
   "agentThinking": "Thinking…",
   "agentHistoryBeginning": "Beginning of retained terminal history reached",
-  "agentNativeHistoryError": "Native history unavailable: {error}",
-  "@agentNativeHistoryError": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
-  "agentLoadError": "Couldn't load agent: {error}",
-  "@agentLoadError": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
 
   "agentAskUserSend": "Send",
   "agentAskUserClose": "Close",

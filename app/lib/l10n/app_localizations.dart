@@ -296,12 +296,6 @@ abstract class AppLocalizations {
   /// **'This host is now paired for blocked-agent push notifications.'**
   String get hostPairAutoPairedBody;
 
-  /// No description provided for @hostPairAutoFailedStatus.
-  ///
-  /// In en, this message translates to:
-  /// **'Automatic pairing failed ({error}). Complete pairing manually below.'**
-  String hostPairAutoFailedStatus(String error);
-
   /// No description provided for @commonClose.
   ///
   /// In en, this message translates to:
@@ -313,6 +307,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Copy'**
   String get commonCopy;
+
+  /// No description provided for @errorHostKeyMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'The host\'s SSH key doesn\'t match the one trusted on first connection. If you didn\'t rebuild or replace the server, the connection may be intercepted — don\'t continue.'**
+  String get errorHostKeyMismatch;
+
+  /// No description provided for @errorSshAuth.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t sign in to the host. Check the username, private key, and passphrase.'**
+  String get errorSshAuth;
+
+  /// No description provided for @errorHostConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t reach the host. Check that it\'s online and the address and port are correct.'**
+  String get errorHostConnection;
+
+  /// No description provided for @errorGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong.'**
+  String get errorGeneric;
+
+  /// No description provided for @errorDetailsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Details'**
+  String get errorDetailsLabel;
 
   /// No description provided for @commonRetry.
   ///
@@ -475,18 +499,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Beginning of retained terminal history reached'**
   String get agentHistoryBeginning;
-
-  /// No description provided for @agentNativeHistoryError.
-  ///
-  /// In en, this message translates to:
-  /// **'Native history unavailable: {error}'**
-  String agentNativeHistoryError(String error);
-
-  /// No description provided for @agentLoadError.
-  ///
-  /// In en, this message translates to:
-  /// **'Couldn\'t load agent: {error}'**
-  String agentLoadError(String error);
 
   /// No description provided for @agentAskUserSend.
   ///

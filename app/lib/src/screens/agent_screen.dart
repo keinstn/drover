@@ -23,6 +23,7 @@ import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
 import '../transcript/native_transcript.dart';
 import '../widgets/agent_avatar.dart';
+import '../widgets/error_message_view.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/text_context_menu.dart';
 import '../widgets/top_toast.dart';
@@ -156,14 +157,14 @@ class _AgentScreenState extends State<AgentScreen> {
   bool _workspaceLabelLoading = false;
   NativeTranscript? _nativeHistory;
   String? _nativeHistorySessionIdentity;
-  String? _nativeHistoryError;
+  Object? _nativeHistoryError;
   bool _nativeHistoryLoading = false;
-  String? _loadError;
+  Object? _loadError;
   bool _paneEndReached = false;
   bool _dictationStarting = false;
   bool _dictating = false;
   String? _workspaceLabel;
-  String? _workspaceLabelError;
+  Object? _workspaceLabelError;
   final List<PickedImage> _pendingImages = [];
   Timer? _timer;
   int _lines = _tailLines;
@@ -321,7 +322,7 @@ class _AgentScreenState extends State<AgentScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _workspaceLabelError = e.toString());
+      setState(() => _workspaceLabelError = e);
     } finally {
       _workspaceLabelLoading = false;
     }
@@ -382,7 +383,7 @@ class _AgentScreenState extends State<AgentScreen> {
       // the failure so it isn't silently swallowed; the next tick, or the
       // banner's retry action, will try again.
       if (!mounted) return;
-      setState(() => _loadError = e.toString());
+      setState(() => _loadError = e);
     } finally {
       _loading = false;
     }
@@ -411,11 +412,11 @@ class _AgentScreenState extends State<AgentScreen> {
       final nativeHistorySessionChanged =
           nativeHistorySessionIdentity != _nativeHistorySessionIdentity;
       NativeTranscript? nativeHistory;
-      String? nativeHistoryError;
+      Object? nativeHistoryError;
       try {
         nativeHistory = await _nativeTranscriptHistory.load(agent);
       } catch (e) {
-        nativeHistoryError = e.toString();
+        nativeHistoryError = e;
       }
       if (!mounted) return;
       setState(() {
@@ -509,13 +510,11 @@ class _AgentScreenState extends State<AgentScreen> {
       _structuredPromptSheetOpen = false;
     } catch (error) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         final message = error is StructuredPromptSubmitError
             ? error.message
-            : error.toString();
-        showTopToast(
-          context,
-          AppLocalizations.of(context)!.agentAskUserSubmitError(message),
-        );
+            : errorHeadline(l10n, error);
+        showTopToast(context, l10n.agentAskUserSubmitError(message));
       }
       rethrow;
     }
@@ -582,7 +581,7 @@ class _AgentScreenState extends State<AgentScreen> {
       _restoreScrollAfterLayout(anchorFromBottom: anchorFromBottom);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _nativeHistoryError = e.toString());
+      setState(() => _nativeHistoryError = e);
     } finally {
       _nativeHistoryLoading = false;
     }
@@ -597,7 +596,7 @@ class _AgentScreenState extends State<AgentScreen> {
       return true;
     } catch (e) {
       if (mounted) {
-        showTopToast(context, e.toString());
+        showTopToast(context, errorHeadline(AppLocalizations.of(context)!, e));
       }
       return false;
     } finally {
@@ -653,7 +652,9 @@ class _AgentScreenState extends State<AgentScreen> {
         if (mounted) setState(() => _pendingImages.addAll(picked));
       }
     } catch (e) {
-      if (mounted) showTopToast(context, e.toString());
+      if (mounted) {
+        showTopToast(context, errorHeadline(AppLocalizations.of(context)!, e));
+      }
     }
   }
 
@@ -665,7 +666,12 @@ class _AgentScreenState extends State<AgentScreen> {
       try {
         await _speechInput.stop();
       } catch (error) {
-        if (mounted) showTopToast(context, error.toString());
+        if (mounted) {
+          showTopToast(
+            context,
+            errorHeadline(AppLocalizations.of(context)!, error),
+          );
+        }
       }
       return;
     }
@@ -808,7 +814,7 @@ class _AgentScreenState extends State<AgentScreen> {
             ),
             if (_workspaceLabelError != null)
               MaterialBanner(
-                content: Text(_workspaceLabelError!),
+                content: ErrorMessageView(_workspaceLabelError!),
                 actions: [
                   TextButton(
                     onPressed: _retryWorkspaceLabel,
@@ -818,16 +824,14 @@ class _AgentScreenState extends State<AgentScreen> {
               ),
             if (_loadError != null)
               MaterialBanner(
-                content: Text(l10n.agentLoadError(_loadError!)),
+                content: ErrorMessageView(_loadError!),
                 actions: [
                   TextButton(onPressed: _load, child: Text(l10n.commonRetry)),
                 ],
               ),
             if (_nativeHistoryError != null)
               MaterialBanner(
-                content: Text(
-                  l10n.agentNativeHistoryError(_nativeHistoryError!),
-                ),
+                content: ErrorMessageView(_nativeHistoryError!),
                 actions: [
                   TextButton(onPressed: _load, child: Text(l10n.commonRetry)),
                 ],

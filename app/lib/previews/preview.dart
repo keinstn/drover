@@ -24,6 +24,7 @@ import '../src/app_theme.dart';
 import '../src/dev/stub_herdr.dart';
 import '../src/herdr/command_runner.dart';
 import '../src/herdr/herdr_client.dart';
+import '../src/infra/ssh_command_runner.dart';
 import '../src/models/host_config.dart';
 import '../src/models/plugin_info.dart';
 import '../src/notifications/host_pairing.dart';
@@ -31,6 +32,7 @@ import '../src/screens/agent_screen.dart';
 import '../src/screens/herd_screen.dart';
 import '../src/screens/host_setup_screen.dart';
 import '../src/screens/launch_agent_sheet.dart';
+import '../src/widgets/error_message_view.dart';
 
 const _scenario = String.fromEnvironment('SCENARIO', defaultValue: 'idle');
 
@@ -41,6 +43,7 @@ typedef PreviewBuilder = Widget Function(BuildContext context, String scenario);
 const _scenariosByPreview = <String, List<String>>{
   'agent': ['idle', 'blocked', 'native', 'askuser'],
   'host-setup': ['idle', 'plugin-detected', 'auto-pair-failure'],
+  'errors': ['en', 'ja'],
 };
 
 HerdrClient _client(
@@ -233,7 +236,60 @@ final _previews = <String, PreviewBuilder>{
       }
     },
   ),
+  // Every ErrorMessageView kind side by side, so the localized headlines and
+  // the collapsible details can be eyeballed. SCENARIO=ja renders the whole
+  // list under the Japanese locale via a Localizations override.
+  'errors': (context, scenario) => Localizations.override(
+    context: context,
+    locale: scenario == 'ja' ? const Locale('ja') : const Locale('en'),
+    child: Builder(
+      builder: (context) => Scaffold(
+        appBar: AppBar(title: const Text('Error states')),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            for (final (label, error) in _errorSamples) ...[
+              Text(label, style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 4),
+              ErrorMessageView(error),
+              const Divider(height: 32),
+            ],
+          ],
+        ),
+      ),
+    ),
+  ),
 };
+
+/// One representative error per [errorHeadline] branch, in the two forms the
+/// UI actually sees: bare (direct SFTP calls) and wrapped in a HerdrException
+/// (herdr commands, which carry the transport error as `cause`).
+final _errorSamples = <(String, Object)>[
+  (
+    'host-key mismatch (wrapped)',
+    HerdrException(
+      'transport',
+      'wrapped',
+      cause: SshHostKeyMismatchException(
+        expected: 'SHA256:trusted-key-from-first-connect',
+        observed: 'SHA256:different-key-presented-now',
+      ),
+    ),
+  ),
+  ('ssh auth (bare)', SshAuthException('Permission denied (publickey).')),
+  (
+    'host connection (wrapped socket error)',
+    HerdrException(
+      'transport',
+      'sock',
+      cause: Exception('SSHSocketError: Connection refused'),
+    ),
+  ),
+  (
+    'unknown (herdr command failed, no cause)',
+    const HerdrException('command_failed', "workspace 'ws-9' not found"),
+  ),
+];
 
 void main() {
   if (kDebugMode) {

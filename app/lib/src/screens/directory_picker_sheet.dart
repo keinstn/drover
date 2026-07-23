@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../herdr/herdr_client.dart';
 import '../models/remote_dir_entry.dart';
+import '../widgets/error_message_view.dart';
 
 /// Full-page picker for choosing a remote directory (e.g. as an agent's
 /// working directory). Starts browsing at [initialPath] if it's a non-empty
@@ -111,12 +112,7 @@ class _DirectoryPickerSheetState extends State<DirectoryPickerSheet> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          _initError.toString(),
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                        ),
+                        ErrorMessageView(_initError!),
                         TextButton(
                           onPressed: _init,
                           child: Text(l10n.commonRetry),
@@ -181,10 +177,7 @@ class _DirectoryPickerSheetState extends State<DirectoryPickerSheet> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  snapshot.error.toString(),
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
+                ErrorMessageView(snapshot.error!),
                 TextButton(
                   onPressed: () => setState(_load),
                   child: Text(l10n.commonRetry),

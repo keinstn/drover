@@ -5,6 +5,7 @@ import '../herdr/herdr_client.dart';
 import '../models/agent_preset.dart';
 import '../models/workspace_info.dart';
 import '../utils/path.dart';
+import '../widgets/error_message_view.dart';
 import '../widgets/text_context_menu.dart';
 import 'directory_picker_sheet.dart';
 
@@ -39,7 +40,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   _WorkspaceMode _mode = _WorkspaceMode.newWorkspace;
   String? _selectedWorkspaceId;
   bool _busy = false;
-  String? _launchError;
+  Object? _launchError;
 
   @override
   void initState() {
@@ -174,7 +175,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _launchError = e.toString();
+        _launchError = e;
       });
     }
   }
@@ -222,7 +223,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                   _buildWorkspaceSection(),
                   if (_launchError != null) ...[
                     const SizedBox(height: 12),
-                    Text(_launchError!, style: TextStyle(color: scheme.error)),
+                    ErrorMessageView(_launchError!),
                   ],
                   const SizedBox(height: 16),
                   SizedBox(
@@ -277,10 +278,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                snapshot.error.toString(),
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
+              ErrorMessageView(snapshot.error!),
               TextButton(
                 onPressed: () => setState(_detectAgents),
                 child: Text(l10n.commonRetry),
@@ -473,10 +471,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                snapshot.error.toString(),
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
+              ErrorMessageView(snapshot.error!),
               Row(
                 children: [
                   TextButton(

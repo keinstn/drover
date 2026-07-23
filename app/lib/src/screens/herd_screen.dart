@@ -13,6 +13,7 @@ import '../speech/speech_input.dart';
 import '../transcript/activity_snippet.dart';
 import '../utils/path.dart';
 import '../widgets/agent_avatar.dart';
+import '../widgets/error_message_view.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/text_context_menu.dart';
 import '../widgets/top_toast.dart';
@@ -58,8 +59,8 @@ class HerdScreen extends StatefulWidget {
 
 class _HerdScreenState extends State<HerdScreen> {
   List<AgentInfo> _agents = [];
-  String? _error;
-  String? _workspaceLabelsError;
+  Object? _error;
+  Object? _workspaceLabelsError;
   bool _loading = false;
   bool _workspaceLabelsLoading = false;
   bool _workspaceLabelsFailed = false;
@@ -142,7 +143,7 @@ class _HerdScreenState extends State<HerdScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString());
+      setState(() => _error = e);
     } finally {
       _loading = false;
     }
@@ -168,7 +169,7 @@ class _HerdScreenState extends State<HerdScreen> {
       if (!mounted) return;
       setState(() {
         _workspaceLabelsFailed = true;
-        _workspaceLabelsError = e.toString();
+        _workspaceLabelsError = e;
       });
     } finally {
       _workspaceLabelsLoading = false;
@@ -319,7 +320,7 @@ class _HerdScreenState extends State<HerdScreen> {
       await _load();
     } catch (e) {
       if (mounted) {
-        showTopToast(context, e.toString());
+        showTopToast(context, errorHeadline(AppLocalizations.of(context)!, e));
       }
     } finally {
       if (mounted) {
@@ -384,7 +385,7 @@ class _HerdScreenState extends State<HerdScreen> {
       setState(() => _workspaceLabels[workspaceId] = next);
       _loadWorkspaceLabels();
     } catch (e) {
-      if (mounted) showTopToast(context, e.toString());
+      if (mounted) showTopToast(context, errorHeadline(l10n, e));
     }
   }
 
@@ -402,7 +403,7 @@ class _HerdScreenState extends State<HerdScreen> {
       await widget.client.renameAgent(agent.paneId, next);
       await _load();
     } catch (e) {
-      if (mounted) showTopToast(context, e.toString());
+      if (mounted) showTopToast(context, errorHeadline(l10n, e));
     }
   }
 
@@ -458,14 +459,14 @@ class _HerdScreenState extends State<HerdScreen> {
         children: [
           if (_error != null)
             MaterialBanner(
-              content: Text(_error!),
+              content: ErrorMessageView(_error!),
               actions: [
                 TextButton(onPressed: _load, child: Text(l10n.commonRetry)),
               ],
             ),
           if (_workspaceLabelsError != null)
             MaterialBanner(
-              content: Text(_workspaceLabelsError!),
+              content: ErrorMessageView(_workspaceLabelsError!),
               actions: [
                 TextButton(
                   onPressed: _retryWorkspaceLabels,

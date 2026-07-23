@@ -1408,7 +1408,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('working…'), findsOneWidget);
-    expect(find.textContaining('Native history unavailable'), findsOneWidget);
+    // The native-history banner now renders via ErrorMessageView, whose
+    // headline for an unknown-kind error is the raw technical detail.
+    expect(find.textContaining('transcript access denied'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -1515,7 +1517,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.textContaining("Couldn't load agent"), findsOneWidget);
+      // The load-error banner now renders via ErrorMessageView, whose headline
+      // for an unknown-kind HerdrException is the raw technical detail.
+      expect(find.textContaining('missing agents field'), findsOneWidget);
       expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('transcript_initial_loading')),
@@ -1526,7 +1530,7 @@ void main() {
       await tester.tap(find.widgetWithText(TextButton, 'Retry'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining("Couldn't load agent"), findsNothing);
+      expect(find.textContaining('missing agents field'), findsNothing);
       expect(find.text('working…'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
@@ -1564,7 +1568,9 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('working…'), findsOneWidget);
-    expect(find.textContaining('Native history unavailable'), findsOneWidget);
+    // The native-history banner now renders via ErrorMessageView, whose
+    // headline for an unknown-kind error is the raw technical detail.
+    expect(find.textContaining('transcript access denied'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

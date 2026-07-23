@@ -352,7 +352,12 @@ void main() {
       await tester.tap(find.widgetWithText(TextButton, 'Close'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Automatic pairing failed'), findsOneWidget);
+      // The auto-pair failure now surfaces via ErrorMessageView, whose headline
+      // for an unknown-kind error is the raw technical detail.
+      expect(
+        find.textContaining('node was not found on the host PATH.'),
+        findsOneWidget,
+      );
 
       await tester.pumpWidget(const SizedBox());
     },

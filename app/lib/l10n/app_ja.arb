@@ -33,9 +33,14 @@
   "hostPairAutoDetectedConfirm": "設定する",
   "hostPairAutoPairedTitle": "通知のペアリング完了",
   "hostPairAutoPairedBody": "この host はブロック中エージェントのプッシュ通知にペアリングされました。",
-  "hostPairAutoFailedStatus": "自動ペアリングに失敗しました（{error}）。以下の手順で手動ペアリングを完了してください。",
   "commonClose": "閉じる",
   "commonCopy": "コピー",
+
+  "errorHostKeyMismatch": "ホストの SSH 鍵が初回接続時に信頼したものと一致しません。サーバーを作り直した・交換した覚えがなければ、通信が傍受されている可能性があります。続行しないでください。",
+  "errorSshAuth": "ホストにサインインできませんでした。ユーザー名・秘密鍵・パスフレーズを確認してください。",
+  "errorHostConnection": "ホストに接続できませんでした。オンラインであること、アドレスとポートが正しいことを確認してください。",
+  "errorGeneric": "問題が発生しました。",
+  "errorDetailsLabel": "詳細",
 
   "commonRetry": "再試行",
   "commonStop": "停止",
@@ -67,8 +72,6 @@
   "agentLiveTerminal": "ライブターミナル",
   "agentThinking": "思考中…",
   "agentHistoryBeginning": "保持されているターミナル履歴の先頭に到達しました",
-  "agentNativeHistoryError": "ネイティブ履歴を利用できません: {error}",
-  "agentLoadError": "エージェントを読み込めませんでした: {error}",
 
   "agentAskUserSend": "送信",
   "agentAskUserClose": "閉じる",
