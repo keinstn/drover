@@ -32,4 +32,29 @@ void main() {
       },
     );
   });
+
+  group('decideHostKey', () {
+    test('learns when nothing is pinned', () {
+      expect(decideHostKey(null, 'SHA256:abc'), HostKeyDecision.learn);
+    });
+
+    test('accepts an exact match', () {
+      expect(decideHostKey('SHA256:abc', 'SHA256:abc'), HostKeyDecision.accept);
+    });
+
+    test('rejects a different fingerprint', () {
+      expect(decideHostKey('SHA256:abc', 'SHA256:xyz'), HostKeyDecision.reject);
+    });
+  });
+
+  group('SshHostKeyMismatchException', () {
+    test('toString names both the expected and observed fingerprints', () {
+      final ex = SshHostKeyMismatchException(
+        expected: 'SHA256:expected',
+        observed: 'SHA256:observed',
+      );
+      expect(ex.toString(), contains('SHA256:expected'));
+      expect(ex.toString(), contains('SHA256:observed'));
+    });
+  });
 }

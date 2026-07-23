@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -35,6 +36,30 @@ class SshAuthException implements Exception {
   String toString() => message;
 }
 
+enum HostKeyDecision { accept, learn, reject }
+
+/// Decides how to treat an observed host-key [observed] fingerprint given the
+/// [pinned] one. Null [pinned] = trust-on-first-use (learn it); otherwise
+/// accept only an exact match and reject anything else.
+HostKeyDecision decideHostKey(String? pinned, String observed) {
+  if (pinned == null) return HostKeyDecision.learn;
+  return pinned == observed ? HostKeyDecision.accept : HostKeyDecision.reject;
+}
+
+/// Thrown when a reconnect presents a different host key than the one trusted
+/// on first connection — the trust-on-first-use pin no longer matches, which
+/// may signal a man-in-the-middle. Its [toString] names both fingerprints.
+class SshHostKeyMismatchException implements Exception {
+  SshHostKeyMismatchException({required this.expected, required this.observed});
+  final String expected;
+  final String observed;
+  @override
+  String toString() =>
+      'Host key verification failed: the server presented a different key '
+      'than the one trusted on first connection.\n'
+      'Expected: $expected\nReceived: $observed';
+}
+
 /// [CommandRunner] backed by an SSH connection to a [HostConfig] host.
 /// Connects lazily on first [run] and caches the client; a stale cached
 /// client (closed since it was last used) is reconnected before the command
@@ -48,16 +73,44 @@ class SshAuthException implements Exception {
 /// [_mutex] so only one channel is ever open at a time on the shared
 /// connection.
 class SshCommandRunner implements CommandRunner {
-  SshCommandRunner(this._config);
+  SshCommandRunner(this._config, {this.onHostKeyLearned});
 
   final HostConfig _config;
+
+  /// Invoked after a successful connect that learned a host key for the first
+  /// time (no fingerprint was pinned), so the caller can persist it.
+  final Future<void> Function(String fingerprint)? onHostKeyLearned;
+
   SSHClient? _client;
   Future<SSHClient>? _connecting;
   final _authNotices = <String>[];
   final _mutex = Mutex();
 
+  late String? _pinnedFingerprint = _config.hostKeyFingerprint;
+  String? _learnedThisConnect;
+  SshHostKeyMismatchException? _mismatch;
+
+  FutureOr<bool> _verifyHostKey(String type, Uint8List fingerprint) {
+    final observed = utf8.decode(fingerprint);
+    switch (decideHostKey(_pinnedFingerprint, observed)) {
+      case HostKeyDecision.accept:
+        return true;
+      case HostKeyDecision.learn:
+        _learnedThisConnect = observed;
+        return true;
+      case HostKeyDecision.reject:
+        _mismatch = SshHostKeyMismatchException(
+          expected: _pinnedFingerprint!,
+          observed: observed,
+        );
+        return false;
+    }
+  }
+
   Future<SSHClient> _connect() async {
     _authNotices.clear();
+    _learnedThisConnect = null;
+    _mismatch = null;
     final socket = await SSHSocket.connect(
       _config.host,
       _config.port,
@@ -67,6 +120,7 @@ class SshCommandRunner implements CommandRunner {
       socket,
       username: _config.user,
       identities: SSHKeyPair.fromPem(_config.privateKeyPem, _config.passphrase),
+      onVerifyHostKey: _verifyHostKey,
       onUserauthBanner: _authNotices.add,
       onUserInfoRequest: (req) {
         _authNotices
@@ -78,7 +132,23 @@ class SshCommandRunner implements CommandRunner {
     try {
       await client.authenticated;
     } on SSHAuthError catch (e) {
+      if (_mismatch != null) {
+        client.close();
+        throw _mismatch!;
+      }
       throw SshAuthException(describeSshAuthFailure(e, _authNotices));
+    } catch (_) {
+      if (_mismatch != null) {
+        client.close();
+        throw _mismatch!;
+      }
+      rethrow;
+    }
+    final learned = _learnedThisConnect;
+    if (learned != null) {
+      _pinnedFingerprint = learned; // verify future reconnects on this runner
+      _learnedThisConnect = null;
+      await onHostKeyLearned?.call(learned);
     }
     return client;
   }

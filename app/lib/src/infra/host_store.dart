@@ -13,8 +13,24 @@ class HostStore {
 
   final FlutterSecureStorage _storage;
 
+  // The SSH private key + passphrase live here. Pin them to this device (no
+  // migration to a new device via encrypted backup) while still allowing
+  // background access after first unlock (needed for notification-triggered
+  // reconnects).
+  static const _iosOptions = IOSOptions(
+    accessibility: KeychainAccessibility.first_unlock_this_device,
+  );
+  static const _macOptions = MacOsOptions(
+    accessibility: KeychainAccessibility.first_unlock_this_device,
+    usesDataProtectionKeychain: false,
+  );
+
   Future<HostConfig?> load() async {
-    final raw = await _storage.read(key: _hostConfigKey);
+    final raw = await _storage.read(
+      key: _hostConfigKey,
+      iOptions: _iosOptions,
+      mOptions: _macOptions,
+    );
     if (raw == null) return null;
     return HostConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
   }
@@ -23,10 +39,16 @@ class HostStore {
     await _storage.write(
       key: _hostConfigKey,
       value: jsonEncode(config.toJson()),
+      iOptions: _iosOptions,
+      mOptions: _macOptions,
     );
   }
 
   Future<void> clear() async {
-    await _storage.delete(key: _hostConfigKey);
+    await _storage.delete(
+      key: _hostConfigKey,
+      iOptions: _iosOptions,
+      mOptions: _macOptions,
+    );
   }
 }

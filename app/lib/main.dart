@@ -6,7 +6,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -50,11 +49,7 @@ Future<void> main() async {
       await FirebaseAuth.instance.signInAnonymously();
     }
   }, context: 'firebase bootstrap');
-  final store = HostStore(
-    storage: const FlutterSecureStorage(
-      mOptions: MacOsOptions(usesDataProtectionKeychain: false),
-    ),
-  );
+  final store = HostStore();
   HostConfig? config;
   try {
     config = await store.load();
@@ -118,10 +113,22 @@ class _DroverAppState extends State<DroverApp> {
     }
     _config = widget.initialConfig;
     if (_config != null) {
-      _runner = SshCommandRunner(_config!);
+      _runner = SshCommandRunner(_config!, onHostKeyLearned: _pinHostKey);
       _client = HerdrClient(_runner!, herdrBin: _config!.herdrBin);
       _scheduleNotificationRegistration();
     }
+  }
+
+  Future<void> _pinHostKey(String fingerprint) async {
+    final cfg = _config;
+    if (cfg == null || cfg.hostKeyFingerprint != null) return;
+    final updated = cfg.withHostKeyFingerprint(fingerprint);
+    await runBestEffort(
+      () => widget.hostStore.save(updated),
+      context: 'pin host key',
+    );
+    if (!mounted) return;
+    setState(() => _config = updated);
   }
 
   @override
@@ -141,9 +148,17 @@ class _DroverAppState extends State<DroverApp> {
         context: 'revoke replaced host',
       );
     }
-    final config = _ensureHostId(replacedHost ? c.withHostId(null) : c);
+    // The setup form never carries a host-key fingerprint, so preserve the
+    // one already pinned when the host identity is unchanged (a benign edit
+    // like the herdr path). A replaced host is a different machine, so its
+    // stale pin must be dropped and re-learned on first connect.
+    final config = _ensureHostId(
+      replacedHost
+          ? c.withHostId(null)
+          : c.withHostKeyFingerprint(_config?.hostKeyFingerprint),
+    );
     await _runner?.dispose();
-    final runner = SshCommandRunner(config);
+    final runner = SshCommandRunner(config, onHostKeyLearned: _pinHostKey);
     final client = HerdrClient(runner, herdrBin: config.herdrBin);
     await widget.hostStore.save(config);
     if (!mounted) return;

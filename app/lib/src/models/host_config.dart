@@ -11,6 +11,7 @@ class HostConfig {
     this.passphrase,
     this.herdrBin = kDefaultHerdrBin,
     this.hostId,
+    this.hostKeyFingerprint,
   });
 
   factory HostConfig.fromJson(Map<String, dynamic> json) {
@@ -22,6 +23,7 @@ class HostConfig {
       passphrase: json['passphrase'] as String?,
       herdrBin: json['herdrBin'] as String? ?? kDefaultHerdrBin,
       hostId: json['hostId'] as String?,
+      hostKeyFingerprint: json['hostKeyFingerprint'] as String?,
     );
   }
 
@@ -32,6 +34,7 @@ class HostConfig {
   final String? passphrase;
   final String herdrBin;
   final String? hostId;
+  final String? hostKeyFingerprint;
 
   HostConfig withHostId(String? value) => HostConfig(
     host: host,
@@ -41,6 +44,18 @@ class HostConfig {
     passphrase: passphrase,
     herdrBin: herdrBin,
     hostId: value,
+    hostKeyFingerprint: hostKeyFingerprint,
+  );
+
+  HostConfig withHostKeyFingerprint(String? value) => HostConfig(
+    host: host,
+    port: port,
+    user: user,
+    privateKeyPem: privateKeyPem,
+    passphrase: passphrase,
+    herdrBin: herdrBin,
+    hostId: hostId,
+    hostKeyFingerprint: value,
   );
 
   Map<String, dynamic> toJson() => {
@@ -51,5 +66,6 @@ class HostConfig {
     'passphrase': passphrase,
     'herdrBin': herdrBin,
     'hostId': hostId,
+    'hostKeyFingerprint': hostKeyFingerprint,
   };
 }
