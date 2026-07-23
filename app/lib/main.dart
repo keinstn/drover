@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -11,9 +13,11 @@ import 'src/herdr/herdr_client.dart';
 import 'src/infra/host_store.dart';
 import 'src/infra/ssh_command_runner.dart';
 import 'src/models/host_config.dart';
+import 'src/notifications/notification_registration.dart';
 import 'src/screens/herd_screen.dart';
 import 'src/screens/host_setup_screen.dart';
 import 'src/speech/speech_input.dart';
+import 'src/widgets/top_toast.dart';
 
 Future<void> main() async {
   if (kDebugMode) {
@@ -45,11 +49,13 @@ class DroverApp extends StatefulWidget {
     required this.hostStore,
     this.initialConfig,
     this.speechInput,
+    this.notificationRegistration,
   });
 
   final HostStore hostStore;
   final HostConfig? initialConfig;
   final SpeechInput? speechInput;
+  final NotificationRegistration? notificationRegistration;
 
   @override
   State<DroverApp> createState() => _DroverAppState();
@@ -61,20 +67,30 @@ class _DroverAppState extends State<DroverApp> {
   SshCommandRunner? _runner;
   HerdrClient? _client;
   late final SpeechInput _speechInput;
+  late final NotificationRegistration _notificationRegistration;
+  StreamSubscription<Object>? _notificationFailures;
 
   @override
   void initState() {
     super.initState();
     _speechInput = widget.speechInput ?? SpeechInputController();
+    _notificationRegistration =
+        widget.notificationRegistration ?? NotificationRegistration();
+    _notificationFailures = _notificationRegistration.failures.listen(
+      (_) => _showNotificationRegistrationFailure(),
+    );
     _config = widget.initialConfig;
     if (_config != null) {
       _runner = SshCommandRunner(_config!);
       _client = HerdrClient(_runner!, herdrBin: _config!.herdrBin);
+      _scheduleNotificationRegistration();
     }
   }
 
   @override
   void dispose() {
+    _notificationFailures?.cancel();
+    _notificationRegistration.dispose();
     _runner?.dispose();
     super.dispose();
   }
@@ -90,7 +106,32 @@ class _DroverAppState extends State<DroverApp> {
       _runner = runner;
       _client = client;
     });
+    _scheduleNotificationRegistration();
     _navKey.currentState?.popUntil((r) => r.isFirst);
+  }
+
+  void _scheduleNotificationRegistration() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_registerNotifications());
+    });
+  }
+
+  Future<void> _registerNotifications() async {
+    try {
+      await _notificationRegistration.initialize();
+    } catch (_) {
+      _showNotificationRegistrationFailure();
+    }
+  }
+
+  void _showNotificationRegistrationFailure() {
+    if (!mounted) return;
+    final context = _navKey.currentContext;
+    if (context == null) return;
+    showTopToast(
+      context,
+      AppLocalizations.of(context)!.notificationRegistrationFailed,
+    );
   }
 
   Future<void> _resetConfig() async {

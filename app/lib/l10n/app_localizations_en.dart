@@ -75,6 +75,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get notificationRegistrationFailed =>
+      'Couldn\'t enable notifications. Try opening Drover again.';
+
+  @override
   String get commonRetry => 'Retry';
 
   @override

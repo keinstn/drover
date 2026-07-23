@@ -24,6 +24,7 @@
       "count": { "type": "int" }
     }
   },
+  "notificationRegistrationFailed": "Couldn't enable notifications. Try opening Drover again.",
 
   "commonRetry": "Retry",
   "commonStop": "Stop",

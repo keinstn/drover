@@ -68,6 +68,10 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String get notificationRegistrationFailed =>
+      '通知を有効にできませんでした。Drover を開き直して再試行してください。';
+
+  @override
   String get commonRetry => '再試行';
 
   @override

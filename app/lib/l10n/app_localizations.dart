@@ -212,6 +212,12 @@ abstract class AppLocalizations {
   /// **'OK — {count, plural, =1{1 agent} other{{count} agents}}'**
   String testConnectionOk(int count);
 
+  /// No description provided for @notificationRegistrationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t enable notifications. Try opening Drover again.'**
+  String get notificationRegistrationFailed;
+
   /// No description provided for @commonRetry.
   ///
   /// In en, this message translates to:
