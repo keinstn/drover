@@ -9,10 +9,11 @@ import '../models/workspace_info.dart';
 import 'command_runner.dart';
 
 class HerdrException implements Exception {
-  const HerdrException(this.code, this.message);
+  const HerdrException(this.code, this.message, {this.cause});
 
   final String code;
   final String message;
+  final Object? cause;
 
   @override
   String toString() => 'HerdrException($code): $message';
@@ -62,7 +63,7 @@ class HerdrClient {
     try {
       result = await _runner.run(command);
     } catch (e) {
-      throw HerdrException('transport', e.toString());
+      throw HerdrException('transport', e.toString(), cause: e);
     }
 
     if (result.exitCode != 0) {
@@ -185,7 +186,7 @@ class HerdrClient {
     try {
       result = await _runner.run(command);
     } catch (e) {
-      throw HerdrException('transport', e.toString());
+      throw HerdrException('transport', e.toString(), cause: e);
     }
     final found = result.stdout
         .split('\n')

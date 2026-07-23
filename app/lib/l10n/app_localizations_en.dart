@@ -134,6 +134,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commonCopy => 'Copy';
 
   @override
+  String get errorHostKeyMismatch =>
+      'The host\'s SSH key doesn\'t match the one trusted on first connection. If you didn\'t rebuild or replace the server, the connection may be intercepted — don\'t continue.';
+
+  @override
+  String get errorSshAuth =>
+      'Couldn\'t sign in to the host. Check the username, private key, and passphrase.';
+
+  @override
+  String get errorHostConnection =>
+      'Couldn\'t reach the host. Check that it\'s online and the address and port are correct.';
+
+  @override
+  String get errorGeneric => 'Something went wrong.';
+
+  @override
+  String get errorDetailsLabel => 'Details';
+
+  @override
   String get commonRetry => 'Retry';
 
   @override

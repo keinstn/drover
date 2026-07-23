@@ -125,6 +125,23 @@ class AppLocalizationsJa extends AppLocalizations {
   String get commonCopy => 'コピー';
 
   @override
+  String get errorHostKeyMismatch =>
+      'ホストの SSH 鍵が初回接続時に信頼したものと一致しません。サーバーを作り直した・交換した覚えがなければ、通信が傍受されている可能性があります。続行しないでください。';
+
+  @override
+  String get errorSshAuth => 'ホストにサインインできませんでした。ユーザー名・秘密鍵・パスフレーズを確認してください。';
+
+  @override
+  String get errorHostConnection =>
+      'ホストに接続できませんでした。オンラインであること、アドレスとポートが正しいことを確認してください。';
+
+  @override
+  String get errorGeneric => '問題が発生しました。';
+
+  @override
+  String get errorDetailsLabel => '詳細';
+
+  @override
   String get commonRetry => '再試行';
 
   @override

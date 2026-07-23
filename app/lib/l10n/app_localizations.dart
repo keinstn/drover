@@ -314,6 +314,36 @@ abstract class AppLocalizations {
   /// **'Copy'**
   String get commonCopy;
 
+  /// No description provided for @errorHostKeyMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'The host\'s SSH key doesn\'t match the one trusted on first connection. If you didn\'t rebuild or replace the server, the connection may be intercepted — don\'t continue.'**
+  String get errorHostKeyMismatch;
+
+  /// No description provided for @errorSshAuth.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t sign in to the host. Check the username, private key, and passphrase.'**
+  String get errorSshAuth;
+
+  /// No description provided for @errorHostConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t reach the host. Check that it\'s online and the address and port are correct.'**
+  String get errorHostConnection;
+
+  /// No description provided for @errorGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong.'**
+  String get errorGeneric;
+
+  /// No description provided for @errorDetailsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Details'**
+  String get errorDetailsLabel;
+
   /// No description provided for @commonRetry.
   ///
   /// In en, this message translates to:

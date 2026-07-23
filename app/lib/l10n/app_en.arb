@@ -47,6 +47,12 @@
   "commonClose": "Close",
   "commonCopy": "Copy",
 
+  "errorHostKeyMismatch": "The host's SSH key doesn't match the one trusted on first connection. If you didn't rebuild or replace the server, the connection may be intercepted — don't continue.",
+  "errorSshAuth": "Couldn't sign in to the host. Check the username, private key, and passphrase.",
+  "errorHostConnection": "Couldn't reach the host. Check that it's online and the address and port are correct.",
+  "errorGeneric": "Something went wrong.",
+  "errorDetailsLabel": "Details",
+
   "commonRetry": "Retry",
   "commonStop": "Stop",
   "commonLaunchAgent": "Launch agent",
