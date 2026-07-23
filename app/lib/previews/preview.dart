@@ -1,15 +1,20 @@
 // Single entrypoint for stubbed-backend UI previews (no SSH host needed) so
 // screens can be screenshotted/inspected on a simulator.
 //
-//   just preview            # a gallery listing every registered screen
+//   just preview            # a gallery listing every screen x scenario
 //   just preview launch     # boot one screen directly (marionette-friendly)
 //
-// Scenarios are orthogonal, via `--dart-define`:
+// Scenarios are orthogonal, via `--dart-define`, for direct single-screen
+// boot:
 //
 //   just preview agent --dart-define=SCENARIO=blocked
 //
-// To add a screen, register a `WidgetBuilder` in [_previews] below — no new
-// entrypoint file and no new justfile recipe.
+// The gallery lists every scenario registered in [_scenariosByPreview] as
+// its own tappable entry, so browsing them doesn't require relaunching.
+//
+// To add a screen, register a builder in [_previews] below — no new
+// entrypoint file and no new justfile recipe. If it varies by scenario, list
+// the scenario names in [_scenariosByPreview] too.
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
@@ -28,6 +33,15 @@ import '../src/screens/host_setup_screen.dart';
 import '../src/screens/launch_agent_sheet.dart';
 
 const _scenario = String.fromEnvironment('SCENARIO', defaultValue: 'idle');
+
+typedef PreviewBuilder = Widget Function(BuildContext context, String scenario);
+
+/// Scenario names each screen responds to. Screens omitted here don't vary
+/// by scenario, so the gallery shows a single entry for them.
+const _scenariosByPreview = <String, List<String>>{
+  'agent': ['idle', 'blocked', 'native', 'askuser'],
+  'host-setup': ['idle', 'plugin-detected', 'auto-pair-failure'],
+};
 
 HerdrClient _client(
   CommandResult Function(String) responder, {
@@ -145,13 +159,13 @@ CommandResult _herdResponder(String command) {
 }
 
 /// Registry of named previews. Add a screen = add an entry here.
-final _previews = <String, WidgetBuilder>{
-  'herd': (_) => HerdScreen(
+final _previews = <String, PreviewBuilder>{
+  'herd': (_, _) => HerdScreen(
     client: _client(_herdResponder),
     onOpenSettings: () {},
     pollInterval: const Duration(hours: 1),
   ),
-  'agent': (_) => switch (_scenario) {
+  'agent': (_, scenario) => switch (scenario) {
     'native' => AgentScreen(
       client: _client(
         nativeHistoryResponse,
@@ -170,7 +184,7 @@ final _previews = <String, WidgetBuilder>{
     ),
     _ => AgentScreen(
       client: _client(
-        _scenario == 'blocked'
+        scenario == 'blocked'
             ? _withSwitcherBar(blockedPromptResponse, 'blocked')
             : _withSwitcherBar(idleWithModeResponse, 'idle'),
       ),
@@ -178,7 +192,7 @@ final _previews = <String, WidgetBuilder>{
       pollInterval: const Duration(hours: 1),
     ),
   },
-  'launch': (_) => Scaffold(
+  'launch': (_, _) => Scaffold(
     body: LaunchAgentSheet(
       client: _client(_launchResponder),
       existingCwds: const ['/home/dev/proj'],
@@ -188,7 +202,7 @@ final _previews = <String, WidgetBuilder>{
   // as if drover.notify were not linked on the host. SCENARIO=plugin-detected
   // shows the auto-pair confirmation → success path. SCENARIO=auto-pair-failure
   // confirms auto-pairing but has it fail, falling back to the manual dialog.
-  'host-setup': (_) => HostSetupScreen(
+  'host-setup': (_, scenario) => HostSetupScreen(
     initial: const HostConfig(
       host: 'devbox.local',
       port: 22,
@@ -206,7 +220,7 @@ final _previews = <String, WidgetBuilder>{
       completionUrl: 'https://drover.example/completePairing/stub',
     ),
     onDetectPlugin: (_) async =>
-        _scenario == 'plugin-detected' || _scenario == 'auto-pair-failure'
+        scenario == 'plugin-detected' || scenario == 'auto-pair-failure'
         ? const PluginInfo(
             pluginId: 'drover.notify',
             enabled: true,
@@ -214,7 +228,7 @@ final _previews = <String, WidgetBuilder>{
           )
         : null,
     onAutoPair: (config, plugin, pairing) async {
-      if (_scenario == 'auto-pair-failure') {
+      if (scenario == 'auto-pair-failure') {
         throw Exception('node was not found on the host PATH (stubbed).');
       }
     },
@@ -240,9 +254,9 @@ void main() {
       darkTheme: droverDarkTheme,
       themeMode: ThemeMode.system,
       home: target == 'gallery'
-          ? _PreviewGallery(names: _previews.keys.toList())
+          ? _PreviewGallery(previews: _previews, scenarios: _scenariosByPreview)
           : (builder != null
-                ? Builder(builder: builder)
+                ? Builder(builder: (ctx) => builder(ctx, _scenario))
                 : _UnknownPreview(
                     target: target,
                     names: _previews.keys.toList(),
@@ -251,11 +265,12 @@ void main() {
   );
 }
 
-/// In-app list of every registered preview; tapping one pushes it.
+/// In-app list of every registered preview x scenario; tapping one pushes it.
 class _PreviewGallery extends StatelessWidget {
-  const _PreviewGallery({required this.names});
+  const _PreviewGallery({required this.previews, required this.scenarios});
 
-  final List<String> names;
+  final Map<String, PreviewBuilder> previews;
+  final Map<String, List<String>> scenarios;
 
   @override
   Widget build(BuildContext context) {
@@ -263,15 +278,20 @@ class _PreviewGallery extends StatelessWidget {
       appBar: AppBar(title: const Text('Drover previews')),
       body: ListView(
         children: [
-          for (final name in names)
-            ListTile(
-              key: ValueKey('preview_$name'),
-              leading: const Icon(Icons.visibility),
-              title: Text(name),
-              onTap: () => Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: _previews[name]!)),
-            ),
+          for (final name in previews.keys)
+            for (final scenario in scenarios[name] ?? const ['none'])
+              ListTile(
+                key: ValueKey('preview_${name}_$scenario'),
+                leading: const Icon(Icons.visibility),
+                title: Text(
+                  scenarios.containsKey(name) ? '$name ($scenario)' : name,
+                ),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (ctx) => previews[name]!(ctx, scenario),
+                  ),
+                ),
+              ),
         ],
       ),
     );
