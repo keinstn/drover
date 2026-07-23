@@ -14,6 +14,7 @@ import 'l10n/app_localizations.dart';
 import 'src/app_theme.dart';
 import 'src/firebase/app_check.dart';
 import 'src/herdr/herdr_client.dart';
+import 'src/infra/best_effort.dart';
 import 'src/infra/host_store.dart';
 import 'src/infra/ssh_command_runner.dart';
 import 'src/models/agent_info.dart';
@@ -33,18 +34,20 @@ Future<void> main() async {
   } else {
     WidgetsFlutterBinding.ensureInitialized();
   }
-  await Firebase.initializeApp();
-  final appleProvider = appleAppCheckProvider(
-    platform: defaultTargetPlatform,
-    isDebug: kDebugMode,
-  );
-  if (appleProvider != null) {
-    await FirebaseAppCheck.instance.activate(providerApple: appleProvider);
-    await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
-  }
-  if (FirebaseAuth.instance.currentUser == null) {
-    await FirebaseAuth.instance.signInAnonymously();
-  }
+  await runBestEffort(() async {
+    await Firebase.initializeApp();
+    final appleProvider = appleAppCheckProvider(
+      platform: defaultTargetPlatform,
+      isDebug: kDebugMode,
+    );
+    if (appleProvider != null) {
+      await FirebaseAppCheck.instance.activate(providerApple: appleProvider);
+      await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
+    }
+    if (FirebaseAuth.instance.currentUser == null) {
+      await FirebaseAuth.instance.signInAnonymously();
+    }
+  }, context: 'firebase bootstrap');
   final store = HostStore(
     storage: const FlutterSecureStorage(
       mOptions: MacOsOptions(usesDataProtectionKeychain: false),
@@ -102,10 +105,15 @@ class _DroverAppState extends State<DroverApp> {
     _notificationFailures = _notificationRegistration.failures.listen(
       (_) => _showNotificationRegistrationFailure(),
     );
-    _notificationOpens = FirebaseMessaging.onMessageOpenedApp.listen(
-      _handleNotificationOpen,
-    );
-    unawaited(_handleInitialNotification());
+    try {
+      _notificationOpens = FirebaseMessaging.onMessageOpenedApp.listen(
+        _handleNotificationOpen,
+      );
+      unawaited(_handleInitialNotification());
+    } catch (_) {
+      // Firebase Messaging is unavailable (e.g. Firebase failed to initialize);
+      // the app still runs without notification deep-linking.
+    }
     _config = widget.initialConfig;
     if (_config != null) {
       _runner = SshCommandRunner(_config!);
@@ -126,7 +134,10 @@ class _DroverAppState extends State<DroverApp> {
   Future<void> _applyConfig(HostConfig c) async {
     final replacedHost = _config != null && _hostIdentityChanged(_config!, c);
     if (replacedHost && _config!.hostId != null) {
-      await _hostPairingGateway.revokeHost(_config!.hostId!);
+      await runBestEffort(
+        () => _hostPairingGateway.revokeHost(_config!.hostId!),
+        context: 'revoke replaced host',
+      );
     }
     final config = _ensureHostId(replacedHost ? c.withHostId(null) : c);
     await _runner?.dispose();
@@ -185,8 +196,10 @@ class _DroverAppState extends State<DroverApp> {
   }
 
   Future<void> _handleInitialNotification() async {
-    final message = await FirebaseMessaging.instance.getInitialMessage();
-    if (message != null) _handleNotificationOpen(message);
+    await runBestEffort(() async {
+      final message = await FirebaseMessaging.instance.getInitialMessage();
+      if (message != null) _handleNotificationOpen(message);
+    }, context: 'initial notification');
   }
 
   void _handleNotificationOpen(RemoteMessage message) {
@@ -249,7 +262,10 @@ class _DroverAppState extends State<DroverApp> {
   Future<void> _resetConfig() async {
     final hostId = _config?.hostId;
     if (hostId != null) {
-      await _hostPairingGateway.revokeHost(hostId);
+      await runBestEffort(
+        () => _hostPairingGateway.revokeHost(hostId),
+        context: 'revoke host on reset',
+      );
     }
     await widget.hostStore.clear();
     await _runner?.dispose();
