@@ -16,6 +16,8 @@
 //   watch <target> [--status blocked] [--timeout 60000]
 //                                           状態変化を long-poll で待つ
 //   bench [N]                               agent list を N 回計測 (default 5)
+//   winprobe                                Windows: SFTP パス表現/cmd.exe クォート/
+//                                           EncodedCommand/OS 検出を実測
 //   probe-start [opts]                      create/split 直後の agent start を実測
 //     --kind KIND        起動する agent 種別 (default claude)
 //     --cwd PATH         pane の cwd (default .)
@@ -203,6 +205,8 @@ Future<void> main(List<String> args) async {
         await cmdWatch(r, rest);
       case 'bench':
         await cmdBench(r, rest);
+      case 'winprobe':
+        await cmdWinProbe(r);
       case 'probe-start':
         await cmdProbeStart(r, rest);
       default:
@@ -319,6 +323,148 @@ Future<void> cmdBench(Remote r, List<String> rest) async {
   );
 }
 
+/// 生の SSH exec(herdr を介さない)。(exitCode, stdout, stderr) を返す。
+/// 日本語 Windows の cmd.exe は CP932 でエラーを返すため、strict UTF-8 では
+/// FormatException になる(winprobe 実測)。lenient にデコードする。
+Future<(int, String, String)> _rawExec(SSHClient client, String cmd) async {
+  const lenient = Utf8Decoder(allowMalformed: true);
+  final session = await client.execute(cmd);
+  final outF = lenient.bind(session.stdout).join();
+  final errF = lenient.bind(session.stderr).join();
+  await session.done;
+  return (session.exitCode ?? -1, await outF, await errF);
+}
+
+/// PowerShell の -EncodedCommand が要求する base64(UTF-16LE) を作る。
+String _psEncoded(String command) {
+  final bytes = <int>[];
+  for (final u in command.codeUnits) {
+    bytes.add(u & 0xff);
+    bytes.add((u >> 8) & 0xff);
+  }
+  return base64.encode(bytes);
+}
+
+/// fail-closed 分類: Linux/Darwin と確定できなければ Windows(ver で positive
+/// 確認)、どちらでもなければ UNDETERMINED(推測せずエラーにすべき状態)。
+String _classify(String unameOut, int unameExit, String verOut) {
+  final u = unameOut.trim();
+  if (unameExit == 0 && (u.startsWith('Linux') || u.startsWith('Darwin'))) {
+    return 'Unix ($u)';
+  }
+  if (verOut.contains('Windows')) return 'Windows (ver)';
+  return 'UNDETERMINED (fail-closed → surface an error, do not guess)';
+}
+
+/// Windows ホスト向けの残る未検証点を実測する。park していた
+/// クロスプラットフォーム設計(HostPlatform / SFTP パス表現 / cmd.exe クォート)
+/// を実データで確定するための使い捨てプローブ。すべて非破壊(読み取りのみ)。
+Future<void> cmdWinProbe(Remote r) async {
+  final client = r.client;
+
+  Future<void> section(String title, Future<void> Function() body) async {
+    stdout.writeln('\n=== $title ===');
+    try {
+      await body();
+    } catch (e) {
+      stdout.writeln('  ! error: $e');
+    }
+  }
+
+  // 1. OS 検出: drover の実 exec チャネル(Windows は既定 cmd.exe)で叩く。
+  await section('OS detection (real exec channel)', () async {
+    final (uc, uo, ue) = await _rawExec(client, 'uname -s');
+    stdout.writeln(
+      '  uname -s → exit=$uc out=${jsonEncode(uo.trim())} err=${jsonEncode(ue.trim())}',
+    );
+    final (vc, vo, _) = await _rawExec(client, 'ver');
+    stdout.writeln('  ver → exit=$vc out=${jsonEncode(vo.trim())}');
+    stdout.writeln('  → classify: ${_classify(uo, uc, vo)}');
+  });
+
+  // 2. SFTP realpath: '.'/'~'/'/' がどう返るか(C:/... か /C:/... か)。
+  await section('SFTP realpath', () async {
+    final sftp = await client.sftp();
+    try {
+      for (final p in ['.', '~', '/']) {
+        try {
+          final abs = await sftp.absolute(p);
+          stdout.writeln('  absolute(${jsonEncode(p)}) → ${jsonEncode(abs)}');
+        } catch (e) {
+          stdout.writeln('  absolute(${jsonEncode(p)}) → ! $e');
+        }
+      }
+    } finally {
+      await sftp.close();
+    }
+  });
+
+  // 3. SFTP listdir: '/' 区切りと '\\' 区切りのどちらが通るか。
+  await section('SFTP listdir (path separator)', () async {
+    final sftp = await client.sftp();
+    try {
+      final home = await sftp.absolute('.');
+      stdout.writeln('  home = ${jsonEncode(home)}');
+      final base = home.replaceAll(r'\', '/').replaceAll(RegExp(r'/$'), '');
+      final candidates = <String>[
+        '$base/.claude/projects',
+        '$base\\.claude\\projects',
+        '.claude/projects',
+      ];
+      for (final c in candidates) {
+        try {
+          final entries = await sftp.listdir(c);
+          final names = entries
+              .map((e) => e.filename)
+              .where((n) => n != '.' && n != '..')
+              .toList();
+          stdout.writeln(
+            '  listdir(${jsonEncode(c)}) → ${names.length} entries; '
+            'first: ${names.take(3).toList()}',
+          );
+        } catch (e) {
+          stdout.writeln('  listdir(${jsonEncode(c)}) → ! $e');
+        }
+      }
+    } finally {
+      await sftp.close();
+    }
+  });
+
+  // 4. cmd.exe クォート: buildHerdrCommand の POSIX 単引用符が漏れるか。
+  await section('cmd.exe quoting (POSIX single-quote leak)', () async {
+    final (c, o, _) = await _rawExec(client, "echo 'agent' 'list'");
+    stdout.writeln(
+      "  echo 'agent' 'list' → exit=$c out=${jsonEncode(o.trim())}",
+    );
+    final (hc, ho, he) = await _rawExec(client, "herdr 'agent' 'list'");
+    stdout.writeln(
+      "  herdr 'agent' 'list' → exit=$hc "
+      'out=${jsonEncode(ho.trim())} err=${jsonEncode(he.trim())}',
+    );
+  });
+
+  // 5. powershell -EncodedCommand 往復(fable 推奨の Windows exec 経路)。
+  await section('powershell -EncodedCommand round-trip', () async {
+    final enc = _psEncoded("Write-Output 'hello from encoded ps'");
+    final (c, o, e) = await _rawExec(
+      client,
+      'powershell.exe -NoProfile -EncodedCommand $enc',
+    );
+    stdout.writeln(
+      '  exit=$c out=${jsonEncode(o.trim())} err=${jsonEncode(e.trim())}',
+    );
+  });
+
+  // 6. herdr --version(server 不要。PATH 解決とバイナリ疎通の確認)。
+  await section('herdr --version (bare, resolved on PATH)', () async {
+    final (c, o, e) = await _rawExec(client, 'herdr --version');
+    stdout.writeln(
+      '  exit=$c out=${jsonEncode(o.trim())} err=${jsonEncode(e.trim())}',
+    );
+  });
+}
+
 /// herdr の失敗時 envelope ({"error":{"code":...,"message":...}}) からコードを
 /// 取り出す。stderr/stdout どちらに出ても拾えるよう両方を見る。
 (String?, String?) parseError(String out, String err) {
@@ -379,7 +525,8 @@ Future<void> cmdProbeStart(Remote r, List<String> rest) async {
     final (listRes, listMs) = await r.herdrJson([
       'pane', 'list', '--workspace', existingWs, //
     ]);
-    final panes = (listRes['panes'] as List? ?? []).cast<Map<String, dynamic>>();
+    final panes = (listRes['panes'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
     if (panes.isEmpty) {
       stderr.writeln('workspace $existingWs に split 元の pane がありません');
       exit(1);
@@ -459,13 +606,9 @@ Future<void> cmdProbeStart(Remote r, List<String> rest) async {
     if (started && attempt == 1) {
       stdout.writeln('# → 初回で成功。このホストではレース(A)は再現せず。');
     } else if (started) {
-      stdout.writeln(
-        '# → 再試行で成功 = レース(A)。案2(agent_pane_busy 限定リトライ)が有効。',
-      );
+      stdout.writeln('# → 再試行で成功 = レース(A)。案2(agent_pane_busy 限定リトライ)が有効。');
     } else {
-      stdout.writeln(
-        '# → 全試行失敗。時間で解消しない = 恒常(B)。pane 再利用/種別を要調査。',
-      );
+      stdout.writeln('# → 全試行失敗。時間で解消しない = 恒常(B)。pane 再利用/種別を要調査。');
     }
   } finally {
     // 4) 後始末 — 起動した agent/pane/WS を残さない。
