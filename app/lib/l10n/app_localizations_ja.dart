@@ -130,13 +130,16 @@ class AppLocalizationsJa extends AppLocalizations {
   String get agentModeNormal => '通常';
 
   @override
-  String get agentModeAutoAccept => '編集を承認';
+  String get agentModeAcceptEdit => '編集を承認';
 
   @override
   String get agentModePlan => 'プラン';
 
   @override
-  String get agentModeBypass => 'オート';
+  String get agentModeAuto => 'オート';
+
+  @override
+  String get agentModeBypass => 'バイパス';
 
   @override
   String get agentComposerHint => 'エージェントにメッセージ…';

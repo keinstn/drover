@@ -88,7 +88,7 @@ AgentMode? parseCopilotMode(String text) {
   // Prefer the recognized footer closest to the bottom of the pane.
   if (workingIndex >= 0 && (!isIdleFooter || workingIndex > idleEnd)) {
     final workingFooter = trailingLines[workingIndex];
-    if (_autopilotWord.hasMatch(workingFooter)) return AgentMode.autoAccept;
+    if (_autopilotWord.hasMatch(workingFooter)) return AgentMode.auto;
     if (_planWord.hasMatch(workingFooter)) return AgentMode.plan;
     return AgentMode.normal;
   }
@@ -96,7 +96,7 @@ AgentMode? parseCopilotMode(String text) {
 
   // The mode prefix is on the `commands` row or wraps immediately before it
   // as `<mode> · /`; a draft ending in a mode word lacks that delimiter.
-  if (isAutopilotIdleFooter) return AgentMode.autoAccept;
+  if (isAutopilotIdleFooter) return AgentMode.auto;
   if (_planIdleFooter.hasMatch(idleModeLine)) return AgentMode.plan;
   if (_planWrappedIdlePrefix.hasMatch(precedingIdleLine)) {
     return AgentMode.plan;

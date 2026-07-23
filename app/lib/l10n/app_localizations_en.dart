@@ -139,13 +139,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentModeNormal => 'Normal';
 
   @override
-  String get agentModeAutoAccept => 'Accept Edits';
+  String get agentModeAcceptEdit => 'Accept Edits';
 
   @override
   String get agentModePlan => 'Plan';
 
   @override
-  String get agentModeBypass => 'Auto';
+  String get agentModeAuto => 'Auto';
+
+  @override
+  String get agentModeBypass => 'Bypass';
 
   @override
   String get agentComposerHint => 'Message agent…';

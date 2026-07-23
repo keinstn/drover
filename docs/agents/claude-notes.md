@@ -14,13 +14,28 @@ channel, the `agent_session` mechanism), see `../herdr-notes.md`.
   Verified end-to-end against a live Claude Code agent: it cycles the mode
   exactly like a physical shift+tab. The cycle order is:
   manual → accept edits → plan → auto → (back to manual).
-  - Caveat 1: `accept edits` and `auto` are two distinct positions in the
-    cycle, but drover's `parseAgentMode` collapses both into
-    `AgentMode.autoAccept` — a future "set to a specific mode" feature (read
-    current mode, then cycle N times) would need those two distinguished.
+  - Caveat 1 (resolved 2026-07-23, issue #62): `accept edits` and `auto` are
+    two distinct positions in the cycle. drover's `parseAgentMode` used to
+    collapse both into one `AgentMode.autoAccept` value — carried from an
+    early (incorrect) assumption in #8 that they were just alternate wordings
+    for the same state, before the cycle order above was mapped. Now resolved
+    to separate `AgentMode.acceptEdit` and `AgentMode.auto` values.
   - Caveat 2: `bypass` is not part of the shift+tab cycle (it's only reachable
     via `--dangerously-skip-permissions` at launch), so it cannot be reached
     by cycling.
+  - Caveat 3 (2026-07-23, issue #62): the mode line's vim-style `-- INSERT --`
+    prefix (shown while composing a prompt) is not formatted consistently
+    across modes. Verified live against a `--dangerously-skip-permissions`
+    session: outside insert mode the line is
+    `⏵⏵ bypass permissions on (shift+tab to cycle)`, but in insert mode it's
+    `-- INSERT   ⏵⏵ bypass permissions on (shift+tab to cycle)` — a single `--`
+    before `INSERT` and no second `--` before the glyph, unlike every other
+    mode's `-- INSERT -- ⏵⏵ ...`. `parseAgentMode` used to require that second
+    `--` (or the glyph at the very start of the line) to recognize a mode line
+    at all, so bypass went undetected — no mode button shown — for as long as
+    the user was actively typing. Fixed by reading the mode name from between
+    the glyph and `(shift+tab to cycle)` instead of matching against the whole
+    line, which no longer depends on the `-- INSERT --` bookend being present.
 
 ## Image input
 

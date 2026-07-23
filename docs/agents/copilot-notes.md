@@ -53,8 +53,10 @@ noted otherwise.
   `Working`/`interrupt` words together, rather than
   scanning for the bare words `plan`/`autopilot` anywhere in the pane, which
   could otherwise misfire on an unrelated nav label. Copilot's `autopilot` is
-  mapped to the existing `AgentMode.autoAccept` (no new enum value); Copilot
-  has no `bypass`-equivalent mode, so `AgentMode.bypass` stays Claude-only.
+  mapped to `AgentMode.auto` (2026-07-23, issue #62: Claude's own `auto` and
+  `accept edit` split into distinct values; autopilot's "runs on its own
+  without confirming" semantics matches `auto`, not `accept edit`). Copilot
+  has no `accept edit`/`bypass`-equivalent modes, so those stay Claude-only.
 
 ## Image input
 

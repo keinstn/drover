@@ -1080,11 +1080,7 @@ class _ToolUseChipState extends State<_ToolUseChip> {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.build,
-                    size: 13,
-                    color: _transcriptFgDim,
-                  ),
+                  const Icon(Icons.build, size: 13, color: _transcriptFgDim),
                   const SizedBox(width: 8),
                   Text(
                     widget.name,
@@ -1748,12 +1744,14 @@ Color _modeColor(AgentMode mode) {
   switch (mode) {
     case AgentMode.normal:
       return statusUnknown;
-    case AgentMode.autoAccept:
+    case AgentMode.acceptEdit:
       return modeAcceptEdit;
     case AgentMode.plan:
       return modePlan;
+    case AgentMode.auto:
+      return modeAuto;
     case AgentMode.bypass:
-      return statusBlocked;
+      return modeBypass;
   }
 }
 
@@ -1761,10 +1759,12 @@ String _modeLabel(AgentMode mode, AppLocalizations l10n) {
   switch (mode) {
     case AgentMode.normal:
       return l10n.agentModeNormal;
-    case AgentMode.autoAccept:
-      return l10n.agentModeAutoAccept;
+    case AgentMode.acceptEdit:
+      return l10n.agentModeAcceptEdit;
     case AgentMode.plan:
       return l10n.agentModePlan;
+    case AgentMode.auto:
+      return l10n.agentModeAuto;
     case AgentMode.bypass:
       return l10n.agentModeBypass;
   }
