@@ -73,3 +73,10 @@ app/macos/Runner/GoogleService-Info.plist
 Enable the Anonymous sign-in provider in Firebase Authentication. The plist
 files are environment-specific and intentionally excluded from version control;
 provide them locally and inject the appropriate file during Xcode builds.
+
+Firebase project aliases are also local-only. After cloning the repository,
+select the target project with:
+
+```bash
+firebase use --add
+```
