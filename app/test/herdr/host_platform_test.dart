@@ -87,6 +87,21 @@ void main() {
       expect(command, contains("'codex'"));
     });
 
+    test('whichCommand probes via sh -lc and command -v byte-for-byte', () {
+      expect(unix.whichCommand('node'), "sh -lc 'command -v '\\''node'\\'''");
+    });
+
+    test('runProgramCommand quotes every token', () {
+      expect(
+        unix.runProgramCommand('/usr/local/bin/node', [
+          '/x/pair.mjs',
+          '--flag',
+          "it's",
+        ]),
+        "'/usr/local/bin/node' '/x/pair.mjs' '--flag' 'it'\\''s'",
+      );
+    });
+
     // The six literal expectations below are the regression lock for the
     // Phase-2 refactor of the transcript/upload call sites: each must stay
     // byte-for-byte identical to the command the original call site sent.
@@ -194,6 +209,40 @@ void main() {
       expect(script, contains(r'Get-Command $a -ErrorAction SilentlyContinue'));
       expect(script, contains("'claude'"));
       expect(script, contains("'codex'"));
+    });
+
+    test('whichCommand resolves via Get-Command and prints the raw '
+        'Windows path (no SFTP normalization)', () {
+      final command = windows.whichCommand('node');
+      expect(command, startsWith(_encodedPrefix));
+      final script = decodeScript(command);
+      expect(
+        script,
+        contains(
+          r"$p=(Get-Command 'node' -ErrorAction SilentlyContinue).Source;",
+        ),
+      );
+      // The result feeds runProgramCommand as a native program path, so it
+      // must stay verbatim — no leading-slash `/C:/` drive form.
+      expect(script, contains(r'if($p){[Console]::Out.Write($p)}'));
+      expect(script, isNot(contains(r"-replace '\\','/'")));
+    });
+
+    test('runProgramCommand calls via & and propagates the exit code', () {
+      final command = windows.runProgramCommand(
+        r'C:\Program Files\Volta\node.exe',
+        ['/x/pair.mjs', '--completion-url', 'https://example.com/done'],
+      );
+      expect(command, startsWith(_encodedPrefix));
+      final script = decodeScript(command);
+      expect(
+        script,
+        contains(
+          r"& 'C:\Program Files\Volta\node.exe' '/x/pair.mjs' "
+          r"'--completion-url' 'https://example.com/done'",
+        ),
+      );
+      expect(script, endsWith(r'exit $LASTEXITCODE'));
     });
 
     /// Number of `*\` glob segments in [script] — one per searched level
