@@ -21,6 +21,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get hostSetupPortLabel => 'ポート';
 
   @override
+  String get hostSetupPortInvalid => 'ポートは 1〜65535 の数値で入力してください';
+
+  @override
   String get hostSetupUserLabel => 'ユーザー';
 
   @override
@@ -31,6 +34,10 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get hostSetupPrivateKeyRequired => '秘密鍵は必須です';
+
+  @override
+  String get hostSetupPrivateKeyInvalid =>
+      '秘密鍵の形式ではないようです。BEGIN/END 行を含む PEM 全体を貼り付けてください。';
 
   @override
   String get hostSetupPassphraseLabel => 'パスフレーズ';
@@ -310,6 +317,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get launchWorkingDir => '作業ディレクトリ';
 
   @override
+  String get launchWorkingDirRequired => '作業ディレクトリは必須です';
+
+  @override
   String get launchAgentName => 'エージェント名';
 
   @override
@@ -320,6 +330,9 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get launchWorkspaceName => 'ワークスペース名';
+
+  @override
+  String get launchWorkspaceNameRequired => 'ワークスペース名は必須です';
 
   @override
   String get launchUseNewWorkspace => '代わりに新規ワークスペースを使う';

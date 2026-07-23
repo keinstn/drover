@@ -185,6 +185,37 @@ void main() {
     },
   );
 
+  testWidgets('an empty working directory blocks launch with an inline error', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_response);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: _Harness(client: client),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    // Leave the working directory empty and try to launch.
+    await tester.tap(find.byKey(const ValueKey('launch_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Working directory is required'), findsOneWidget);
+    expect(
+      runner.commands.any((c) => c.contains("'workspace' 'create'")),
+      isFalse,
+    );
+    final state = tester.state<_HarnessState>(find.byType(_Harness));
+    expect(state.poppedValue, isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('tapping cancel closes the sheet without launching', (
     tester,
   ) async {
@@ -281,7 +312,7 @@ void main() {
       find.byKey(const ValueKey('agent_name_field')),
     );
     expect(nameField.controller!.text, 'claude-proj');
-    final workspaceNameField = tester.widget<TextField>(
+    final workspaceNameField = tester.widget<TextFormField>(
       find.byKey(const ValueKey('workspace_name_field')),
     );
     expect(workspaceNameField.controller!.text, 'proj');
@@ -461,7 +492,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('dir_picker_select')));
     await tester.pumpAndSettle();
 
-    final cwdField = tester.widget<TextField>(
+    final cwdField = tester.widget<TextFormField>(
       find.byKey(const ValueKey('cwd_field')),
     );
     expect(cwdField.controller!.text, '/home/dev/proj');

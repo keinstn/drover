@@ -21,6 +21,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hostSetupPortLabel => 'Port';
 
   @override
+  String get hostSetupPortInvalid =>
+      'Port must be a number between 1 and 65535';
+
+  @override
   String get hostSetupUserLabel => 'User';
 
   @override
@@ -31,6 +35,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get hostSetupPrivateKeyRequired => 'Private key is required';
+
+  @override
+  String get hostSetupPrivateKeyInvalid =>
+      'This doesn\'t look like a private key. Paste the full PEM block, including the BEGIN and END lines.';
 
   @override
   String get hostSetupPassphraseLabel => 'Passphrase';
@@ -327,6 +335,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get launchWorkingDir => 'Working directory';
 
   @override
+  String get launchWorkingDirRequired => 'Working directory is required';
+
+  @override
   String get launchAgentName => 'Agent name';
 
   @override
@@ -337,6 +348,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get launchWorkspaceName => 'Workspace name';
+
+  @override
+  String get launchWorkspaceNameRequired => 'Workspace name is required';
 
   @override
   String get launchUseNewWorkspace => 'Use new workspace instead';

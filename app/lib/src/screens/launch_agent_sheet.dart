@@ -28,6 +28,7 @@ class LaunchAgentSheet extends StatefulWidget {
 }
 
 class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
+  final _formKey = GlobalKey<FormState>();
   late Future<List<AgentPreset>> _presetsFuture;
   Future<List<WorkspaceInfo>>? _workspacesFuture;
 
@@ -106,14 +107,13 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
     }, onError: (_) {});
   }
 
+  // Gates the launch button on the non-text prerequisites only (a preset, and
+  // in existing mode a chosen workspace). Empty text fields are surfaced as
+  // inline validator messages on launch instead of silently disabling the
+  // button, so the user can see why nothing happens.
   bool get _canLaunch {
     if (_busy) return false;
     if (_selectedPreset == null) return false;
-    if (_cwdController.text.trim().isEmpty) return false;
-    if (_mode == _WorkspaceMode.newWorkspace &&
-        _workspaceNameController.text.trim().isEmpty) {
-      return false;
-    }
     if (_mode == _WorkspaceMode.existing && _selectedWorkspaceId == null) {
       return false;
     }
@@ -123,6 +123,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   Future<void> _launch() async {
     final preset = _selectedPreset;
     if (preset == null) return;
+    if (!(_formKey.currentState?.validate() ?? false)) return;
     final cwd = _cwdController.text.trim();
     if (cwd.isEmpty) return;
     if (_mode == _WorkspaceMode.existing && _selectedWorkspaceId == null) {
@@ -194,70 +195,75 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
-                        borderRadius: BorderRadius.circular(2),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
-                  ),
-                  Text(
-                    l10n.commonLaunchAgent,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildPresetSection(),
-                  const SizedBox(height: 16),
-                  _buildCwdSection(),
-                  const SizedBox(height: 16),
-                  _buildNameSection(),
-                  const SizedBox(height: 16),
-                  _buildWorkspaceSection(),
-                  if (_launchError != null) ...[
-                    const SizedBox(height: 12),
-                    ErrorMessageView(_launchError!),
+                    Text(
+                      l10n.commonLaunchAgent,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildPresetSection(),
+                    const SizedBox(height: 16),
+                    _buildCwdSection(),
+                    const SizedBox(height: 16),
+                    _buildNameSection(),
+                    const SizedBox(height: 16),
+                    _buildWorkspaceSection(),
+                    if (_launchError != null) ...[
+                      const SizedBox(height: 12),
+                      ErrorMessageView(_launchError!),
+                    ],
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        key: const ValueKey('launch_button'),
+                        style: FilledButton.styleFrom(
+                          shape: const StadiumBorder(),
+                        ),
+                        onPressed: _canLaunch ? _launch : null,
+                        child: _busy
+                            ? const SizedBox(
+                                height: 16,
+                                width: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(l10n.launchButton),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        key: const ValueKey('launch_cancel_button'),
+                        style: OutlinedButton.styleFrom(
+                          shape: const StadiumBorder(),
+                        ),
+                        onPressed: _busy
+                            ? null
+                            : () => Navigator.pop(context, false),
+                        child: Text(l10n.commonCancel),
+                      ),
+                    ),
                   ],
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      key: const ValueKey('launch_button'),
-                      style: FilledButton.styleFrom(
-                        shape: const StadiumBorder(),
-                      ),
-                      onPressed: _canLaunch ? _launch : null,
-                      child: _busy
-                          ? const SizedBox(
-                              height: 16,
-                              width: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(l10n.launchButton),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      key: const ValueKey('launch_cancel_button'),
-                      style: OutlinedButton.styleFrom(
-                        shape: const StadiumBorder(),
-                      ),
-                      onPressed: _busy
-                          ? null
-                          : () => Navigator.pop(context, false),
-                      child: Text(l10n.commonCancel),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -359,7 +365,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
           ),
           const SizedBox(height: 8),
         ],
-        TextField(
+        TextFormField(
           key: const ValueKey('cwd_field'),
           controller: _cwdController,
           enabled: !_busy,
@@ -368,6 +374,9 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
             labelText: l10n.launchWorkingDir,
             border: const OutlineInputBorder(),
           ),
+          validator: (v) => (v == null || v.trim().isEmpty)
+              ? l10n.launchWorkingDirRequired
+              : null,
           onChanged: (_) => setState(_syncDefaultNames),
         ),
         const SizedBox(height: 8),
@@ -435,7 +444,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
           ),
           if (_mode == _WorkspaceMode.newWorkspace) ...[
             const SizedBox(height: 12),
-            TextField(
+            TextFormField(
               key: const ValueKey('workspace_name_field'),
               controller: _workspaceNameController,
               enabled: !_busy,
@@ -444,6 +453,9 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                 labelText: l10n.launchWorkspaceName,
                 border: const OutlineInputBorder(),
               ),
+              validator: (v) => (v == null || v.trim().isEmpty)
+                  ? l10n.launchWorkspaceNameRequired
+                  : null,
               onChanged: (_) {
                 _workspaceNameEdited = true;
                 setState(() {});
