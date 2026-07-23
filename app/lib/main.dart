@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -11,6 +12,7 @@ import 'package:uuid/uuid.dart';
 
 import 'l10n/app_localizations.dart';
 import 'src/app_theme.dart';
+import 'src/firebase/app_check.dart';
 import 'src/herdr/herdr_client.dart';
 import 'src/infra/host_store.dart';
 import 'src/infra/ssh_command_runner.dart';
@@ -32,6 +34,14 @@ Future<void> main() async {
     WidgetsFlutterBinding.ensureInitialized();
   }
   await Firebase.initializeApp();
+  final appleProvider = appleAppCheckProvider(
+    platform: defaultTargetPlatform,
+    isDebug: kDebugMode,
+  );
+  if (appleProvider != null) {
+    await FirebaseAppCheck.instance.activate(providerApple: appleProvider);
+    await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
+  }
   if (FirebaseAuth.instance.currentUser == null) {
     await FirebaseAuth.instance.signInAnonymously();
   }

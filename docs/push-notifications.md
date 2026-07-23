@@ -52,6 +52,24 @@ the same host ID. Resetting the host in Drover, or changing its address, port,
 or SSH user, revokes the previous host credential before saving the new
 configuration.
 
+## App Check monitoring
+
+The iOS app activates Firebase App Check before anonymous authentication. Debug
+builds use the Debug provider; Release builds use the App Attest provider. The
+macOS target is intentionally not activated because its Firebase app is not
+enrolled in App Check yet.
+
+Before creating a Release build, enable the **App Attest** capability for the
+iOS App ID in the Apple Developer portal so Xcode Cloud can sign the
+`com.apple.developer.app-attest.environment` entitlement.
+
+In Firebase Console, add the debug token printed by an iOS debug build under
+App Check's debug-token management. Install a Release build on an iPhone, then
+inspect the `createPairingCode` Callable Function in Google Cloud Logging. Its
+`callable-request-verification` structured log must report
+`jsonPayload.verifications.appCheck` as `VALID`. Do not enable Callable
+Functions enforcement until that verification succeeds.
+
 ## Verify delivery
 
 Start an agent that enters a real blocked state. Herdr invokes
