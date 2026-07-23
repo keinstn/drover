@@ -30,6 +30,19 @@ Future<List<String>> uploadAgentImages(
   final dir = '${agent.cwd}/.drover';
   await client.runner.run('command mkdir -p ${shQuote(dir)}');
 
+  // Best-effort prune of stale prior uploads so `.drover` can't grow forever.
+  // `-name 'img-*'` only targets our uploaded images (never the .gitignore),
+  // and `-mtime +2` (older than two days) can never match the images being
+  // uploaded right now. A prune failure must not break the upload, so swallow.
+  try {
+    await client.runner.run(
+      'command find ${shQuote(dir)} -name ${shQuote('img-*')} '
+      '-mtime +2 -delete',
+    );
+  } catch (_) {
+    // best-effort: ignore prune failures
+  }
+
   final paths = <String>[];
   for (var i = 0; i < images.length; i++) {
     final image = images[i];
