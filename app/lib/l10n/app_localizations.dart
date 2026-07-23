@@ -122,6 +122,12 @@ abstract class AppLocalizations {
   /// **'Port'**
   String get hostSetupPortLabel;
 
+  /// No description provided for @hostSetupPortInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Port must be a number between 1 and 65535'**
+  String get hostSetupPortInvalid;
+
   /// No description provided for @hostSetupUserLabel.
   ///
   /// In en, this message translates to:
@@ -145,6 +151,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Private key is required'**
   String get hostSetupPrivateKeyRequired;
+
+  /// No description provided for @hostSetupPrivateKeyInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'This doesn\'t look like a private key. Paste the full PEM block, including the BEGIN and END lines.'**
+  String get hostSetupPrivateKeyInvalid;
 
   /// No description provided for @hostSetupPassphraseLabel.
   ///
@@ -656,6 +668,12 @@ abstract class AppLocalizations {
   /// **'Working directory'**
   String get launchWorkingDir;
 
+  /// No description provided for @launchWorkingDirRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Working directory is required'**
+  String get launchWorkingDirRequired;
+
   /// No description provided for @launchAgentName.
   ///
   /// In en, this message translates to:
@@ -679,6 +697,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Workspace name'**
   String get launchWorkspaceName;
+
+  /// No description provided for @launchWorkspaceNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Workspace name is required'**
+  String get launchWorkspaceNameRequired;
 
   /// No description provided for @launchUseNewWorkspace.
   ///

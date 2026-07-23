@@ -377,6 +377,17 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
               controller: _portController,
               decoration: InputDecoration(labelText: l10n.hostSetupPortLabel),
               keyboardType: TextInputType.number,
+              // Blank is allowed and defaults to 22 (see _buildConfig); only a
+              // non-blank value has to be a valid port number.
+              validator: (v) {
+                final t = v?.trim() ?? '';
+                if (t.isEmpty) return null;
+                final port = int.tryParse(t);
+                if (port == null || port < 1 || port > 65535) {
+                  return l10n.hostSetupPortInvalid;
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -394,9 +405,14 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
               ),
               style: const TextStyle(fontFamily: 'monospace'),
               maxLines: 6,
-              validator: (v) => (v == null || v.trim().isEmpty)
-                  ? l10n.hostSetupPrivateKeyRequired
-                  : null,
+              validator: (v) {
+                final t = v?.trim() ?? '';
+                if (t.isEmpty) return l10n.hostSetupPrivateKeyRequired;
+                if (!_looksLikePrivateKeyPem(t)) {
+                  return l10n.hostSetupPrivateKeyInvalid;
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -477,6 +493,18 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     );
   }
 }
+
+// Lenient structural check for a PEM private key: a matching BEGIN/END pair
+// of any key type (RSA/EC/OPENSSH/PKCS#8). Deliberately does NOT parse the
+// key — an encrypted key can't be parsed here without the passphrase, which
+// isn't entered yet. This just catches the common paste mistakes (a public
+// key, or a truncated block) before the connection attempt.
+final _privateKeyPemPattern = RegExp(
+  r'-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]+-----END [A-Z0-9 ]*PRIVATE KEY-----',
+);
+
+bool _looksLikePrivateKeyPem(String value) =>
+    _privateKeyPemPattern.hasMatch(value);
 
 String _shellCommandPath(String value) => value.startsWith('~/')
     ? '\$HOME/${_shellQuote(value.substring(2))}'

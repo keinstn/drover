@@ -49,7 +49,11 @@ class SystemImagePicker implements ImagePickerPort {
   Future<PickedImage> _toPickedImage(XFile file) async {
     final bytes = await file.readAsBytes();
     final dot = file.name.lastIndexOf('.');
-    final ext = dot == -1 ? 'png' : file.name.substring(dot + 1).toLowerCase();
-    return PickedImage(bytes: bytes, extension: ext.isEmpty ? 'png' : ext);
+    final raw = dot == -1 ? '' : file.name.substring(dot + 1).toLowerCase();
+    // The extension is interpolated into a remote SFTP path, so only allow a
+    // plain alphanumeric one through; anything else (empty, path separators,
+    // odd characters) falls back to png.
+    final ext = RegExp(r'^[a-z0-9]+$').hasMatch(raw) ? raw : 'png';
+    return PickedImage(bytes: bytes, extension: ext);
   }
 }

@@ -66,6 +66,81 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('rejects an out-of-range port and blocks save', (tester) async {
+    HostConfig? captured;
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HostSetupScreen(onSubmit: (config) async => captured = config),
+      ),
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Host'),
+      'example.com',
+    );
+    await tester.enterText(find.widgetWithText(TextFormField, 'User'), 'dev');
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Private key PEM'),
+      '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----',
+    );
+    await tester.enterText(find.widgetWithText(TextFormField, 'Port'), '70000');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pump();
+
+    expect(captured, isNull);
+    expect(
+      find.text('Port must be a number between 1 and 65535'),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('rejects a private key that is not a PEM block', (tester) async {
+    HostConfig? captured;
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HostSetupScreen(onSubmit: (config) async => captured = config),
+      ),
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Host'),
+      'example.com',
+    );
+    await tester.enterText(find.widgetWithText(TextFormField, 'User'), 'dev');
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Private key PEM'),
+      'ssh-ed25519 AAAAC3NzaC1lZDI1... not a private key',
+    );
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pump();
+
+    expect(captured, isNull);
+    expect(
+      find.textContaining("doesn't look like a private key"),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('hides the reset control during first-run setup', (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
@@ -187,7 +262,10 @@ void main() {
           initial: const HostConfig(
             host: 'example.com',
             user: 'dev',
-            privateKeyPem: 'KEY',
+            privateKeyPem:
+                '-----BEGIN OPENSSH PRIVATE KEY-----\n'
+                'abc\n'
+                '-----END OPENSSH PRIVATE KEY-----',
           ),
           onSubmit: (config) async {
             captured = config;
