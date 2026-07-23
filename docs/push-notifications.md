@@ -61,7 +61,7 @@ enrolled in App Check yet.
 
 Before creating a Release build, enable the **App Attest** capability for the
 iOS App ID in the Apple Developer portal so Xcode Cloud can sign the
-`com.apple.developer.app-attest.environment` entitlement.
+`com.apple.developer.devicecheck.appattest-environment` entitlement.
 
 In Firebase Console, add the debug token printed by an iOS debug build under
 App Check's debug-token management. Install a Release build on an iPhone, then

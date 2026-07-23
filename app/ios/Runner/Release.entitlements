@@ -4,7 +4,7 @@
 <dict>
 	<key>aps-environment</key>
 	<string>production</string>
-	<key>com.apple.developer.app-attest.environment</key>
+	<key>com.apple.developer.devicecheck.appattest-environment</key>
 	<string>production</string>
 </dict>
 </plist>
