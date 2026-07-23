@@ -6,6 +6,7 @@ import '../app_theme.dart';
 import '../models/host_config.dart';
 import '../models/plugin_info.dart';
 import '../notifications/host_pairing.dart';
+import '../widgets/error_message_view.dart';
 
 /// Form for entering (or editing) the SSH connection details for the dev
 /// machine running Herdr.
@@ -56,7 +57,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
 
   bool _busy = false;
   String? _statusMessage;
-  bool _statusIsError = false;
+  Object? _statusError;
 
   @override
   void initState() {
@@ -110,6 +111,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     setState(() {
       _busy = true;
       _statusMessage = null;
+      _statusError = null;
     });
     try {
       final plugin = await _detectPlugin(config);
@@ -130,8 +132,8 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _statusMessage = error.toString();
-        _statusIsError = true;
+        _statusError = error;
+        _statusMessage = null;
         _busy = false;
       });
     }
@@ -185,10 +187,9 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
       await _showAutoPairSuccessDialog();
     } catch (error) {
       if (!mounted) return;
-      final l10n = AppLocalizations.of(context)!;
       setState(() {
-        _statusMessage = l10n.hostPairAutoFailedStatus(error.toString());
-        _statusIsError = true;
+        _statusError = error;
+        _statusMessage = null;
         _busy = false;
       });
       await _showManualPairingDialog(config, pairing);
@@ -276,19 +277,20 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     setState(() {
       _busy = true;
       _statusMessage = null;
+      _statusError = null;
     });
     try {
       final result = await onTest(config);
       if (!mounted) return;
       setState(() {
         _statusMessage = result;
-        _statusIsError = false;
+        _statusError = null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _statusMessage = e.toString();
-        _statusIsError = true;
+        _statusError = e;
+        _statusMessage = null;
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -323,8 +325,8 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _statusMessage = e.toString();
-        _statusIsError = true;
+        _statusError = e;
+        _statusMessage = null;
         _busy = false;
       });
     }
@@ -336,6 +338,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     setState(() {
       _busy = true;
       _statusMessage = null;
+      _statusError = null;
     });
     try {
       await widget.onSubmit(config);
@@ -345,8 +348,8 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _statusMessage = e.toString();
-        _statusIsError = true;
+        _statusError = e;
+        _statusMessage = null;
         _busy = false;
       });
     }
@@ -424,14 +427,13 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
               ),
               const SizedBox(height: 12),
             ],
-            if (_statusMessage != null) ...[
+            if (_statusError != null) ...[
+              ErrorMessageView(_statusError!),
+              const SizedBox(height: 12),
+            ] else if (_statusMessage != null) ...[
               Text(
                 _statusMessage!,
-                style: TextStyle(
-                  color: _statusIsError
-                      ? Theme.of(context).colorScheme.error
-                      : DroverColors.of(context).donePillFg,
-                ),
+                style: TextStyle(color: DroverColors.of(context).donePillFg),
               ),
               const SizedBox(height: 12),
             ],

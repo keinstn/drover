@@ -123,11 +123,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'This host is now paired for blocked-agent push notifications.';
 
   @override
-  String hostPairAutoFailedStatus(String error) {
-    return 'Automatic pairing failed ($error). Complete pairing manually below.';
-  }
-
-  @override
   String get commonClose => 'Close';
 
   @override
@@ -232,16 +227,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get agentHistoryBeginning =>
       'Beginning of retained terminal history reached';
-
-  @override
-  String agentNativeHistoryError(String error) {
-    return 'Native history unavailable: $error';
-  }
-
-  @override
-  String agentLoadError(String error) {
-    return 'Couldn\'t load agent: $error';
-  }
 
   @override
   String get agentAskUserSend => 'Send';

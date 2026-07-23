@@ -296,12 +296,6 @@ abstract class AppLocalizations {
   /// **'This host is now paired for blocked-agent push notifications.'**
   String get hostPairAutoPairedBody;
 
-  /// No description provided for @hostPairAutoFailedStatus.
-  ///
-  /// In en, this message translates to:
-  /// **'Automatic pairing failed ({error}). Complete pairing manually below.'**
-  String hostPairAutoFailedStatus(String error);
-
   /// No description provided for @commonClose.
   ///
   /// In en, this message translates to:
@@ -505,18 +499,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Beginning of retained terminal history reached'**
   String get agentHistoryBeginning;
-
-  /// No description provided for @agentNativeHistoryError.
-  ///
-  /// In en, this message translates to:
-  /// **'Native history unavailable: {error}'**
-  String agentNativeHistoryError(String error);
-
-  /// No description provided for @agentLoadError.
-  ///
-  /// In en, this message translates to:
-  /// **'Couldn\'t load agent: {error}'**
-  String agentLoadError(String error);
 
   /// No description provided for @agentAskUserSend.
   ///

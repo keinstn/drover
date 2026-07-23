@@ -38,12 +38,6 @@
   "hostPairAutoDetectedConfirm": "Set up",
   "hostPairAutoPairedTitle": "Notifications paired",
   "hostPairAutoPairedBody": "This host is now paired for blocked-agent push notifications.",
-  "hostPairAutoFailedStatus": "Automatic pairing failed ({error}). Complete pairing manually below.",
-  "@hostPairAutoFailedStatus": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
   "commonClose": "Close",
   "commonCopy": "Copy",
 
@@ -83,18 +77,6 @@
   "agentLiveTerminal": "Live terminal",
   "agentThinking": "Thinking…",
   "agentHistoryBeginning": "Beginning of retained terminal history reached",
-  "agentNativeHistoryError": "Native history unavailable: {error}",
-  "@agentNativeHistoryError": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
-  "agentLoadError": "Couldn't load agent: {error}",
-  "@agentLoadError": {
-    "placeholders": {
-      "error": { "type": "String" }
-    }
-  },
 
   "agentAskUserSend": "Send",
   "agentAskUserClose": "Close",

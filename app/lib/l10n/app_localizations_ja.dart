@@ -114,11 +114,6 @@ class AppLocalizationsJa extends AppLocalizations {
       'この host はブロック中エージェントのプッシュ通知にペアリングされました。';
 
   @override
-  String hostPairAutoFailedStatus(String error) {
-    return '自動ペアリングに失敗しました（$error）。以下の手順で手動ペアリングを完了してください。';
-  }
-
-  @override
   String get commonClose => '閉じる';
 
   @override
@@ -221,16 +216,6 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get agentHistoryBeginning => '保持されているターミナル履歴の先頭に到達しました';
-
-  @override
-  String agentNativeHistoryError(String error) {
-    return 'ネイティブ履歴を利用できません: $error';
-  }
-
-  @override
-  String agentLoadError(String error) {
-    return 'エージェントを読み込めませんでした: $error';
-  }
 
   @override
   String get agentAskUserSend => '送信';

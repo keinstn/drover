@@ -33,7 +33,6 @@
   "hostPairAutoDetectedConfirm": "設定する",
   "hostPairAutoPairedTitle": "通知のペアリング完了",
   "hostPairAutoPairedBody": "この host はブロック中エージェントのプッシュ通知にペアリングされました。",
-  "hostPairAutoFailedStatus": "自動ペアリングに失敗しました（{error}）。以下の手順で手動ペアリングを完了してください。",
   "commonClose": "閉じる",
   "commonCopy": "コピー",
 
@@ -73,8 +72,6 @@
   "agentLiveTerminal": "ライブターミナル",
   "agentThinking": "思考中…",
   "agentHistoryBeginning": "保持されているターミナル履歴の先頭に到達しました",
-  "agentNativeHistoryError": "ネイティブ履歴を利用できません: {error}",
-  "agentLoadError": "エージェントを読み込めませんでした: {error}",
 
   "agentAskUserSend": "送信",
   "agentAskUserClose": "閉じる",
