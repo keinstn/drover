@@ -143,16 +143,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commonLaunchAgent => 'Launch agent';
 
   @override
-  String get agentStatusIdle => 'idle';
+  String get agentStatusIdle => 'resting';
 
   @override
   String get agentStatusWorking => 'working';
 
   @override
-  String get agentStatusBlocked => 'blocked';
+  String get agentStatusBlocked => 'waiting for you';
 
   @override
-  String get agentStatusDone => 'done';
+  String get agentStatusDone => 'all done';
 
   @override
   String get agentStatusUnknown => 'unknown';
@@ -173,7 +173,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentModeBypass => 'Bypass';
 
   @override
-  String get agentComposerHint => 'Message agent…';
+  String get agentComposerHint => 'Send a message…';
 
   @override
   String get agentCycleModeTooltip => 'Cycle agent mode (shift+tab)';
@@ -274,6 +274,45 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get herdRenameAgentField => 'Agent name';
+
+  @override
+  String get herdGreetingIntro => 'Welcome back. ';
+
+  @override
+  String herdGreetingWaitingCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count agents',
+      one: '1 agent',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get herdGreetingWaitingSuffix => ' waiting for your reply.';
+
+  @override
+  String get herdGreetingAllClear => 'Everyone\'s on track.';
+
+  @override
+  String get herdElapsedNow => 'now';
+
+  @override
+  String herdElapsedMinutes(int minutes) {
+    return '${minutes}m ago';
+  }
+
+  @override
+  String herdElapsedHours(int hours) {
+    return '${hours}h ago';
+  }
+
+  @override
+  String get herdSnippetThinking => 'Thinking things over…';
+
+  @override
+  String get agentSwitcherHerdTab => 'All';
 
   @override
   String get launchButton => 'Launch';

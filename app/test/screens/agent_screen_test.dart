@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:drover/l10n/app_localizations.dart';
+import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/agents/agent_adapter.dart';
 import 'package:drover/src/agents/agent_capabilities.dart';
 import 'package:drover/src/agents/agent_native_history.dart';
@@ -64,12 +65,12 @@ CommandResult workingResponse(String command) {
       ']}}',
     );
   }
-  if (command.contains("'agent' 'get'")) {
+  if (command.contains("'agent' 'list'")) {
     return ok(
-      '{"id":"1","result":{"agent":{"agent":"claude",'
+      '{"id":"1","result":{"agents":[{"agent":"claude",'
       '"agent_status":"working","cwd":"/tmp/proj","focused":false,'
       '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-      '"name":"Agent Three"}}}',
+      '"name":"Agent Three"}]}}',
     );
   }
   if (command.contains("'agent' 'read'")) {
@@ -90,12 +91,12 @@ CommandResult unsupportedAgentModeResponse(String command) {
       ']}}',
     );
   }
-  if (command.contains("'agent' 'get'")) {
+  if (command.contains("'agent' 'list'")) {
     return ok(
-      '{"id":"1","result":{"agent":{"agent":"mystery",'
+      '{"id":"1","result":{"agents":[{"agent":"mystery",'
       '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
       '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-      '"name":"Agent Three"}}}',
+      '"name":"Agent Three"}]}}',
     );
   }
   if (command.contains("'agent' 'read'")) {
@@ -115,12 +116,12 @@ CommandResult unsupportedAgentBlockedResponse(String command) {
       ']}}',
     );
   }
-  if (command.contains("'agent' 'get'")) {
+  if (command.contains("'agent' 'list'")) {
     return ok(
-      '{"id":"1","result":{"agent":{"agent":"mystery",'
+      '{"id":"1","result":{"agents":[{"agent":"mystery",'
       '"agent_status":"blocked","cwd":"/tmp/proj","focused":false,'
       '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-      '"name":"Agent Three"}}}',
+      '"name":"Agent Three"}]}}',
     );
   }
   if (command.contains("'agent' 'read'")) {
@@ -189,13 +190,13 @@ class NativeHistoryRunner extends StubCommandRunner {
         'c7c50b87-4d4c-4a92-9396-2cfa4158612d.jsonl\n',
       );
     }
-    if (command.contains("'agent' 'get'")) {
+    if (command.contains("'agent' 'list'")) {
       return ok(
-        '{"id":"1","result":{"agent":{"agent":"claude",'
+        '{"id":"1","result":{"agents":[{"agent":"claude",'
         '"agent_status":"working","cwd":"/tmp/proj","focused":false,'
         '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
         '"agent_session":{"source":"claude","agent":"claude","kind":"id",'
-        '"value":"c7c50b87-4d4c-4a92-9396-2cfa4158612d"}}}}',
+        '"value":"c7c50b87-4d4c-4a92-9396-2cfa4158612d"}}]}}',
       );
     }
     return workingResponse(command);
@@ -260,7 +261,7 @@ class FlakyGetAgentRunner extends NativeHistoryRunner {
 
   @override
   Future<CommandResult> run(String command) async {
-    if (command.contains("'agent' 'get'")) {
+    if (command.contains("'agent' 'list'")) {
       getAgentCalls++;
       if (getAgentCalls == 1) {
         commands.add(command);
@@ -383,6 +384,7 @@ Future<void> _pumpAssistant(WidgetTester tester, String text) async {
     MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
       home: AgentScreen(
         client: client,
         paneId: 'wB:p1',
@@ -449,6 +451,7 @@ Future<void> _pumpNative(WidgetTester tester, String contents) async {
     MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
       home: AgentScreen(
         client: client,
         paneId: 'wB:p1',
@@ -585,6 +588,37 @@ class _GatedNativeAdapter implements NativeTranscriptAdapter {
   }
 }
 
+/// A two-agent `agent list` (wB:p1 claude "Alpha" current + wA:p1 codex
+/// "Database"), so the bottom switcher bar is visible and the switch/label
+/// behaviours can be exercised. Serves workspace labels and a generic pane read
+/// for whichever pane is current.
+CommandResult multiAgentResponse(String command) {
+  if (command.contains("'workspace' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"workspaces":['
+      '{"workspace_id":"wA","label":"Project A"},'
+      '{"workspace_id":"wB","label":"Project B"}'
+      ']}}',
+    );
+  }
+  if (command.contains("'agent' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"agents":['
+      '{"agent":"claude","agent_status":"idle","cwd":"/tmp/proj-b",'
+      '"focused":false,"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+      '"terminal_title_stripped":"Alpha"},'
+      '{"agent":"codex","agent_status":"working","cwd":"/tmp/proj-a",'
+      '"focused":false,"pane_id":"wA:p1","tab_id":"wA:t1","workspace_id":"wA",'
+      '"terminal_title_stripped":"Database"}'
+      ']}}',
+    );
+  }
+  if (command.contains("'agent' 'read'")) {
+    return ok('multi-agent pane text');
+  }
+  return ok('{"id":"1","result":{}}');
+}
+
 void main() {
   // Tests that don't inject their own store fall back to AgentDraftStore.shared,
   // and any draft a test types is persisted there on dispose. Reset the shared
@@ -602,6 +636,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -643,6 +678,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
           home: AgentScreen(
             client: client,
             paneId: 'wB:p1',
@@ -682,6 +718,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -724,6 +761,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -799,6 +837,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -854,6 +893,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -887,6 +927,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1077,6 +1118,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1125,6 +1167,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
           home: AgentScreen(
             client: HerdrClient(runner),
             paneId: 'wB:p1',
@@ -1193,6 +1236,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
           home: AgentScreen(
             client: HerdrClient(runner),
             paneId: 'wB:p1',
@@ -1251,6 +1295,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
           home: AgentScreen(
             client: HerdrClient(runner),
             paneId: 'wB:p1',
@@ -1297,6 +1342,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
           home: AgentScreen(
             client: client,
             paneId: 'wB:p1',
@@ -1325,6 +1371,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1350,6 +1397,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1375,6 +1423,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1416,6 +1465,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1455,6 +1505,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
           home: AgentScreen(
             client: client,
             paneId: 'wB:p1',
@@ -1492,6 +1543,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1526,6 +1578,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1566,6 +1619,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
           home: AgentScreen(
             client: client,
             paneId: 'wB:p1',
@@ -1612,6 +1666,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1622,12 +1677,13 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.widgetWithText(FilledButton, '1. Yes'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, '3. No'), findsOneWidget);
-    expect(find.text('blocked · claude · Project B'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Yes'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'No'), findsOneWidget);
+    expect(find.text('claude · Project B'), findsOneWidget);
+    expect(find.text('waiting for you'), findsOneWidget);
     expect(find.textContaining('p1'), findsNothing);
 
-    await tester.tap(find.widgetWithText(FilledButton, '1. Yes'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Yes'));
     await tester.pump();
     await tester.pump();
 
@@ -1658,6 +1714,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1687,6 +1744,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1729,6 +1787,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1773,6 +1832,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1814,6 +1874,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1862,6 +1923,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1900,6 +1962,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1932,6 +1995,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1966,6 +2030,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -1997,6 +2062,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -2041,6 +2107,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -2077,6 +2144,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -2112,6 +2180,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -2140,6 +2209,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -2184,6 +2254,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -2219,6 +2290,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -2286,6 +2358,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -2325,6 +2398,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -2356,6 +2430,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -2443,6 +2518,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
           home: AgentScreen(
             client: client,
             paneId: 'wB:p1',
@@ -2553,6 +2629,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
           home: AgentScreen(
             client: client,
             paneId: 'wB:p1',
@@ -2632,6 +2709,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: HerdrClient(runner),
           paneId: 'wB:p1',
@@ -2666,6 +2744,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: HerdrClient(runner),
           paneId: 'wB:p1',
@@ -2701,6 +2780,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: HerdrClient(runner),
           paneId: 'wB:p1',
@@ -2762,6 +2842,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
           home: AgentScreen(
             client: client,
             paneId: 'wB:p1',
@@ -2773,7 +2854,7 @@ void main() {
       await tester.pump();
 
       // The screen renders normally...
-      expect(find.text('idle · mystery · Project B'), findsOneWidget);
+      expect(find.text('mystery · Project B'), findsOneWidget);
       // ...but no adapter supports "mystery", so neither optional capability is
       // resolved and neither control renders, regardless of the pane text
       // containing Claude's own mode-line wording (`idleWithModeText`).
@@ -2795,6 +2876,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
           home: AgentScreen(
             client: client,
             paneId: 'wB:p1',
@@ -2807,14 +2889,14 @@ void main() {
 
       // The generic numbered-prompt fallback (parsed straight from pane
       // text) still renders for an agent with no adapter at all.
-      expect(find.widgetWithText(FilledButton, '1. Yes'), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, '3. No'), findsOneWidget);
-      expect(find.text('blocked · mystery · Project B'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Yes'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'No'), findsOneWidget);
+      expect(find.text('mystery · Project B'), findsOneWidget);
       // Still no mode/image controls, matching an unsupported agent.
       expect(find.byKey(const ValueKey('attach_image_button')), findsNothing);
       expect(find.byKey(const ValueKey('cycle_mode_button')), findsNothing);
 
-      await tester.tap(find.widgetWithText(FilledButton, '1. Yes'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Yes'));
       await tester.pump();
       await tester.pump();
 
@@ -2837,6 +2919,7 @@ void main() {
     Widget screen() => MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
       home: AgentScreen(
         client: HerdrClient(StubCommandRunner(blockedPromptResponse)),
         paneId: 'wB:p1',
@@ -2871,6 +2954,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
         home: AgentScreen(
           client: client,
           paneId: 'wB:p1',
@@ -2907,12 +2991,12 @@ void main() {
             ']}}',
           );
         }
-        if (command.contains("'agent' 'get'")) {
+        if (command.contains("'agent' 'list'")) {
           return ok(
-            '{"id":"1","result":{"agent":{"agent":"copilot",'
+            '{"id":"1","result":{"agents":[{"agent":"copilot",'
             '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
             '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-            '"name":"Copilot Agent"}}}',
+            '"name":"Copilot Agent"}]}}',
           );
         }
         if (command.contains("'agent' 'read'")) {
@@ -2928,6 +3012,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
           home: AgentScreen(
             client: client,
             paneId: 'wB:p1',
@@ -2973,12 +3058,12 @@ void main() {
             ']}}',
           );
         }
-        if (command.contains("'agent' 'get'")) {
+        if (command.contains("'agent' 'list'")) {
           return ok(
-            '{"id":"1","result":{"agent":{"agent":"copilot",'
+            '{"id":"1","result":{"agents":[{"agent":"copilot",'
             '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
             '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-            '"name":"Copilot Agent"}}}',
+            '"name":"Copilot Agent"}]}}',
           );
         }
         if (command.contains("'agent' 'read'")) {
@@ -2995,6 +3080,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
           home: AgentScreen(
             client: client,
             paneId: 'wB:p1',
@@ -3032,4 +3118,252 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+  testWidgets('hides the switcher bar with a single agent', (tester) async {
+    final client = HerdrClient(StubCommandRunner(blockedPromptResponse));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('switcher_herd_tab')), findsNothing);
+    expect(find.byIcon(Icons.grid_view), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('shows the switcher bar with two or more agents', (tester) async {
+    final client = HerdrClient(StubCommandRunner(multiAgentResponse));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('switcher_herd_tab')), findsOneWidget);
+    expect(find.byKey(const ValueKey('switcher_agent_wB:p1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('switcher_agent_wA:p1')), findsOneWidget);
+
+    // The current agent (wB:p1) is ringed in the accent colour; another agent
+    // (wA:p1) carries a transparent border of the same width.
+    Border ringOf(String paneId) {
+      final container = tester
+          .widgetList<Container>(
+            find.descendant(
+              of: find.byKey(ValueKey('switcher_agent_$paneId')),
+              matching: find.byType(Container),
+            ),
+          )
+          .firstWhere((c) => c.foregroundDecoration is BoxDecoration);
+      return (container.foregroundDecoration as BoxDecoration).border as Border;
+    }
+
+    expect(ringOf('wB:p1').top.color, droverDarkTheme.colorScheme.primary);
+    expect(ringOf('wA:p1').top.color, Colors.transparent);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'seeds the switcher bar from initialAgents on the first frame, before '
+    'any listAgents poll lands (a bar switch must not collapse and re-enter)',
+    (tester) async {
+      final client = HerdrClient(StubCommandRunner(multiAgentResponse));
+      const current = AgentInfo(
+        paneId: 'wB:p1',
+        workspaceId: 'wB',
+        tabId: 'wB:t1',
+        agent: 'claude',
+        status: AgentStatus.working,
+        cwd: '/tmp/proj-b',
+        focused: false,
+      );
+      const other = AgentInfo(
+        paneId: 'wA:p1',
+        workspaceId: 'wA',
+        tabId: 'wA:t1',
+        agent: 'codex',
+        status: AgentStatus.idle,
+        cwd: '/tmp/proj-a',
+        focused: false,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            initialAgent: current,
+            initialAgents: const [current, other],
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+
+      // Deliberately no extra pump/settle: the very first frame must already
+      // show the fully-entered bar (its entrance controller starts at 1 when
+      // the seeded list has >= 2 agents), keys absent only when hidden.
+      expect(find.byKey(const ValueKey('switcher_herd_tab')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('switcher_agent_wA:p1')),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('shortens a long bar label to six characters plus an ellipsis', (
+    tester,
+  ) async {
+    final client = HerdrClient(StubCommandRunner(multiAgentResponse));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // "Database" is 8 chars (> 7): first 6 + '…'. "Alpha" (5) stays whole.
+    expect(find.text('Databa…'), findsOneWidget);
+    expect(find.text('Alpha'), findsWidgets);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'tapping the current agent is a no-op; tapping another replaces the route',
+    (tester) async {
+      final client = HerdrClient(StubCommandRunner(multiAgentResponse));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('claude · Project B'), findsOneWidget);
+
+      // Current agent → no-op: still on wB:p1.
+      await tester.tap(find.byKey(const ValueKey('switcher_agent_wB:p1')));
+      await tester.pumpAndSettle();
+      expect(find.text('claude · Project B'), findsOneWidget);
+
+      // Another agent → the route is replaced with its screen.
+      await tester.tap(find.byKey(const ValueKey('switcher_agent_wA:p1')));
+      await tester.pumpAndSettle();
+      expect(find.byType(AgentScreen), findsOneWidget);
+      expect(find.text('Database'), findsOneWidget);
+      expect(find.textContaining('codex ·'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('the herd tab pops to the first route', (tester) async {
+    final client = HerdrClient(StubCommandRunner(multiAgentResponse));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => AgentScreen(
+                      client: client,
+                      paneId: 'wB:p1',
+                      pollInterval: const Duration(hours: 1),
+                    ),
+                  ),
+                ),
+                child: const Text('open agent'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open agent'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AgentScreen), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('switcher_herd_tab')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AgentScreen), findsNothing);
+    expect(find.text('open agent'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('renders prompt-card option labels without the number prefix', (
+    tester,
+  ) async {
+    final client = HerdrClient(StubCommandRunner(blockedPromptResponse));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.widgetWithText(FilledButton, 'Yes'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'No'), findsOneWidget);
+    // No option button carries the leading "N. " numbering.
+    expect(find.widgetWithText(FilledButton, '1. Yes'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
 }

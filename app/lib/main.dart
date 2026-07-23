@@ -270,6 +270,7 @@ class _DroverAppState extends State<DroverApp> {
           client: client,
           paneId: agent.first.paneId,
           initialAgent: agent.first,
+          initialAgents: agents,
           speechInput: _speechInput,
         ),
       ),
@@ -325,7 +326,9 @@ class _DroverAppState extends State<DroverApp> {
       navigatorKey: _navKey,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      theme: droverTheme,
+      theme: droverLightTheme,
+      darkTheme: droverDarkTheme,
+      themeMode: ThemeMode.system,
       home: _config == null
           ? HostSetupScreen(onSubmit: _applyConfig, onTest: _testConnection)
           : HerdScreen(

@@ -18,16 +18,16 @@ import '../app_theme.dart';
 import '../herdr/ansi_text.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/pane_text.dart';
-import '../i18n/status_label.dart';
 import '../image/image_input.dart';
 import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
 import '../transcript/native_transcript.dart';
+import '../widgets/agent_avatar.dart';
+import '../widgets/status_pill.dart';
 import '../widgets/text_context_menu.dart';
 import '../widgets/top_toast.dart';
 import 'agent_draft_store.dart';
 import 'structured_prompt_sheet.dart';
-import 'herd_screen.dart' show statusColor;
 
 // The transcript renders on a fixed dark surface regardless of app theme:
 // agent output carries absolute (truecolor) colours picked for a dark
@@ -99,17 +99,26 @@ class AgentScreen extends StatefulWidget {
     required this.client,
     required this.paneId,
     this.initialAgent,
+    this.initialAgents = const [],
     this.initialWorkspaceLabel,
     this.speechInput,
     this.imagePicker,
     this.draftStore,
     this.nativeTranscriptHistory,
+    this.nativeHistoryResolver,
     this.pollInterval = const Duration(seconds: 2),
   });
 
   final HerdrClient client;
   final String paneId;
   final AgentInfo? initialAgent;
+
+  /// The caller's last known agent list, seeding the switcher bar before the
+  /// first `listAgents` poll lands. Without it a bar-driven switch would mount
+  /// the replacement screen with an empty list — collapsing the bar for one
+  /// SSH round-trip and re-playing its entrance on the very interaction the
+  /// bar exists to make seamless.
+  final List<AgentInfo> initialAgents;
   final String? initialWorkspaceLabel;
   final SpeechInput? speechInput;
   final ImagePickerPort? imagePicker;
@@ -120,6 +129,14 @@ class AgentScreen extends StatefulWidget {
   // omitted (standalone use, previews, tests) a fresh instance is created
   // per screen instance, matching the pre-cache behavior.
   final NativeTranscriptHistory? nativeTranscriptHistory;
+
+  /// Resolves a pane-scoped [NativeTranscriptHistory] for an arbitrary pane id,
+  /// so switching agents via the bottom switcher bar can reuse the caller's
+  /// per-pane history cache (e.g. `HerdScreen`'s). When provided, a bar switch
+  /// passes `nativeHistoryResolver(paneId)` as the next screen's history and
+  /// forwards the resolver; when null the next screen builds its own (the
+  /// existing standalone/preview/test default).
+  final NativeTranscriptHistory Function(String paneId)? nativeHistoryResolver;
   final Duration pollInterval;
 
   @override
@@ -128,6 +145,10 @@ class AgentScreen extends StatefulWidget {
 
 class _AgentScreenState extends State<AgentScreen> {
   AgentInfo? _agent;
+  // All running agents from the latest `listAgents()` poll (seeded from
+  // `widget.initialAgents`), used to derive the current agent (by pane id)
+  // and to drive the bottom switcher bar.
+  late List<AgentInfo> _agents = widget.initialAgents;
   String _text = '';
   bool _loading = false;
   bool _firstLoad = true;
@@ -325,12 +346,19 @@ class _AgentScreenState extends State<AgentScreen> {
       // sequence over the same mutex-serialized SSH channel) can be much
       // slower, so it's kicked off separately below rather than awaited here
       // — a slow host must never leave the visible transcript blank.
-      final agent = await widget.client.getAgent(widget.paneId);
+      final agents = await widget.client.listAgents();
       final text = await widget.client.readAgent(widget.paneId, lines: _lines);
       if (!mounted) return;
+      // Derive the current agent from the list by pane id. When this pane isn't
+      // in the list (e.g. it just closed), keep the last known agent rather than
+      // blanking the header/transcript; read failures still surface via the
+      // catch below.
+      final agent =
+          agents.where((a) => a.paneId == widget.paneId).firstOrNull ?? _agent;
       final paneEndReached =
           loadMore && (text == _text || _lines >= _maxPaneLines);
       setState(() {
+        _agents = agents;
         _agent = agent;
         _text = text;
         _loadError = null;
@@ -348,7 +376,7 @@ class _AgentScreenState extends State<AgentScreen> {
         stickToBottom: stickToBottom,
         anchorFromBottom: anchorFromBottom,
       );
-      unawaited(_loadNativeHistory(agent));
+      if (agent != null) unawaited(_loadNativeHistory(agent));
     } catch (e) {
       // Keep last known transcript content on read/poll errors, but surface
       // the failure so it isn't silently swallowed; the next tick, or the
@@ -701,9 +729,34 @@ class _AgentScreenState extends State<AgentScreen> {
     showTopToast(context, message);
   }
 
+  /// Replaces this screen with one for [target] (a bottom-bar switch),
+  /// forwarding the shared collaborators and the native-history resolver so the
+  /// new pane resumes from the caller's per-pane cache when one is provided.
+  void _switchToAgent(AgentInfo target) {
+    if (target.paneId == widget.paneId) return;
+    final resolver = widget.nativeHistoryResolver;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => AgentScreen(
+          client: widget.client,
+          paneId: target.paneId,
+          initialAgent: target,
+          initialAgents: _agents,
+          speechInput: widget.speechInput,
+          imagePicker: widget.imagePicker,
+          draftStore: widget.draftStore,
+          pollInterval: widget.pollInterval,
+          nativeTranscriptHistory: resolver?.call(target.paneId),
+          nativeHistoryResolver: resolver,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
     final agent = _agent;
     final displayName =
         agent?.sessionTitle ?? agent?.name ?? agent?.agent ?? widget.paneId;
@@ -742,166 +795,248 @@ class _AgentScreenState extends State<AgentScreen> {
         !hasTranscriptContent && _firstLoad && _loadError == null;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(displayName),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(36),
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                const SizedBox(width: 16),
-                if (agent != null)
-                  Chip(
-                    avatar: Icon(
-                      Icons.circle,
-                      color: statusColor(agent.status),
-                      size: 12,
-                    ),
-                    label: Text(
-                      '${agentStatusLabel(l10n, agent.status)} · $agentType · $workspaceLabel',
-                    ),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _AgentHeader(
+              agentType: agentType,
+              agentTypeForAvatar: agent?.agent,
+              displayName: displayName,
+              workspaceLabel: workspaceLabel,
+              status: agent?.status,
+            ),
+            if (_workspaceLabelError != null)
+              MaterialBanner(
+                content: Text(_workspaceLabelError!),
+                actions: [
+                  TextButton(
+                    onPressed: _retryWorkspaceLabel,
+                    child: Text(l10n.commonRetry),
                   ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      body: Column(
-        children: [
-          if (_workspaceLabelError != null)
-            MaterialBanner(
-              content: Text(_workspaceLabelError!),
-              actions: [
-                TextButton(
-                  onPressed: _retryWorkspaceLabel,
-                  child: Text(l10n.commonRetry),
+                ],
+              ),
+            if (_loadError != null)
+              MaterialBanner(
+                content: Text(l10n.agentLoadError(_loadError!)),
+                actions: [
+                  TextButton(onPressed: _load, child: Text(l10n.commonRetry)),
+                ],
+              ),
+            if (_nativeHistoryError != null)
+              MaterialBanner(
+                content: Text(
+                  l10n.agentNativeHistoryError(_nativeHistoryError!),
                 ),
-              ],
-            ),
-          if (_loadError != null)
-            MaterialBanner(
-              content: Text(l10n.agentLoadError(_loadError!)),
-              actions: [
-                TextButton(onPressed: _load, child: Text(l10n.commonRetry)),
-              ],
-            ),
-          if (_nativeHistoryError != null)
-            MaterialBanner(
-              content: Text(l10n.agentNativeHistoryError(_nativeHistoryError!)),
-              actions: [
-                TextButton(onPressed: _load, child: Text(l10n.commonRetry)),
-              ],
-            ),
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              color: _transcriptBg,
-              child: showInitialLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        key: ValueKey('transcript_initial_loading'),
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _loadMore,
-                      child: CustomScrollView(
-                        key: const ValueKey('transcript_scroll'),
-                        controller: _scrollController,
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        slivers: [
-                          const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                          if (hasNativeHistory) ...[
-                            SliverPadding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              sliver: SliverToBoxAdapter(
-                                child: _TranscriptSectionLabel(
-                                  label: l10n.agentNativeHistory,
-                                ),
-                              ),
+                actions: [
+                  TextButton(onPressed: _load, child: Text(l10n.commonRetry)),
+                ],
+              ),
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                color: scheme.surfaceContainerLowest,
+                child: showInitialLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          key: ValueKey('transcript_initial_loading'),
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: _loadMore,
+                        child: CustomScrollView(
+                          key: const ValueKey('transcript_scroll'),
+                          controller: _scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          slivers: [
+                            const SliverToBoxAdapter(
+                              child: SizedBox(height: 12),
                             ),
-                            SliverPadding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              sliver: _NativeTranscript(
-                                entries: nativeHistory.entries,
-                              ),
-                            ),
-                          ],
-                          if (liveTerminalText != null &&
-                              liveTerminalText.trim().isNotEmpty) ...[
-                            if (hasNativeHistory)
-                              const SliverToBoxAdapter(
-                                child: SizedBox(height: 20),
-                              ),
-                            if (hasNativeHistory)
+                            if (hasNativeHistory) ...[
                               SliverPadding(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 12,
                                 ),
                                 sliver: SliverToBoxAdapter(
                                   child: _TranscriptSectionLabel(
-                                    label: l10n.agentLiveTerminal,
+                                    label: l10n.agentNativeHistory,
                                   ),
                                 ),
                               ),
-                            SliverPadding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
+                              SliverPadding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                sliver: _NativeTranscript(
+                                  entries: nativeHistory.entries,
+                                ),
                               ),
-                              sliver: SliverToBoxAdapter(
-                                child: _Transcript(ansiText: liveTerminalText),
+                            ],
+                            if (liveTerminalText != null &&
+                                liveTerminalText.trim().isNotEmpty) ...[
+                              if (hasNativeHistory)
+                                const SliverToBoxAdapter(
+                                  child: SizedBox(height: 20),
+                                ),
+                              if (hasNativeHistory)
+                                SliverPadding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  sliver: SliverToBoxAdapter(
+                                    child: _TranscriptSectionLabel(
+                                      label: l10n.agentLiveTerminal,
+                                    ),
+                                  ),
+                                ),
+                              SliverPadding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                sliver: SliverToBoxAdapter(
+                                  child: _Transcript(
+                                    ansiText: liveTerminalText,
+                                  ),
+                                ),
                               ),
+                            ],
+                            if (!hasNativeHistory && _paneEndReached)
+                              SliverPadding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  12,
+                                  12,
+                                  0,
+                                ),
+                                sliver: SliverToBoxAdapter(
+                                  child: Text(
+                                    l10n.agentHistoryBeginning,
+                                    style: TextStyle(
+                                      color: DroverColors.of(
+                                        context,
+                                      ).tertiaryText,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            const SliverToBoxAdapter(
+                              child: SizedBox(height: 16),
                             ),
                           ],
-                          if (!hasNativeHistory && _paneEndReached)
-                            SliverPadding(
-                              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                              sliver: SliverToBoxAdapter(
-                                child: Text(
-                                  l10n.agentHistoryBeginning,
-                                  style: const TextStyle(
-                                    color: _transcriptFg,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                        ],
+                        ),
                       ),
-                    ),
+              ),
             ),
-          ),
-          if (question != null)
-            _PromptCard(
-              question: question,
-              onSend: _send,
+            if (question != null)
+              _PromptCard(
+                question: question,
+                onSend: _send,
+                client: widget.client,
+                paneId: widget.paneId,
+              ),
+            _Composer(
+              controller: _messageController,
+              sending: _sending,
+              dictationStarting: _dictationStarting,
+              dictating: _dictating,
+              agentRunning: agent?.status == AgentStatus.working,
+              pendingImages: _pendingImages,
+              canAttachImages: _imagesCapability != null,
+              onRemoveImage: _removePendingImage,
+              onDictation: _toggleDictation,
+              onAttach: _attachImage,
+              onSend: _sendMessage,
+              mode: mode,
+              modeCapability: modeCapability,
+              onAction: _send,
               client: widget.client,
               paneId: widget.paneId,
             ),
-          _Composer(
-            controller: _messageController,
-            sending: _sending,
-            dictationStarting: _dictationStarting,
-            dictating: _dictating,
-            agentRunning: agent?.status == AgentStatus.working,
-            pendingImages: _pendingImages,
-            canAttachImages: _imagesCapability != null,
-            onRemoveImage: _removePendingImage,
-            onDictation: _toggleDictation,
-            onAttach: _attachImage,
-            onSend: _sendMessage,
-            mode: mode,
-            modeCapability: modeCapability,
-            onAction: _send,
-            client: widget.client,
-            paneId: widget.paneId,
+            _AgentSwitcherBar(
+              agents: _agents,
+              currentPaneId: widget.paneId,
+              onSelect: _switchToAgent,
+              onOpenHerd: () =>
+                  Navigator.of(context).popUntil((route) => route.isFirst),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The screen header (replaces the AppBar): back chevron, agent avatar, the
+/// two-line title/subtitle, and a status pill. Sits under the top safe-area
+/// inset with a hairline bottom border.
+class _AgentHeader extends StatelessWidget {
+  const _AgentHeader({
+    required this.agentType,
+    required this.agentTypeForAvatar,
+    required this.displayName,
+    required this.workspaceLabel,
+    required this.status,
+  });
+
+  final String agentType;
+  final String? agentTypeForAvatar;
+  final String displayName;
+  final String? workspaceLabel;
+  final AgentStatus? status;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            key: const ValueKey('agent_back_button'),
+            icon: const Icon(Icons.arrow_back_ios_new),
+            color: scheme.primary,
+            iconSize: 22,
+            visualDensity: VisualDensity.compact,
+            onPressed: () => Navigator.maybePop(context),
           ),
+          const SizedBox(width: 4),
+          AgentAvatar(agent: agentTypeForAvatar, size: 34, radius: 12),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  '$agentType · ${workspaceLabel ?? ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (status != null) ...[
+            const SizedBox(width: 8),
+            StatusPill(status: status!),
+          ],
         ],
       ),
     );
@@ -918,26 +1053,38 @@ class _Transcript extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final spans = parseAnsi(ansiText);
-    return Align(
-      alignment: Alignment.topLeft,
-      child: SelectableText.rich(
-        TextSpan(
-          style: const TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 13.5,
-            height: 1.4,
-            color: _transcriptFg,
-          ),
-          children: [
-            for (final span in spans)
-              TextSpan(
-                text: span.text,
-                style: TextStyle(
-                  color: span.color,
-                  fontWeight: span.bold ? FontWeight.bold : null,
+    // The live terminal keeps a fixed dark surface in both themes so ANSI
+    // truecolor stays faithful; a rounded clip makes it read as a card on the
+    // light transcript surface.
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: _transcriptBg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      padding: const EdgeInsets.all(12),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: SelectableText.rich(
+          TextSpan(
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 13.5,
+              height: 1.4,
+              color: _transcriptFg,
+            ),
+            children: [
+              for (final span in spans)
+                TextSpan(
+                  text: span.text,
+                  style: TextStyle(
+                    color: span.color,
+                    fontWeight: span.bold ? FontWeight.bold : null,
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -955,10 +1102,12 @@ class _TranscriptSectionLabel extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         label,
-        style: const TextStyle(
-          color: _transcriptFg,
-          fontWeight: FontWeight.bold,
-          fontSize: 13,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: DroverColors.of(context).tertiaryText,
+          fontWeight: FontWeight.w700,
+          fontSize: 10.5,
+          letterSpacing: 1,
         ),
       ),
     );
@@ -1067,27 +1216,29 @@ class _ToolUseChipState extends State<_ToolUseChip> {
   @override
   Widget build(BuildContext context) {
     final summary = toolUseSummary(widget.name, widget.input);
+    final colors = DroverColors.of(context);
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Material(
-          color: _codeSurface,
-          borderRadius: BorderRadius.circular(6),
+          color: colors.toolSurface,
+          borderRadius: BorderRadius.circular(12),
           child: InkWell(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(12),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Row(
                 children: [
-                  const Icon(Icons.build, size: 13, color: _transcriptFgDim),
+                  Icon(Icons.build, size: 14, color: colors.tertiaryText),
                   const SizedBox(width: 8),
                   Text(
                     widget.name,
-                    style: const TextStyle(
-                      color: _transcriptFg,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -1096,10 +1247,10 @@ class _ToolUseChipState extends State<_ToolUseChip> {
                       summary,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'monospace',
-                        fontSize: 12,
-                        color: _transcriptFgDim,
+                        fontSize: 11.5,
+                        color: colors.tertiaryText,
                       ),
                     ),
                   ),
@@ -1318,6 +1469,7 @@ class _ThinkingRowState extends State<_ThinkingRow> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final tertiary = DroverColors.of(context).tertiaryText;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1327,10 +1479,10 @@ class _ThinkingRowState extends State<_ThinkingRow> {
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: Text(
               l10n.agentThinking,
-              style: const TextStyle(
-                color: _transcriptFgDim,
+              style: TextStyle(
+                color: tertiary,
                 fontStyle: FontStyle.italic,
-                fontSize: 13,
+                fontSize: 12.5,
               ),
             ),
           ),
@@ -1340,11 +1492,7 @@ class _ThinkingRowState extends State<_ThinkingRow> {
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               widget.text,
-              style: const TextStyle(
-                color: _transcriptFgDim,
-                fontSize: 13,
-                height: 1.4,
-              ),
+              style: TextStyle(color: tertiary, fontSize: 13, height: 1.4),
             ),
           ),
       ],
@@ -1360,27 +1508,28 @@ class _UserBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Align(
       alignment: Alignment.centerRight,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: const BoxDecoration(
-            color: Color(0xFF30363D),
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(14),
-              topRight: Radius.circular(14),
-              bottomLeft: Radius.circular(14),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+          decoration: BoxDecoration(
+            color: DroverColors.of(context).userBubble,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(16),
+              topRight: Radius.circular(16),
+              bottomLeft: Radius.circular(16),
               bottomRight: Radius.circular(4),
             ),
           ),
           child: SelectableText(
             text,
-            style: const TextStyle(
-              color: _transcriptFg,
-              fontSize: 14,
-              height: 1.35,
+            style: TextStyle(
+              color: scheme.onSurface,
+              fontSize: 13.5,
+              height: 1.5,
             ),
           ),
         ),
@@ -1390,41 +1539,34 @@ class _UserBubble extends StatelessWidget {
 }
 
 // Chat-scale heading sizes (the gpt_markdown defaults are display-sized) with
-// the auto h1 divider disabled. Built once from constants — the factory is
-// costly (it builds a full ThemeData + Typography).
-final _assistantMarkdownTheme = GptMarkdownThemeData(
-  brightness: Brightness.dark,
-  h1: const TextStyle(
-    fontSize: 20,
-    fontWeight: FontWeight.bold,
-    color: _transcriptFg,
-  ),
-  h2: const TextStyle(
-    fontSize: 18,
-    fontWeight: FontWeight.bold,
-    color: _transcriptFg,
-  ),
-  h3: const TextStyle(
-    fontSize: 16,
-    fontWeight: FontWeight.bold,
-    color: _transcriptFg,
-  ),
-  h4: const TextStyle(
-    fontSize: 15,
-    fontWeight: FontWeight.bold,
-    color: _transcriptFg,
-  ),
-  h5: const TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.bold,
-    color: _transcriptFg,
-  ),
-  h6: const TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.bold,
-    color: _transcriptFg,
-  ),
+// the auto h1 divider disabled. One instance per brightness, each built once
+// from constants — the factory is costly (it builds a full ThemeData +
+// Typography) — and picked by the active theme's brightness so assistant
+// Markdown follows light/dark like the rest of the Drover-drawn UI. Heading
+// colours use the theme's onSurface tone.
+GptMarkdownThemeData _buildAssistantMarkdownTheme(
+  Brightness brightness,
+  Color heading,
+) => GptMarkdownThemeData(
+  brightness: brightness,
+  h1: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: heading),
+  h2: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: heading),
+  h3: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: heading),
+  h4: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: heading),
+  h5: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: heading),
+  h6: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: heading),
   autoAddDividerLineAfterH1: false,
+);
+
+// onSurface tones from the two Drover themes (see app_theme.dart), hardcoded
+// here so the heading colour is a compile-time constant per cached instance.
+final _assistantMarkdownThemeDark = _buildAssistantMarkdownTheme(
+  Brightness.dark,
+  const Color(0xFFF0E9DF),
+);
+final _assistantMarkdownThemeLight = _buildAssistantMarkdownTheme(
+  Brightness.light,
+  const Color(0xFF33291E),
 );
 
 class _AssistantMessage extends StatefulWidget {
@@ -1437,32 +1579,41 @@ class _AssistantMessage extends StatefulWidget {
 }
 
 class _AssistantMessageState extends State<_AssistantMessage> {
-  late Widget _markdown;
+  // Cached rendered Markdown, rebuilt only when the text or the active
+  // brightness changes (so the 2s poll's rebuilds are cheap while a system
+  // light/dark switch still re-themes the content).
+  Widget? _markdown;
+  Brightness? _brightness;
+  String? _builtText;
 
   @override
-  void initState() {
-    super.initState();
-    _markdown = _buildMarkdown(widget.text);
-  }
-
-  @override
-  void didUpdateWidget(_AssistantMessage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.text != widget.text) {
-      _markdown = _buildMarkdown(widget.text);
+  Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    if (_markdown == null ||
+        _brightness != brightness ||
+        _builtText != widget.text) {
+      _brightness = brightness;
+      _builtText = widget.text;
+      _markdown = _buildMarkdown(context, widget.text);
     }
+    return _markdown!;
   }
 
-  Widget _buildMarkdown(String text) {
+  Widget _buildMarkdown(BuildContext context, String text) {
+    final scheme = Theme.of(context).colorScheme;
+    final colors = DroverColors.of(context);
+    final theme = scheme.brightness == Brightness.dark
+        ? _assistantMarkdownThemeDark
+        : _assistantMarkdownThemeLight;
     return SelectionArea(
       child: GptMarkdownTheme(
-        gptThemeData: _assistantMarkdownTheme,
+        gptThemeData: theme,
         child: GptMarkdown(
           text,
-          style: const TextStyle(
-            color: _transcriptFg,
-            fontSize: 14,
-            height: 1.4,
+          style: TextStyle(
+            color: scheme.onSurface,
+            fontSize: 13.5,
+            height: 1.6,
           ),
           // Transcript text is untrusted remote content. gpt_markdown's default
           // image renderer would GET the URL via NetworkImage on build, so images
@@ -1471,58 +1622,53 @@ class _AssistantMessageState extends State<_AssistantMessage> {
             margin: const EdgeInsets.symmetric(vertical: 4),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: BoxDecoration(
-              color: _codeSurface,
+              color: colors.toolSurface,
               borderRadius: BorderRadius.circular(6),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.image_outlined,
-                  size: 16,
-                  color: _transcriptFg,
-                ),
+                Icon(Icons.image_outlined, size: 16, color: scheme.onSurface),
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(
                     imageUrl,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 13,
-                      color: _transcriptFg,
+                      color: scheme.onSurface,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          // Inline code: a small dark panel keeps it readable on the dark surface.
+          // Inline code: a small tonal panel keeps it readable on the surface.
           highlightBuilder: (context, code, style) => Container(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
             decoration: BoxDecoration(
-              color: _codeSurface,
-              borderRadius: BorderRadius.circular(4),
+              color: colors.toolSurface,
+              borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
               code,
               style: style.copyWith(
                 fontFamily: 'monospace',
-                color: _transcriptFg,
+                fontSize: 12.5,
+                color: scheme.onSurface,
               ),
             ),
           ),
           // Fenced code: syntax-highlighted when the fence tag names a known
-          // language, otherwise a plain dark panel. Both scroll horizontally
-          // so long lines never overflow the transcript width.
+          // language, otherwise a plain dark panel. Fenced blocks keep a fixed
+          // dark surface in both themes (terminal-ish content), and scroll
+          // horizontally so long lines never overflow the transcript width.
           codeBuilder: (context, name, code, closed) =>
               _FencedCode(language: name.trim(), code: code),
         ),
       ),
     );
   }
-
-  @override
-  Widget build(BuildContext context) => _markdown;
 }
 
 /// A flat, isolate-transferable highlighted run: its text plus the theme
@@ -1697,44 +1843,87 @@ class _PromptCard extends StatelessWidget {
   final HerdrClient client;
   final String paneId;
 
-  Widget _optionButton(PromptOption option) {
+  Widget _optionButton(BuildContext context, PromptOption option) {
+    final scheme = Theme.of(context).colorScheme;
     void press() => onSend(() => client.prompt(paneId, '${option.number}'));
+    // The parsed TUI text is shown as-is; only the leading `N. ` numbering is
+    // dropped from the label (the number is still what gets sent).
     final label = Text(
-      '${option.number}. ${option.label}',
+      option.label,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     );
-    return option.selected
-        ? FilledButton(onPressed: press, child: label)
-        : FilledButton.tonal(onPressed: press, child: label);
+    if (option.selected) {
+      return FilledButton(
+        onPressed: press,
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(0, 38),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          shape: const StadiumBorder(),
+          textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+        ),
+        child: label,
+      );
+    }
+    return FilledButton.tonal(
+      onPressed: press,
+      style: FilledButton.styleFrom(
+        backgroundColor: scheme.surfaceContainerHighest,
+        foregroundColor: scheme.onSurface,
+        minimumSize: const Size(0, 38),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        shape: const StadiumBorder(),
+        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+      ),
+      child: label,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (question.question != null) ...[
-              Text(
-                question.question!,
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const SizedBox(height: 8),
-            ],
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final option in question.options) _optionButton(option),
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = scheme.brightness == Brightness.dark;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? scheme.surfaceContainerHigh : scheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outline),
+        boxShadow: isDark
+            ? null
+            : const [
+                BoxShadow(
+                  color: Color(0x0F786446),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
               ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (question.question != null) ...[
+            Text(
+              question.question!,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w800,
+                color: scheme.onSurface,
+              ),
             ),
+            const SizedBox(height: 10),
           ],
-        ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final option in question.options)
+                _optionButton(context, option),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1831,15 +2020,25 @@ class _Composer extends StatelessWidget {
     final l10n = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
     final mode = this.mode;
+    final isDark = scheme.brightness == Brightness.dark;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
       child: Container(
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(24),
+          color: scheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(22),
           border: Border.all(color: scheme.outlineVariant),
+          boxShadow: isDark
+              ? null
+              : const [
+                  BoxShadow(
+                    color: Color(0x0F786446),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
         ),
-        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        padding: const EdgeInsets.fromLTRB(14, 10, 10, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -1993,8 +2192,8 @@ class _AttachButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     return SizedBox(
-      width: 48,
-      height: 48,
+      width: 40,
+      height: 40,
       child: Tooltip(
         message: l10n.agentAttachImage,
         child: OutlinedButton(
@@ -2006,7 +2205,7 @@ class _AttachButton extends StatelessWidget {
             foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
             side: BorderSide(color: Theme.of(context).colorScheme.outline),
           ),
-          child: const Icon(Icons.add, size: 22),
+          child: const Icon(Icons.add, size: 20),
         ),
       ),
     );
@@ -2064,9 +2263,14 @@ class _ModeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final color = _modeColor(mode);
+    final scheme = Theme.of(context).colorScheme;
+    // Muted pill; the foreground carries the mode's meaning for non-normal
+    // modes, and reads as a quiet default (onSurfaceVariant) for normal.
+    final fg = mode == AgentMode.normal
+        ? scheme.onSurfaceVariant
+        : _modeColor(mode);
     return SizedBox(
-      height: 48,
+      height: 40,
       child: Tooltip(
         message: l10n.agentCycleModeTooltip,
         child: OutlinedButton(
@@ -2074,15 +2278,20 @@ class _ModeButton extends StatelessWidget {
           onPressed: sending ? null : onPressed,
           style: OutlinedButton.styleFrom(
             shape: const StadiumBorder(),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            foregroundColor: color,
-            side: BorderSide(color: color),
+            padding: const EdgeInsets.symmetric(horizontal: 13),
+            backgroundColor: DroverColors.of(context).idlePillBg,
+            foregroundColor: fg,
+            side: BorderSide.none,
+            textStyle: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.tune, size: 18),
-              const SizedBox(width: 6),
+              const Icon(Icons.tune, size: 16),
+              const SizedBox(width: 5),
               Text(_modeLabel(mode, l10n)),
             ],
           ),
@@ -2108,8 +2317,8 @@ class _EscapeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     return SizedBox(
-      width: 48,
-      height: 48,
+      width: 40,
+      height: 40,
       child: Tooltip(
         message: l10n.agentSendEscape,
         child: OutlinedButton(
@@ -2147,8 +2356,8 @@ class _MicrophoneButton extends StatelessWidget {
     final l10n = AppLocalizations.of(context)!;
     final enabled = !starting;
     return SizedBox(
-      width: 48,
-      height: 48,
+      width: 40,
+      height: 40,
       child: Tooltip(
         message: dictating ? l10n.agentStopDictation : l10n.agentDictateMessage,
         child: OutlinedButton(
@@ -2198,8 +2407,8 @@ class _SendButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     return SizedBox(
-      width: 48,
-      height: 48,
+      width: 40,
+      height: 40,
       child: ValueListenableBuilder<TextEditingValue>(
         valueListenable: controller,
         builder: (context, value, _) {
@@ -2225,6 +2434,261 @@ class _SendButton extends StatelessWidget {
           }
           return button;
         },
+      ),
+    );
+  }
+}
+
+/// The 案D bottom switcher bar: a fixed 一覧 (Herd) tab followed by every
+/// running agent, so the user can see each agent's status and switch between
+/// them without leaving the conversation. Visible only when 2+ agents are
+/// running; with 0/1 it slides out and collapses to just the home-indicator
+/// inset, and slides back in (translateY + fade, ~240ms ease-out) when a
+/// second agent appears.
+class _AgentSwitcherBar extends StatefulWidget {
+  const _AgentSwitcherBar({
+    required this.agents,
+    required this.currentPaneId,
+    required this.onSelect,
+    required this.onOpenHerd,
+  });
+
+  final List<AgentInfo> agents;
+  final String currentPaneId;
+  final void Function(AgentInfo agent) onSelect;
+  final VoidCallback onOpenHerd;
+
+  @override
+  State<_AgentSwitcherBar> createState() => _AgentSwitcherBarState();
+}
+
+class _AgentSwitcherBarState extends State<_AgentSwitcherBar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final CurvedAnimation _curve;
+
+  bool get _visible => widget.agents.length >= 2;
+
+  static String _displayName(AgentInfo agent) =>
+      agent.sessionTitle ?? agent.name ?? agent.agent ?? agent.paneId;
+
+  /// The bar label: the session title (or fallback) shortened to 6 code points
+  /// + '…' once it exceeds 7 (the spec's rule), rune-safe for multibyte text.
+  static String _shortLabel(String text) {
+    final runes = text.runes.toList();
+    if (runes.length <= 7) return text;
+    return '${String.fromCharCodes(runes.take(6))}…';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 240),
+      value: _visible ? 1 : 0,
+    );
+    _curve = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+  }
+
+  @override
+  void didUpdateWidget(_AgentSwitcherBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Slide in on 1→2, slide out on 2→1; both no-op when already settled.
+    if (_visible) {
+      _controller.forward();
+    } else {
+      _controller.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _curve.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    return AnimatedBuilder(
+      animation: _curve,
+      builder: (context, _) {
+        final t = _curve.value.clamp(0.0, 1.0);
+        // Settled hidden: the bar is gone entirely (no children in the tree),
+        // leaving only the home-indicator inset so the composer keeps its
+        // clearance.
+        if (t == 0 && !_visible) {
+          return SizedBox(width: double.infinity, height: bottomInset);
+        }
+        // The bar body's reserved height animates via the heightFactor while
+        // its content translates up from below and fades in; a shrinking
+        // spacer keeps the total bottom clearance ≈ the inset throughout the
+        // transition (the body carries the inset itself once fully in).
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRect(
+              child: Align(
+                alignment: Alignment.topCenter,
+                heightFactor: t,
+                child: Opacity(
+                  opacity: t,
+                  child: FractionalTranslation(
+                    translation: Offset(0, 1 - t),
+                    child: _bar(context, bottomInset),
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: (1 - t) * bottomInset),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _bar(BuildContext context, double bottomInset) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        border: Border(top: BorderSide(color: scheme.outlineVariant)),
+      ),
+      padding: EdgeInsets.fromLTRB(14, 9, 14, 9 + bottomInset),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _herdTab(context),
+            for (final agent in widget.agents) ...[
+              const SizedBox(width: 14),
+              _agentItem(context, agent),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _herdTab(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    final colors = DroverColors.of(context);
+    return _BarCell(
+      key: const ValueKey('switcher_herd_tab'),
+      onTap: widget.onOpenHerd,
+      box: Container(
+        width: 44,
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: scheme.outline, width: 1.5),
+        ),
+        child: Icon(Icons.grid_view, size: 20, color: scheme.onSurfaceVariant),
+      ),
+      label: l10n.agentSwitcherHerdTab,
+      labelColor: colors.tertiaryText,
+    );
+  }
+
+  Widget _agentItem(BuildContext context, AgentInfo agent) {
+    final scheme = Theme.of(context).colorScheme;
+    final colors = DroverColors.of(context);
+    final isCurrent = agent.paneId == widget.currentPaneId;
+    return _BarCell(
+      key: ValueKey('switcher_agent_${agent.paneId}'),
+      onTap: isCurrent ? null : () => widget.onSelect(agent),
+      box: SizedBox(
+        width: 44,
+        height: 44,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              // The ring paints over the avatar's edge, so current/other keep
+              // the same 44px footprint (only the border colour differs).
+              foregroundDecoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isCurrent ? scheme.primary : Colors.transparent,
+                  width: 2.5,
+                ),
+              ),
+              child: AgentAvatar(agent: agent.agent, size: 44, radius: 16),
+            ),
+            Positioned(
+              right: -3,
+              top: -3,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: colors.statusDot(agent.status),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: scheme.surfaceContainerLow,
+                    width: 2.5,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      label: _shortLabel(_displayName(agent)),
+      labelColor: isCurrent ? scheme.primary : colors.tertiaryText,
+    );
+  }
+}
+
+/// One switcher-bar entry: a 44×44 box (avatar or the 一覧 tile) above a 9px
+/// label, tappable as a unit.
+class _BarCell extends StatelessWidget {
+  const _BarCell({
+    super.key,
+    required this.box,
+    required this.label,
+    required this.labelColor,
+    required this.onTap,
+  });
+
+  final Widget box;
+  final String label;
+  final Color labelColor;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          box,
+          const SizedBox(height: 4),
+          SizedBox(
+            width: 52,
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                color: labelColor,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

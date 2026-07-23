@@ -182,58 +182,83 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                l10n.commonLaunchAgent,
-                style: Theme.of(context).textTheme.titleLarge,
+    final scheme = Theme.of(context).colorScheme;
+    // Self-decorate: the caller opens us via a plain showModalBottomSheet, so
+    // the rounded top + grab handle live here rather than at the call site.
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      child: Material(
+        color: scheme.surfaceContainer,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    l10n.commonLaunchAgent,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildPresetSection(),
+                  const SizedBox(height: 16),
+                  _buildCwdSection(),
+                  const SizedBox(height: 16),
+                  _buildNameSection(),
+                  const SizedBox(height: 16),
+                  _buildWorkspaceSection(),
+                  if (_launchError != null) ...[
+                    const SizedBox(height: 12),
+                    Text(_launchError!, style: TextStyle(color: scheme.error)),
+                  ],
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      key: const ValueKey('launch_button'),
+                      style: FilledButton.styleFrom(
+                        shape: const StadiumBorder(),
+                      ),
+                      onPressed: _canLaunch ? _launch : null,
+                      child: _busy
+                          ? const SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(l10n.launchButton),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      key: const ValueKey('launch_cancel_button'),
+                      style: OutlinedButton.styleFrom(
+                        shape: const StadiumBorder(),
+                      ),
+                      onPressed: _busy
+                          ? null
+                          : () => Navigator.pop(context, false),
+                      child: Text(l10n.commonCancel),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              _buildPresetSection(),
-              const SizedBox(height: 16),
-              _buildCwdSection(),
-              const SizedBox(height: 16),
-              _buildNameSection(),
-              const SizedBox(height: 16),
-              _buildWorkspaceSection(),
-              if (_launchError != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _launchError!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ],
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  key: const ValueKey('launch_button'),
-                  onPressed: _canLaunch ? _launch : null,
-                  child: _busy
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(l10n.launchButton),
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  key: const ValueKey('launch_cancel_button'),
-                  onPressed: _busy ? null : () => Navigator.pop(context, false),
-                  child: Text(l10n.commonCancel),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),

@@ -42,16 +42,30 @@ class NativeTranscriptHistory {
   NativeTranscriptAdapter? _adapter;
   String? _identity;
   bool _resolved = false;
+  NativeTranscript? _latest;
+
+  /// The most recently loaded/merged transcript, or null before any [load]
+  /// has returned one. Captured inside the [_mutex]-serialized [load] and
+  /// [loadOlder] paths, so a caller reading it never sees a torn snapshot.
+  /// Lets `HerdScreen` derive a best-effort activity snippet for an already-
+  /// opened pane from cache, without itself loading native history on the
+  /// poll (which would contend for the single serialized SSH channel).
+  NativeTranscript? get latest => _latest;
 
   Future<NativeTranscript?> load(AgentInfo agent) {
-    return _mutex.run(() {
+    return _mutex.run(() async {
       final identity = _identityFor(agent);
       if (!_resolved || identity != _identity) {
         _resolved = true;
         _identity = identity;
         _adapter = _resolveAdapter(agent)?.createNativeHistory(_runner, agent);
+        // A new session identity invalidates the cached snapshot: [latest]
+        // must never serve the previous session's transcript.
+        _latest = null;
       }
-      return _adapter?.load(agent) ?? Future.value(null);
+      final result = await (_adapter?.load(agent) ?? Future.value(null));
+      if (result != null) _latest = result;
+      return result;
     });
   }
 
@@ -73,11 +87,13 @@ class NativeTranscriptHistory {
   /// Serialized against every other [load]/[loadOlder] call via [_mutex] —
   /// see the class doc.
   Future<NativeTranscript?> loadOlder(AgentInfo agent) {
-    return _mutex.run(() {
+    return _mutex.run(() async {
       if (!_resolved || _identityFor(agent) != _identity) {
-        return Future.value(null);
+        return null;
       }
-      return _adapter?.loadOlder(agent) ?? Future.value(null);
+      final result = await (_adapter?.loadOlder(agent) ?? Future.value(null));
+      if (result != null) _latest = result;
+      return result;
     });
   }
 
