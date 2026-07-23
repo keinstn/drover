@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:drover/src/agents/agent_image_upload.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
+import 'package:drover/src/herdr/host_platform.dart';
 import 'package:drover/src/image/image_input.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
@@ -68,6 +69,32 @@ void main() {
         ),
         hasLength(1),
       );
+    });
+
+    test('uses PowerShell commands on a Windows host', () async {
+      final runner = FakeCommandRunner((_) => ok('{"id":"1","result":{}}'));
+      final client = HerdrClient(runner, platform: const WindowsHostPlatform());
+
+      await uploadAgentImages(client, agent, [
+        PickedImage(bytes: Uint8List.fromList([1, 2, 3]), extension: 'png'),
+      ], timestampMs: 42);
+
+      // mkdir + prune, both assembled as encoded PowerShell exec lines.
+      expect(runner.commands, hasLength(2));
+      for (final command in runner.commands) {
+        expect(
+          command,
+          startsWith(
+            'powershell.exe -NoProfile -NonInteractive -EncodedCommand ',
+          ),
+        );
+      }
+
+      // SFTP uploads are OS-agnostic: image bytes plus the .gitignore.
+      expect(runner.uploads, hasLength(2));
+      expect(runner.uploads[0].path, '/tmp/proj/.drover/img-42-0.png');
+      expect(runner.uploads[0].bytes, [1, 2, 3]);
+      expect(runner.uploads[1].path, '/tmp/proj/.drover/.gitignore');
     });
   });
 }

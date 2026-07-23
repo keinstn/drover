@@ -18,6 +18,7 @@
 import 'dart:convert';
 
 import '../../herdr/command_runner.dart';
+import '../../herdr/host_platform.dart';
 import '../../models/agent_info.dart';
 import '../../transcript/native_transcript.dart';
 
@@ -136,12 +137,14 @@ class CodexTranscriptLoader implements NativeTranscriptAdapter {
     this._runner, {
     CodexTranscriptParser? parser,
     JsonlTranscriptWindow? window,
+    this._platform = const UnixHostPlatform(),
   }) : _parser = parser ?? const CodexTranscriptParser(),
        _loader = JsonlSessionLoader(window: window);
 
   final CommandRunner _runner;
   final CodexTranscriptParser _parser;
   final JsonlSessionLoader _loader;
+  final HostPlatform _platform;
 
   static bool supportsAgent(AgentInfo agent) {
     final session = agent.agentSession;
@@ -183,17 +186,20 @@ class CodexTranscriptLoader implements NativeTranscriptAdapter {
     // [supportsAgent] validated the id above (UUID pattern: hex and hyphens
     // only). Session files live at:
     //   ${CODEX_HOME:-$HOME/.codex}/sessions/YYYY/MM/DD/rollout-*-<uuid>.jsonl
-    // The date components are unknown, so we do a bounded find over the
-    // three-level date hierarchy — exactly -mindepth 4 -maxdepth 4 relative
-    // to the sessions root. Only the Codex sessions root is searched; no
-    // broad $HOME scan. Run via `sh -lc` so login-shell env (including
-    // CODEX_HOME) applies even when the SSH account's default shell is
-    // non-POSIX (e.g. fish). The UUID contains only hex digits and hyphens
-    // so embedding it in a double-quoted shell string is safe.
-    final script =
-        'command find "\${CODEX_HOME:-\$HOME/.codex}/sessions" -mindepth 4 '
-        '-maxdepth 4 -type f -name "rollout-*-$sessionId.jsonl" -print -quit';
-    final result = await _runner.run('sh -lc ${shQuote(script)}');
+    // The date components are unknown, so we do a bounded search over the
+    // three-level date hierarchy — exactly depth 4 relative to the sessions
+    // root. Only the Codex sessions root is searched; no broad $HOME scan.
+    // [HostPlatform] owns the OS-specific search command, honoring
+    // CODEX_HOME when the host sets it.
+    final result = await _runner.run(
+      _platform.findFileAtDepthCommand(
+        envVar: 'CODEX_HOME',
+        homeFallback: '.codex',
+        suffix: 'sessions',
+        depth: 4,
+        namePattern: 'rollout-*-$sessionId.jsonl',
+      ),
+    );
     if (result.exitCode != 0) {
       throw StateError('Unable to locate Codex transcript: ${result.stderr}');
     }

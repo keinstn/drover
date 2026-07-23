@@ -195,7 +195,10 @@ class _AgentScreenState extends State<AgentScreen> {
     _draftStore = widget.draftStore ?? AgentDraftStore.shared;
     _nativeTranscriptHistory =
         widget.nativeTranscriptHistory ??
-        NativeTranscriptHistory(widget.client.runner);
+        NativeTranscriptHistory(
+          widget.client.runner,
+          platform: widget.client.hostPlatform,
+        );
     // Restore any draft left over from a previous visit to this pane's screen
     // (the route is popped/re-pushed on navigation, disposing the controller).
     final draft = _draftStore.read(widget.paneId);

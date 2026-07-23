@@ -2,7 +2,10 @@
 // session, resolved through the compile-time [AgentAdapter] registry rather
 // than a raw agent-name lookup.
 
+import 'dart:async';
+
 import '../herdr/command_runner.dart';
+import '../herdr/host_platform.dart';
 import '../models/agent_info.dart';
 import '../transcript/native_transcript.dart';
 import '../utils/mutex.dart';
@@ -31,12 +34,22 @@ import 'agent_registry.dart';
 /// that decides whether to (re-)create the adapter) at this shared object,
 /// so correctness never depends on any one screen's lifecycle.
 class NativeTranscriptHistory {
+  /// [platform] assembles OS-specific transcript-location commands for the
+  /// SSH target. The host OS is a runtime property of that target, so
+  /// production passes `HerdrClient.hostPlatform` (a [Future] is accepted so
+  /// construction can stay synchronous); the Unix default preserves behavior
+  /// for tests and previews. The `..ignore()` prevents an unhandled-async-
+  /// error crash if detection fails before any load runs — later awaits
+  /// still receive the error.
   NativeTranscriptHistory(
     this._runner, {
     AgentAdapter? Function(AgentInfo agent)? resolveAdapter,
-  }) : _resolveAdapter = resolveAdapter ?? resolveAgentAdapter;
+    FutureOr<HostPlatform> platform = const UnixHostPlatform(),
+  }) : _resolveAdapter = resolveAdapter ?? resolveAgentAdapter,
+       _platform = Future<HostPlatform>.value(platform)..ignore();
 
   final CommandRunner _runner;
+  final Future<HostPlatform> _platform;
   final AgentAdapter? Function(AgentInfo agent) _resolveAdapter;
   final _mutex = Mutex();
   NativeTranscriptAdapter? _adapter;
@@ -56,9 +69,12 @@ class NativeTranscriptHistory {
     return _mutex.run(() async {
       final identity = _identityFor(agent);
       if (!_resolved || identity != _identity) {
+        final platform = await _platform;
         _resolved = true;
         _identity = identity;
-        _adapter = _resolveAdapter(agent)?.createNativeHistory(_runner, agent);
+        _adapter = _resolveAdapter(
+          agent,
+        )?.createNativeHistory(_runner, platform, agent);
         // A new session identity invalidates the cached snapshot: [latest]
         // must never serve the previous session's transcript.
         _latest = null;

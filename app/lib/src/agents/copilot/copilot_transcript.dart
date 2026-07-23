@@ -21,6 +21,7 @@
 import 'dart:convert';
 
 import '../../herdr/command_runner.dart';
+import '../../herdr/host_platform.dart';
 import '../../models/agent_info.dart';
 import '../../transcript/native_transcript.dart';
 
@@ -105,12 +106,14 @@ class CopilotTranscriptLoader implements NativeTranscriptAdapter {
     this._runner, {
     CopilotTranscriptParser? parser,
     JsonlTranscriptWindow? window,
+    this._platform = const UnixHostPlatform(),
   }) : _parser = parser ?? const CopilotTranscriptParser(),
        _loader = JsonlSessionLoader(window: window);
 
   final CommandRunner _runner;
   final CopilotTranscriptParser _parser;
   final JsonlSessionLoader _loader;
+  final HostPlatform _platform;
 
   static bool supportsAgent(AgentInfo agent) {
     final session = agent.agentSession;
@@ -154,16 +157,18 @@ class CopilotTranscriptLoader implements NativeTranscriptAdapter {
     // per-project session layout, Copilot's session path is fully
     // deterministic from the id alone
     // (`${COPILOT_HOME:-$HOME/.copilot}/session-state/<id>/events.jsonl`),
-    // so no broad `find` traversal of $HOME is needed — only the exact
-    // candidate path is tested for existence, honoring COPILOT_HOME when the
-    // host sets it. A missing session directory/file (normal before the
-    // session's first turn) yields empty stdout and exit 0 rather than an
-    // error, since the `if` has no `else` branch. Run this POSIX shell
-    // snippet through `sh` because the SSH account's login shell can be fish.
-    final script =
-        'p="\${COPILOT_HOME:-\$HOME/.copilot}/session-state/$sessionId/events.jsonl"; '
-        'if [ -f "\$p" ]; then command printf "%s" "\$p"; fi';
-    final result = await _runner.run('sh -lc ${shQuote(script)}');
+    // so no broad traversal of $HOME is needed — only the exact candidate
+    // path is tested for existence, honoring COPILOT_HOME when the host sets
+    // it. A missing session directory/file (normal before the session's
+    // first turn) yields empty stdout and exit 0 rather than an error.
+    // [HostPlatform] owns the OS-specific existence-check command.
+    final result = await _runner.run(
+      _platform.fileExistsCommand(
+        envVar: 'COPILOT_HOME',
+        homeFallback: '.copilot',
+        relativePath: 'session-state/$sessionId/events.jsonl',
+      ),
+    );
     if (result.exitCode != 0) {
       throw StateError('Unable to locate Copilot transcript: ${result.stderr}');
     }

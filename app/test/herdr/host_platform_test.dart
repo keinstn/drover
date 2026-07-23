@@ -86,6 +86,79 @@ void main() {
       expect(command, contains("'claude'"));
       expect(command, contains("'codex'"));
     });
+
+    // The six literal expectations below are the regression lock for the
+    // Phase-2 refactor of the transcript/upload call sites: each must stay
+    // byte-for-byte identical to the command the original call site sent.
+
+    test('findFileAtDepthCommand without envVar matches the Claude '
+        'call site byte-for-byte', () {
+      expect(
+        unix.findFileAtDepthCommand(
+          homeFallback: '.claude/projects',
+          depth: 2,
+          namePattern: 'abc.jsonl',
+        ),
+        'command find "\$HOME/.claude/projects" -mindepth 2 -maxdepth 2 '
+        "-type f -name 'abc.jsonl' -print -quit",
+      );
+    });
+
+    test('findFileAtDepthCommand with envVar matches the Codex '
+        'call site byte-for-byte', () {
+      expect(
+        unix.findFileAtDepthCommand(
+          envVar: 'CODEX_HOME',
+          homeFallback: '.codex',
+          suffix: 'sessions',
+          depth: 4,
+          namePattern: 'rollout-*-11112222-3333-4444-5555-666677778888.jsonl',
+        ),
+        'sh -lc \'command find "\${CODEX_HOME:-\$HOME/.codex}/sessions" '
+        '-mindepth 4 -maxdepth 4 -type f '
+        '-name "rollout-*-11112222-3333-4444-5555-666677778888.jsonl" '
+        "-print -quit'",
+      );
+    });
+
+    test('fileExistsCommand with envVar matches the Copilot '
+        'call site byte-for-byte', () {
+      expect(
+        unix.fileExistsCommand(
+          envVar: 'COPILOT_HOME',
+          homeFallback: '.copilot',
+          relativePath: 'session-state/sid-1/events.jsonl',
+        ),
+        'sh -lc \'p="\${COPILOT_HOME:-\$HOME/.copilot}'
+        '/session-state/sid-1/events.jsonl"; '
+        'if [ -f "\$p" ]; then command printf "%s" "\$p"; fi\'',
+      );
+    });
+
+    test('fileExistsCommand without envVar keeps the sh -lc script shape '
+        'with a plain \$HOME root', () {
+      expect(
+        unix.fileExistsCommand(
+          homeFallback: '.copilot',
+          relativePath: 'session-state/sid-1/events.jsonl',
+        ),
+        'sh -lc \'p="\$HOME/.copilot/session-state/sid-1/events.jsonl"; '
+        'if [ -f "\$p" ]; then command printf "%s" "\$p"; fi\'',
+      );
+    });
+
+    test('makeDirectoryCommand matches the upload call site '
+        'byte-for-byte', () {
+      expect(unix.makeDirectoryCommand('/x/y'), "command mkdir -p '/x/y'");
+    });
+
+    test('pruneFilesOlderThanCommand matches the upload call site '
+        'byte-for-byte', () {
+      expect(
+        unix.pruneFilesOlderThanCommand('/x/y', 'img-*', days: 2),
+        "command find '/x/y' -name 'img-*' -mtime +2 -delete",
+      );
+    });
   });
 
   group('WindowsHostPlatform', () {
@@ -121,6 +194,116 @@ void main() {
       expect(script, contains(r'Get-Command $a -ErrorAction SilentlyContinue'));
       expect(script, contains("'claude'"));
       expect(script, contains("'codex'"));
+    });
+
+    /// Number of `*\` glob segments in [script] — one per searched level
+    /// above the filename, so depth N globs contain N-1.
+    int globStars(String script) => RegExp(r'\*\\').allMatches(script).length;
+
+    test('findFileAtDepthCommand without envVar uses the USERPROFILE '
+        'fallback root and a depth-2 glob', () {
+      final command = windows.findFileAtDepthCommand(
+        homeFallback: '.claude/projects',
+        depth: 2,
+        namePattern: 'abc.jsonl',
+      );
+      expect(command, startsWith(_encodedPrefix));
+      final script = decodeScript(command);
+      expect(script, isNot(contains(r'if($env:')));
+      expect(
+        script,
+        contains(r"$r=Join-Path $env:USERPROFILE '.claude/projects';"),
+      );
+      expect(globStars(script), 1);
+      expect(script, contains('-ErrorAction SilentlyContinue'));
+      // Leading-slash drive form: /C:/Users/... via backslash replacement,
+      // emitted without a trailing newline (Write-Output's CRLF would break
+      // the callers' exact endsWith matches — caught live on Windows).
+      expect(
+        script,
+        contains(r"[Console]::Out.Write('/' + ($p -replace '\\','/'))"),
+      );
+    });
+
+    test('findFileAtDepthCommand with envVar prefers the env root and '
+        'builds a depth-4 glob under the suffix', () {
+      final script = decodeScript(
+        windows.findFileAtDepthCommand(
+          envVar: 'CODEX_HOME',
+          homeFallback: '.codex',
+          suffix: 'sessions',
+          depth: 4,
+          namePattern: 'rollout-*-uuid.jsonl',
+        ),
+      );
+      expect(script, contains(r'if($env:CODEX_HOME){$r=$env:CODEX_HOME}else{'));
+      expect(script, contains(r"$r=Join-Path $r 'sessions';"));
+      // depth 4 → three `*\` segments; the pattern's own `*` adds none.
+      expect(globStars(script), 3);
+    });
+
+    test('findFileAtDepthCommand doubles single quotes in the pattern', () {
+      final script = decodeScript(
+        windows.findFileAtDepthCommand(
+          homeFallback: '.claude/projects',
+          depth: 2,
+          namePattern: "it's.jsonl",
+        ),
+      );
+      expect(script, contains("it''s.jsonl"));
+    });
+
+    test('fileExistsCommand guards with Test-Path and prints the '
+        'normalized path', () {
+      final command = windows.fileExistsCommand(
+        envVar: 'COPILOT_HOME',
+        homeFallback: '.copilot',
+        relativePath: 'session-state/sid-1/events.jsonl',
+      );
+      expect(command, startsWith(_encodedPrefix));
+      final script = decodeScript(command);
+      expect(
+        script,
+        contains(r'if($env:COPILOT_HOME){$r=$env:COPILOT_HOME}else{'),
+      );
+      expect(script, contains(r'Test-Path -LiteralPath $p -PathType Leaf'));
+      expect(
+        script,
+        contains(r"[Console]::Out.Write('/' + ($p -replace '\\','/'))"),
+      );
+    });
+
+    test('fileExistsCommand without envVar has no env branch', () {
+      final script = decodeScript(
+        windows.fileExistsCommand(
+          homeFallback: '.copilot',
+          relativePath: 'session-state/sid-1/events.jsonl',
+        ),
+      );
+      expect(script, isNot(contains(r'if($env:')));
+      expect(script, contains(r"$r=Join-Path $env:USERPROFILE '.copilot';"));
+    });
+
+    test('makeDirectoryCommand creates idempotently via New-Item -Force', () {
+      final command = windows.makeDirectoryCommand('/x/y');
+      expect(command, startsWith(_encodedPrefix));
+      final script = decodeScript(command);
+      expect(script, contains('New-Item -ItemType Directory -Force'));
+      expect(script, contains("'/x/y'"));
+    });
+
+    test('pruneFilesOlderThanCommand filters by age and removes '
+        'best-effort', () {
+      final command = windows.pruneFilesOlderThanCommand(
+        '/x/y',
+        'img-*',
+        days: 2,
+      );
+      expect(command, startsWith(_encodedPrefix));
+      final script = decodeScript(command);
+      expect(script, contains('AddDays(-2)'));
+      expect(script, contains('Remove-Item -ErrorAction SilentlyContinue'));
+      expect(script, contains("'img-*'"));
     });
   });
 

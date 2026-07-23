@@ -66,6 +66,41 @@ abstract class HostPlatform {
   /// one name per line (names echoed verbatim so the caller can parse
   /// identically on both OSes).
   String detectAgentsCommand(List<String> bins);
+
+  /// Exec line printing the absolute path of the first file matching
+  /// [namePattern] at exactly [depth] levels below the search root, or
+  /// nothing. The root is `$HOME/<homeFallback>` (POSIX) unless [envVar] is
+  /// set on the host, in which case `$<envVar>` replaces the home fallback;
+  /// [suffix] (if any) is appended below that root before searching.
+  String findFileAtDepthCommand({
+    String? envVar,
+    required String homeFallback,
+    String? suffix,
+    required int depth,
+    required String namePattern,
+  });
+
+  /// Exec line printing the absolute path of `<root>/<relativePath>` if it
+  /// is an existing regular file, or nothing. Root resolution as in
+  /// [findFileAtDepthCommand].
+  String fileExistsCommand({
+    String? envVar,
+    required String homeFallback,
+    required String relativePath,
+  });
+
+  /// Exec line creating [path] (and parents) if missing; success if it
+  /// exists.
+  String makeDirectoryCommand(String path);
+
+  /// Exec line deleting files directly under [dir] matching [namePattern]
+  /// whose mtime is older than [days] days. Callers treat this as
+  /// best-effort.
+  String pruneFilesOlderThanCommand(
+    String dir,
+    String namePattern, {
+    required int days,
+  });
 }
 
 class UnixHostPlatform extends HostPlatform {
@@ -87,6 +122,65 @@ class UnixHostPlatform extends HostPlatform {
         'for a in $quoted; do command -v "\$a" >/dev/null 2>&1 && echo "\$a"; done';
     return 'sh -lc ${shQuote(script)}';
   }
+
+  @override
+  String findFileAtDepthCommand({
+    String? envVar,
+    required String homeFallback,
+    String? suffix,
+    required int depth,
+    required String namePattern,
+  }) {
+    final suffixPart = suffix == null ? '' : '/$suffix';
+    if (envVar == null) {
+      // Bare command (the default shell expands `$HOME`) with the pattern
+      // shQuoted. The `envVar != null` branch below instead wraps in
+      // `sh -lc` and double-quotes the pattern inside the script. The split
+      // is historical — each branch reproduces its original call site
+      // byte-for-byte so existing behavior and stubbed tests don't shift.
+      return 'command find "\$HOME/$homeFallback$suffixPart" '
+          '-mindepth $depth -maxdepth $depth -type f '
+          '-name ${shQuote(namePattern)} -print -quit';
+    }
+    // `sh -lc` so login-shell env (e.g. CODEX_HOME) applies even when the
+    // SSH account's default shell is non-POSIX (e.g. fish), and the
+    // `${VAR:-fallback}` expansion syntax is guaranteed POSIX.
+    final script =
+        'command find "\${$envVar:-\$HOME/$homeFallback}$suffixPart" '
+        '-mindepth $depth -maxdepth $depth -type f '
+        '-name "$namePattern" -print -quit';
+    return 'sh -lc ${shQuote(script)}';
+  }
+
+  @override
+  String fileExistsCommand({
+    String? envVar,
+    required String homeFallback,
+    required String relativePath,
+  }) {
+    final root = envVar == null
+        ? '\$HOME/$homeFallback'
+        : '\${$envVar:-\$HOME/$homeFallback}';
+    // Always `sh -lc`, even without an env var: the `[ -f ]` test must run
+    // under a POSIX shell (the SSH account's login shell can be fish).
+    final script =
+        'p="$root/$relativePath"; '
+        'if [ -f "\$p" ]; then command printf "%s" "\$p"; fi';
+    return 'sh -lc ${shQuote(script)}';
+  }
+
+  @override
+  String makeDirectoryCommand(String path) =>
+      'command mkdir -p ${shQuote(path)}';
+
+  @override
+  String pruneFilesOlderThanCommand(
+    String dir,
+    String namePattern, {
+    required int days,
+  }) =>
+      'command find ${shQuote(dir)} -name ${shQuote(namePattern)} '
+      '-mtime +$days -delete';
 }
 
 class WindowsHostPlatform extends HostPlatform {
@@ -146,6 +240,94 @@ class WindowsHostPlatform extends HostPlatform {
         '$_prelude'
         'foreach(\$a in @(${bins.map(_psQuote).join(',')}))'
         r'{if(Get-Command $a -ErrorAction SilentlyContinue){Write-Output $a}}';
+    return _wrap(script);
+  }
+
+  /// PowerShell statements leaving the resolved search root in `$r`:
+  /// `$env:<envVar>` when set, else `$env:USERPROFILE\<homeFallback>`, with
+  /// [suffix] (if any) joined below.
+  static String _psRoot(String? envVar, String homeFallback, String? suffix) {
+    final fallback = 'Join-Path \$env:USERPROFILE ${_psQuote(homeFallback)}';
+    var script = envVar == null
+        ? '\$r=$fallback;'
+        : 'if(\$env:$envVar){\$r=\$env:$envVar}else{\$r=$fallback};';
+    if (suffix != null) {
+      script += '\$r=Join-Path \$r ${_psQuote(suffix)};';
+    }
+    return script;
+  }
+
+  /// Prints `$p` as `/C:/Users/x` (backslashes → slashes, leading `/`) — the
+  /// leading-slash drive form SFTP accepts and that the Dart callers'
+  /// `startsWith('/')` validation and `/`-joins expect. `[Console]::Out.Write`
+  /// rather than `Write-Output`: the callers match the emitted path exactly
+  /// (`endsWith(...)`), and Write-Output's trailing CRLF would break them —
+  /// this mirrors the Unix `printf "%s"` (caught live: the copilot validator
+  /// rejected a found path solely for its trailing `\r\n`).
+  static const _emitPosixPath =
+      r"[Console]::Out.Write('/' + ($p -replace '\\','/'))";
+
+  @override
+  String findFileAtDepthCommand({
+    String? envVar,
+    required String homeFallback,
+    String? suffix,
+    required int depth,
+    required String namePattern,
+  }) {
+    // Exact-depth match via a wildcard glob: depth N is N-1 intermediate
+    // `*` segments below the root, e.g. depth 2 → `<root>\*\<pattern>`.
+    final glob = '${'*\\' * (depth - 1)}$namePattern';
+    final script =
+        '$_prelude'
+        '${_psRoot(envVar, homeFallback, suffix)}'
+        '\$g=Join-Path \$r ${_psQuote(glob)};'
+        // SilentlyContinue: a nonexistent root must yield empty stdout and
+        // exit 0 (the caller treats empty as "no transcript", non-zero as
+        // an error).
+        '\$f=Get-ChildItem -Path \$g -File -ErrorAction SilentlyContinue'
+        '|Select-Object -First 1;'
+        'if(\$f){\$p=\$f.FullName;$_emitPosixPath}';
+    return _wrap(script);
+  }
+
+  @override
+  String fileExistsCommand({
+    String? envVar,
+    required String homeFallback,
+    required String relativePath,
+  }) {
+    final script =
+        '$_prelude'
+        '${_psRoot(envVar, homeFallback, null)}'
+        '\$p=Join-Path \$r ${_psQuote(relativePath)};'
+        'if(Test-Path -LiteralPath \$p -PathType Leaf){$_emitPosixPath}';
+    return _wrap(script);
+  }
+
+  @override
+  String makeDirectoryCommand(String path) {
+    // -Force makes this idempotent (no error when the directory exists).
+    final script =
+        '$_prelude'
+        'New-Item -ItemType Directory -Force -Path ${_psQuote(path)}'
+        '|Out-Null';
+    return _wrap(script);
+  }
+
+  @override
+  String pruneFilesOlderThanCommand(
+    String dir,
+    String namePattern, {
+    required int days,
+  }) {
+    final script =
+        '$_prelude'
+        'Get-ChildItem -LiteralPath ${_psQuote(dir)} '
+        '-Filter ${_psQuote(namePattern)} -File '
+        '-ErrorAction SilentlyContinue'
+        '|Where-Object {\$_.LastWriteTime -lt (Get-Date).AddDays(-$days)}'
+        '|Remove-Item -ErrorAction SilentlyContinue';
     return _wrap(script);
   }
 }

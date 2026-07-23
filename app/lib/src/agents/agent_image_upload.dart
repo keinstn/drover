@@ -11,7 +11,6 @@
 
 import 'dart:convert';
 
-import '../herdr/command_runner.dart';
 import '../herdr/herdr_client.dart';
 import '../image/image_input.dart';
 import '../models/agent_info.dart';
@@ -28,16 +27,16 @@ Future<List<String>> uploadAgentImages(
 }) async {
   final base = timestampMs ?? DateTime.now().millisecondsSinceEpoch;
   final dir = '${agent.cwd}/.drover';
-  await client.runner.run('command mkdir -p ${shQuote(dir)}');
+  final platform = await client.hostPlatform;
+  await client.runner.run(platform.makeDirectoryCommand(dir));
 
   // Best-effort prune of stale prior uploads so `.drover` can't grow forever.
-  // `-name 'img-*'` only targets our uploaded images (never the .gitignore),
-  // and `-mtime +2` (older than two days) can never match the images being
+  // The `img-*` pattern only targets our uploaded images (never the
+  // .gitignore), and "older than two days" can never match the images being
   // uploaded right now. A prune failure must not break the upload, so swallow.
   try {
     await client.runner.run(
-      'command find ${shQuote(dir)} -name ${shQuote('img-*')} '
-      '-mtime +2 -delete',
+      platform.pruneFilesOlderThanCommand(dir, 'img-*', days: 2),
     );
   } catch (_) {
     // best-effort: ignore prune failures

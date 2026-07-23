@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:drover/src/agents/copilot/copilot_transcript.dart';
 import 'package:drover/src/herdr/command_runner.dart';
+import 'package:drover/src/herdr/host_platform.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/transcript/native_transcript.dart';
@@ -581,6 +582,29 @@ void main() {
       // A fresh session id re-triggers the lookup rather than reusing the
       // previous session's cached path.
       expect(runner.commands, hasLength(2));
+    });
+
+    test('loads via the PowerShell locator and normalized /C: path on a '
+        'Windows host', () async {
+      final runner = MemoryRunner('${_userEvent('One')}\n');
+      runner.lookupOutput =
+          '/C:/Users/x/.copilot/session-state/$_sessionId/events.jsonl';
+      final loader = CopilotTranscriptLoader(
+        runner,
+        platform: const WindowsHostPlatform(),
+      );
+
+      final transcript = await loader.load(copilotAgent());
+
+      expect(
+        runner.commands.single,
+        startsWith(
+          'powershell.exe -NoProfile -NonInteractive -EncodedCommand ',
+        ),
+      );
+      // A nonempty transcript proves the normalized `/C:/...` path passed
+      // the path validators and flowed into the SFTP stat/read path.
+      expect(transcript?.messages.map((m) => m.text), ['One']);
     });
   });
 

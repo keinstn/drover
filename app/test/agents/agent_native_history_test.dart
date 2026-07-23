@@ -5,6 +5,7 @@ import 'package:drover/src/agents/agent_adapter.dart';
 import 'package:drover/src/agents/agent_capabilities.dart';
 import 'package:drover/src/agents/agent_native_history.dart';
 import 'package:drover/src/herdr/command_runner.dart';
+import 'package:drover/src/herdr/host_platform.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/transcript/native_transcript.dart';
@@ -61,6 +62,7 @@ class _StubAdapter extends AgentAdapter {
   @override
   NativeHistoryCapability? createNativeHistory(
     CommandRunner runner,
+    HostPlatform platform,
     AgentInfo agent,
   ) {
     createCalls++;

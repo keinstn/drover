@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drover/src/agents/claude/claude_structured_prompt.dart';
 import 'package:drover/src/agents/claude/claude_transcript.dart';
 import 'package:drover/src/herdr/command_runner.dart';
+import 'package:drover/src/herdr/host_platform.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/transcript/native_transcript.dart';
@@ -903,36 +904,58 @@ void main() {
       },
     );
 
-    test(
-      'resets and re-locates when the agent session id switches '
-      '(e.g. a new pane/session)',
-      () async {
-        final runner = MemoryRunner(
-          '{"type":"user","message":{"role":"user","content":"From session A"}}\n',
-        );
-        final loader = ClaudeTranscriptLoader(runner);
+    test('resets and re-locates when the agent session id switches '
+        '(e.g. a new pane/session)', () async {
+      final runner = MemoryRunner(
+        '{"type":"user","message":{"role":"user","content":"From session A"}}\n',
+      );
+      final loader = ClaudeTranscriptLoader(runner);
 
-        var transcript = await loader.load(claudeAgent());
-        expect(transcript?.messages.map((message) => message.text), [
-          'From session A',
-        ]);
-        expect(runner.commands, hasLength(1));
+      var transcript = await loader.load(claudeAgent());
+      expect(transcript?.messages.map((message) => message.text), [
+        'From session A',
+      ]);
+      expect(runner.commands, hasLength(1));
 
-        runner.contents =
-            '{"type":"user","message":{"role":"user","content":"From session B"}}\n';
-        runner.lookupOutput =
-            '/home/dev/.claude/projects/-home-dev-project/'
-            '$_otherSessionId.jsonl\n';
-        transcript = await loader.load(claudeAgent(sessionId: _otherSessionId));
+      runner.contents =
+          '{"type":"user","message":{"role":"user","content":"From session B"}}\n';
+      runner.lookupOutput =
+          '/home/dev/.claude/projects/-home-dev-project/'
+          '$_otherSessionId.jsonl\n';
+      transcript = await loader.load(claudeAgent(sessionId: _otherSessionId));
 
-        expect(transcript?.messages.map((message) => message.text), [
-          'From session B',
-        ]);
-        // A fresh session id re-triggers the lookup rather than reusing the
-        // previous session's cached path.
-        expect(runner.commands, hasLength(2));
-      },
-    );
+      expect(transcript?.messages.map((message) => message.text), [
+        'From session B',
+      ]);
+      // A fresh session id re-triggers the lookup rather than reusing the
+      // previous session's cached path.
+      expect(runner.commands, hasLength(2));
+    });
+
+    test('loads via the PowerShell locator and normalized /C: path on a '
+        'Windows host', () async {
+      final runner = MemoryRunner(
+        '{"type":"user","message":{"role":"user","content":"One"}}\n',
+      );
+      runner.lookupOutput =
+          '/C:/Users/x/.claude/projects/C--proj/$_sessionId.jsonl\n';
+      final loader = ClaudeTranscriptLoader(
+        runner,
+        platform: const WindowsHostPlatform(),
+      );
+
+      final transcript = await loader.load(claudeAgent());
+
+      expect(
+        runner.commands.single,
+        startsWith(
+          'powershell.exe -NoProfile -NonInteractive -EncodedCommand ',
+        ),
+      );
+      // A nonempty transcript proves the normalized `/C:/...` path passed
+      // the path validators and flowed into the SFTP stat/read path.
+      expect(transcript?.messages.map((message) => message.text), ['One']);
+    });
   });
 
   group('ClaudeTranscriptLoader bounded window', () {

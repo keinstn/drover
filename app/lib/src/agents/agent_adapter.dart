@@ -4,6 +4,7 @@
 
 import '../herdr/command_runner.dart';
 import '../herdr/herdr_client.dart';
+import '../herdr/host_platform.dart';
 import '../models/agent_info.dart';
 import 'agent_capabilities.dart';
 
@@ -20,11 +21,13 @@ abstract class AgentAdapter {
   bool supports(AgentInfo agent);
 
   /// Creates a fresh native-history loader for [agent] on [runner], or null
-  /// if this adapter has no native transcript source for [agent]. Called
-  /// once per agent session by `NativeTranscriptHistory`, which retains the
-  /// result across polls.
+  /// if this adapter has no native transcript source for [agent]. [platform]
+  /// assembles the OS-specific transcript-location commands for the host.
+  /// Called once per agent session by `NativeTranscriptHistory`, which
+  /// retains the result across polls.
   NativeHistoryCapability? createNativeHistory(
     CommandRunner runner,
+    HostPlatform platform,
     AgentInfo agent,
   ) => null;
 
