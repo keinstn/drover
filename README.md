@@ -61,31 +61,13 @@ just run -d <iphone>        # on a real device (free Apple ID: signing expires a
 just spike --host <host> agents   # probe a host from the CLI, no UI
 ```
 
-## Firebase setup
+## Firebase and notifications
 
-Drover uses Firebase Authentication for an anonymous device identity. Before
-running the app, register the iOS and macOS apps in Firebase and add their
-respective `GoogleService-Info.plist` files to the Runner targets:
+Drover uses Firebase Authentication, Cloud Firestore, Cloud Functions, Cloud
+Messaging, and App Check. Set up a deployment environment with
+[`docs/firebase-setup.md`](docs/firebase-setup.md). That guide intentionally
+uses placeholders and documents which configuration and credentials must remain
+outside Git.
 
-```text
-app/ios/Runner/GoogleService-Info.plist
-app/macos/Runner/GoogleService-Info.plist
-```
-
-Enable the Anonymous sign-in provider in Firebase Authentication. The plist
-files are environment-specific and intentionally excluded from version control;
-provide them locally and inject the appropriate file during Xcode builds.
-
-Enable the Push Notifications capability for both Runner targets. The iOS
-target also requires the Remote notifications Background Mode before handling
-background notification data.
-
-Firebase project aliases are also local-only. After cloning the repository,
-select the target project with:
-
-```bash
-firebase use --add
-```
-
-To pair a manually installed Herdr notification plugin and receive `blocked`
+To link and pair the manually installed Herdr plugin for `blocked`
 notifications, see [`docs/push-notifications.md`](docs/push-notifications.md).

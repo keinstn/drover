@@ -4,20 +4,10 @@ Drover sends notifications through Firebase Cloud Messaging (FCM). The
 `drover.notify` Herdr plugin sends only `blocked` agent status changes; it does
 not send `done` events.
 
-## Deploy the backend
+## Backend prerequisites
 
-The Firebase project needs Anonymous Authentication, Firestore, Cloud
-Messaging, and the Apple APNs configuration described in the root README.
-Deploy the Functions after selecting the Firebase project:
-
-```sh
-firebase deploy --only functions
-```
-
-The `sendBlockedNotification` Function creates
-`hosts/{hostId}/events/{eventId}` documents to deduplicate plugin retries. In
-Firestore, configure a TTL policy for the `expiresAt` field in that collection
-group so these one-day deduplication records are removed automatically.
+Complete [Firebase and Google Cloud setup](firebase-setup.md), including
+Functions deployment and the Firestore TTL policy, before pairing a host.
 
 ## Manually install and pair the plugin
 
@@ -51,30 +41,6 @@ this file between hosts or commit it. Pairing again rotates the credential for
 the same host ID. Resetting the host in Drover, or changing its address, port,
 or SSH user, revokes the previous host credential before saving the new
 configuration.
-
-## App Check monitoring
-
-The iOS app activates Firebase App Check before anonymous authentication. Debug
-builds use the Debug provider; Release builds use the App Attest provider. The
-macOS target is intentionally not activated because its Firebase app is not
-enrolled in App Check yet.
-
-Before creating a Release build, enable the **App Attest** capability for the
-iOS App ID in the Apple Developer portal so Xcode Cloud can sign the
-`com.apple.developer.devicecheck.appattest-environment` entitlement.
-
-In Firebase Console, add the debug token printed by an iOS debug build under
-App Check's debug-token management. Install a Release build on an iPhone, then
-inspect the `createPairingCode` Callable Function in Google Cloud Logging. Its
-`callable-request-verification` structured log must report
-`jsonPayload.verifications.app` as `VALID`. Do not enable Callable
-Functions enforcement until that verification succeeds.
-
-After verification, App Check is enforced for `registerDevice`,
-`unregisterDevice`, `sendTestNotification`, `createPairingCode`, and
-`revokeHost`. The host plugin's `completePairing` and
-`sendBlockedNotification` HTTP endpoints continue to use their pairing-code
-and host-credential authentication.
 
 ## Verify delivery
 
