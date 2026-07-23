@@ -1,2 +1,9 @@
 .DS_Store
 .claude/settings.local.json
+.firebaserc
+
+# Firebase CLI local state and logs
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log

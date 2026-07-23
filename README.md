@@ -34,6 +34,8 @@ drover/
 ├── app/       # the Flutter app (fvm-pinned; iOS/macOS)
 │   ├── lib/   # app source
 │   └── tool/  # tool/spike.dart — SSH/herdr CLI probe used during bring-up
+├── functions/ # Firebase Functions notification backend
+├── plugins/   # Herdr plugins maintained with Drover
 └── docs/      # herdr-notes.md (herdr CLI behaviours & gotchas) + agents/ (per-agent CLI notes)
 ```
 
@@ -58,3 +60,14 @@ just run -d macos           # fast iteration during development
 just run -d <iphone>        # on a real device (free Apple ID: signing expires after 7 days)
 just spike --host <host> agents   # probe a host from the CLI, no UI
 ```
+
+## Firebase and notifications
+
+Drover uses Firebase Authentication, Cloud Firestore, Cloud Functions, Cloud
+Messaging, and App Check. Set up a deployment environment with
+[`docs/firebase-setup.md`](docs/firebase-setup.md). That guide intentionally
+uses placeholders and documents which configuration and credentials must remain
+outside Git.
+
+To link and pair the manually installed Herdr plugin for `blocked`
+notifications, see [`docs/push-notifications.md`](docs/push-notifications.md).

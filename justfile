@@ -38,6 +38,33 @@ preview name='gallery' *args:
 spike *args:
     fvm dart run tool/spike.dart {{args}}
 
+# --- Firebase Functions (Node / TypeScript) ---
+
+# Install Functions dependencies.
+[working-directory('functions')]
+functions-get:
+    npm ci
+
+# Check Functions formatting, linting, and types.
+[working-directory('functions')]
+functions-check:
+    npm run check
+
+# Run Functions unit tests.
+[working-directory('functions')]
+functions-test:
+    npm test
+
+# --- Herdr notification plugin (Node, no package install required) ---
+
+[working-directory('plugins/drover-notify')]
+plugin-check:
+    npm run check
+
+[working-directory('plugins/drover-notify')]
+plugin-test:
+    npm test
+
 # --- Aggregate ---
 
-check: analyze test
+check: analyze test functions-check functions-test plugin-check plugin-test

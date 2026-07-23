@@ -212,6 +212,72 @@ abstract class AppLocalizations {
   /// **'OK — {count, plural, =1{1 agent} other{{count} agents}}'**
   String testConnectionOk(int count);
 
+  /// No description provided for @notificationRegistrationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t enable notifications. Try opening Drover again.'**
+  String get notificationRegistrationFailed;
+
+  /// No description provided for @notificationTargetUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The agent from this notification is no longer available.'**
+  String get notificationTargetUnavailable;
+
+  /// No description provided for @hostPairNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Create notification pairing code'**
+  String get hostPairNotifications;
+
+  /// No description provided for @hostPairingCodeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair the notification plugin'**
+  String get hostPairingCodeTitle;
+
+  /// No description provided for @hostPairingCodeIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'On the Herdr host, copy and run these commands. Replace /path/to/drover with the checkout path. When setup asks, paste the pairing code.'**
+  String get hostPairingCodeIntro;
+
+  /// No description provided for @hostPairingLinkCommandLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'1. Link the plugin (first time only)'**
+  String get hostPairingLinkCommandLabel;
+
+  /// No description provided for @hostPairingSetupCommandLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'2. Run setup'**
+  String get hostPairingSetupCommandLabel;
+
+  /// No description provided for @hostPairingCodeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'3. Pairing code'**
+  String get hostPairingCodeLabel;
+
+  /// No description provided for @hostPairingUrlLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Completion URL'**
+  String get hostPairingUrlLabel;
+
+  /// No description provided for @commonClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get commonClose;
+
+  /// No description provided for @commonCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get commonCopy;
+
   /// No description provided for @commonRetry.
   ///
   /// In en, this message translates to:

@@ -75,6 +75,43 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get notificationRegistrationFailed =>
+      'Couldn\'t enable notifications. Try opening Drover again.';
+
+  @override
+  String get notificationTargetUnavailable =>
+      'The agent from this notification is no longer available.';
+
+  @override
+  String get hostPairNotifications => 'Create notification pairing code';
+
+  @override
+  String get hostPairingCodeTitle => 'Pair the notification plugin';
+
+  @override
+  String get hostPairingCodeIntro =>
+      'On the Herdr host, copy and run these commands. Replace /path/to/drover with the checkout path. When setup asks, paste the pairing code.';
+
+  @override
+  String get hostPairingLinkCommandLabel =>
+      '1. Link the plugin (first time only)';
+
+  @override
+  String get hostPairingSetupCommandLabel => '2. Run setup';
+
+  @override
+  String get hostPairingCodeLabel => '3. Pairing code';
+
+  @override
+  String get hostPairingUrlLabel => 'Completion URL';
+
+  @override
+  String get commonClose => 'Close';
+
+  @override
+  String get commonCopy => 'Copy';
+
+  @override
   String get commonRetry => 'Retry';
 
   @override

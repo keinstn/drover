@@ -68,6 +68,41 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String get notificationRegistrationFailed =>
+      '通知を有効にできませんでした。Drover を開き直して再試行してください。';
+
+  @override
+  String get notificationTargetUnavailable => 'この通知のエージェントは利用できなくなりました。';
+
+  @override
+  String get hostPairNotifications => '通知用のペアリングコードを作成';
+
+  @override
+  String get hostPairingCodeTitle => '通知 plugin をペアリング';
+
+  @override
+  String get hostPairingCodeIntro =>
+      'Herdr host で、次のコマンドをコピーして実行してください。/path/to/drover は checkout のパスに置き換えます。setup が表示した prompt にペアリングコードを貼り付けてください。';
+
+  @override
+  String get hostPairingLinkCommandLabel => '1. plugin を link（初回のみ）';
+
+  @override
+  String get hostPairingSetupCommandLabel => '2. setup を実行';
+
+  @override
+  String get hostPairingCodeLabel => '3. ペアリングコード';
+
+  @override
+  String get hostPairingUrlLabel => '完了 URL';
+
+  @override
+  String get commonClose => '閉じる';
+
+  @override
+  String get commonCopy => 'コピー';
+
+  @override
   String get commonRetry => '再試行';
 
   @override

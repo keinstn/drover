@@ -1,0 +1,13 @@
+{
+  "name": "@drover/herdr-notify",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "check": "node --check bin/handle-blocked.mjs && node --check bin/pair.mjs && node --check bin/setup.mjs && node --check src/config.mjs && node --check src/event.mjs && node --check src/notification-client.mjs && node --check test/event.test.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}
