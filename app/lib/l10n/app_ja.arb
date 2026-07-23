@@ -21,6 +21,17 @@
   "testConnectionOk": "OK — エージェント {count} 件",
   "notificationRegistrationFailed": "通知を有効にできませんでした。Drover を開き直して再試行してください。",
   "notificationTargetUnavailable": "この通知のエージェントは利用できなくなりました。",
+  "hostPairNotifications": "通知用のペアリングコードを作成",
+  "hostPairingCodeTitle": "通知 plugin をペアリング",
+  "hostPairingCodeBody": "Herdr host で docs/push-notifications.md の手順を実行し、次の値を渡してください。\n\nペアリングコード: {code}\nHost ID: {hostId}\n完了 URL: {completionUrl}",
+  "@hostPairingCodeBody": {
+    "placeholders": {
+      "code": { "type": "String" },
+      "hostId": { "type": "String" },
+      "completionUrl": { "type": "String" }
+    }
+  },
+  "commonClose": "閉じる",
 
   "commonRetry": "再試行",
   "commonStop": "停止",

@@ -10,6 +10,7 @@ class HostConfig {
     required this.privateKeyPem,
     this.passphrase,
     this.herdrBin = kDefaultHerdrBin,
+    this.hostId,
   });
 
   factory HostConfig.fromJson(Map<String, dynamic> json) {
@@ -20,6 +21,7 @@ class HostConfig {
       privateKeyPem: json['privateKeyPem'] as String,
       passphrase: json['passphrase'] as String?,
       herdrBin: json['herdrBin'] as String? ?? kDefaultHerdrBin,
+      hostId: json['hostId'] as String?,
     );
   }
 
@@ -29,6 +31,17 @@ class HostConfig {
   final String privateKeyPem;
   final String? passphrase;
   final String herdrBin;
+  final String? hostId;
+
+  HostConfig withHostId(String? value) => HostConfig(
+    host: host,
+    port: port,
+    user: user,
+    privateKeyPem: privateKeyPem,
+    passphrase: passphrase,
+    herdrBin: herdrBin,
+    hostId: value,
+  );
 
   Map<String, dynamic> toJson() => {
     'host': host,
@@ -37,5 +50,6 @@ class HostConfig {
     'privateKeyPem': privateKeyPem,
     'passphrase': passphrase,
     'herdrBin': herdrBin,
+    'hostId': hostId,
   };
 }

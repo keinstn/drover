@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import 'l10n/app_localizations.dart';
 import 'src/app_theme.dart';
@@ -17,6 +18,7 @@ import 'src/models/agent_info.dart';
 import 'src/models/host_config.dart';
 import 'src/notifications/notification_registration.dart';
 import 'src/notifications/notification_target.dart';
+import 'src/notifications/host_pairing.dart';
 import 'src/screens/agent_screen.dart';
 import 'src/screens/herd_screen.dart';
 import 'src/screens/host_setup_screen.dart';
@@ -54,12 +56,14 @@ class DroverApp extends StatefulWidget {
     this.initialConfig,
     this.speechInput,
     this.notificationRegistration,
+    this.hostPairingGateway,
   });
 
   final HostStore hostStore;
   final HostConfig? initialConfig;
   final SpeechInput? speechInput;
   final NotificationRegistration? notificationRegistration;
+  final HostPairingGateway? hostPairingGateway;
 
   @override
   State<DroverApp> createState() => _DroverAppState();
@@ -72,6 +76,7 @@ class _DroverAppState extends State<DroverApp> {
   HerdrClient? _client;
   late final SpeechInput _speechInput;
   late final NotificationRegistration _notificationRegistration;
+  late final HostPairingGateway _hostPairingGateway;
   StreamSubscription<Object>? _notificationFailures;
   StreamSubscription<RemoteMessage>? _notificationOpens;
   final _handledNotificationEvents = <String>{};
@@ -82,6 +87,8 @@ class _DroverAppState extends State<DroverApp> {
     _speechInput = widget.speechInput ?? SpeechInputController();
     _notificationRegistration =
         widget.notificationRegistration ?? NotificationRegistration();
+    _hostPairingGateway =
+        widget.hostPairingGateway ?? FirebaseHostPairingGateway();
     _notificationFailures = _notificationRegistration.failures.listen(
       (_) => _showNotificationRegistrationFailure(),
     );
@@ -107,18 +114,40 @@ class _DroverAppState extends State<DroverApp> {
   }
 
   Future<void> _applyConfig(HostConfig c) async {
+    final replacedHost = _config != null && _hostIdentityChanged(_config!, c);
+    if (replacedHost && _config!.hostId != null) {
+      await _hostPairingGateway.revokeHost(_config!.hostId!);
+    }
+    final config = _ensureHostId(replacedHost ? c.withHostId(null) : c);
     await _runner?.dispose();
-    final runner = SshCommandRunner(c);
-    final client = HerdrClient(runner, herdrBin: c.herdrBin);
-    await widget.hostStore.save(c);
+    final runner = SshCommandRunner(config);
+    final client = HerdrClient(runner, herdrBin: config.herdrBin);
+    await widget.hostStore.save(config);
     if (!mounted) return;
     setState(() {
-      _config = c;
+      _config = config;
       _runner = runner;
       _client = client;
     });
     _scheduleNotificationRegistration();
     _navKey.currentState?.popUntil((r) => r.isFirst);
+  }
+
+  HostConfig _ensureHostId(HostConfig config) =>
+      config.hostId == null ? config.withHostId(const Uuid().v4()) : config;
+
+  bool _hostIdentityChanged(HostConfig previous, HostConfig next) =>
+      previous.host != next.host ||
+      previous.port != next.port ||
+      previous.user != next.user;
+
+  Future<PairingCode> _createPairingCode(HostConfig config) async {
+    final pairedConfig = _ensureHostId(config);
+    if (pairedConfig.hostId != config.hostId) {
+      await widget.hostStore.save(pairedConfig);
+      if (mounted) setState(() => _config = pairedConfig);
+    }
+    return _hostPairingGateway.createPairingCode(pairedConfig.hostId!);
   }
 
   void _scheduleNotificationRegistration() {
@@ -162,7 +191,7 @@ class _DroverAppState extends State<DroverApp> {
 
   Future<void> _openNotificationTarget(NotificationTarget target) async {
     final client = _client;
-    if (client == null) {
+    if (client == null || _config?.hostId != target.hostId) {
       _showNotificationTargetUnavailable();
       return;
     }
@@ -208,6 +237,10 @@ class _DroverAppState extends State<DroverApp> {
   }
 
   Future<void> _resetConfig() async {
+    final hostId = _config?.hostId;
+    if (hostId != null) {
+      await _hostPairingGateway.revokeHost(hostId);
+    }
     await widget.hostStore.clear();
     await _runner?.dispose();
     if (!mounted) return;
@@ -252,6 +285,7 @@ class _DroverAppState extends State<DroverApp> {
                       onSubmit: _applyConfig,
                       onTest: _testConnection,
                       onReset: _resetConfig,
+                      onCreatePairingCode: _createPairingCode,
                     ),
                   ),
                 );

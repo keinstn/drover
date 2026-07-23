@@ -1,16 +1,24 @@
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { initializeApp } from "firebase-admin/app";
 import {
   type DocumentReference,
   FieldValue,
   getFirestore,
   type QueryDocumentSnapshot,
+  Timestamp,
 } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { setGlobalOptions } from "firebase-functions";
 import * as logger from "firebase-functions/logger";
-import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 
-import { parseDeviceId, parseDeviceRegistration } from "./validation.js";
+import {
+  parseBlockedNotification,
+  parseDeviceId,
+  parseDeviceRegistration,
+  parsePairingCodeRequest,
+  parsePairingCompletion,
+} from "./validation.js";
 
 initializeApp();
 
@@ -20,6 +28,14 @@ const db = getFirestore();
 const messaging = getMessaging();
 const maxDevicesPerUser = 20;
 const testNotificationsPerMinute = 5;
+const pairingCodeLifetimeMs = 10 * 60 * 1000;
+const eventDeduplicationLifetimeMs = 24 * 60 * 60 * 1000;
+const functionsBaseUrl = `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net`;
+const retryableFcmFailureCodes = new Set([
+  "messaging/internal-error",
+  "messaging/server-unavailable",
+  "messaging/unknown-error",
+]);
 
 interface TokenRegistration {
   token: string;
@@ -35,6 +51,25 @@ function requireUid(auth: { uid: string } | undefined): string {
 
 function deviceRef(uid: string, deviceId: string) {
   return db.collection("users").doc(uid).collection("devices").doc(deviceId);
+}
+
+function hostRef(hostId: string) {
+  return db.collection("hosts").doc(hostId);
+}
+
+function pairingCodeRef(pairingCode: string) {
+  return db.collection("pairingCodes").doc(secretHash(pairingCode));
+}
+
+function secretHash(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function matchingSecret(expectedHash: unknown, value: string): boolean {
+  if (typeof expectedHash !== "string") return false;
+  const expected = Buffer.from(expectedHash, "hex");
+  const actual = Buffer.from(secretHash(value), "hex");
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 function tokenRegistrations(
@@ -73,6 +108,88 @@ async function removeInvalidTokenRegistrations(
     }
     return deletedCount;
   });
+}
+
+interface NotificationDelivery {
+  tokenCount: number;
+  successCount: number;
+  failureCount: number;
+  removedTokenCount: number;
+  retryableFailureCount: number;
+}
+
+async function deliverNotification(
+  uid: string,
+  notification: { title: string; body: string },
+  data: Record<string, string>,
+): Promise<NotificationDelivery> {
+  const devices = await db
+    .collection("users")
+    .doc(uid)
+    .collection("devices")
+    .get();
+  const registrations = tokenRegistrations(devices.docs);
+
+  let successCount = 0;
+  let failureCount = 0;
+  let removedTokenCount = 0;
+  let retryableFailureCount = 0;
+
+  for (let start = 0; start < registrations.length; start += 500) {
+    const batch = registrations.slice(
+      start,
+      Math.min(start + 500, registrations.length),
+    );
+    const response = await messaging.sendEachForMulticast({
+      tokens: batch.map((entry) => entry.token),
+      notification,
+      data,
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "drover_notifications",
+          sound: "default",
+        },
+      },
+      apns: { payload: { aps: { sound: "default" } } },
+    });
+
+    successCount += response.successCount;
+    failureCount += response.failureCount;
+
+    const invalidRegistrations: TokenRegistration[] = [];
+    for (let index = 0; index < response.responses.length; index += 1) {
+      const result = response.responses[index];
+      const code = result.error?.code;
+      if (
+        !result.success &&
+        code != null &&
+        retryableFcmFailureCodes.has(code)
+      ) {
+        retryableFailureCount += 1;
+      }
+      if (
+        !result.success &&
+        (code === "messaging/invalid-registration-token" ||
+          code === "messaging/registration-token-not-registered")
+      ) {
+        invalidRegistrations.push(batch[index]);
+      }
+    }
+
+    if (invalidRegistrations.length > 0) {
+      removedTokenCount +=
+        await removeInvalidTokenRegistrations(invalidRegistrations);
+    }
+  }
+
+  return {
+    tokenCount: registrations.length,
+    successCount,
+    failureCount,
+    removedTokenCount,
+    retryableFailureCount,
+  };
 }
 
 async function consumeTestNotificationAllowance(uid: string): Promise<void> {
@@ -172,77 +289,262 @@ export const unregisterDevice = onCall(async (request) => {
 
 export const sendTestNotification = onCall(async (request) => {
   const uid = requireUid(request.auth);
-  const devices = await db
-    .collection("users")
-    .doc(uid)
-    .collection("devices")
-    .get();
-  const registrations = tokenRegistrations(devices.docs);
-
-  if (registrations.length === 0) {
+  await consumeTestNotificationAllowance(uid);
+  const delivery = await deliverNotification(
+    uid,
+    {
+      title: "Drover notifications are ready",
+      body: "This is a test notification.",
+    },
+    { type: "test" },
+  );
+  if (delivery.tokenCount === 0) {
     throw new HttpsError(
       "failed-precondition",
       "No registered notification devices.",
     );
   }
-  await consumeTestNotificationAllowance(uid);
-
-  let successCount = 0;
-  let failureCount = 0;
-  let removedTokenCount = 0;
-
-  for (let start = 0; start < registrations.length; start += 500) {
-    const batch = registrations.slice(
-      start,
-      Math.min(start + 500, registrations.length),
+  if (delivery.successCount === 0 && delivery.retryableFailureCount > 0) {
+    throw new HttpsError(
+      "unavailable",
+      "Notification delivery is temporarily unavailable.",
     );
-    const response = await messaging.sendEachForMulticast({
-      tokens: batch.map((entry) => entry.token),
-      notification: {
-        title: "Drover notifications are ready",
-        body: "This is a test notification.",
-      },
-      data: { type: "test" },
-      android: {
-        priority: "high",
-        notification: { channelId: "drover_notifications", sound: "default" },
-      },
-      apns: { payload: { aps: { sound: "default" } } },
-    });
-
-    successCount += response.successCount;
-    failureCount += response.failureCount;
-
-    const invalidRegistrations: TokenRegistration[] = [];
-    for (let index = 0; index < response.responses.length; index += 1) {
-      const result = response.responses[index];
-      const code = result.error?.code;
-      if (
-        !result.success &&
-        (code === "messaging/invalid-registration-token" ||
-          code === "messaging/registration-token-not-registered")
-      ) {
-        invalidRegistrations.push(batch[index]);
-      }
-    }
-
-    if (invalidRegistrations.length > 0) {
-      removedTokenCount +=
-        await removeInvalidTokenRegistrations(invalidRegistrations);
-    }
   }
 
   logger.info("Sent test notification.", {
     uid,
-    tokenCount: registrations.length,
-    successCount,
-    failureCount,
-    removedTokenCount,
+    ...delivery,
+  });
+  return delivery;
+});
+
+export const createPairingCode = onCall(async (request) => {
+  const uid = requireUid(request.auth);
+  const pairing = parsePairingCodeRequest(request.data);
+  if (pairing == null) {
+    throw new HttpsError("invalid-argument", "Invalid host ID.");
+  }
+
+  const existingHost = await hostRef(pairing.hostId).get();
+  if (existingHost.exists && existingHost.get("uid") !== uid) {
+    throw new HttpsError("permission-denied", "Host ID is already paired.");
+  }
+
+  const pairingCode = randomBytes(32).toString("base64url");
+  await pairingCodeRef(pairingCode).set({
+    uid,
+    hostId: pairing.hostId,
+    expiresAt: Timestamp.fromMillis(Date.now() + pairingCodeLifetimeMs),
+    createdAt: FieldValue.serverTimestamp(),
   });
   return {
-    tokenCount: registrations.length,
-    successCount,
-    failureCount,
-    removedTokenCount,
+    pairingCode,
+    hostId: pairing.hostId,
+    completionUrl: `${functionsBaseUrl}/completePairing`,
   };
 });
+
+export const revokeHost = onCall(async (request) => {
+  const uid = requireUid(request.auth);
+  const pairing = parsePairingCodeRequest(request.data);
+  if (pairing == null) {
+    throw new HttpsError("invalid-argument", "Invalid host ID.");
+  }
+
+  const host = await hostRef(pairing.hostId).get();
+  if (host.exists && host.get("uid") !== uid) {
+    throw new HttpsError("permission-denied", "Host ID is not owned by user.");
+  }
+
+  const pairingCodes = await db
+    .collection("pairingCodes")
+    .where("hostId", "==", pairing.hostId)
+    .limit(500)
+    .get();
+  const batch = db.batch();
+  batch.delete(hostRef(pairing.hostId));
+  for (const pairingCode of pairingCodes.docs) {
+    batch.delete(pairingCode.ref);
+  }
+  await batch.commit();
+  return { hostId: pairing.hostId };
+});
+
+function requestBody(request: { body: unknown }): unknown {
+  return request.body;
+}
+
+function bearerToken(request: { get(name: string): string | undefined }) {
+  const authorization = request.get("Authorization");
+  return authorization?.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : null;
+}
+
+function requestError(
+  response: { status(status: number): { json(value: object): void } },
+  status: number,
+  message: string,
+) {
+  response.status(status).json({ error: message });
+}
+
+export const completePairing = onRequest(
+  { cors: false },
+  async (request, response) => {
+    if (request.method !== "POST") {
+      requestError(response, 405, "Method not allowed.");
+      return;
+    }
+    const completion = parsePairingCompletion(requestBody(request));
+    if (completion == null) {
+      requestError(response, 400, "Invalid pairing code.");
+      return;
+    }
+
+    const credential = randomBytes(32).toString("base64url");
+    const pairingRef = pairingCodeRef(completion.pairingCode);
+    let hostId: string;
+    try {
+      hostId = await db.runTransaction(async (transaction) => {
+        const pairing = await transaction.get(pairingRef);
+        const expiresAt = pairing.get("expiresAt");
+        const pairedHostId = pairing.get("hostId");
+        const uid = pairing.get("uid");
+        if (
+          !pairing.exists ||
+          !(expiresAt instanceof Timestamp) ||
+          expiresAt.toMillis() < Date.now() ||
+          typeof pairedHostId !== "string" ||
+          typeof uid !== "string"
+        ) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Pairing code is invalid.",
+          );
+        }
+
+        const ref = hostRef(pairedHostId);
+        const existingHost = await transaction.get(ref);
+        if (existingHost.exists && existingHost.get("uid") !== uid) {
+          throw new HttpsError(
+            "permission-denied",
+            "Host ID is already paired.",
+          );
+        }
+        transaction.delete(pairingRef);
+        transaction.set(
+          ref,
+          {
+            uid,
+            credentialHash: secretHash(credential),
+            updatedAt: FieldValue.serverTimestamp(),
+            ...(existingHost.exists
+              ? {}
+              : { createdAt: FieldValue.serverTimestamp() }),
+          },
+          { merge: true },
+        );
+        return pairedHostId;
+      });
+    } catch (error) {
+      if (error instanceof HttpsError) {
+        requestError(response, 400, error.message);
+        return;
+      }
+      throw error;
+    }
+
+    response.status(200).json({
+      hostId,
+      credential,
+      notificationUrl: `${functionsBaseUrl}/sendBlockedNotification`,
+    });
+  },
+);
+
+async function authorizeHost(
+  hostId: string,
+  credential: string,
+): Promise<string | null> {
+  const host = await hostRef(hostId).get();
+  if (!host.exists || !matchingSecret(host.get("credentialHash"), credential)) {
+    return null;
+  }
+  const uid = host.get("uid");
+  return typeof uid === "string" ? uid : null;
+}
+
+export const sendBlockedNotification = onRequest(
+  { cors: false },
+  async (request, response) => {
+    if (request.method !== "POST") {
+      requestError(response, 405, "Method not allowed.");
+      return;
+    }
+    const notification = parseBlockedNotification(requestBody(request));
+    const credential = bearerToken(request);
+    if (notification == null || credential == null) {
+      requestError(response, 400, "Invalid notification request.");
+      return;
+    }
+
+    const uid = await authorizeHost(notification.hostId, credential);
+    if (uid == null) {
+      requestError(response, 401, "Unauthorized.");
+      return;
+    }
+
+    const eventRef = hostRef(notification.hostId)
+      .collection("events")
+      .doc(notification.eventId);
+    const claimed = await db.runTransaction(async (transaction) => {
+      const existing = await transaction.get(eventRef);
+      if (existing.exists) return false;
+      transaction.create(eventRef, {
+        createdAt: FieldValue.serverTimestamp(),
+        expiresAt: Timestamp.fromMillis(
+          Date.now() + eventDeduplicationLifetimeMs,
+        ),
+      });
+      return true;
+    });
+    if (!claimed) {
+      response.status(200).json({ duplicate: true });
+      return;
+    }
+
+    try {
+      const agentName = notification.agentName ?? "An agent";
+      const delivery = await deliverNotification(
+        uid,
+        {
+          title: "Agent needs your input",
+          body: `${agentName} is blocked.`,
+        },
+        {
+          event: "blocked",
+          eventId: notification.eventId,
+          hostId: notification.hostId,
+          paneId: notification.paneId,
+        },
+      );
+      if (delivery.successCount === 0 && delivery.retryableFailureCount > 0) {
+        throw new HttpsError(
+          "unavailable",
+          "Notification delivery is temporarily unavailable.",
+        );
+      }
+      logger.info("Sent blocked notification.", {
+        hostId: notification.hostId,
+        paneId: notification.paneId,
+        eventId: notification.eventId,
+        ...delivery,
+      });
+      response.status(200).json({ duplicate: false, ...delivery });
+    } catch (error) {
+      await eventRef.delete();
+      throw error;
+    }
+  },
+);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../models/host_config.dart';
+import '../notifications/host_pairing.dart';
 
 /// Form for entering (or editing) the SSH connection details for the dev
 /// machine running Herdr.
@@ -12,6 +13,7 @@ class HostSetupScreen extends StatefulWidget {
     required this.onSubmit,
     this.onTest,
     this.onReset,
+    this.onCreatePairingCode,
   });
 
   final HostConfig? initial;
@@ -21,6 +23,7 @@ class HostSetupScreen extends StatefulWidget {
   /// Clears the stored host config and returns to first-run setup. When null,
   /// the reset control is hidden (e.g. during first-run setup).
   final Future<void> Function()? onReset;
+  final Future<PairingCode> Function(HostConfig)? onCreatePairingCode;
 
   @override
   State<HostSetupScreen> createState() => _HostSetupScreenState();
@@ -34,6 +37,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
   late final TextEditingController _keyController;
   late final TextEditingController _passphraseController;
   late final TextEditingController _herdrBinController;
+  late String? _hostId;
 
   bool _busy = false;
   String? _statusMessage;
@@ -53,6 +57,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     _herdrBinController = TextEditingController(
       text: initial?.herdrBin ?? kDefaultHerdrBin,
     );
+    _hostId = initial?.hostId;
   }
 
   @override
@@ -78,7 +83,56 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
       herdrBin: _herdrBinController.text.trim().isEmpty
           ? kDefaultHerdrBin
           : _herdrBinController.text.trim(),
+      hostId: _hostId,
     );
+  }
+
+  Future<void> _createPairingCode() async {
+    final onCreatePairingCode = widget.onCreatePairingCode;
+    if (onCreatePairingCode == null) return;
+    final config = widget.initial;
+    if (config == null) return;
+    setState(() {
+      _busy = true;
+      _statusMessage = null;
+    });
+    try {
+      final pairing = await onCreatePairingCode(config);
+      if (!mounted) return;
+      setState(() {
+        _hostId = pairing.hostId;
+        _busy = false;
+      });
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          final l10n = AppLocalizations.of(context)!;
+          return AlertDialog(
+            title: Text(l10n.hostPairingCodeTitle),
+            content: SelectableText(
+              l10n.hostPairingCodeBody(
+                pairing.code,
+                pairing.hostId,
+                pairing.completionUrl,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(l10n.commonClose),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _statusMessage = error.toString();
+        _statusIsError = true;
+        _busy = false;
+      });
+    }
   }
 
   Future<void> _handleTest() async {
@@ -230,6 +284,13 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
               ],
             ),
             const SizedBox(height: 20),
+            if (widget.onCreatePairingCode != null) ...[
+              OutlinedButton(
+                onPressed: _busy ? null : _createPairingCode,
+                child: Text(l10n.hostPairNotifications),
+              ),
+              const SizedBox(height: 12),
+            ],
             if (_statusMessage != null) ...[
               Text(
                 _statusMessage!,

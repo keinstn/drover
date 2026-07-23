@@ -55,6 +55,16 @@ functions-check:
 functions-test:
     npm test
 
+# --- Herdr notification plugin (Node, no package install required) ---
+
+[working-directory('plugins/drover-notify')]
+plugin-check:
+    npm run check
+
+[working-directory('plugins/drover-notify')]
+plugin-test:
+    npm test
+
 # --- Aggregate ---
 
-check: analyze test functions-check functions-test
+check: analyze test functions-check functions-test plugin-check plugin-test

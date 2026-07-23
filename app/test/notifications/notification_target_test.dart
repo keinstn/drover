@@ -18,5 +18,6 @@ void main() {
   test('rejects notification data without a pane target', () {
     expect(NotificationTarget.fromData({'hostId': 'host-123'}), isNull);
     expect(NotificationTarget.fromData({'paneId': ''}), isNull);
+    expect(NotificationTarget.fromData({'paneId': 'workspace:pane'}), isNull);
   });
 }

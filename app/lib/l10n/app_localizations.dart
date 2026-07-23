@@ -224,6 +224,30 @@ abstract class AppLocalizations {
   /// **'The agent from this notification is no longer available.'**
   String get notificationTargetUnavailable;
 
+  /// No description provided for @hostPairNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Create notification pairing code'**
+  String get hostPairNotifications;
+
+  /// No description provided for @hostPairingCodeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair the notification plugin'**
+  String get hostPairingCodeTitle;
+
+  /// No description provided for @hostPairingCodeBody.
+  ///
+  /// In en, this message translates to:
+  /// **'On the Herdr host, follow docs/push-notifications.md and provide these values:\n\nPairing code: {code}\nHost ID: {hostId}\nCompletion URL: {completionUrl}'**
+  String hostPairingCodeBody(String code, String hostId, String completionUrl);
+
+  /// No description provided for @commonClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get commonClose;
+
   /// No description provided for @commonRetry.
   ///
   /// In en, this message translates to:

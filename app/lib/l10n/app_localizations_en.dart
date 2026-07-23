@@ -83,6 +83,20 @@ class AppLocalizationsEn extends AppLocalizations {
       'The agent from this notification is no longer available.';
 
   @override
+  String get hostPairNotifications => 'Create notification pairing code';
+
+  @override
+  String get hostPairingCodeTitle => 'Pair the notification plugin';
+
+  @override
+  String hostPairingCodeBody(String code, String hostId, String completionUrl) {
+    return 'On the Herdr host, follow docs/push-notifications.md and provide these values:\n\nPairing code: $code\nHost ID: $hostId\nCompletion URL: $completionUrl';
+  }
+
+  @override
+  String get commonClose => 'Close';
+
+  @override
   String get commonRetry => 'Retry';
 
   @override

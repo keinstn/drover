@@ -3,18 +3,23 @@
 /// Drover currently stores one Herdr host, so [hostId] is retained for the
 /// future host-pairing lookup while [paneId] identifies the current target.
 class NotificationTarget {
-  const NotificationTarget({required this.paneId, this.hostId, this.eventId});
+  const NotificationTarget({
+    required this.paneId,
+    required this.hostId,
+    this.eventId,
+  });
 
   final String paneId;
-  final String? hostId;
+  final String hostId;
   final String? eventId;
 
   static NotificationTarget? fromData(Map<String, dynamic> data) {
     final paneId = _nonEmptyString(data['paneId']);
-    if (paneId == null) return null;
+    final hostId = _nonEmptyString(data['hostId']);
+    if (paneId == null || hostId == null) return null;
     return NotificationTarget(
       paneId: paneId,
-      hostId: _nonEmptyString(data['hostId']),
+      hostId: hostId,
       eventId: _nonEmptyString(data['eventId']),
     );
   }

@@ -26,6 +26,17 @@
   },
   "notificationRegistrationFailed": "Couldn't enable notifications. Try opening Drover again.",
   "notificationTargetUnavailable": "The agent from this notification is no longer available.",
+  "hostPairNotifications": "Create notification pairing code",
+  "hostPairingCodeTitle": "Pair the notification plugin",
+  "hostPairingCodeBody": "On the Herdr host, follow docs/push-notifications.md and provide these values:\n\nPairing code: {code}\nHost ID: {hostId}\nCompletion URL: {completionUrl}",
+  "@hostPairingCodeBody": {
+    "placeholders": {
+      "code": { "type": "String" },
+      "hostId": { "type": "String" },
+      "completionUrl": { "type": "String" }
+    }
+  },
+  "commonClose": "Close",
 
   "commonRetry": "Retry",
   "commonStop": "Stop",

@@ -34,6 +34,8 @@ drover/
 ├── app/       # the Flutter app (fvm-pinned; iOS/macOS)
 │   ├── lib/   # app source
 │   └── tool/  # tool/spike.dart — SSH/herdr CLI probe used during bring-up
+├── functions/ # Firebase Functions notification backend
+├── plugins/   # Herdr plugins maintained with Drover
 └── docs/      # herdr-notes.md (herdr CLI behaviours & gotchas) + agents/ (per-agent CLI notes)
 ```
 
@@ -84,3 +86,6 @@ select the target project with:
 ```bash
 firebase use --add
 ```
+
+To pair a manually installed Herdr notification plugin and receive `blocked`
+notifications, see [`docs/push-notifications.md`](docs/push-notifications.md).

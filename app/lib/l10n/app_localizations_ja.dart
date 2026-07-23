@@ -75,6 +75,20 @@ class AppLocalizationsJa extends AppLocalizations {
   String get notificationTargetUnavailable => 'この通知のエージェントは利用できなくなりました。';
 
   @override
+  String get hostPairNotifications => '通知用のペアリングコードを作成';
+
+  @override
+  String get hostPairingCodeTitle => '通知 plugin をペアリング';
+
+  @override
+  String hostPairingCodeBody(String code, String hostId, String completionUrl) {
+    return 'Herdr host で docs/push-notifications.md の手順を実行し、次の値を渡してください。\n\nペアリングコード: $code\nHost ID: $hostId\n完了 URL: $completionUrl';
+  }
+
+  @override
+  String get commonClose => '閉じる';
+
+  @override
   String get commonRetry => '再試行';
 
   @override

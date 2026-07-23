@@ -1,5 +1,6 @@
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/models/host_config.dart';
+import 'package:drover/src/notifications/host_pairing.dart';
 import 'package:drover/src/screens/host_setup_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -150,6 +151,52 @@ void main() {
       find.widgetWithText(FilledButton, 'Save'),
     );
     expect(saveButton.onPressed, isNotNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('keeps a newly paired host ID when saving settings', (
+    tester,
+  ) async {
+    HostConfig? captured;
+
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HostSetupScreen(
+          initial: const HostConfig(
+            host: 'example.com',
+            user: 'dev',
+            privateKeyPem: 'KEY',
+          ),
+          onSubmit: (config) async {
+            captured = config;
+          },
+          onCreatePairingCode: (_) async => const PairingCode(
+            code: 'code',
+            hostId: 'paired-host',
+            completionUrl: 'https://example.com/completePairing',
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(
+      find.widgetWithText(OutlinedButton, 'Create notification pairing code'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Close'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(captured?.hostId, 'paired-host');
 
     await tester.pumpWidget(const SizedBox());
   });
