@@ -535,4 +535,54 @@ void main() {
       expect(resolved, '/home/dev');
     });
   });
+
+  group('HerdrClient.findPlugin', () {
+    test('returns the plugin when the CLI list is non-empty', () async {
+      final runner = FakeCommandRunner(
+        (_) => ok(
+          '{"id":"1","result":{"plugins":[{"description":"d",'
+          '"enabled":true,"plugin_id":"drover.notify",'
+          '"plugin_root":"/checkout/plugins/drover-notify"}]}}',
+        ),
+      );
+      final client = HerdrClient(runner);
+
+      final plugin = await client.findPlugin('drover.notify');
+
+      expect(plugin, isNotNull);
+      expect(plugin!.pluginId, 'drover.notify');
+      expect(plugin.enabled, isTrue);
+      expect(plugin.pluginRoot, '/checkout/plugins/drover-notify');
+      expect(
+        runner.commands.single,
+        "~/.local/bin/herdr 'plugin' 'list' '--plugin' 'drover.notify' '--json'",
+      );
+    });
+
+    test('returns null when the CLI list is empty', () async {
+      final runner = FakeCommandRunner(
+        (_) => ok('{"id":"1","result":{"plugins":[]}}'),
+      );
+      final client = HerdrClient(runner);
+
+      expect(await client.findPlugin('drover.notify'), isNull);
+    });
+  });
+
+  group('HerdrClient.pluginConfigDir', () {
+    test('returns the trimmed raw stdout, not a JSON envelope', () async {
+      final runner = FakeCommandRunner(
+        (_) => ok('/home/dev/.config/herdr/plugins/config/drover.notify\n'),
+      );
+      final client = HerdrClient(runner);
+
+      final dir = await client.pluginConfigDir('drover.notify');
+
+      expect(dir, '/home/dev/.config/herdr/plugins/config/drover.notify');
+      expect(
+        runner.commands.single,
+        "~/.local/bin/herdr 'plugin' 'config-dir' 'drover.notify'",
+      );
+    });
+  });
 }

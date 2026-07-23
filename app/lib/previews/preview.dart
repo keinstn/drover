@@ -20,6 +20,8 @@ import '../src/dev/stub_herdr.dart';
 import '../src/herdr/command_runner.dart';
 import '../src/herdr/herdr_client.dart';
 import '../src/models/host_config.dart';
+import '../src/models/plugin_info.dart';
+import '../src/notifications/host_pairing.dart';
 import '../src/screens/agent_screen.dart';
 import '../src/screens/herd_screen.dart';
 import '../src/screens/host_setup_screen.dart';
@@ -148,6 +150,10 @@ final _previews = <String, WidgetBuilder>{
       existingCwds: const ['/home/dev/proj'],
     ),
   ),
+  // Notification pairing: SCENARIO=idle (default) shows the manual dialog,
+  // as if drover.notify were not linked on the host. SCENARIO=plugin-detected
+  // shows the auto-pair confirmation → success path. SCENARIO=auto-pair-failure
+  // confirms auto-pairing but has it fail, falling back to the manual dialog.
   'host-setup': (_) => HostSetupScreen(
     initial: const HostConfig(
       host: 'devbox.local',
@@ -160,6 +166,24 @@ final _previews = <String, WidgetBuilder>{
     ),
     onSubmit: (_) async {},
     onTest: (_) async => 'SSH connection succeeded (stubbed preview)',
+    onCreatePairingCode: (_) async => const PairingCode(
+      code: 'STUB-CODE-42',
+      hostId: 'stub-host-id',
+      completionUrl: 'https://drover.example/completePairing/stub',
+    ),
+    onDetectPlugin: (_) async =>
+        _scenario == 'plugin-detected' || _scenario == 'auto-pair-failure'
+        ? const PluginInfo(
+            pluginId: 'drover.notify',
+            enabled: true,
+            pluginRoot: '/home/dev/drover/plugins/drover-notify',
+          )
+        : null,
+    onAutoPair: (config, plugin, pairing) async {
+      if (_scenario == 'auto-pair-failure') {
+        throw Exception('node was not found on the host PATH (stubbed).');
+      }
+    },
   ),
 };
 

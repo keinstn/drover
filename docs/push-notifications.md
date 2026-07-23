@@ -9,10 +9,10 @@ not send `done` events.
 Complete [Firebase and Google Cloud setup](firebase-setup.md), including
 Functions deployment and the Firestore TTL policy, before pairing a host.
 
-## Manually install and pair the plugin
+## Manually install the plugin
 
-This is intentionally a manual host operation. The app never installs or
-updates executable code on the Herdr host.
+Installing the plugin is intentionally a manual host operation. The app never
+installs or updates executable code on the Herdr host.
 
 The host needs Herdr 0.7.0 or newer and Node.js 18 or newer. Make the Drover
 checkout available on the host, then link the plugin:
@@ -21,26 +21,40 @@ checkout available on the host, then link the plugin:
 herdr plugin link /path/to/drover/plugins/drover-notify
 ```
 
+## Pair the plugin
+
 In Drover, open the host settings and select **Create notification pairing
-code**. The dialog provides copy buttons for the plugin-link command, the setup
-command, the pairing code, and the completion URL. The code is valid for ten
-minutes.
+code**.
 
-Run the setup command on the host after linking the plugin:
+- **If the plugin is already linked and enabled**, Drover detects it (via
+  `herdr plugin list --plugin drover.notify --json` over the host's existing
+  SSH connection) and asks for confirmation before pairing automatically: it
+  requests a pairing code, then runs the plugin's own `bin/pair.mjs` over SSH
+  — piping the code through stdin, never as a process argument — to write the
+  host credential itself. No host terminal step is needed. If the automatic
+  attempt fails for any reason (or you cancel the confirmation), Drover falls
+  back to the manual flow below with the same pairing code.
+- **If the plugin is not yet linked**, Drover shows the manual dialog directly.
+  It provides copy buttons for the plugin-link command, the setup command, the
+  pairing code, and the completion URL. The code is valid for ten minutes.
 
-```sh
-node /path/to/drover/plugins/drover-notify/bin/setup.mjs \
-  --completion-url 'paste-the-completion-url-from-Drover' \
-  --herdr-bin "$HOME/.local/bin/herdr"
-```
+  Run the setup command on the host after linking the plugin:
 
-The script securely prompts for the pairing code, obtains the plugin's
-Herdr-managed config directory, and writes the host credential to
-`$config_dir/config.json` atomically with owner-only permissions. Do not copy
-this file between hosts or commit it. Pairing again rotates the credential for
-the same host ID. Resetting the host in Drover, or changing its address, port,
-or SSH user, revokes the previous host credential before saving the new
-configuration.
+  ```sh
+  node /path/to/drover/plugins/drover-notify/bin/setup.mjs \
+    --completion-url 'paste-the-completion-url-from-Drover' \
+    --herdr-bin "$HOME/.local/bin/herdr"
+  ```
+
+  The script securely prompts for the pairing code, obtains the plugin's
+  Herdr-managed config directory, and writes the host credential to
+  `$config_dir/config.json` atomically with owner-only permissions.
+
+Either path writes the same `$config_dir/config.json`, atomically and with
+owner-only permissions. Do not copy this file between hosts or commit it.
+Pairing again (manual or automatic) rotates the credential for the same host
+ID. Resetting the host in Drover, or changing its address, port, or SSH user,
+revokes the previous host credential before saving the new configuration.
 
 ## Verify delivery
 

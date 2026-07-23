@@ -106,6 +106,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hostPairingUrlLabel => 'Completion URL';
 
   @override
+  String get hostPairAutoDetectedTitle => 'Notification plugin detected';
+
+  @override
+  String get hostPairAutoDetectedBody =>
+      'Drover found the drover.notify plugin already linked on this host. Set up push notification pairing automatically?';
+
+  @override
+  String get hostPairAutoDetectedConfirm => 'Set up';
+
+  @override
+  String get hostPairAutoPairedTitle => 'Notifications paired';
+
+  @override
+  String get hostPairAutoPairedBody =>
+      'This host is now paired for blocked-agent push notifications.';
+
+  @override
+  String hostPairAutoFailedStatus(String error) {
+    return 'Automatic pairing failed ($error). Complete pairing manually below.';
+  }
+
+  @override
   String get commonClose => 'Close';
 
   @override

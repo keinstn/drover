@@ -97,6 +97,28 @@ class AppLocalizationsJa extends AppLocalizations {
   String get hostPairingUrlLabel => '完了 URL';
 
   @override
+  String get hostPairAutoDetectedTitle => '通知 plugin を検出しました';
+
+  @override
+  String get hostPairAutoDetectedBody =>
+      'この host には drover.notify plugin がすでに link されています。プッシュ通知のペアリングを自動設定しますか？';
+
+  @override
+  String get hostPairAutoDetectedConfirm => '設定する';
+
+  @override
+  String get hostPairAutoPairedTitle => '通知のペアリング完了';
+
+  @override
+  String get hostPairAutoPairedBody =>
+      'この host はブロック中エージェントのプッシュ通知にペアリングされました。';
+
+  @override
+  String hostPairAutoFailedStatus(String error) {
+    return '自動ペアリングに失敗しました（$error）。以下の手順で手動ペアリングを完了してください。';
+  }
+
+  @override
   String get commonClose => '閉じる';
 
   @override

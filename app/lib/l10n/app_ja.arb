@@ -28,6 +28,12 @@
   "hostPairingSetupCommandLabel": "2. setup を実行",
   "hostPairingCodeLabel": "3. ペアリングコード",
   "hostPairingUrlLabel": "完了 URL",
+  "hostPairAutoDetectedTitle": "通知 plugin を検出しました",
+  "hostPairAutoDetectedBody": "この host には drover.notify plugin がすでに link されています。プッシュ通知のペアリングを自動設定しますか？",
+  "hostPairAutoDetectedConfirm": "設定する",
+  "hostPairAutoPairedTitle": "通知のペアリング完了",
+  "hostPairAutoPairedBody": "この host はブロック中エージェントのプッシュ通知にペアリングされました。",
+  "hostPairAutoFailedStatus": "自動ペアリングに失敗しました（{error}）。以下の手順で手動ペアリングを完了してください。",
   "commonClose": "閉じる",
   "commonCopy": "コピー",
 
