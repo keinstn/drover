@@ -16,7 +16,8 @@ String errorHeadline(AppLocalizations l10n, Object error) {
     case AppErrorKind.hostConnection:
       return l10n.errorHostConnection;
     case AppErrorKind.unknown:
-      return errorDetail(error);
+      final detail = errorDetail(error);
+      return detail.isEmpty ? l10n.errorGeneric : detail;
   }
 }
 
