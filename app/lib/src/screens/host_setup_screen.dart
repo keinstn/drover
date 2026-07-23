@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../app_theme.dart';
 import '../models/host_config.dart';
 import '../models/plugin_info.dart';
 import '../notifications/host_pairing.dart';
@@ -429,7 +430,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 style: TextStyle(
                   color: _statusIsError
                       ? Theme.of(context).colorScheme.error
-                      : Colors.green,
+                      : DroverColors.of(context).donePillFg,
                 ),
               ),
               const SizedBox(height: 12),

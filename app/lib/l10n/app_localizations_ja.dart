@@ -134,16 +134,16 @@ class AppLocalizationsJa extends AppLocalizations {
   String get commonLaunchAgent => 'エージェントを起動';
 
   @override
-  String get agentStatusIdle => '待機中';
+  String get agentStatusIdle => 'ひとやすみ';
 
   @override
   String get agentStatusWorking => '作業中';
 
   @override
-  String get agentStatusBlocked => 'ブロック中';
+  String get agentStatusBlocked => '返事待ち';
 
   @override
-  String get agentStatusDone => '完了';
+  String get agentStatusDone => 'できました';
 
   @override
   String get agentStatusUnknown => '不明';
@@ -164,7 +164,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get agentModeBypass => 'バイパス';
 
   @override
-  String get agentComposerHint => 'エージェントにメッセージ…';
+  String get agentComposerHint => 'メッセージを送る…';
 
   @override
   String get agentCycleModeTooltip => 'エージェントモードを切り替え (shift+tab)';
@@ -264,6 +264,39 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get herdRenameAgentField => 'エージェント名';
+
+  @override
+  String get herdGreetingIntro => 'おかえりなさい。';
+
+  @override
+  String herdGreetingWaitingCount(int count) {
+    return '$count体';
+  }
+
+  @override
+  String get herdGreetingWaitingSuffix => 'があなたの返事を待っています。';
+
+  @override
+  String get herdGreetingAllClear => 'みんな順調です。';
+
+  @override
+  String get herdElapsedNow => 'いま';
+
+  @override
+  String herdElapsedMinutes(int minutes) {
+    return '$minutes分前';
+  }
+
+  @override
+  String herdElapsedHours(int hours) {
+    return '$hours時間前';
+  }
+
+  @override
+  String get herdSnippetThinking => '考えごと中…';
+
+  @override
+  String get agentSwitcherHerdTab => '一覧';
 
   @override
   String get launchButton => '起動';

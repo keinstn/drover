@@ -335,7 +335,7 @@ abstract class AppLocalizations {
   /// No description provided for @agentStatusIdle.
   ///
   /// In en, this message translates to:
-  /// **'idle'**
+  /// **'resting'**
   String get agentStatusIdle;
 
   /// No description provided for @agentStatusWorking.
@@ -347,13 +347,13 @@ abstract class AppLocalizations {
   /// No description provided for @agentStatusBlocked.
   ///
   /// In en, this message translates to:
-  /// **'blocked'**
+  /// **'waiting for you'**
   String get agentStatusBlocked;
 
   /// No description provided for @agentStatusDone.
   ///
   /// In en, this message translates to:
-  /// **'done'**
+  /// **'all done'**
   String get agentStatusDone;
 
   /// No description provided for @agentStatusUnknown.
@@ -395,7 +395,7 @@ abstract class AppLocalizations {
   /// No description provided for @agentComposerHint.
   ///
   /// In en, this message translates to:
-  /// **'Message agent…'**
+  /// **'Send a message…'**
   String get agentComposerHint;
 
   /// No description provided for @agentCycleModeTooltip.
@@ -571,6 +571,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Agent name'**
   String get herdRenameAgentField;
+
+  /// No description provided for @herdGreetingIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome back. '**
+  String get herdGreetingIntro;
+
+  /// No description provided for @herdGreetingWaitingCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 agent} other{{count} agents}}'**
+  String herdGreetingWaitingCount(int count);
+
+  /// No description provided for @herdGreetingWaitingSuffix.
+  ///
+  /// In en, this message translates to:
+  /// **' waiting for your reply.'**
+  String get herdGreetingWaitingSuffix;
+
+  /// No description provided for @herdGreetingAllClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone\'s on track.'**
+  String get herdGreetingAllClear;
+
+  /// No description provided for @herdElapsedNow.
+  ///
+  /// In en, this message translates to:
+  /// **'now'**
+  String get herdElapsedNow;
+
+  /// No description provided for @herdElapsedMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes}m ago'**
+  String herdElapsedMinutes(int minutes);
+
+  /// No description provided for @herdElapsedHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours}h ago'**
+  String herdElapsedHours(int hours);
+
+  /// No description provided for @herdSnippetThinking.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking things over…'**
+  String get herdSnippetThinking;
+
+  /// No description provided for @agentSwitcherHerdTab.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get agentSwitcherHerdTab;
 
   /// No description provided for @launchButton.
   ///

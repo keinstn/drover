@@ -1,4 +1,5 @@
 import 'package:drover/l10n/app_localizations.dart';
+import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/models/host_config.dart';
 import 'package:drover/src/models/plugin_info.dart';
 import 'package:drover/src/notifications/host_pairing.dart';
@@ -356,4 +357,46 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('renders a successful connection test message in the done color', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: droverDarkTheme,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HostSetupScreen(
+          onSubmit: (config) async {},
+          onTest: (config) async => 'Connected: 2 agents',
+        ),
+      ),
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Host'),
+      'example.com',
+    );
+    await tester.enterText(find.widgetWithText(TextFormField, 'User'), 'dev');
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Private key PEM'),
+      '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----',
+    );
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Test connection'));
+    await tester.pumpAndSettle();
+
+    final message = tester.widget<Text>(find.text('Connected: 2 agents'));
+    expect(
+      message.style?.color,
+      droverDarkTheme.extension<DroverColors>()!.donePillFg,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
 }

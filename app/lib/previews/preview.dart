@@ -62,6 +62,38 @@ CommandResult _launchResponder(String command) {
   return ok('{"id":"1","result":{}}');
 }
 
+// Two extra agents (besides the scenario's own wB:p1) with mixed types and
+// statuses, so the bottom switcher bar is visible in the default agent preview.
+const _barExtraAgents =
+    '{"agent":"claude","agent_status":"blocked","cwd":"/tmp/proj-a",'
+    '"focused":false,"pane_id":"wA:p1","tab_id":"wA:t1","workspace_id":"wA",'
+    '"terminal_title_stripped":"データベース migration をレビュー"},'
+    '{"agent":"codex","agent_status":"working","cwd":"/tmp/proj-c",'
+    '"focused":false,"pane_id":"wC:p1","tab_id":"wC:t1","workspace_id":"wC",'
+    '"terminal_title_stripped":"型エラーを修正"}';
+
+/// The scenario's own pane (wB:p1) as a single `agent list` entry.
+String _currentAgent(String status) =>
+    '{"agent":"claude","agent_status":"$status","cwd":"/tmp/proj",'
+    '"focused":false,"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+    '"terminal_title_stripped":"OAuth callback を実装"}';
+
+/// Wraps [base] so `agent list` returns wB:p1 (at [status]) plus the two extra
+/// agents — making the switcher bar visible — while every other command
+/// delegates to [base].
+CommandResult Function(String) _withSwitcherBar(
+  CommandResult Function(String) base,
+  String status,
+) => (command) {
+  if (command.contains("'agent' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"agents":['
+      '${_currentAgent(status)},$_barExtraAgents]}}',
+    );
+  }
+  return base(command);
+};
+
 const _herdListEnvelope =
     '{"id":"1","result":{"agents":['
     '{"agent":"claude","agent_status":"idle","cwd":"/tmp/proj-a",'
@@ -138,7 +170,9 @@ final _previews = <String, WidgetBuilder>{
     ),
     _ => AgentScreen(
       client: _client(
-        _scenario == 'blocked' ? blockedPromptResponse : idleWithModeResponse,
+        _scenario == 'blocked'
+            ? _withSwitcherBar(blockedPromptResponse, 'blocked')
+            : _withSwitcherBar(idleWithModeResponse, 'idle'),
       ),
       paneId: 'wB:p1',
       pollInterval: const Duration(hours: 1),
@@ -202,7 +236,9 @@ void main() {
       title: 'Drover preview',
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      theme: droverTheme,
+      theme: droverLightTheme,
+      darkTheme: droverDarkTheme,
+      themeMode: ThemeMode.system,
       home: target == 'gallery'
           ? _PreviewGallery(names: _previews.keys.toList())
           : (builder != null

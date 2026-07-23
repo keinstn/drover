@@ -41,10 +41,10 @@
   "commonStop": "停止",
   "commonLaunchAgent": "エージェントを起動",
 
-  "agentStatusIdle": "待機中",
+  "agentStatusIdle": "ひとやすみ",
   "agentStatusWorking": "作業中",
-  "agentStatusBlocked": "ブロック中",
-  "agentStatusDone": "完了",
+  "agentStatusBlocked": "返事待ち",
+  "agentStatusDone": "できました",
   "agentStatusUnknown": "不明",
 
   "agentModeNormal": "通常",
@@ -53,7 +53,7 @@
   "agentModeAuto": "オート",
   "agentModeBypass": "バイパス",
 
-  "agentComposerHint": "エージェントにメッセージ…",
+  "agentComposerHint": "メッセージを送る…",
   "agentCycleModeTooltip": "エージェントモードを切り替え (shift+tab)",
   "agentRemoveImage": "画像を削除",
   "agentAttachImage": "添付を追加",
@@ -85,6 +85,16 @@
   "herdRenameWorkspaceField": "ワークスペース名",
   "herdRenameAgentTitle": "エージェント名を変更",
   "herdRenameAgentField": "エージェント名",
+
+  "herdGreetingIntro": "おかえりなさい。",
+  "herdGreetingWaitingCount": "{count}体",
+  "herdGreetingWaitingSuffix": "があなたの返事を待っています。",
+  "herdGreetingAllClear": "みんな順調です。",
+  "herdElapsedNow": "いま",
+  "herdElapsedMinutes": "{minutes}分前",
+  "herdElapsedHours": "{hours}時間前",
+  "herdSnippetThinking": "考えごと中…",
+  "agentSwitcherHerdTab": "一覧",
 
   "launchButton": "起動",
   "launchNoAgents": "ホストに起動可能なエージェントが見つかりません",

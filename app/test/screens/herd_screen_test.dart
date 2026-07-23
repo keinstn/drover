@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/herdr/command_runner.dart';
+import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/screens/herd_screen.dart';
@@ -101,12 +102,18 @@ class NativeHistoryHerdRunner extends CommandRunner {
       );
     }
     if (command.contains("'agent' 'list'")) {
+      // Mirrors production herdr, whose list entries carry agent_session —
+      // AgentScreen now resolves the current agent (and its native history)
+      // from `agent list`, not `agent get`.
       final entries = sessions.keys.map((paneId) {
         final workspaceId = paneId.split(':').first;
+        final sessionId = sessions[paneId];
         return '{"agent":"claude","agent_status":"idle",'
             '"cwd":"/tmp/proj","focused":false,"pane_id":"$paneId",'
             '"tab_id":"$workspaceId:t1","workspace_id":"$workspaceId",'
-            '"name":"Agent $paneId"}';
+            '"name":"Agent $paneId",'
+            '"agent_session":{"source":"claude","agent":"claude","kind":"id",'
+            '"value":"$sessionId"}}';
       });
       return ok('{"id":"1","result":{"agents":[${entries.join(',')}]}}');
     }
@@ -181,6 +188,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: droverDarkTheme,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: HerdScreen(
@@ -202,6 +210,8 @@ void main() {
     expect(find.text('wB'), findsNothing);
     expect(find.textContaining('p1'), findsNothing);
     expect(find.textContaining('p2'), findsNothing);
+    // No pane was opened, so every tile's activity snippet falls back to the
+    // `agentType · cwd` metadata.
     expect(find.text('claude · proj-a'), findsNWidgets(2));
     expect(find.text('claude · proj-b'), findsOneWidget);
 
@@ -209,11 +219,85 @@ void main() {
     final idleTop = tester.getTopLeft(find.textContaining('Agent One')).dy;
     expect(blockedTop, lessThan(idleTop));
 
-    await tester.tap(find.text('Agent Three'));
-    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+  });
 
-    expect(find.text('working · claude · Project B'), findsOneWidget);
-    expect(find.textContaining('p1'), findsNothing);
+  testWidgets('greets with the blocked count and a per-status chip row', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: droverDarkTheme,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HerdScreen(
+          client: client,
+          onOpenSettings: () {},
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // One agent is blocked in the fixture, so the greeting names that count.
+    expect(find.textContaining('1 agent', findRichText: true), findsOneWidget);
+
+    // The chip row shows every status with its count (0 included), using the
+    // renewed human labels.
+    expect(find.text('waiting for you 1'), findsOneWidget);
+    expect(find.text('working 1'), findsOneWidget);
+    expect(find.text('all done 0'), findsOneWidget);
+    expect(find.text('resting 1'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('greets all-clear when nothing is blocked', (tester) async {
+    const envelope =
+        '{"id":"1","result":{"agents":['
+        '{"agent":"claude","agent_status":"idle","cwd":"/tmp/proj-a",'
+        '"focused":false,"pane_id":"wA:p1","tab_id":"wA:t1",'
+        '"workspace_id":"wA","name":"Agent One"}'
+        ']}}';
+    final runner = FakeCommandRunner((command) {
+      if (command.contains("'workspace' 'list'")) {
+        return ok(
+          '{"id":"1","result":{"workspaces":['
+          '{"workspace_id":"wA","label":"Project A"}]}}',
+        );
+      }
+      return ok(envelope);
+    });
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: droverDarkTheme,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HerdScreen(
+          client: client,
+          onOpenSettings: () {},
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.textContaining("Everyone's on track.", findRichText: true),
+      findsOneWidget,
+    );
+    // The waiting-count greeting (and its accent count) is absent.
+    expect(
+      find.textContaining('waiting for your reply', findRichText: true),
+      findsNothing,
+    );
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -227,6 +311,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          theme: droverDarkTheme,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: HerdScreen(
@@ -253,16 +338,19 @@ void main() {
       await tester.pumpAndSettle();
       final atPush = listCalls();
 
-      // While AgentScreen is open (pushed on top), further elapsed poll
-      // intervals must not issue any more `agent list` calls.
+      // While AgentScreen is open (pushed on top), the herd's own 1s poll
+      // must stay suspended. AgentScreen legitimately polls `agent list`
+      // itself for the switcher bar on its default 2s interval, so exactly
+      // one call lands in these three elapsed seconds — the herd's cadence
+      // would have added three more.
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(seconds: 1));
-      expect(listCalls(), atPush);
+      expect(listCalls(), atPush + 1);
 
       // Popping back resumes polling — an immediate refresh fires right
       // away, without waiting for the next tick.
-      await tester.pageBack();
+      await tester.tap(find.byKey(const ValueKey('agent_back_button')));
       await tester.pumpAndSettle();
       expect(listCalls(), greaterThan(atPush));
 
@@ -299,6 +387,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          theme: droverDarkTheme,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: HerdScreen(
@@ -337,6 +426,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          theme: droverDarkTheme,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: HerdScreen(
@@ -355,7 +445,7 @@ void main() {
       expect(find.text('Hello from A'), findsOneWidget);
       expect(locateCallsFor(sessionA), 1);
 
-      await tester.pageBack();
+      await tester.tap(find.byKey(const ValueKey('agent_back_button')));
       await tester.pumpAndSettle();
 
       // Reopening the very same pane must reuse the cached
@@ -367,7 +457,7 @@ void main() {
       expect(find.text('Hello from A'), findsOneWidget);
       expect(locateCallsFor(sessionA), 1);
 
-      await tester.pageBack();
+      await tester.tap(find.byKey(const ValueKey('agent_back_button')));
       await tester.pumpAndSettle();
 
       // A different pane gets its own, independent history/loader: opening
@@ -383,12 +473,53 @@ void main() {
     },
   );
 
+  testWidgets(
+    'tile activity snippet reflects the pane\'s cached transcript once opened',
+    (tester) async {
+      final runner = NativeHistoryHerdRunner();
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: droverDarkTheme,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HerdScreen(
+            client: client,
+            onOpenSettings: () {},
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Before opening, the snippet is the metadata fallback (no cached
+      // transcript yet).
+      expect(find.text('claude · proj'), findsNWidgets(2));
+      expect(find.text('Hello from A'), findsNothing);
+
+      await tester.tap(find.text('Agent wA:p1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('agent_back_button')));
+      await tester.pumpAndSettle();
+
+      // Back on the herd, that pane's tile now derives its snippet from the
+      // loaded native transcript; the other pane still shows the fallback.
+      expect(find.text('Hello from A'), findsOneWidget);
+      expect(find.text('claude · proj'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('shows the launch-agent FAB', (tester) async {
     final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: droverDarkTheme,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: HerdScreen(
@@ -414,6 +545,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: droverDarkTheme,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: HerdScreen(
@@ -452,6 +584,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: droverDarkTheme,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: HerdScreen(
@@ -488,6 +621,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: droverDarkTheme,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: HerdScreen(
@@ -522,6 +656,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: droverDarkTheme,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: HerdScreen(
@@ -573,6 +708,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          theme: droverDarkTheme,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: HerdScreen(
@@ -627,6 +763,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          theme: droverDarkTheme,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: HerdScreen(

@@ -101,12 +101,12 @@ CommandResult blockedPromptResponse(String command) {
       ']}}',
     );
   }
-  if (command.contains("'agent' 'get'")) {
+  if (command.contains("'agent' 'list'")) {
     return ok(
-      '{"id":"1","result":{"agent":{"agent":"claude",'
+      '{"id":"1","result":{"agents":[{"agent":"claude",'
       '"agent_status":"blocked","cwd":"/tmp/proj","focused":false,'
       '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-      '"terminal_title_stripped":"OAuth callback を実装"}}}',
+      '"terminal_title_stripped":"OAuth callback を実装"}]}}',
     );
   }
   if (command.contains("'agent' 'read'")) {
@@ -127,12 +127,12 @@ CommandResult idleWithModeResponse(String command) {
       ']}}',
     );
   }
-  if (command.contains("'agent' 'get'")) {
+  if (command.contains("'agent' 'list'")) {
     return ok(
-      '{"id":"1","result":{"agent":{"agent":"claude",'
+      '{"id":"1","result":{"agents":[{"agent":"claude",'
       '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
       '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-      '"terminal_title_stripped":"OAuth callback を実装"}}}',
+      '"terminal_title_stripped":"OAuth callback を実装"}]}}',
     );
   }
   if (command.contains("'agent' 'read'")) {
@@ -305,14 +305,14 @@ CommandResult nativeHistoryResponse(String command) {
       ']}}',
     );
   }
-  if (command.contains("'agent' 'get'")) {
+  if (command.contains("'agent' 'list'")) {
     return ok(
-      '{"id":"1","result":{"agent":{"agent":"claude",'
+      '{"id":"1","result":{"agents":[{"agent":"claude",'
       '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
       '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
       '"terminal_title_stripped":"OAuth callback を実装",'
       '"agent_session":{"source":"claude","agent":"claude","kind":"id",'
-      '"value":"$_nativeSessionId"}}}}',
+      '"value":"$_nativeSessionId"}}]}}',
     );
   }
   if (command.contains("'agent' 'read'")) {

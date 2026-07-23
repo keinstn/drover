@@ -10,7 +10,10 @@ import '../herdr/herdr_client.dart';
 import '../i18n/status_label.dart';
 import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
+import '../transcript/activity_snippet.dart';
 import '../utils/path.dart';
+import '../widgets/agent_avatar.dart';
+import '../widgets/status_pill.dart';
 import '../widgets/text_context_menu.dart';
 import '../widgets/top_toast.dart';
 import 'agent_screen.dart';
@@ -24,19 +27,13 @@ const _statusOrder = <AgentStatus, int>{
   AgentStatus.done: 4,
 };
 
-Color statusColor(AgentStatus status) {
-  switch (status) {
-    case AgentStatus.blocked:
-      return statusBlocked;
-    case AgentStatus.working:
-      return statusWorking;
-    case AgentStatus.idle:
-      return statusIdle;
-    case AgentStatus.done:
-      return statusDone;
-    case AgentStatus.unknown:
-      return statusUnknown;
-  }
+/// A short, human "how long ago" label for [elapsed] since an agent last
+/// changed status: "now" under a minute, "N分前"/"Nm ago" under an hour,
+/// else "N時間前"/"Nh ago". Pure so it can be unit-tested at boundaries.
+String formatElapsed(Duration elapsed, AppLocalizations l10n) {
+  if (elapsed.inSeconds < 60) return l10n.herdElapsedNow;
+  if (elapsed.inMinutes < 60) return l10n.herdElapsedMinutes(elapsed.inMinutes);
+  return l10n.herdElapsedHours(elapsed.inHours);
 }
 
 /// The main screen: a live list of every agent Herdr knows about, grouped by
@@ -68,6 +65,11 @@ class _HerdScreenState extends State<HerdScreen> {
   bool _workspaceLabelsFailed = false;
   Timer? _timer;
   final _previousStatus = <String, AgentStatus>{};
+  // When each pane was first seen in its current status, so a tile can show a
+  // client-side "N分前" since its last status change. Recorded/updated in
+  // [_checkBlockedTransitions]; pruned with the same lifecycle as
+  // [_nativeHistoryCache] in [_load].
+  final _statusChangedAt = <String, DateTime>{};
   Map<String, String> _workspaceLabels = {};
   final _stoppingPaneIds = <String>{};
   // One `NativeTranscriptHistory` per pane, owned by this screen (not
@@ -131,6 +133,7 @@ class _HerdScreenState extends State<HerdScreen> {
       // agent stopped/exited), so the cache doesn't grow unboundedly.
       final panes = agents.map((agent) => agent.paneId).toSet();
       _nativeHistoryCache.removeWhere((paneId, _) => !panes.contains(paneId));
+      _statusChangedAt.removeWhere((paneId, _) => !panes.contains(paneId));
       if (!_workspaceLabelsFailed &&
           agents.any(
             (agent) => !_workspaceLabels.containsKey(agent.workspaceId),
@@ -192,10 +195,25 @@ class _HerdScreenState extends State<HerdScreen> {
     return '$agentType · ${lastPathSegment(cwd)}';
   }
 
+  /// A best-effort "what is it doing" line for [agent]'s tile: derived from
+  /// the latest cached native transcript for its pane when one has been
+  /// loaded (i.e. the pane's `AgentScreen` was opened at least once this
+  /// session), else the `agentType · cwd` metadata fallback. Never loads
+  /// native history itself — the poll must not contend for the serialized
+  /// SSH channel (see [_openAgentScreen]).
+  String _snippetFor(AgentInfo agent, AppLocalizations l10n) {
+    final cached = _nativeHistoryCache[agent.paneId]?.latest;
+    return activitySnippet(cached, l10n) ?? _agentMetadata(agent);
+  }
+
   void _checkBlockedTransitions(List<AgentInfo> agents) {
+    final now = DateTime.now();
     for (final agent in agents) {
       final previous = _previousStatus[agent.paneId];
       final seenBefore = _previousStatus.containsKey(agent.paneId);
+      if (!seenBefore || previous != agent.status) {
+        _statusChangedAt[agent.paneId] = now;
+      }
       if (seenBefore &&
           previous != AgentStatus.blocked &&
           agent.status == AgentStatus.blocked) {
@@ -245,7 +263,11 @@ class _HerdScreenState extends State<HerdScreen> {
   /// 2-second poll would keep contending for the single mutex-serialized SSH
   /// channel that `AgentScreen` needs for its own (now progressive) loading.
   /// Polling resumes, and an immediate refresh is kicked off, once the route
-  /// is popped.
+  /// is popped — or once the switcher bar replaces it (`pushReplacement`
+  /// completes this await early). The resumed poll then runs alongside the
+  /// replacement screen's own `listAgents` poll; both go through the same
+  /// serialized SSH channel, and it keeps blocked-transition toasts alive
+  /// while the user hops between agents.
   Future<void> _openAgentScreen(AgentInfo agent) async {
     _stopPolling();
     await Navigator.of(context).push(
@@ -255,8 +277,10 @@ class _HerdScreenState extends State<HerdScreen> {
           speechInput: widget.speechInput,
           paneId: agent.paneId,
           initialAgent: agent,
+          initialAgents: _agents,
           initialWorkspaceLabel: _workspaceLabels[agent.workspaceId],
           nativeTranscriptHistory: _nativeHistoryFor(agent.paneId),
+          nativeHistoryResolver: _nativeHistoryFor,
         ),
       ),
     );
@@ -399,13 +423,29 @@ class _HerdScreenState extends State<HerdScreen> {
     return groups;
   }
 
+  /// Per-status agent counts, used by both the greeting (blocked) and the
+  /// status-chip row.
+  Map<AgentStatus, int> _statusCounts() {
+    final counts = <AgentStatus, int>{};
+    for (final agent in _agents) {
+      counts[agent.status] = (counts[agent.status] ?? 0) + 1;
+    }
+    return counts;
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final groups = _grouped();
+    final counts = _statusCounts();
+    final now = DateTime.now();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Herd'),
+        centerTitle: false,
+        title: const Text(
+          'Drover',
+          style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -414,6 +454,7 @@ class _HerdScreenState extends State<HerdScreen> {
         ],
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_error != null)
             MaterialBanner(
@@ -432,85 +473,223 @@ class _HerdScreenState extends State<HerdScreen> {
                 ),
               ],
             ),
+          _greeting(l10n, counts[AgentStatus.blocked] ?? 0),
+          _statusChips(l10n, counts),
           Expanded(
             child: groups.isEmpty
                 ? Center(child: Text(l10n.herdNoAgents))
                 : ListView(
                     children: [
-                      for (final entry in groups.entries) ...[
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onLongPress: () => _renameWorkspace(entry.key),
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                            child: Text(
-                              _workspaceLabel(entry.key),
-                              style: Theme.of(context).textTheme.titleSmall,
-                            ),
-                          ),
-                        ),
-                        for (final agent in entry.value)
-                          Dismissible(
-                            key: ValueKey('agent-${agent.paneId}'),
-                            direction: _stoppingPaneIds.contains(agent.paneId)
-                                ? DismissDirection.none
-                                : DismissDirection.endToStart,
-                            background: ColoredBox(
-                              color: Theme.of(context).colorScheme.error,
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 16),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.stop,
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.onError,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        l10n.commonStop,
-                                        style: TextStyle(
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.onError,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            confirmDismiss: (_) => _confirmAndStop(agent),
-                            child: _AgentTile(
-                              agent: agent,
-                              displayName: _agentDisplayName(agent),
-                              metadata: _agentMetadata(agent),
-                              onLongPress:
-                                  _stoppingPaneIds.contains(agent.paneId)
-                                  ? null
-                                  : () => _renameAgent(agent),
-                              onTap: _stoppingPaneIds.contains(agent.paneId)
-                                  ? null
-                                  : () => _openAgentScreen(agent),
-                            ),
-                          ),
-                      ],
+                      for (final entry in groups.entries)
+                        _workspaceCard(context, l10n, entry, now),
                     ],
                   ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        key: const ValueKey('launch_agent_fab'),
-        tooltip: l10n.commonLaunchAgent,
-        onPressed: _openLaunchSheet,
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Theme.of(context).colorScheme.onPrimary,
-        child: const Icon(Icons.add),
+      // The spec's pill FAB is 48px tall; the tight SizedBox overrides the
+      // M3 extended-FAB default (56px).
+      floatingActionButton: SizedBox(
+        height: 48,
+        child: FloatingActionButton.extended(
+          key: const ValueKey('launch_agent_fab'),
+          tooltip: l10n.commonLaunchAgent,
+          onPressed: _openLaunchSheet,
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          foregroundColor: Theme.of(context).colorScheme.onPrimary,
+          icon: const Icon(Icons.add),
+          label: Text(l10n.commonLaunchAgent),
+        ),
+      ),
+    );
+  }
+
+  Widget _greeting(AppLocalizations l10n, int blockedCount) {
+    final colors = DroverColors.of(context);
+    final baseStyle = TextStyle(
+      fontSize: 13.5,
+      fontWeight: FontWeight.w500,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 14),
+      child: Text.rich(
+        TextSpan(
+          children: blockedCount > 0
+              ? [
+                  TextSpan(text: l10n.herdGreetingIntro),
+                  TextSpan(
+                    text: l10n.herdGreetingWaitingCount(blockedCount),
+                    style: TextStyle(
+                      color: colors.blockedPillFg,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  TextSpan(text: l10n.herdGreetingWaitingSuffix),
+                ]
+              : [
+                  TextSpan(text: l10n.herdGreetingIntro),
+                  TextSpan(text: l10n.herdGreetingAllClear),
+                ],
+        ),
+        style: baseStyle,
+      ),
+    );
+  }
+
+  Widget _statusChips(AppLocalizations l10n, Map<AgentStatus, int> counts) {
+    final statuses = <AgentStatus>[
+      AgentStatus.blocked,
+      AgentStatus.working,
+      AgentStatus.done,
+      AgentStatus.idle,
+      if ((counts[AgentStatus.unknown] ?? 0) > 0) AgentStatus.unknown,
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Wrap(
+        spacing: 7,
+        runSpacing: 7,
+        children: [
+          for (final status in statuses)
+            _StatusChip(status: status, count: counts[status] ?? 0),
+        ],
+      ),
+    );
+  }
+
+  Widget _workspaceCard(
+    BuildContext context,
+    AppLocalizations l10n,
+    MapEntry<String, List<AgentInfo>> entry,
+    DateTime now,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(20),
+        border: isLight ? Border.all(color: scheme.outline) : null,
+        boxShadow: isLight
+            ? const [
+                BoxShadow(
+                  color: Color.fromRGBO(120, 100, 70, 0.06),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onLongPress: () => _renameWorkspace(entry.key),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
+              child: Text(
+                _workspaceLabel(entry.key),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                  color: DroverColors.of(context).tertiaryText,
+                ),
+              ),
+            ),
+          ),
+          for (final agent in entry.value)
+            Dismissible(
+              key: ValueKey('agent-${agent.paneId}'),
+              direction: _stoppingPaneIds.contains(agent.paneId)
+                  ? DismissDirection.none
+                  : DismissDirection.endToStart,
+              background: ColoredBox(
+                color: scheme.error,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.stop, color: scheme.onError),
+                        const SizedBox(width: 8),
+                        Text(
+                          l10n.commonStop,
+                          style: TextStyle(color: scheme.onError),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              confirmDismiss: (_) => _confirmAndStop(agent),
+              child: _AgentTile(
+                agent: agent,
+                displayName: _agentDisplayName(agent),
+                snippet: _snippetFor(agent, l10n),
+                elapsed: formatElapsed(
+                  now.difference(_statusChangedAt[agent.paneId] ?? now),
+                  l10n,
+                ),
+                onLongPress: _stoppingPaneIds.contains(agent.paneId)
+                    ? null
+                    : () => _renameAgent(agent),
+                onTap: _stoppingPaneIds.contains(agent.paneId)
+                    ? null
+                    : () => _openAgentScreen(agent),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A pill in the herd summary row: a status color dot, its localized label,
+/// and the current count for that status.
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.status, required this.count});
+
+  final AgentStatus status;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = DroverColors.of(context);
+    final l10n = AppLocalizations.of(context)!;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: colors.statusPillBg(status),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: colors.statusDot(status),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            '${agentStatusLabel(l10n, status)} $count',
+            style: TextStyle(
+              color: colors.statusPillFg(status),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -520,41 +699,73 @@ class _AgentTile extends StatelessWidget {
   const _AgentTile({
     required this.agent,
     required this.displayName,
-    required this.metadata,
+    required this.snippet,
+    required this.elapsed,
     required this.onTap,
     required this.onLongPress,
   });
 
   final AgentInfo agent;
   final String displayName;
-  final String metadata;
+  final String snippet;
+  final String elapsed;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    return ListTile(
-      leading: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.circle, color: statusColor(agent.status), size: 14),
-          Text(
-            agentStatusLabel(l10n, agent.status),
-            style: Theme.of(context).textTheme.labelSmall,
-          ),
-        ],
-      ),
-      title: Text(displayName),
-      subtitle: Text(
-        metadata,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-      ),
+    final colors = DroverColors.of(context);
+    return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        child: Row(
+          children: [
+            AgentAvatar(agent: agent.agent),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    snippet,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                StatusPill(status: agent.status),
+                const SizedBox(height: 3),
+                Text(
+                  elapsed,
+                  style: TextStyle(fontSize: 10, color: colors.tertiaryText),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

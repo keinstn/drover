@@ -51,10 +51,10 @@
   "commonStop": "Stop",
   "commonLaunchAgent": "Launch agent",
 
-  "agentStatusIdle": "idle",
+  "agentStatusIdle": "resting",
   "agentStatusWorking": "working",
-  "agentStatusBlocked": "blocked",
-  "agentStatusDone": "done",
+  "agentStatusBlocked": "waiting for you",
+  "agentStatusDone": "all done",
   "agentStatusUnknown": "unknown",
 
   "agentModeNormal": "Normal",
@@ -63,7 +63,7 @@
   "agentModeAuto": "Auto",
   "agentModeBypass": "Bypass",
 
-  "agentComposerHint": "Message agent…",
+  "agentComposerHint": "Send a message…",
   "agentCycleModeTooltip": "Cycle agent mode (shift+tab)",
   "agentRemoveImage": "Remove image",
   "agentAttachImage": "Add attachment",
@@ -127,6 +127,31 @@
   "herdRenameWorkspaceField": "Workspace name",
   "herdRenameAgentTitle": "Rename agent",
   "herdRenameAgentField": "Agent name",
+
+  "herdGreetingIntro": "Welcome back. ",
+  "herdGreetingWaitingCount": "{count, plural, =1{1 agent} other{{count} agents}}",
+  "@herdGreetingWaitingCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "herdGreetingWaitingSuffix": " waiting for your reply.",
+  "herdGreetingAllClear": "Everyone's on track.",
+  "herdElapsedNow": "now",
+  "herdElapsedMinutes": "{minutes}m ago",
+  "@herdElapsedMinutes": {
+    "placeholders": {
+      "minutes": { "type": "int" }
+    }
+  },
+  "herdElapsedHours": "{hours}h ago",
+  "@herdElapsedHours": {
+    "placeholders": {
+      "hours": { "type": "int" }
+    }
+  },
+  "herdSnippetThinking": "Thinking things over…",
+  "agentSwitcherHerdTab": "All",
 
   "launchButton": "Launch",
   "launchNoAgents": "No launchable agents found on the host",
