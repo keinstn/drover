@@ -19,9 +19,11 @@ import 'src/infra/host_store.dart';
 import 'src/infra/ssh_command_runner.dart';
 import 'src/models/agent_info.dart';
 import 'src/models/host_config.dart';
+import 'src/models/plugin_info.dart';
 import 'src/notifications/notification_registration.dart';
 import 'src/notifications/notification_target.dart';
 import 'src/notifications/host_pairing.dart';
+import 'src/notifications/plugin_auto_pairer.dart';
 import 'src/screens/agent_screen.dart';
 import 'src/screens/herd_screen.dart';
 import 'src/screens/host_setup_screen.dart';
@@ -171,6 +173,30 @@ class _DroverAppState extends State<DroverApp> {
     return _hostPairingGateway.createPairingCode(pairedConfig.hostId!);
   }
 
+  Future<PluginInfo?> _detectNotifyPlugin(HostConfig config) async {
+    final runner = SshCommandRunner(config);
+    try {
+      final client = HerdrClient(runner, herdrBin: config.herdrBin);
+      return await PluginAutoPairer(client).detectPlugin();
+    } finally {
+      await runner.dispose();
+    }
+  }
+
+  Future<void> _autoPairNotifications(
+    HostConfig config,
+    PluginInfo plugin,
+    PairingCode pairing,
+  ) async {
+    final runner = SshCommandRunner(config);
+    try {
+      final client = HerdrClient(runner, herdrBin: config.herdrBin);
+      await PluginAutoPairer(client).pair(plugin: plugin, pairing: pairing);
+    } finally {
+      await runner.dispose();
+    }
+  }
+
   void _scheduleNotificationRegistration() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_registerNotifications());
@@ -312,6 +338,8 @@ class _DroverAppState extends State<DroverApp> {
                       onTest: _testConnection,
                       onReset: _resetConfig,
                       onCreatePairingCode: _createPairingCode,
+                      onDetectPlugin: _detectNotifyPlugin,
+                      onAutoPair: _autoPairNotifications,
                     ),
                   ),
                 );

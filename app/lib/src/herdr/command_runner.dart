@@ -22,6 +22,14 @@ class RemoteFileStat {
 abstract class CommandRunner {
   Future<CommandResult> run(String command);
 
+  /// Runs [command] with [stdin] written to its input and then closed,
+  /// keeping [stdin] out of the remote process's argv (and so out of any
+  /// process listing / command-audit log on the host) — unlike interpolating
+  /// a value into [command] itself. Use for secrets a remote command reads
+  /// from standard input.
+  Future<CommandResult> runWithStdin(String command, String stdin) =>
+      Future.error(UnsupportedError('runWithStdin is unavailable'));
+
   /// Upload [bytes] to [remotePath] on the host, creating or truncating the
   /// file. The transport carries file uploads (SFTP) in addition to commands.
   Future<void> uploadFile(String remotePath, List<int> bytes);

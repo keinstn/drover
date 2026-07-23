@@ -100,8 +100,16 @@ class SshCommandRunner implements CommandRunner {
     }
   }
 
-  Future<CommandResult> _execute(SSHClient client, String command) async {
+  Future<CommandResult> _execute(
+    SSHClient client,
+    String command, {
+    String? stdin,
+  }) async {
     final session = await client.execute(command);
+    if (stdin != null) {
+      session.stdin.add(utf8.encode(stdin));
+      await session.stdin.close();
+    }
     final stdoutFuture = utf8.decodeStream(session.stdout);
     final stderrFuture = utf8.decodeStream(session.stderr);
     await session.done;
@@ -135,6 +143,10 @@ class SshCommandRunner implements CommandRunner {
   @override
   Future<CommandResult> run(String command) =>
       _withClient((client) => _execute(client, command));
+
+  @override
+  Future<CommandResult> runWithStdin(String command, String stdin) =>
+      _withClient((client) => _execute(client, command, stdin: stdin));
 
   @override
   Future<void> uploadFile(String remotePath, List<int> bytes) {

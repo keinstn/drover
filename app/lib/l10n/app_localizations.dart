@@ -266,6 +266,42 @@ abstract class AppLocalizations {
   /// **'Completion URL'**
   String get hostPairingUrlLabel;
 
+  /// No description provided for @hostPairAutoDetectedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notification plugin detected'**
+  String get hostPairAutoDetectedTitle;
+
+  /// No description provided for @hostPairAutoDetectedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Drover found the drover.notify plugin already linked on this host. Set up push notification pairing automatically?'**
+  String get hostPairAutoDetectedBody;
+
+  /// No description provided for @hostPairAutoDetectedConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up'**
+  String get hostPairAutoDetectedConfirm;
+
+  /// No description provided for @hostPairAutoPairedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications paired'**
+  String get hostPairAutoPairedTitle;
+
+  /// No description provided for @hostPairAutoPairedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This host is now paired for blocked-agent push notifications.'**
+  String get hostPairAutoPairedBody;
+
+  /// No description provided for @hostPairAutoFailedStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic pairing failed ({error}). Complete pairing manually below.'**
+  String hostPairAutoFailedStatus(String error);
+
   /// No description provided for @commonClose.
   ///
   /// In en, this message translates to:

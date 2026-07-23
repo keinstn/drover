@@ -33,6 +33,17 @@
   "hostPairingSetupCommandLabel": "2. Run setup",
   "hostPairingCodeLabel": "3. Pairing code",
   "hostPairingUrlLabel": "Completion URL",
+  "hostPairAutoDetectedTitle": "Notification plugin detected",
+  "hostPairAutoDetectedBody": "Drover found the drover.notify plugin already linked on this host. Set up push notification pairing automatically?",
+  "hostPairAutoDetectedConfirm": "Set up",
+  "hostPairAutoPairedTitle": "Notifications paired",
+  "hostPairAutoPairedBody": "This host is now paired for blocked-agent push notifications.",
+  "hostPairAutoFailedStatus": "Automatic pairing failed ({error}). Complete pairing manually below.",
+  "@hostPairAutoFailedStatus": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "commonClose": "Close",
   "commonCopy": "Copy",
 

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../models/host_config.dart';
+import '../models/plugin_info.dart';
 import '../notifications/host_pairing.dart';
 
 /// Form for entering (or editing) the SSH connection details for the dev
@@ -15,6 +16,8 @@ class HostSetupScreen extends StatefulWidget {
     this.onTest,
     this.onReset,
     this.onCreatePairingCode,
+    this.onDetectPlugin,
+    this.onAutoPair,
   });
 
   final HostConfig? initial;
@@ -25,6 +28,16 @@ class HostSetupScreen extends StatefulWidget {
   /// the reset control is hidden (e.g. during first-run setup).
   final Future<void> Function()? onReset;
   final Future<PairingCode> Function(HostConfig)? onCreatePairingCode;
+
+  /// Detects whether the `drover.notify` plugin is already linked and
+  /// enabled on the host. Returning null (including on detection failure)
+  /// falls back to the manual pairing dialog. When null, pairing always
+  /// goes through the manual dialog, same as before this capability existed.
+  final Future<PluginInfo?> Function(HostConfig)? onDetectPlugin;
+
+  /// Drives the already-linked plugin's own pairing script over SSH. Only
+  /// called after the user confirms the auto-pair dialog.
+  final Future<void> Function(HostConfig, PluginInfo, PairingCode)? onAutoPair;
 
   @override
   State<HostSetupScreen> createState() => _HostSetupScreenState();
@@ -98,62 +111,21 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
       _statusMessage = null;
     });
     try {
+      final plugin = await _detectPlugin(config);
+      if (plugin != null && await _confirmAutoPair()) {
+        final pairing = await onCreatePairingCode(config);
+        if (!mounted) return;
+        setState(() => _hostId = pairing.hostId);
+        await _autoPairOrFallBackToManual(config, plugin, pairing);
+        return;
+      }
       final pairing = await onCreatePairingCode(config);
       if (!mounted) return;
       setState(() {
         _hostId = pairing.hostId;
         _busy = false;
       });
-      await showDialog<void>(
-        context: context,
-        builder: (context) {
-          final l10n = AppLocalizations.of(context)!;
-          final pluginPath = '/path/to/drover/plugins/drover-notify';
-          final herdrBin = _shellCommandPath(config.herdrBin);
-          final linkCommand = '$herdrBin plugin link $pluginPath';
-          final setupCommand =
-              'node $pluginPath/bin/setup.mjs --completion-url '
-              '${_shellQuote(pairing.completionUrl)} --herdr-bin $herdrBin';
-          return AlertDialog(
-            title: Text(l10n.hostPairingCodeTitle),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(l10n.hostPairingCodeIntro),
-                  const SizedBox(height: 16),
-                  _CopyableValue(
-                    label: l10n.hostPairingLinkCommandLabel,
-                    value: linkCommand,
-                  ),
-                  const SizedBox(height: 16),
-                  _CopyableValue(
-                    label: l10n.hostPairingSetupCommandLabel,
-                    value: setupCommand,
-                  ),
-                  const SizedBox(height: 16),
-                  _CopyableValue(
-                    label: l10n.hostPairingCodeLabel,
-                    value: pairing.code,
-                  ),
-                  const SizedBox(height: 16),
-                  _CopyableValue(
-                    label: l10n.hostPairingUrlLabel,
-                    value: pairing.completionUrl,
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text(l10n.commonClose),
-              ),
-            ],
-          );
-        },
-      );
+      await _showManualPairingDialog(config, pairing);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -162,6 +134,137 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
         _busy = false;
       });
     }
+  }
+
+  Future<PluginInfo?> _detectPlugin(HostConfig config) async {
+    final onDetectPlugin = widget.onDetectPlugin;
+    if (onDetectPlugin == null) return null;
+    try {
+      return await onDetectPlugin(config);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> _confirmAutoPair() async {
+    final l10n = AppLocalizations.of(context)!;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.hostPairAutoDetectedTitle),
+        content: Text(l10n.hostPairAutoDetectedBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.hostPairAutoDetectedConfirm),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> _autoPairOrFallBackToManual(
+    HostConfig config,
+    PluginInfo plugin,
+    PairingCode pairing,
+  ) async {
+    final onAutoPair = widget.onAutoPair;
+    try {
+      if (onAutoPair == null) {
+        throw StateError('Auto-pairing is unavailable.');
+      }
+      await onAutoPair(config, plugin, pairing);
+      if (!mounted) return;
+      setState(() => _busy = false);
+      await _showAutoPairSuccessDialog();
+    } catch (error) {
+      if (!mounted) return;
+      final l10n = AppLocalizations.of(context)!;
+      setState(() {
+        _statusMessage = l10n.hostPairAutoFailedStatus(error.toString());
+        _statusIsError = true;
+        _busy = false;
+      });
+      await _showManualPairingDialog(config, pairing);
+    }
+  }
+
+  Future<void> _showAutoPairSuccessDialog() {
+    final l10n = AppLocalizations.of(context)!;
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.hostPairAutoPairedTitle),
+        content: Text(l10n.hostPairAutoPairedBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(l10n.commonClose),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showManualPairingDialog(
+    HostConfig config,
+    PairingCode pairing,
+  ) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) {
+        final l10n = AppLocalizations.of(context)!;
+        final pluginPath = '/path/to/drover/plugins/drover-notify';
+        final herdrBin = _shellCommandPath(config.herdrBin);
+        final linkCommand = '$herdrBin plugin link $pluginPath';
+        final setupCommand =
+            'node $pluginPath/bin/setup.mjs --completion-url '
+            '${_shellQuote(pairing.completionUrl)} --herdr-bin $herdrBin';
+        return AlertDialog(
+          title: Text(l10n.hostPairingCodeTitle),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(l10n.hostPairingCodeIntro),
+                const SizedBox(height: 16),
+                _CopyableValue(
+                  label: l10n.hostPairingLinkCommandLabel,
+                  value: linkCommand,
+                ),
+                const SizedBox(height: 16),
+                _CopyableValue(
+                  label: l10n.hostPairingSetupCommandLabel,
+                  value: setupCommand,
+                ),
+                const SizedBox(height: 16),
+                _CopyableValue(
+                  label: l10n.hostPairingCodeLabel,
+                  value: pairing.code,
+                ),
+                const SizedBox(height: 16),
+                _CopyableValue(
+                  label: l10n.hostPairingUrlLabel,
+                  value: pairing.completionUrl,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(l10n.commonClose),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _handleTest() async {

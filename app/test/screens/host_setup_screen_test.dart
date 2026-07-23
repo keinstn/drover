@@ -1,9 +1,22 @@
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/models/host_config.dart';
+import 'package:drover/src/models/plugin_info.dart';
 import 'package:drover/src/notifications/host_pairing.dart';
 import 'package:drover/src/screens/host_setup_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+const _samplePairing = PairingCode(
+  code: 'PAIR-CODE-42',
+  hostId: 'paired-host',
+  completionUrl: 'https://example.com/completePairing',
+);
+
+const _samplePlugin = PluginInfo(
+  pluginId: 'drover.notify',
+  enabled: true,
+  pluginRoot: '/checkout/plugins/drover-notify',
+);
 
 void main() {
   testWidgets('submits a HostConfig with defaults for port and herdrBin', (
@@ -200,4 +213,147 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('detected plugin: confirming auto-pairs and shows success', (
+    tester,
+  ) async {
+    var autoPairCalls = 0;
+
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HostSetupScreen(
+          initial: const HostConfig(
+            host: 'example.com',
+            user: 'dev',
+            privateKeyPem: 'KEY',
+          ),
+          onSubmit: (config) async {},
+          onCreatePairingCode: (_) async => _samplePairing,
+          onDetectPlugin: (_) async => _samplePlugin,
+          onAutoPair: (config, plugin, pairing) async {
+            autoPairCalls++;
+            expect(plugin.pluginRoot, _samplePlugin.pluginRoot);
+            expect(pairing.code, _samplePairing.code);
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(
+      find.widgetWithText(OutlinedButton, 'Create notification pairing code'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Notification plugin detected'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Set up'));
+    await tester.pumpAndSettle();
+
+    expect(autoPairCalls, 1);
+    expect(find.text('Notifications paired'), findsOneWidget);
+    expect(find.text('Pair the notification plugin'), findsNothing);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Close'));
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'detected plugin: declining the confirmation falls back to the manual dialog',
+    (tester) async {
+      var autoPairCalls = 0;
+
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HostSetupScreen(
+            initial: const HostConfig(
+              host: 'example.com',
+              user: 'dev',
+              privateKeyPem: 'KEY',
+            ),
+            onSubmit: (config) async {},
+            onCreatePairingCode: (_) async => _samplePairing,
+            onDetectPlugin: (_) async => _samplePlugin,
+            onAutoPair: (config, plugin, pairing) async {
+              autoPairCalls++;
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'Create notification pairing code'),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(autoPairCalls, 0);
+      expect(find.text('Pair the notification plugin'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'detected plugin: an auto-pair failure falls back to the manual dialog',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HostSetupScreen(
+            initial: const HostConfig(
+              host: 'example.com',
+              user: 'dev',
+              privateKeyPem: 'KEY',
+            ),
+            onSubmit: (config) async {},
+            onCreatePairingCode: (_) async => _samplePairing,
+            onDetectPlugin: (_) async => _samplePlugin,
+            onAutoPair: (config, plugin, pairing) async {
+              throw StateError('node was not found on the host PATH.');
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'Create notification pairing code'),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Set up'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pair the notification plugin'), findsOneWidget);
+      expect(find.textContaining(_samplePairing.code), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Close'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Automatic pairing failed'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }

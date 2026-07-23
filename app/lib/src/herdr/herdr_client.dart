@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../models/agent_info.dart';
 import '../models/agent_preset.dart';
 import '../models/host_config.dart';
+import '../models/plugin_info.dart';
 import '../models/remote_dir_entry.dart';
 import '../models/workspace_info.dart';
 import 'command_runner.dart';
@@ -192,6 +193,34 @@ class HerdrClient {
         .where((l) => l.isNotEmpty)
         .toSet();
     return presets.where((p) => found.contains(p.bin)).toList();
+  }
+
+  /// Finds a linked plugin by [pluginId], or null if it is not linked.
+  /// `--plugin` filters the CLI's own list, so a non-empty result always
+  /// contains exactly the requested plugin.
+  Future<PluginInfo?> findPlugin(String pluginId) async {
+    final result = await _run([
+      'plugin',
+      'list',
+      '--plugin',
+      pluginId,
+      '--json',
+    ]);
+    final plugins = result['plugins'];
+    if (plugins is! List) {
+      throw const HerdrException('transport', 'missing plugins field');
+    }
+    if (plugins.isEmpty) return null;
+    return PluginInfo.fromJson(plugins.first as Map<String, dynamic>);
+  }
+
+  /// Print the Herdr-managed config directory for plugin [pluginId]. Raw
+  /// text output, not a JSON envelope. herdr returns a path here even for an
+  /// unlinked plugin id, so this must not be used to detect whether a
+  /// plugin is installed — use [findPlugin] for that.
+  Future<String> pluginConfigDir(String pluginId) async {
+    final result = await _exec(['plugin', 'config-dir', pluginId]);
+    return result.stdout.trim();
   }
 
   Future<CreatedWorkspace> createWorkspace({
