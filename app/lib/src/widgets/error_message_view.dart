@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../herdr/herdr_version.dart';
 import '../infra/app_error.dart';
 
 /// The localized, human-friendly one-line message for [error]. Used directly
@@ -15,6 +16,9 @@ String errorHeadline(AppLocalizations l10n, Object error) {
       return l10n.errorSshAuth;
     case AppErrorKind.hostConnection:
       return l10n.errorHostConnection;
+    case AppErrorKind.herdrVersionUnsupported:
+      final e = error as HerdrVersionUnsupportedException;
+      return l10n.herdrVersionTooOld(e.found, e.minimum);
     case AppErrorKind.unknown:
       final detail = errorDetail(error);
       return detail.isEmpty ? l10n.errorGeneric : detail;

@@ -1,4 +1,5 @@
 import '../herdr/herdr_client.dart';
+import '../herdr/herdr_version.dart';
 import 'ssh_command_runner.dart';
 
 /// A user-facing category for a caught error, used to pick a friendly
@@ -12,6 +13,9 @@ enum AppErrorKind {
 
   /// The transport layer could not reach or stay connected to the host.
   hostConnection,
+
+  /// The host's herdr is older than drover's minimum supported version.
+  herdrVersionUnsupported,
 
   /// Anything else — including a herdr command that ran but reported failure.
   unknown,
@@ -28,6 +32,9 @@ enum AppErrorKind {
 /// [AppErrorKind.unknown] so we never tell the user to "check the connection"
 /// for a command that actually reached the host.
 AppErrorKind classifyError(Object error) {
+  if (error is HerdrVersionUnsupportedException) {
+    return AppErrorKind.herdrVersionUnsupported;
+  }
   if (error is HerdrException) {
     final cause = error.cause;
     if (cause is SshHostKeyMismatchException) {

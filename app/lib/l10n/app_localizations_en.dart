@@ -168,6 +168,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn\'t reach the host. Check that it\'s online and the address and port are correct.';
 
   @override
+  String herdrVersionTooOld(String found, String minimum) {
+    return 'herdr $found on this host is older than the minimum supported version $minimum. Update herdr on the host to start agents.';
+  }
+
+  @override
   String get errorGeneric => 'Something went wrong.';
 
   @override

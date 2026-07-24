@@ -158,6 +158,11 @@ class AppLocalizationsJa extends AppLocalizations {
       'ホストに接続できませんでした。オンラインであること、アドレスとポートが正しいことを確認してください。';
 
   @override
+  String herdrVersionTooOld(String found, String minimum) {
+    return 'このホストの herdr $found は、drover が対応する最小バージョン $minimum を下回っています。エージェントを起動するには、ホスト側の herdr を更新してください。';
+  }
+
+  @override
   String get errorGeneric => '問題が発生しました。';
 
   @override

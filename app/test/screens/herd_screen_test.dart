@@ -68,6 +68,12 @@ CommandResult _respond(String command) {
   return ok(_listEnvelope);
 }
 
+/// Like [_respond], but reports a herdr version below [kMinHerdrVersion].
+CommandResult _respondOldHerdr(String command) {
+  if (command.contains("'--version'")) return ok('herdr 0.7.0\n');
+  return _respond(command);
+}
+
 // The second host reuses host A's workspace/pane ids on purpose: they are
 // only unique within a host, so the multi-host tests double as a check that
 // nothing (keys included) collides across hosts.
@@ -515,6 +521,43 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey('launch_agent_fab')), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('shows a warning when the host\'s herdr is too old', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_respondOldHerdr);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(_herdApp(client: client));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('herdr_version_warning_host-1')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('blocks launching a new agent when the herdr is too old', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_respondOldHerdr);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(_herdApp(client: client));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('launch_agent_fab')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LaunchAgentSheet), findsNothing);
+    expect(runner.commands.any((c) => c.contains("'agent' 'start'")), isFalse);
 
     await tester.pumpWidget(const SizedBox());
   });

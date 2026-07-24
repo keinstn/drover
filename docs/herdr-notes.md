@@ -25,6 +25,12 @@ which agent is running in the pane.
   <text>`, which types the text and submits it in a single atomic call.
   drover's `HerdrClient.prompt` uses `agent prompt` directly (no fallback, no
   version detection — herdr 0.7.5+ only).
+- (2026-07-24) drover now enforces this 0.7.5 floor itself: `HerdScreen` reads
+  `herdr --version` per host (`HerdrClient.version`, `herdr_version.dart`'s
+  `kMinHerdrVersion`) and shows a persistent warning plus blocks launching new
+  agents on any host reporting an older version, since the `agent prompt`/
+  `agent start --pane`/`agent wait --until` shapes above all error out below
+  it.
 - In herdr 0.7.5, `agent start` requires an existing shell pane:
   `agent start <name> --kind <kind> --pane <id>`. The former `--cwd`,
   `--workspace`, and `--no-focus` options are gone. Drover creates a workspace
