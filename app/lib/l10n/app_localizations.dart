@@ -374,6 +374,12 @@ abstract class AppLocalizations {
   /// **'Couldn\'t reach the host. Check that it\'s online and the address and port are correct.'**
   String get errorHostConnection;
 
+  /// No description provided for @herdrVersionTooOld.
+  ///
+  /// In en, this message translates to:
+  /// **'herdr {found} on this host is older than the minimum supported version {minimum}. Update herdr on the host to start agents.'**
+  String herdrVersionTooOld(String found, String minimum);
+
   /// No description provided for @errorGeneric.
   ///
   /// In en, this message translates to:

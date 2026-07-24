@@ -7,6 +7,7 @@ import '../../l10n/app_localizations.dart';
 import '../agents/agent_native_history.dart';
 import '../app_theme.dart';
 import '../herdr/herdr_client.dart';
+import '../herdr/herdr_version.dart';
 import '../i18n/status_label.dart';
 import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
@@ -93,6 +94,14 @@ class _HostHerd {
   bool workspaceLabelsFailed = false;
   Object? workspaceLabelsError;
 
+  /// This host's parsed herdr version, fetched once (like [workspaceLabels]).
+  /// Stays null if the probe fails or its output is unparseable — a version
+  /// warning simply isn't shown rather than blocking on an unrelated hiccup;
+  /// [_HerdScreenState._herdrTooOldToLaunch] re-checks authoritatively before
+  /// actually gating a launch.
+  HerdrVersion? herdrVersion;
+  bool herdrVersionLoading = false;
+
   final previousStatus = <String, AgentStatus>{};
 
   // When each pane was first seen in its current status, so a tile can show a
@@ -176,6 +185,7 @@ class _HerdScreenState extends State<HerdScreen> {
     for (final host in _hostsInScope) {
       unawaited(_loadHost(host));
       unawaited(_loadWorkspaceLabels(host));
+      unawaited(_loadHerdrVersion(host));
     }
     _startPolling();
   }
@@ -205,6 +215,7 @@ class _HerdScreenState extends State<HerdScreen> {
           !_byHost.containsKey(host.hostId)) {
         unawaited(_loadHost(host));
         unawaited(_loadWorkspaceLabels(host));
+        unawaited(_loadHerdrVersion(host));
       }
     }
   }
@@ -326,6 +337,29 @@ class _HerdScreenState extends State<HerdScreen> {
     }
   }
 
+  /// Fetches and caches [host]'s herdr version once, so a persistent warning
+  /// can be shown without re-probing on every poll tick. Any transport
+  /// failure or unparseable `--version` output is swallowed — this cache is
+  /// best-effort; [_herdrTooOldToLaunch] is the authoritative check.
+  Future<void> _loadHerdrVersion(HerdHostRef host) async {
+    final bucket = _bucketFor(host.hostId);
+    if (bucket.herdrVersionLoading || bucket.herdrVersion != null) return;
+    bucket.herdrVersionLoading = true;
+    try {
+      final version = parseHerdrVersion(await widget.clientFor(host).version());
+      if (version == null ||
+          !mounted ||
+          !identical(_byHost[host.hostId], bucket)) {
+        return;
+      }
+      setState(() => bucket.herdrVersion = version);
+    } catch (_) {
+      // Fail open: an unreachable/erroring probe never shows a warning.
+    } finally {
+      bucket.herdrVersionLoading = false;
+    }
+  }
+
   /// Clears [host]'s error state (including the poll backoff) and reloads it
   /// right away.
   void _retryHost(HerdHostRef host) {
@@ -415,7 +449,45 @@ class _HerdScreenState extends State<HerdScreen> {
       target = await _pickLaunchHost();
     }
     if (target == null || !mounted) return;
+    if (await _herdrTooOldToLaunch(target)) return;
+    if (!mounted) return;
     await _openLaunchSheet(target);
+  }
+
+  /// Authoritatively re-checks [host]'s herdr version right before opening
+  /// the launch sheet — [_HostHerd.herdrVersion] may not have arrived yet,
+  /// so trusting only the cached value would let a fast launch tap race past
+  /// it. Any transport failure or unparseable output fails open (returns
+  /// false): a hiccup here must never newly block an otherwise-working
+  /// launch. Returns true (and shows a toast) when the launch should be
+  /// blocked.
+  Future<bool> _herdrTooOldToLaunch(HerdHostRef host) async {
+    final bucket = _bucketFor(host.hostId);
+    var version = bucket.herdrVersion;
+    if (version == null) {
+      try {
+        version = parseHerdrVersion(await widget.clientFor(host).version());
+      } catch (_) {
+        return false;
+      }
+      if (version == null) return false;
+      if (mounted && identical(_byHost[host.hostId], bucket)) {
+        setState(() => bucket.herdrVersion = version);
+      }
+    }
+    if (isHerdrVersionSupported(version)) return false;
+    if (!mounted) return true;
+    showTopToast(
+      context,
+      errorHeadline(
+        AppLocalizations.of(context)!,
+        HerdrVersionUnsupportedException(
+          found: formatHerdrVersion(version),
+          minimum: formatHerdrVersion(kMinHerdrVersion),
+        ),
+      ),
+    );
+    return true;
   }
 
   Future<HerdHostRef?> _pickLaunchHost() {
@@ -827,6 +899,9 @@ class _HerdScreenState extends State<HerdScreen> {
     final bucket = _bucketFor(host.hostId);
     final error = bucket.error;
     final workspaceLabelsError = bucket.workspaceLabelsError;
+    final herdrVersion = bucket.herdrVersion;
+    final herdrVersionTooOld =
+        herdrVersion != null && !isHerdrVersionSupported(herdrVersion);
     return [
       if (widget.hosts.length > 1) _hostHeader(host),
       if (error != null)
@@ -841,6 +916,19 @@ class _HerdScreenState extends State<HerdScreen> {
           l10n,
           workspaceLabelsError,
           onRetry: () => _retryWorkspaceLabels(host),
+        ),
+      // No retry button: unlike a transient load failure, a stale herdr
+      // binary on the host isn't fixed by retrying from drover.
+      if (herdrVersionTooOld)
+        Padding(
+          key: ValueKey('herdr_version_warning_${host.hostId}'),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+          child: ErrorMessageView(
+            HerdrVersionUnsupportedException(
+              found: formatHerdrVersion(herdrVersion),
+              minimum: formatHerdrVersion(kMinHerdrVersion),
+            ),
+          ),
         ),
       for (final entry in _grouped(bucket).entries)
         _workspaceCard(context, l10n, host, bucket, entry, now),

@@ -177,6 +177,10 @@ class HerdrClient {
     return res;
   }
 
+  /// Raw `herdr --version` stdout (e.g. `"herdr 0.7.5\n"`) — plain text, NOT
+  /// a JSON envelope like the other commands in this class.
+  Future<String> version() async => (await _exec(['--version'])).stdout;
+
   Future<List<AgentInfo>> listAgents() async {
     final result = await _run(['agent', 'list']);
     final agents = result['agents'];

@@ -24,6 +24,7 @@ import '../src/app_theme.dart';
 import '../src/dev/stub_herdr.dart';
 import '../src/herdr/command_runner.dart';
 import '../src/herdr/herdr_client.dart';
+import '../src/herdr/herdr_version.dart';
 import '../src/infra/ssh_command_runner.dart';
 import '../src/models/host_config.dart';
 import '../src/models/plugin_info.dart';
@@ -44,6 +45,7 @@ const _scenariosByPreview = <String, List<String>>{
   'agent': ['idle', 'blocked', 'native', 'askuser'],
   'host-setup': ['idle', 'plugin-detected', 'auto-pair-failure'],
   'errors': ['en', 'ja'],
+  'herd': ['idle', 'herdr-too-old'],
 };
 
 HerdrClient _client(
@@ -161,10 +163,19 @@ CommandResult _herdResponder(String command) {
   return ok('{"id":"1","result":{}}');
 }
 
+/// Reports a herdr version below drover's minimum, so the version-warning
+/// banner and blocked launch can be eyeballed (`SCENARIO=herdr-too-old`).
+CommandResult _herdrTooOldResponder(String command) {
+  if (command.contains("'--version'")) return ok('herdr 0.7.0\n');
+  return _herdResponder(command);
+}
+
 /// Registry of named previews. Add a screen = add an entry here.
 final _previews = <String, PreviewBuilder>{
-  'herd': (_, _) {
-    final client = _client(_herdResponder);
+  'herd': (_, scenario) {
+    final client = _client(
+      scenario == 'herdr-too-old' ? _herdrTooOldResponder : _herdResponder,
+    );
     return HerdScreen(
       hosts: const [
         HerdHostRef(hostId: 'stub-host-id', displayName: 'devbox', revision: 0),
@@ -296,6 +307,10 @@ final _errorSamples = <(String, Object)>[
   (
     'unknown (herdr command failed, no cause)',
     const HerdrException('command_failed', "workspace 'ws-9' not found"),
+  ),
+  (
+    'herdr version unsupported',
+    const HerdrVersionUnsupportedException(found: '0.7.0', minimum: '0.7.5'),
   ),
 ];
 

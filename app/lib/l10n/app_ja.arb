@@ -47,6 +47,7 @@
   "errorHostKeyMismatch": "ホストの SSH 鍵が初回接続時に信頼したものと一致しません。サーバーを作り直した・交換した覚えがなければ、通信が傍受されている可能性があります。続行しないでください。",
   "errorSshAuth": "ホストにサインインできませんでした。ユーザー名・秘密鍵・パスフレーズを確認してください。",
   "errorHostConnection": "ホストに接続できませんでした。オンラインであること、アドレスとポートが正しいことを確認してください。",
+  "herdrVersionTooOld": "このホストの herdr {found} は、drover が対応する最小バージョン {minimum} を下回っています。エージェントを起動するには、ホスト側の herdr を更新してください。",
   "errorGeneric": "問題が発生しました。",
   "errorDetailsLabel": "詳細",
 
