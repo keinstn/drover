@@ -74,6 +74,26 @@ CommandResult _respondOldHerdr(String command) {
   return _respond(command);
 }
 
+/// Like [_respondOldHerdr], but the background version probe (fired from
+/// `initState`) fails its first call — as if it simply hadn't resolved yet —
+/// so the bucket's cached version stays null. A later, deliberate
+/// `--version` call (e.g. the launch-time authoritative re-check) succeeds
+/// and reports the old version. Each call returns a fresh closure so the
+/// call counter doesn't leak between tests.
+CommandResult Function(String) _respondVersionUncachedThenOld() {
+  var versionCalls = 0;
+  return (command) {
+    if (command.contains("'--version'")) {
+      versionCalls++;
+      if (versionCalls == 1) {
+        return CommandResult(exitCode: 1, stdout: '', stderr: 'transient');
+      }
+      return ok('herdr 0.7.0\n');
+    }
+    return _respond(command);
+  };
+}
+
 // The second host reuses host A's workspace/pane ids on purpose: they are
 // only unique within a host, so the multi-host tests double as a check that
 // nothing (keys included) collides across hosts.
@@ -561,6 +581,37 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'blocks launching when the herdr version was not yet cached (race with '
+    'the background probe)',
+    (tester) async {
+      final runner = FakeCommandRunner(_respondVersionUncachedThenOld());
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(_herdApp(client: client));
+      await tester.pump();
+      await tester.pump();
+
+      // The background probe's first (only, so far) call failed, so no
+      // cached warning is shown yet.
+      expect(
+        find.byKey(const ValueKey('herdr_version_warning_host-1')),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('launch_agent_fab')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LaunchAgentSheet), findsNothing);
+      expect(
+        runner.commands.any((c) => c.contains("'agent' 'start'")),
+        isFalse,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('chip reads "All hosts" when no host filter is set', (
     tester,

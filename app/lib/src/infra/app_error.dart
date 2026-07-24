@@ -54,6 +54,10 @@ AppErrorKind classifyError(Object error) {
 /// `HerdrException(code):` prefix by returning the inner message (or the
 /// underlying cause's message when the transport threw).
 String errorDetail(Object error) {
+  // The headline already states found/minimum in full; a details expander
+  // would only add this type's own Dart class name, not a real technical
+  // cause the way SSH/herdr errors below have one.
+  if (error is HerdrVersionUnsupportedException) return '';
   if (error is HerdrException) {
     final cause = error.cause;
     return cause != null ? cause.toString() : error.message;
