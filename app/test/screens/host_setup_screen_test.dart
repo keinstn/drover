@@ -66,6 +66,58 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('carries the optional name into the submitted config', (
+    tester,
+  ) async {
+    HostConfig? captured;
+
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HostSetupScreen(
+          onSubmit: (config) async {
+            captured = config;
+          },
+        ),
+      ),
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Host'),
+      'example.com',
+    );
+    await tester.enterText(find.widgetWithText(TextFormField, 'User'), 'dev');
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Private key PEM'),
+      '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----',
+    );
+
+    // Left blank, the name submits as null.
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pump();
+    await tester.pump();
+    expect(captured, isNotNull);
+    expect(captured!.name, isNull);
+
+    // A filled (padded) name submits trimmed.
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Name (optional)'),
+      '  Work Mac  ',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pump();
+    await tester.pump();
+    expect(captured!.name, 'Work Mac');
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('rejects an out-of-range port and blocks save', (tester) async {
     HostConfig? captured;
     tester.view.physicalSize = const Size(800, 1600);
@@ -137,73 +189,6 @@ void main() {
       find.textContaining("doesn't look like a private key"),
       findsOneWidget,
     );
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('hides the reset control during first-run setup', (tester) async {
-    tester.view.physicalSize = const Size(800, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HostSetupScreen(onSubmit: (config) async {}),
-      ),
-    );
-
-    expect(find.text('Reset host'), findsNothing);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('reset host asks for confirmation before clearing', (
-    tester,
-  ) async {
-    var resetCalls = 0;
-
-    tester.view.physicalSize = const Size(800, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HostSetupScreen(
-          initial: const HostConfig(
-            host: 'example.com',
-            port: 22,
-            user: 'dev',
-            privateKeyPem: 'KEY',
-          ),
-          onSubmit: (config) async {},
-          onReset: () async {
-            resetCalls++;
-          },
-        ),
-      ),
-    );
-
-    await tester.tap(find.widgetWithText(TextButton, 'Reset host'));
-    await tester.pumpAndSettle();
-
-    // Cancelling leaves the config untouched.
-    expect(find.text('Reset host?'), findsOneWidget);
-    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
-    await tester.pumpAndSettle();
-    expect(resetCalls, 0);
-
-    // Confirming invokes onReset.
-    await tester.tap(find.widgetWithText(TextButton, 'Reset host'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Reset'));
-    await tester.pumpAndSettle();
-    expect(resetCalls, 1);
 
     await tester.pumpWidget(const SizedBox());
   });

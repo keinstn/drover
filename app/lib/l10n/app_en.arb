@@ -1,6 +1,7 @@
 {
   "@@locale": "en",
   "hostSetupTitle": "Host setup",
+  "hostSetupNameLabel": "Name (optional)",
   "hostSetupHostLabel": "Host",
   "hostSetupHostRequired": "Host is required",
   "hostSetupPortLabel": "Port",
@@ -15,11 +16,19 @@
   "hostSetupHerdrBinLabel": "Herdr binary path",
   "hostSetupTestConnection": "Test connection",
   "hostSetupSave": "Save",
-  "hostSetupResetButton": "Reset host",
-  "hostResetDialogTitle": "Reset host?",
-  "hostResetDialogBody": "This deletes the saved connection details (including the SSH key) and returns to the setup screen.",
+  "hostListTitle": "Hosts",
+  "hostDeleteDialogTitle": "Delete host?",
+  "hostDeleteDialogBody": "The saved connection details for {name} (including the SSH key) will be deleted.",
+  "@hostDeleteDialogBody": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "hostSwitcherTitle": "Switch host",
+  "hostSwitcherManage": "Manage hosts",
   "commonCancel": "Cancel",
-  "commonReset": "Reset",
+  "commonEdit": "Edit",
+  "commonDelete": "Delete",
   "testConnectionOk": "OK — {count, plural, =1{1 agent} other{{count} agents}}",
   "@testConnectionOk": {
     "placeholders": {

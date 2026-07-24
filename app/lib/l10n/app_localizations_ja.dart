@@ -12,6 +12,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get hostSetupTitle => 'ホスト設定';
 
   @override
+  String get hostSetupNameLabel => '名前(任意)';
+
+  @override
   String get hostSetupHostLabel => 'ホスト';
 
   @override
@@ -55,19 +58,30 @@ class AppLocalizationsJa extends AppLocalizations {
   String get hostSetupSave => '保存';
 
   @override
-  String get hostSetupResetButton => 'ホストをリセット';
+  String get hostListTitle => 'ホスト';
 
   @override
-  String get hostResetDialogTitle => 'ホストをリセットしますか？';
+  String get hostDeleteDialogTitle => 'ホストを削除しますか？';
 
   @override
-  String get hostResetDialogBody => '保存された接続情報（SSH 鍵を含む）を削除し、セットアップ画面に戻ります。';
+  String hostDeleteDialogBody(String name) {
+    return '$name の保存された接続情報（SSH 鍵を含む）を削除します。';
+  }
+
+  @override
+  String get hostSwitcherTitle => 'ホストを切り替え';
+
+  @override
+  String get hostSwitcherManage => 'ホストを管理';
 
   @override
   String get commonCancel => 'キャンセル';
 
   @override
-  String get commonReset => 'リセット';
+  String get commonEdit => '編集';
+
+  @override
+  String get commonDelete => '削除';
 
   @override
   String testConnectionOk(int count) {

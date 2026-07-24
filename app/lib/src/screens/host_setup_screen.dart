@@ -16,7 +16,6 @@ class HostSetupScreen extends StatefulWidget {
     this.initial,
     required this.onSubmit,
     this.onTest,
-    this.onReset,
     this.onCreatePairingCode,
     this.onDetectPlugin,
     this.onAutoPair,
@@ -25,10 +24,6 @@ class HostSetupScreen extends StatefulWidget {
   final HostConfig? initial;
   final Future<void> Function(HostConfig) onSubmit;
   final Future<String> Function(HostConfig)? onTest;
-
-  /// Clears the stored host config and returns to first-run setup. When null,
-  /// the reset control is hidden (e.g. during first-run setup).
-  final Future<void> Function()? onReset;
   final Future<PairingCode> Function(HostConfig)? onCreatePairingCode;
 
   /// Detects whether the `drover.notify` plugin is already linked and
@@ -47,6 +42,7 @@ class HostSetupScreen extends StatefulWidget {
 
 class _HostSetupScreenState extends State<HostSetupScreen> {
   final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameController;
   late final TextEditingController _hostController;
   late final TextEditingController _portController;
   late final TextEditingController _userController;
@@ -63,6 +59,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
   void initState() {
     super.initState();
     final initial = widget.initial;
+    _nameController = TextEditingController(text: initial?.name ?? '');
     _hostController = TextEditingController(text: initial?.host ?? '');
     _portController = TextEditingController(text: '${initial?.port ?? 22}');
     _userController = TextEditingController(text: initial?.user ?? '');
@@ -78,6 +75,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
 
   @override
   void dispose() {
+    _nameController.dispose();
     _hostController.dispose();
     _portController.dispose();
     _userController.dispose();
@@ -90,7 +88,9 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
   HostConfig? _buildConfig() {
     if (!(_formKey.currentState?.validate() ?? false)) return null;
     final passphrase = _passphraseController.text;
+    final name = _nameController.text.trim();
     return HostConfig(
+      name: name.isEmpty ? null : name,
       host: _hostController.text.trim(),
       port: int.tryParse(_portController.text.trim()) ?? 22,
       user: _userController.text.trim(),
@@ -297,41 +297,6 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     }
   }
 
-  Future<void> _handleReset() async {
-    final onReset = widget.onReset;
-    if (onReset == null) return;
-    final l10n = AppLocalizations.of(context)!;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.hostResetDialogTitle),
-        content: Text(l10n.hostResetDialogBody),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(l10n.commonReset),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    setState(() => _busy = true);
-    try {
-      await onReset();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _statusError = e;
-        _statusMessage = null;
-        _busy = false;
-      });
-    }
-  }
-
   Future<void> _handleSave() async {
     final config = _buildConfig();
     if (config == null) return;
@@ -365,6 +330,11 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            TextFormField(
+              controller: _nameController,
+              decoration: InputDecoration(labelText: l10n.hostSetupNameLabel),
+            ),
+            const SizedBox(height: 12),
             TextFormField(
               controller: _hostController,
               decoration: InputDecoration(labelText: l10n.hostSetupHostLabel),
@@ -477,16 +447,6 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 ),
               ],
             ),
-            if (widget.onReset != null) ...[
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: _busy ? null : _handleReset,
-                style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.error,
-                ),
-                child: Text(l10n.hostSetupResetButton),
-              ),
-            ],
           ],
         ),
       ),

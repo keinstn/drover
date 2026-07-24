@@ -46,12 +46,21 @@ class HerdScreen extends StatefulWidget {
     required this.onOpenSettings,
     this.speechInput,
     this.pollInterval = const Duration(seconds: 2),
+    this.hostName,
+    this.onOpenHostSwitcher,
   });
 
   final HerdrClient client;
   final VoidCallback onOpenSettings;
   final SpeechInput? speechInput;
   final Duration pollInterval;
+
+  /// Label of the active host, shown as a tappable chip under the app bar
+  /// title. When null the app bar renders exactly as before multi-host.
+  final String? hostName;
+
+  /// Opens the host switcher; only invoked when [hostName] is shown.
+  final VoidCallback? onOpenHostSwitcher;
 
   @override
   State<HerdScreen> createState() => _HerdScreenState();
@@ -446,10 +455,10 @@ class _HerdScreenState extends State<HerdScreen> {
     return Scaffold(
       appBar: AppBar(
         centerTitle: false,
-        title: const Text(
-          'Drover',
-          style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
-        ),
+        // The host chip adds a second line under the title; the default 56px
+        // toolbar would overflow it.
+        toolbarHeight: widget.hostName == null ? null : 64,
+        title: _appBarTitle(),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -505,6 +514,48 @@ class _HerdScreenState extends State<HerdScreen> {
           label: Text(l10n.commonLaunchAgent),
         ),
       ),
+    );
+  }
+
+  /// The plain bold 'Drover' title, plus — when a host name is provided — a
+  /// smaller tappable "▾ host" chip beneath it that opens the host switcher.
+  Widget _appBarTitle() {
+    const title = Text(
+      'Drover',
+      style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+    );
+    final hostName = widget.hostName;
+    if (hostName == null) return title;
+    final subdued = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        title,
+        InkWell(
+          key: const ValueKey('host_switcher_chip'),
+          onTap: () => widget.onOpenHostSwitcher?.call(),
+          borderRadius: BorderRadius.circular(6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.arrow_drop_down, size: 16, color: subdued),
+              Flexible(
+                child: Text(
+                  hostName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: subdued,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

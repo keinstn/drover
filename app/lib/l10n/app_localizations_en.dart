@@ -12,6 +12,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hostSetupTitle => 'Host setup';
 
   @override
+  String get hostSetupNameLabel => 'Name (optional)';
+
+  @override
   String get hostSetupHostLabel => 'Host';
 
   @override
@@ -56,20 +59,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hostSetupSave => 'Save';
 
   @override
-  String get hostSetupResetButton => 'Reset host';
+  String get hostListTitle => 'Hosts';
 
   @override
-  String get hostResetDialogTitle => 'Reset host?';
+  String get hostDeleteDialogTitle => 'Delete host?';
 
   @override
-  String get hostResetDialogBody =>
-      'This deletes the saved connection details (including the SSH key) and returns to the setup screen.';
+  String hostDeleteDialogBody(String name) {
+    return 'The saved connection details for $name (including the SSH key) will be deleted.';
+  }
+
+  @override
+  String get hostSwitcherTitle => 'Switch host';
+
+  @override
+  String get hostSwitcherManage => 'Manage hosts';
 
   @override
   String get commonCancel => 'Cancel';
 
   @override
-  String get commonReset => 'Reset';
+  String get commonEdit => 'Edit';
+
+  @override
+  String get commonDelete => 'Delete';
 
   @override
   String testConnectionOk(int count) {
