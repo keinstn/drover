@@ -42,7 +42,11 @@ drover/
 ## Getting started
 
 You need a Herdr host reachable over SSH with key-based auth (on macOS: System
-Settings → Sharing → Remote Login). Install a herdr integration for each agent
+Settings → Sharing → Remote Login; on Windows: install the OpenSSH Server
+feature — and note that for an **administrator** account the public key must go
+in `C:\ProgramData\ssh\administrators_authorized_keys`, not
+`~\.ssh\authorized_keys`, or the connection fails with "All authentication
+methods failed"). Install a herdr integration for each agent
 you want native transcript history for — for example,
 `herdr integration install claude`, `herdr integration install codex`, or
 `herdr integration install copilot`. Without an integration, drover falls back
