@@ -26,6 +26,8 @@
   },
   "hostSwitcherTitle": "Switch host",
   "hostSwitcherManage": "Manage hosts",
+  "hostAllHosts": "All hosts",
+  "hostPickLaunchTarget": "Launch on…",
   "commonCancel": "Cancel",
   "commonEdit": "Edit",
   "commonDelete": "Delete",

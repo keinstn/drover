@@ -21,6 +21,8 @@
   "hostDeleteDialogBody": "{name} の保存された接続情報（SSH 鍵を含む）を削除します。",
   "hostSwitcherTitle": "ホストを切り替え",
   "hostSwitcherManage": "ホストを管理",
+  "hostAllHosts": "すべてのホスト",
+  "hostPickLaunchTarget": "起動先のホスト",
   "commonCancel": "キャンセル",
   "commonEdit": "編集",
   "commonDelete": "削除",

@@ -105,6 +105,7 @@ class AgentScreen extends StatefulWidget {
     this.speechInput,
     this.imagePicker,
     this.draftStore,
+    this.draftKeyPrefix,
     this.nativeTranscriptHistory,
     this.nativeHistoryResolver,
     this.pollInterval = const Duration(seconds: 2),
@@ -124,6 +125,12 @@ class AgentScreen extends StatefulWidget {
   final SpeechInput? speechInput;
   final ImagePickerPort? imagePicker;
   final AgentDraftStore? draftStore;
+
+  /// Scopes this screen's draft-store keys (e.g. to a host id): pane ids like
+  /// `wA:p1` repeat across hosts, so without a prefix a draft typed for one
+  /// host's pane would leak into another host's same-named pane. When null the
+  /// bare pane id is used (standalone use, previews, tests).
+  final String? draftKeyPrefix;
   // A pane-scoped history/loader instance the caller (e.g. `HerdScreen`'s
   // per-pane cache) may inject so reopening the same pane resumes from its
   // already-loaded window/offset state instead of starting from zero. When
@@ -183,6 +190,9 @@ class _AgentScreenState extends State<AgentScreen> {
   late final SpeechInput _speechInput;
   late final ImagePickerPort _imagePicker;
   late final AgentDraftStore _draftStore;
+  // The draft-store key for this pane, host-scoped via `widget.draftKeyPrefix`
+  // so same-named panes on different hosts don't share a draft.
+  late final String _draftKey;
   late final NativeTranscriptHistory _nativeTranscriptHistory;
   var _dictationSession = 0;
   var _draftBeforeDictation = '';
@@ -193,6 +203,9 @@ class _AgentScreenState extends State<AgentScreen> {
     _speechInput = widget.speechInput ?? SpeechInputController();
     _imagePicker = widget.imagePicker ?? SystemImagePicker();
     _draftStore = widget.draftStore ?? AgentDraftStore.shared;
+    _draftKey = widget.draftKeyPrefix == null
+        ? widget.paneId
+        : '${widget.draftKeyPrefix}:${widget.paneId}';
     _nativeTranscriptHistory =
         widget.nativeTranscriptHistory ??
         NativeTranscriptHistory(
@@ -201,7 +214,7 @@ class _AgentScreenState extends State<AgentScreen> {
         );
     // Restore any draft left over from a previous visit to this pane's screen
     // (the route is popped/re-pushed on navigation, disposing the controller).
-    final draft = _draftStore.read(widget.paneId);
+    final draft = _draftStore.read(_draftKey);
     if (draft != null) {
       _messageController.value = TextEditingValue(
         text: draft,
@@ -223,7 +236,7 @@ class _AgentScreenState extends State<AgentScreen> {
     }
     // Persist the in-progress draft before the controller is torn down so it
     // survives navigating away from and back to this pane.
-    _draftStore.write(widget.paneId, _messageController.text);
+    _draftStore.write(_draftKey, _messageController.text);
     _scrollController.dispose();
     _messageController.dispose();
     super.dispose();
@@ -633,7 +646,7 @@ class _AgentScreenState extends State<AgentScreen> {
     );
     if (ok) {
       _messageController.clear();
-      _draftStore.clear(widget.paneId);
+      _draftStore.clear(_draftKey);
       HapticFeedback.lightImpact();
       if (mounted) setState(() => _pendingImages.clear());
     }
@@ -754,6 +767,7 @@ class _AgentScreenState extends State<AgentScreen> {
           speechInput: widget.speechInput,
           imagePicker: widget.imagePicker,
           draftStore: widget.draftStore,
+          draftKeyPrefix: widget.draftKeyPrefix,
           pollInterval: widget.pollInterval,
           nativeTranscriptHistory: resolver?.call(target.paneId),
           nativeHistoryResolver: resolver,

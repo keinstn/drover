@@ -75,6 +75,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get hostSwitcherManage => 'ホストを管理';
 
   @override
+  String get hostAllHosts => 'すべてのホスト';
+
+  @override
+  String get hostPickLaunchTarget => '起動先のホスト';
+
+  @override
   String get commonCancel => 'キャンセル';
 
   @override

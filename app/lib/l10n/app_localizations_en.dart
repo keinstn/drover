@@ -76,6 +76,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hostSwitcherManage => 'Manage hosts';
 
   @override
+  String get hostAllHosts => 'All hosts';
+
+  @override
+  String get hostPickLaunchTarget => 'Launch on…';
+
+  @override
   String get commonCancel => 'Cancel';
 
   @override

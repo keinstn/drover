@@ -163,11 +163,19 @@ CommandResult _herdResponder(String command) {
 
 /// Registry of named previews. Add a screen = add an entry here.
 final _previews = <String, PreviewBuilder>{
-  'herd': (_, _) => HerdScreen(
-    client: _client(_herdResponder),
-    onOpenSettings: () {},
-    pollInterval: const Duration(hours: 1),
-  ),
+  'herd': (_, _) {
+    final client = _client(_herdResponder);
+    return HerdScreen(
+      hosts: const [
+        HerdHostRef(hostId: 'stub-host-id', displayName: 'devbox', revision: 0),
+      ],
+      clientFor: (_) => client,
+      filterHostId: null,
+      onOpenHostSwitcher: () {},
+      onOpenSettings: () {},
+      pollInterval: const Duration(hours: 1),
+    );
+  },
   'agent': (_, scenario) => switch (scenario) {
     'native' => AgentScreen(
       client: _client(

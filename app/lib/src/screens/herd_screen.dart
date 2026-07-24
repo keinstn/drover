@@ -37,66 +37,176 @@ String formatElapsed(Duration elapsed, AppLocalizations l10n) {
   return l10n.herdElapsedHours(elapsed.inHours);
 }
 
-/// The main screen: a live list of every agent Herdr knows about, grouped by
-/// workspace and polled every [pollInterval].
-class HerdScreen extends StatefulWidget {
-  const HerdScreen({
-    super.key,
-    required this.client,
-    required this.onOpenSettings,
-    this.speechInput,
-    this.pollInterval = const Duration(seconds: 2),
-    this.hostName,
-    this.onOpenHostSwitcher,
-  });
-
-  final HerdrClient client;
-  final VoidCallback onOpenSettings;
-  final SpeechInput? speechInput;
-  final Duration pollInterval;
-
-  /// Label of the active host, shown as a tappable chip under the app bar
-  /// title. When null the app bar renders exactly as before multi-host.
-  final String? hostName;
-
-  /// Opens the host switcher; only invoked when [hostName] is shown.
-  final VoidCallback? onOpenHostSwitcher;
-
-  @override
-  State<HerdScreen> createState() => _HerdScreenState();
+/// The backoff delay before re-polling a host after [failStreak] consecutive
+/// load failures: `pollInterval * 2^min(failStreak, 5)`, capped at 30
+/// seconds. Pure so the schedule can be unit-tested without wall-clock
+/// polling (widget tests run on fake timers but `DateTime.now()` is real).
+Duration herdPollBackoff(int failStreak, Duration pollInterval) {
+  const cap = Duration(seconds: 30);
+  final delay = pollInterval * (1 << (failStreak < 5 ? failStreak : 5));
+  return delay > cap ? cap : delay;
 }
 
-class _HerdScreenState extends State<HerdScreen> {
-  List<AgentInfo> _agents = [];
-  Object? _error;
-  Object? _workspaceLabelsError;
-  bool _loading = false;
-  bool _workspaceLabelsLoading = false;
-  bool _workspaceLabelsFailed = false;
-  Timer? _timer;
-  final _previousStatus = <String, AgentStatus>{};
+/// One stored host as the herd screen sees it: enough identity to key its
+/// state bucket, plus [revision], which main.dart bumps whenever the host's
+/// connection is rebuilt (config edit) so per-pane state bound to the old
+/// runner can be discarded.
+class HerdHostRef {
+  const HerdHostRef({
+    required this.hostId,
+    required this.displayName,
+    required this.revision,
+  });
+
+  final String hostId;
+  final String displayName;
+  final int revision;
+
+  @override
+  bool operator ==(Object other) =>
+      other is HerdHostRef &&
+      other.hostId == hostId &&
+      other.displayName == displayName &&
+      other.revision == revision;
+
+  @override
+  int get hashCode => Object.hash(hostId, displayName, revision);
+}
+
+/// Per-host slice of the herd state. Everything the pre-multi-host screen
+/// kept in flat paneId/workspaceId-keyed fields lives in one bucket per host
+/// instead — pane and workspace ids are only unique within a host, and a
+/// failing or slow host must never disturb another host's data.
+class _HostHerd {
+  List<AgentInfo> agents = [];
+  Object? error;
+  bool loading = false;
+
+  /// Consecutive failed loads; drives [herdPollBackoff].
+  int failStreak = 0;
+
+  /// When set, the periodic poll skips this host until the backoff expires.
+  DateTime? nextPollAt;
+
+  Map<String, String> workspaceLabels = {};
+  bool workspaceLabelsLoading = false;
+  bool workspaceLabelsFailed = false;
+  Object? workspaceLabelsError;
+
+  final previousStatus = <String, AgentStatus>{};
+
   // When each pane was first seen in its current status, so a tile can show a
   // client-side "N分前" since its last status change. Recorded/updated in
-  // [_checkBlockedTransitions]; pruned with the same lifecycle as
-  // [_nativeHistoryCache] in [_load].
-  final _statusChangedAt = <String, DateTime>{};
-  Map<String, String> _workspaceLabels = {};
-  final _stoppingPaneIds = <String>{};
+  // [_HerdScreenState._checkBlockedTransitions]; pruned with the same
+  // lifecycle as [nativeHistory] in [_HerdScreenState._loadHost].
+  final statusChangedAt = <String, DateTime>{};
+
+  final stoppingPaneIds = <String>{};
+
   // One `NativeTranscriptHistory` per pane, owned by this screen (not
   // global/static state) and injected into `AgentScreen` on open so
   // reopening the same pane resumes from its already-loaded window/offset
   // state instead of re-fetching from scratch. Each instance still
   // re-resolves/resets itself when that pane's agent session identity
   // changes (see `NativeTranscriptHistory`); entries for panes no longer
-  // reported by the herd are dropped in [_load].
-  final _nativeHistoryCache = <String, NativeTranscriptHistory>{};
+  // reported by the herd are dropped in [_HerdScreenState._loadHost].
+  final nativeHistory = <String, NativeTranscriptHistory>{};
+}
+
+/// The main screen: a live list of every agent every stored Herdr host knows
+/// about, grouped by host and workspace and polled every [pollInterval].
+class HerdScreen extends StatefulWidget {
+  const HerdScreen({
+    super.key,
+    required this.hosts,
+    required this.clientFor,
+    this.filterHostId,
+    required this.onOpenHostSwitcher,
+    required this.onOpenSettings,
+    this.speechInput,
+    this.pollInterval = const Duration(seconds: 2),
+  });
+
+  /// Every stored host, in display order.
+  final List<HerdHostRef> hosts;
+
+  /// Lazily resolves the live client for a host. Backed by main.dart's
+  /// connection registry, so repeated calls are cheap and return the same
+  /// client until the host's [HerdHostRef.revision] is bumped.
+  final HerdrClient Function(HerdHostRef) clientFor;
+
+  /// When set, only the matching host is polled and rendered; null means
+  /// "All hosts".
+  final String? filterHostId;
+
+  /// Opens the host switcher (the app-bar chip tap); main owns the sheet.
+  final VoidCallback onOpenHostSwitcher;
+
+  final VoidCallback onOpenSettings;
+  final SpeechInput? speechInput;
+  final Duration pollInterval;
+
+  @override
+  State<HerdScreen> createState() => _HerdScreenState();
+}
+
+class _HerdScreenState extends State<HerdScreen> {
+  final _byHost = <String, _HostHerd>{};
+  Timer? _timer;
+
+  /// The hosts the screen currently polls and renders: all of them, or just
+  /// the [HerdScreen.filterHostId] match.
+  List<HerdHostRef> get _hostsInScope =>
+      _scopeOf(widget.hosts, widget.filterHostId);
+
+  static List<HerdHostRef> _scopeOf(List<HerdHostRef> hosts, String? filter) =>
+      filter == null
+      ? hosts
+      : [
+          for (final host in hosts)
+            if (host.hostId == filter) host,
+        ];
+
+  _HostHerd _bucketFor(String hostId) =>
+      _byHost.putIfAbsent(hostId, () => _HostHerd());
 
   @override
   void initState() {
     super.initState();
-    _load();
-    _loadWorkspaceLabels();
+    for (final host in _hostsInScope) {
+      unawaited(_loadHost(host));
+      unawaited(_loadWorkspaceLabels(host));
+    }
     _startPolling();
+  }
+
+  @override
+  void didUpdateWidget(covariant HerdScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final ids = {for (final host in widget.hosts) host.hostId};
+    _byHost.removeWhere((hostId, _) => !ids.contains(hostId));
+    for (final host in widget.hosts) {
+      for (final old in oldWidget.hosts) {
+        if (old.hostId == host.hostId && old.revision != host.revision) {
+          // The host's connection was rebuilt: cached NativeTranscriptHistory
+          // instances are bound to the dead runner, so start the bucket over.
+          _byHost.remove(host.hostId);
+        }
+      }
+    }
+    // Hosts that just came into scope (filter change, added host, reset
+    // bucket) load immediately instead of waiting for the next poll tick.
+    final oldScope = {
+      for (final host in _scopeOf(oldWidget.hosts, oldWidget.filterHostId))
+        host.hostId,
+    };
+    for (final host in _hostsInScope) {
+      if (!oldScope.contains(host.hostId) ||
+          !_byHost.containsKey(host.hostId)) {
+        unawaited(_loadHost(host));
+        unawaited(_loadWorkspaceLabels(host));
+      }
+    }
   }
 
   @override
@@ -105,72 +215,100 @@ class _HerdScreenState extends State<HerdScreen> {
     super.dispose();
   }
 
-  /// Starts (or restarts) the periodic [_load] poll. A no-op if already
-  /// running: [_load] itself is guarded by [_loading], so calling this twice
-  /// in a row would otherwise leak the original [Timer].
+  /// Starts (or restarts) the periodic poll. A no-op if already running:
+  /// [_loadHost] itself is guarded per bucket, so calling this twice in a row
+  /// would otherwise leak the original [Timer].
   void _startPolling() {
-    _timer ??= Timer.periodic(widget.pollInterval, (_) => _load());
+    _timer ??= Timer.periodic(widget.pollInterval, (_) => _pollTick());
   }
 
-  /// Stops the periodic poll without touching an in-flight [_load] call,
-  /// which remains safe to finish on its own (it checks [mounted] and guards
-  /// re-entrancy via [_loading]).
+  /// Stops the periodic poll without touching in-flight [_loadHost] calls,
+  /// which remain safe to finish on their own (each checks [mounted] and
+  /// guards re-entrancy via its bucket's `loading`).
   void _stopPolling() {
     _timer?.cancel();
     _timer = null;
   }
 
-  /// The cached native-history/loader instance for [paneId], creating one on
-  /// first use.
-  NativeTranscriptHistory _nativeHistoryFor(String paneId) =>
-      _nativeHistoryCache.putIfAbsent(
-        paneId,
-        () => NativeTranscriptHistory(
-          widget.client.runner,
-          platform: widget.client.hostPlatform,
-        ),
-      );
+  /// One poll tick: refresh every in-scope host, skipping ones with a load
+  /// already in flight or still inside their failure backoff window.
+  void _pollTick() {
+    final now = DateTime.now();
+    for (final host in _hostsInScope) {
+      final bucket = _bucketFor(host.hostId);
+      if (bucket.loading) continue;
+      final nextPollAt = bucket.nextPollAt;
+      if (nextPollAt != null && now.isBefore(nextPollAt)) continue;
+      unawaited(_loadHost(host));
+    }
+  }
 
-  Future<void> _load() async {
-    if (_loading) return;
-    _loading = true;
+  /// The cached native-history/loader instance for [paneId] on [host],
+  /// creating one on first use.
+  NativeTranscriptHistory _nativeHistoryFor(HerdHostRef host, String paneId) {
+    final client = widget.clientFor(host);
+    return _bucketFor(host.hostId).nativeHistory.putIfAbsent(
+      paneId,
+      () =>
+          NativeTranscriptHistory(client.runner, platform: client.hostPlatform),
+    );
+  }
+
+  Future<void> _loadHost(HerdHostRef host) async {
+    final bucket = _bucketFor(host.hostId);
+    if (bucket.loading) return;
+    bucket.loading = true;
     try {
-      final agents = await widget.client.listAgents();
-      _checkBlockedTransitions(agents);
-      if (!mounted) return;
+      final agents = await widget.clientFor(host).listAgents();
+      if (!mounted || !identical(_byHost[host.hostId], bucket)) return;
+      _checkBlockedTransitions(bucket, agents);
       setState(() {
-        _agents = agents;
-        _error = null;
+        bucket.agents = agents;
+        bucket.error = null;
+        bucket.failStreak = 0;
+        bucket.nextPollAt = null;
       });
       // Drop any cached history for a pane the herd no longer reports (the
       // agent stopped/exited), so the cache doesn't grow unboundedly.
       final panes = agents.map((agent) => agent.paneId).toSet();
-      _nativeHistoryCache.removeWhere((paneId, _) => !panes.contains(paneId));
-      _statusChangedAt.removeWhere((paneId, _) => !panes.contains(paneId));
-      if (!_workspaceLabelsFailed &&
+      bucket.nativeHistory.removeWhere((paneId, _) => !panes.contains(paneId));
+      bucket.statusChangedAt.removeWhere(
+        (paneId, _) => !panes.contains(paneId),
+      );
+      // Also drop the dead pane's last-seen status, so a reused paneId
+      // doesn't inherit it.
+      bucket.previousStatus.removeWhere((paneId, _) => !panes.contains(paneId));
+      if (!bucket.workspaceLabelsFailed &&
           agents.any(
-            (agent) => !_workspaceLabels.containsKey(agent.workspaceId),
+            (agent) => !bucket.workspaceLabels.containsKey(agent.workspaceId),
           )) {
-        _loadWorkspaceLabels();
+        unawaited(_loadWorkspaceLabels(host));
       }
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = e);
+      if (!mounted || !identical(_byHost[host.hostId], bucket)) return;
+      setState(() {
+        bucket.error = e;
+        bucket.failStreak++;
+        bucket.nextPollAt = DateTime.now().add(
+          herdPollBackoff(bucket.failStreak, widget.pollInterval),
+        );
+      });
     } finally {
-      _loading = false;
+      bucket.loading = false;
     }
   }
 
-  Future<void> _loadWorkspaceLabels() async {
-    if (_workspaceLabelsLoading) return;
-    _workspaceLabelsLoading = true;
+  Future<void> _loadWorkspaceLabels(HerdHostRef host) async {
+    final bucket = _bucketFor(host.hostId);
+    if (bucket.workspaceLabelsLoading) return;
+    bucket.workspaceLabelsLoading = true;
     try {
-      final workspaces = await widget.client.listWorkspaces();
-      if (!mounted) return;
+      final workspaces = await widget.clientFor(host).listWorkspaces();
+      if (!mounted || !identical(_byHost[host.hostId], bucket)) return;
       setState(() {
-        _workspaceLabelsFailed = false;
-        _workspaceLabelsError = null;
-        _workspaceLabels = {
+        bucket.workspaceLabelsFailed = false;
+        bucket.workspaceLabelsError = null;
+        bucket.workspaceLabels = {
           for (final workspace in workspaces)
             workspace.workspaceId: workspace.label.isEmpty
                 ? workspace.workspaceId
@@ -178,26 +316,39 @@ class _HerdScreenState extends State<HerdScreen> {
         };
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !identical(_byHost[host.hostId], bucket)) return;
       setState(() {
-        _workspaceLabelsFailed = true;
-        _workspaceLabelsError = e;
+        bucket.workspaceLabelsFailed = true;
+        bucket.workspaceLabelsError = e;
       });
     } finally {
-      _workspaceLabelsLoading = false;
+      bucket.workspaceLabelsLoading = false;
     }
   }
 
-  void _retryWorkspaceLabels() {
+  /// Clears [host]'s error state (including the poll backoff) and reloads it
+  /// right away.
+  void _retryHost(HerdHostRef host) {
+    final bucket = _bucketFor(host.hostId);
     setState(() {
-      _workspaceLabelsFailed = false;
-      _workspaceLabelsError = null;
+      bucket.error = null;
+      bucket.failStreak = 0;
+      bucket.nextPollAt = null;
     });
-    _loadWorkspaceLabels();
+    unawaited(_loadHost(host));
   }
 
-  String _workspaceLabel(String workspaceId) =>
-      _workspaceLabels[workspaceId] ?? workspaceId;
+  void _retryWorkspaceLabels(HerdHostRef host) {
+    final bucket = _bucketFor(host.hostId);
+    setState(() {
+      bucket.workspaceLabelsFailed = false;
+      bucket.workspaceLabelsError = null;
+    });
+    unawaited(_loadWorkspaceLabels(host));
+  }
+
+  String _workspaceLabel(_HostHerd bucket, String workspaceId) =>
+      bucket.workspaceLabels[workspaceId] ?? workspaceId;
 
   String _agentDisplayName(AgentInfo agent) =>
       agent.sessionTitle ?? agent.name ?? agent.agent ?? agent.paneId;
@@ -214,18 +365,18 @@ class _HerdScreenState extends State<HerdScreen> {
   /// session), else the `agentType · cwd` metadata fallback. Never loads
   /// native history itself — the poll must not contend for the serialized
   /// SSH channel (see [_openAgentScreen]).
-  String _snippetFor(AgentInfo agent, AppLocalizations l10n) {
-    final cached = _nativeHistoryCache[agent.paneId]?.latest;
+  String _snippetFor(_HostHerd bucket, AgentInfo agent, AppLocalizations l10n) {
+    final cached = bucket.nativeHistory[agent.paneId]?.latest;
     return activitySnippet(cached, l10n) ?? _agentMetadata(agent);
   }
 
-  void _checkBlockedTransitions(List<AgentInfo> agents) {
+  void _checkBlockedTransitions(_HostHerd bucket, List<AgentInfo> agents) {
     final now = DateTime.now();
     for (final agent in agents) {
-      final previous = _previousStatus[agent.paneId];
-      final seenBefore = _previousStatus.containsKey(agent.paneId);
+      final previous = bucket.previousStatus[agent.paneId];
+      final seenBefore = bucket.previousStatus.containsKey(agent.paneId);
       if (!seenBefore || previous != agent.status) {
-        _statusChangedAt[agent.paneId] = now;
+        bucket.statusChangedAt[agent.paneId] = now;
       }
       if (seenBefore &&
           previous != AgentStatus.blocked &&
@@ -239,21 +390,69 @@ class _HerdScreenState extends State<HerdScreen> {
           );
         }
       }
-      _previousStatus[agent.paneId] = agent.status;
+      bucket.previousStatus[agent.paneId] = agent.status;
     }
   }
 
-  List<String> _distinctCwds() {
+  List<String> _distinctCwds(_HostHerd bucket) {
     final seen = <String>{};
     final cwds = <String>[];
-    for (final agent in _agents) {
+    for (final agent in bucket.agents) {
       final cwd = agent.foregroundCwd ?? agent.cwd;
       if (seen.add(cwd)) cwds.add(cwd);
     }
     return cwds;
   }
 
-  Future<void> _openLaunchSheet() async {
+  /// FAB tap: launch on the filtered (or only) host directly; in the
+  /// All-hosts view with several hosts, ask which host to launch on first.
+  Future<void> _onLaunchPressed() async {
+    HerdHostRef? target;
+    if (widget.filterHostId != null || widget.hosts.length == 1) {
+      final scope = _hostsInScope;
+      target = scope.isEmpty ? null : scope.first;
+    } else {
+      target = await _pickLaunchHost();
+    }
+    if (target == null || !mounted) return;
+    await _openLaunchSheet(target);
+  }
+
+  Future<HerdHostRef?> _pickLaunchHost() {
+    return showModalBottomSheet<HerdHostRef>(
+      context: context,
+      builder: (context) {
+        final l10n = AppLocalizations.of(context)!;
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Text(
+                  l10n.hostPickLaunchTarget,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              for (final host in widget.hosts)
+                ListTile(
+                  key: ValueKey('launch_host_${host.hostId}'),
+                  title: Text(
+                    host.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () => Navigator.pop(context, host),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openLaunchSheet(HerdHostRef host) async {
     final launched = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -262,16 +461,16 @@ class _HerdScreenState extends State<HerdScreen> {
           bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
         child: LaunchAgentSheet(
-          client: widget.client,
-          existingCwds: _distinctCwds(),
+          client: widget.clientFor(host),
+          existingCwds: _distinctCwds(_bucketFor(host.hostId)),
         ),
       ),
     );
-    if (launched == true) _load();
+    if (launched == true) unawaited(_loadHost(host));
   }
 
   /// Pushes the detail screen for [agent], suspending the periodic
-  /// [_load]/[listAgents] poll for the duration of that route. `HerdScreen`
+  /// `listAgents` poll for the duration of that route. `HerdScreen`
   /// stays mounted (and visible) behind the pushed route, so without this its
   /// 2-second poll would keep contending for the single mutex-serialized SSH
   /// channel that `AgentScreen` needs for its own (now progressive) loading.
@@ -281,28 +480,32 @@ class _HerdScreenState extends State<HerdScreen> {
   /// replacement screen's own `listAgents` poll; both go through the same
   /// serialized SSH channel, and it keeps blocked-transition toasts alive
   /// while the user hops between agents.
-  Future<void> _openAgentScreen(AgentInfo agent) async {
+  Future<void> _openAgentScreen(HerdHostRef host, AgentInfo agent) async {
+    final bucket = _bucketFor(host.hostId);
     _stopPolling();
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => AgentScreen(
-          client: widget.client,
+          client: widget.clientFor(host),
           speechInput: widget.speechInput,
           paneId: agent.paneId,
           initialAgent: agent,
-          initialAgents: _agents,
-          initialWorkspaceLabel: _workspaceLabels[agent.workspaceId],
-          nativeTranscriptHistory: _nativeHistoryFor(agent.paneId),
-          nativeHistoryResolver: _nativeHistoryFor,
+          initialAgents: bucket.agents,
+          initialWorkspaceLabel: bucket.workspaceLabels[agent.workspaceId],
+          draftKeyPrefix: host.hostId,
+          nativeTranscriptHistory: _nativeHistoryFor(host, agent.paneId),
+          nativeHistoryResolver: (paneId) => _nativeHistoryFor(host, paneId),
         ),
       ),
     );
     if (!mounted) return;
     _startPolling();
-    _load();
+    for (final inScope in _hostsInScope) {
+      unawaited(_loadHost(inScope));
+    }
   }
 
-  Future<bool> _confirmAndStop(AgentInfo agent) async {
+  Future<bool> _confirmAndStop(HerdHostRef host, AgentInfo agent) async {
     final name = _agentDisplayName(agent);
     final confirmed = await showDialog<bool>(
       context: context,
@@ -326,17 +529,18 @@ class _HerdScreenState extends State<HerdScreen> {
     );
     if (confirmed != true || !mounted) return false;
 
-    setState(() => _stoppingPaneIds.add(agent.paneId));
+    final bucket = _bucketFor(host.hostId);
+    setState(() => bucket.stoppingPaneIds.add(agent.paneId));
     try {
-      await widget.client.closeAgent(agent.paneId);
-      await _load();
+      await widget.clientFor(host).closeAgent(agent.paneId);
+      await _loadHost(host);
     } catch (e) {
       if (mounted) {
         showTopToast(context, errorHeadline(AppLocalizations.of(context)!, e));
       }
     } finally {
       if (mounted) {
-        setState(() => _stoppingPaneIds.remove(agent.paneId));
+        setState(() => bucket.stoppingPaneIds.remove(agent.paneId));
       }
     }
     return false;
@@ -382,9 +586,10 @@ class _HerdScreenState extends State<HerdScreen> {
     return next?.trim();
   }
 
-  Future<void> _renameWorkspace(String workspaceId) async {
+  Future<void> _renameWorkspace(HerdHostRef host, String workspaceId) async {
     final l10n = AppLocalizations.of(context)!;
-    final current = _workspaceLabel(workspaceId);
+    final bucket = _bucketFor(host.hostId);
+    final current = _workspaceLabel(bucket, workspaceId);
     final next = await _promptRename(
       title: l10n.herdRenameWorkspaceTitle,
       fieldLabel: l10n.herdRenameWorkspaceField,
@@ -392,16 +597,16 @@ class _HerdScreenState extends State<HerdScreen> {
     );
     if (next == null || next.isEmpty || next == current || !mounted) return;
     try {
-      await widget.client.renameWorkspace(workspaceId, next);
+      await widget.clientFor(host).renameWorkspace(workspaceId, next);
       if (!mounted) return;
-      setState(() => _workspaceLabels[workspaceId] = next);
-      _loadWorkspaceLabels();
+      setState(() => bucket.workspaceLabels[workspaceId] = next);
+      unawaited(_loadWorkspaceLabels(host));
     } catch (e) {
       if (mounted) showTopToast(context, errorHeadline(l10n, e));
     }
   }
 
-  Future<void> _renameAgent(AgentInfo agent) async {
+  Future<void> _renameAgent(HerdHostRef host, AgentInfo agent) async {
     final l10n = AppLocalizations.of(context)!;
     final current = agent.name ?? '';
     final next = await _promptRename(
@@ -412,16 +617,16 @@ class _HerdScreenState extends State<HerdScreen> {
     );
     if (next == null || next.isEmpty || next == current || !mounted) return;
     try {
-      await widget.client.renameAgent(agent.paneId, next);
-      await _load();
+      await widget.clientFor(host).renameAgent(agent.paneId, next);
+      await _loadHost(host);
     } catch (e) {
       if (mounted) showTopToast(context, errorHeadline(l10n, e));
     }
   }
 
-  Map<String, List<AgentInfo>> _grouped() {
+  Map<String, List<AgentInfo>> _grouped(_HostHerd bucket) {
     final groups = <String, List<AgentInfo>>{};
-    for (final agent in _agents) {
+    for (final agent in bucket.agents) {
       groups.putIfAbsent(agent.workspaceId, () => []).add(agent);
     }
     for (final list in groups.values) {
@@ -436,20 +641,30 @@ class _HerdScreenState extends State<HerdScreen> {
     return groups;
   }
 
-  /// Per-status agent counts, used by both the greeting (blocked) and the
-  /// status-chip row.
+  /// Per-status agent counts across every in-scope host, used by both the
+  /// greeting (blocked) and the status-chip row.
   Map<AgentStatus, int> _statusCounts() {
     final counts = <AgentStatus, int>{};
-    for (final agent in _agents) {
-      counts[agent.status] = (counts[agent.status] ?? 0) + 1;
+    for (final host in _hostsInScope) {
+      final bucket = _byHost[host.hostId];
+      if (bucket == null) continue;
+      for (final agent in bucket.agents) {
+        counts[agent.status] = (counts[agent.status] ?? 0) + 1;
+      }
     }
     return counts;
   }
 
+  /// True when no in-scope host has agents or an error to show — the herd is
+  /// genuinely empty rather than partially broken.
+  bool get _isEmpty => _hostsInScope.every((host) {
+    final bucket = _byHost[host.hostId];
+    return bucket == null || (bucket.agents.isEmpty && bucket.error == null);
+  });
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final groups = _grouped();
     final counts = _statusCounts();
     final now = DateTime.now();
     return Scaffold(
@@ -457,8 +672,8 @@ class _HerdScreenState extends State<HerdScreen> {
         centerTitle: false,
         // The host chip adds a second line under the title; the default 56px
         // toolbar would overflow it.
-        toolbarHeight: widget.hostName == null ? null : 64,
-        title: _appBarTitle(),
+        toolbarHeight: 64,
+        title: _appBarTitle(l10n),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -469,32 +684,15 @@ class _HerdScreenState extends State<HerdScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_error != null)
-            MaterialBanner(
-              content: ErrorMessageView(_error!),
-              actions: [
-                TextButton(onPressed: _load, child: Text(l10n.commonRetry)),
-              ],
-            ),
-          if (_workspaceLabelsError != null)
-            MaterialBanner(
-              content: ErrorMessageView(_workspaceLabelsError!),
-              actions: [
-                TextButton(
-                  onPressed: _retryWorkspaceLabels,
-                  child: Text(l10n.commonRetry),
-                ),
-              ],
-            ),
           _greeting(l10n, counts[AgentStatus.blocked] ?? 0),
           _statusChips(l10n, counts),
           Expanded(
-            child: groups.isEmpty
+            child: _isEmpty
                 ? Center(child: Text(l10n.herdNoAgents))
                 : ListView(
                     children: [
-                      for (final entry in groups.entries)
-                        _workspaceCard(context, l10n, entry, now),
+                      for (final host in _hostsInScope)
+                        ..._hostSection(context, l10n, host, now),
                     ],
                   ),
           ),
@@ -507,7 +705,7 @@ class _HerdScreenState extends State<HerdScreen> {
         child: FloatingActionButton.extended(
           key: const ValueKey('launch_agent_fab'),
           tooltip: l10n.commonLaunchAgent,
-          onPressed: _openLaunchSheet,
+          onPressed: _onLaunchPressed,
           backgroundColor: Theme.of(context).colorScheme.primary,
           foregroundColor: Theme.of(context).colorScheme.onPrimary,
           icon: const Icon(Icons.add),
@@ -517,15 +715,18 @@ class _HerdScreenState extends State<HerdScreen> {
     );
   }
 
-  /// The plain bold 'Drover' title, plus — when a host name is provided — a
-  /// smaller tappable "▾ host" chip beneath it that opens the host switcher.
-  Widget _appBarTitle() {
+  /// The plain bold 'Drover' title plus a smaller tappable "▾ host" chip
+  /// beneath it that opens the host switcher: the filtered host's name, or
+  /// "All hosts" when no filter is set.
+  Widget _appBarTitle(AppLocalizations l10n) {
     const title = Text(
       'Drover',
       style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
     );
-    final hostName = widget.hostName;
-    if (hostName == null) return title;
+    var label = l10n.hostAllHosts;
+    for (final host in widget.hosts) {
+      if (host.hostId == widget.filterHostId) label = host.displayName;
+    }
     final subdued = Theme.of(context).colorScheme.onSurfaceVariant;
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -534,7 +735,7 @@ class _HerdScreenState extends State<HerdScreen> {
         title,
         InkWell(
           key: const ValueKey('host_switcher_chip'),
-          onTap: () => widget.onOpenHostSwitcher?.call(),
+          onTap: widget.onOpenHostSwitcher,
           borderRadius: BorderRadius.circular(6),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -542,7 +743,7 @@ class _HerdScreenState extends State<HerdScreen> {
               Icon(Icons.arrow_drop_down, size: 16, color: subdued),
               Flexible(
                 child: Text(
-                  hostName,
+                  label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -613,9 +814,97 @@ class _HerdScreenState extends State<HerdScreen> {
     );
   }
 
+  /// One host's slice of the list: an optional section header (only when
+  /// several hosts are stored — single-host users keep the old look), any
+  /// per-host error rows, then its workspace cards. Errors stay inside the
+  /// section so one unreachable host never hides the others.
+  List<Widget> _hostSection(
+    BuildContext context,
+    AppLocalizations l10n,
+    HerdHostRef host,
+    DateTime now,
+  ) {
+    final bucket = _bucketFor(host.hostId);
+    final error = bucket.error;
+    final workspaceLabelsError = bucket.workspaceLabelsError;
+    return [
+      if (widget.hosts.length > 1) _hostHeader(host),
+      if (error != null)
+        _errorRow(
+          l10n,
+          error,
+          retryKey: ValueKey('host_retry_${host.hostId}'),
+          onRetry: () => _retryHost(host),
+        ),
+      if (workspaceLabelsError != null)
+        _errorRow(
+          l10n,
+          workspaceLabelsError,
+          onRetry: () => _retryWorkspaceLabels(host),
+        ),
+      for (final entry in _grouped(bucket).entries)
+        _workspaceCard(context, l10n, host, bucket, entry, now),
+    ];
+  }
+
+  /// A subdued host name above the host's workspace cards, visually distinct
+  /// from the uppercase-styled workspace headers inside the cards.
+  Widget _hostHeader(HerdHostRef host) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 2, 20, 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.dns_outlined,
+            size: 14,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              host.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A compact in-section error: the localized message plus a Retry button.
+  Widget _errorRow(
+    AppLocalizations l10n,
+    Object error, {
+    Key? retryKey,
+    required VoidCallback onRetry,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: ErrorMessageView(error)),
+          TextButton(
+            key: retryKey,
+            onPressed: onRetry,
+            child: Text(l10n.commonRetry),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _workspaceCard(
     BuildContext context,
     AppLocalizations l10n,
+    HerdHostRef host,
+    _HostHerd bucket,
     MapEntry<String, List<AgentInfo>> entry,
     DateTime now,
   ) {
@@ -643,11 +932,11 @@ class _HerdScreenState extends State<HerdScreen> {
         children: [
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onLongPress: () => _renameWorkspace(entry.key),
+            onLongPress: () => _renameWorkspace(host, entry.key),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
               child: Text(
-                _workspaceLabel(entry.key),
+                _workspaceLabel(bucket, entry.key),
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
@@ -659,8 +948,10 @@ class _HerdScreenState extends State<HerdScreen> {
           ),
           for (final agent in entry.value)
             Dismissible(
-              key: ValueKey('agent-${agent.paneId}'),
-              direction: _stoppingPaneIds.contains(agent.paneId)
+              // Pane ids are only unique within a host, so the host id keeps
+              // same-numbered panes on different hosts from colliding.
+              key: ValueKey('agent-${host.hostId}-${agent.paneId}'),
+              direction: bucket.stoppingPaneIds.contains(agent.paneId)
                   ? DismissDirection.none
                   : DismissDirection.endToStart,
               background: ColoredBox(
@@ -683,21 +974,21 @@ class _HerdScreenState extends State<HerdScreen> {
                   ),
                 ),
               ),
-              confirmDismiss: (_) => _confirmAndStop(agent),
+              confirmDismiss: (_) => _confirmAndStop(host, agent),
               child: _AgentTile(
                 agent: agent,
                 displayName: _agentDisplayName(agent),
-                snippet: _snippetFor(agent, l10n),
+                snippet: _snippetFor(bucket, agent, l10n),
                 elapsed: formatElapsed(
-                  now.difference(_statusChangedAt[agent.paneId] ?? now),
+                  now.difference(bucket.statusChangedAt[agent.paneId] ?? now),
                   l10n,
                 ),
-                onLongPress: _stoppingPaneIds.contains(agent.paneId)
+                onLongPress: bucket.stoppingPaneIds.contains(agent.paneId)
                     ? null
-                    : () => _renameAgent(agent),
-                onTap: _stoppingPaneIds.contains(agent.paneId)
+                    : () => _renameAgent(host, agent),
+                onTap: bucket.stoppingPaneIds.contains(agent.paneId)
                     ? null
-                    : () => _openAgentScreen(agent),
+                    : () => _openAgentScreen(host, agent),
               ),
             ),
         ],

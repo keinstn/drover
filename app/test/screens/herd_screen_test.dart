@@ -6,6 +6,8 @@ import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/screens/herd_screen.dart';
+import 'package:drover/src/screens/launch_agent_sheet.dart';
+import 'package:drover/src/widgets/error_message_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -64,6 +66,70 @@ CommandResult _respond(String command) {
     return ok('{"id":"1","result":{"type":"ok"}}');
   }
   return ok(_listEnvelope);
+}
+
+// The second host reuses host A's workspace/pane ids on purpose: they are
+// only unique within a host, so the multi-host tests double as a check that
+// nothing (keys included) collides across hosts.
+const _hostBListEnvelope =
+    '{"id":"1","result":{"agents":['
+    '{"agent":"codex","agent_status":"blocked","cwd":"/tmp/proj-x",'
+    '"focused":false,"pane_id":"wA:p1","tab_id":"wA:t1",'
+    '"workspace_id":"wA","name":"Agent Bee"}'
+    ']}}';
+
+CommandResult _respondB(String command) {
+  if (command.contains('command -v')) {
+    return ok('claude\n');
+  }
+  if (command.contains("'workspace' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"workspaces":['
+      '{"workspace_id":"wA","label":"Project X"}]}}',
+    );
+  }
+  return ok(_hostBListEnvelope);
+}
+
+const _hostRef = HerdHostRef(
+  hostId: 'host-1',
+  displayName: 'Work Mac',
+  revision: 0,
+);
+const _hostRefA = HerdHostRef(
+  hostId: 'host-a',
+  displayName: 'Host One',
+  revision: 0,
+);
+const _hostRefB = HerdHostRef(
+  hostId: 'host-b',
+  displayName: 'Host Two',
+  revision: 0,
+);
+
+/// The screen under test wrapped in an app shell. Single-client tests pass
+/// [client]; multi-host tests pass [hosts] plus a [clientFor] resolver.
+Widget _herdApp({
+  HerdrClient? client,
+  HerdrClient Function(HerdHostRef)? clientFor,
+  List<HerdHostRef> hosts = const [_hostRef],
+  String? filterHostId,
+  Duration pollInterval = const Duration(hours: 1),
+  VoidCallback? onOpenHostSwitcher,
+}) {
+  return MaterialApp(
+    theme: droverDarkTheme,
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: HerdScreen(
+      hosts: hosts,
+      clientFor: clientFor ?? (_) => client!,
+      filterHostId: filterHostId,
+      onOpenHostSwitcher: onOpenHostSwitcher ?? () {},
+      onOpenSettings: () {},
+      pollInterval: pollInterval,
+    ),
+  );
 }
 
 /// A [CommandRunner] backing two Claude agent panes with genuine native
@@ -186,18 +252,7 @@ void main() {
     final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: droverDarkTheme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HerdScreen(
-          client: client,
-          onOpenSettings: () {},
-          pollInterval: const Duration(hours: 1),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_herdApp(client: client));
     await tester.pump();
     await tester.pump();
 
@@ -210,6 +265,8 @@ void main() {
     expect(find.text('wB'), findsNothing);
     expect(find.textContaining('p1'), findsNothing);
     expect(find.textContaining('p2'), findsNothing);
+    // A single stored host renders no host section header.
+    expect(find.text('Work Mac'), findsNothing);
     // No pane was opened, so every tile's activity snippet falls back to the
     // `agentType · cwd` metadata.
     expect(find.text('claude · proj-a'), findsNWidgets(2));
@@ -228,18 +285,7 @@ void main() {
     final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: droverDarkTheme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HerdScreen(
-          client: client,
-          onOpenSettings: () {},
-          pollInterval: const Duration(hours: 1),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_herdApp(client: client));
     await tester.pump();
     await tester.pump();
 
@@ -274,18 +320,7 @@ void main() {
     });
     final client = HerdrClient(runner);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: droverDarkTheme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HerdScreen(
-          client: client,
-          onOpenSettings: () {},
-          pollInterval: const Duration(hours: 1),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_herdApp(client: client));
     await tester.pump();
     await tester.pump();
 
@@ -310,16 +345,7 @@ void main() {
       final client = HerdrClient(runner);
 
       await tester.pumpWidget(
-        MaterialApp(
-          theme: droverDarkTheme,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: HerdScreen(
-            client: client,
-            onOpenSettings: () {},
-            pollInterval: const Duration(seconds: 1),
-          ),
-        ),
+        _herdApp(client: client, pollInterval: const Duration(seconds: 1)),
       );
       await tester.pump();
       await tester.pump();
@@ -385,18 +411,7 @@ void main() {
       });
       final client = HerdrClient(runner);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: droverDarkTheme,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: HerdScreen(
-            client: client,
-            onOpenSettings: () {},
-            pollInterval: const Duration(hours: 1),
-          ),
-        ),
-      );
+      await tester.pumpWidget(_herdApp(client: client));
       await tester.pump();
       await tester.pump();
 
@@ -424,18 +439,7 @@ void main() {
           .where((c) => c.contains("-name '$sessionId.jsonl'"))
           .length;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: droverDarkTheme,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: HerdScreen(
-            client: client,
-            onOpenSettings: () {},
-            pollInterval: const Duration(hours: 1),
-          ),
-        ),
-      );
+      await tester.pumpWidget(_herdApp(client: client));
       await tester.pump();
       await tester.pump();
 
@@ -479,18 +483,7 @@ void main() {
       final runner = NativeHistoryHerdRunner();
       final client = HerdrClient(runner);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: droverDarkTheme,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: HerdScreen(
-            client: client,
-            onOpenSettings: () {},
-            pollInterval: const Duration(hours: 1),
-          ),
-        ),
-      );
+      await tester.pumpWidget(_herdApp(client: client));
       await tester.pump();
       await tester.pump();
 
@@ -517,18 +510,7 @@ void main() {
     final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: droverDarkTheme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HerdScreen(
-          client: client,
-          onOpenSettings: () {},
-          pollInterval: const Duration(hours: 1),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_herdApp(client: client));
     await tester.pump();
     await tester.pump();
 
@@ -537,67 +519,53 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('hides the host switcher chip when no host name is given', (
+  testWidgets('chip reads "All hosts" when no host filter is set', (
     tester,
   ) async {
     final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: droverDarkTheme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HerdScreen(
-          client: client,
-          onOpenSettings: () {},
-          pollInterval: const Duration(hours: 1),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_herdApp(client: client));
     await tester.pump();
     await tester.pump();
 
     expect(find.text('Drover'), findsOneWidget);
-    expect(find.byKey(const ValueKey('host_switcher_chip')), findsNothing);
+    expect(find.byKey(const ValueKey('host_switcher_chip')), findsOneWidget);
+    expect(find.text('All hosts'), findsOneWidget);
+    expect(find.text('Work Mac'), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('shows the host chip and opens the switcher when tapped', (
-    tester,
-  ) async {
-    var switcherCalls = 0;
-    final runner = FakeCommandRunner(_respond);
-    final client = HerdrClient(runner);
+  testWidgets(
+    'chip shows the filtered host name and opens the switcher when tapped',
+    (tester) async {
+      var switcherCalls = 0;
+      final runner = FakeCommandRunner(_respond);
+      final client = HerdrClient(runner);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: droverDarkTheme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HerdScreen(
+      await tester.pumpWidget(
+        _herdApp(
           client: client,
-          onOpenSettings: () {},
-          pollInterval: const Duration(hours: 1),
-          hostName: 'Work Mac',
+          filterHostId: 'host-1',
           onOpenHostSwitcher: () => switcherCalls++,
         ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump();
+      );
+      await tester.pump();
+      await tester.pump();
 
-    expect(find.text('Drover'), findsOneWidget);
-    expect(find.text('Work Mac'), findsOneWidget);
+      expect(find.text('Drover'), findsOneWidget);
+      expect(find.text('Work Mac'), findsOneWidget);
+      expect(find.text('All hosts'), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('host_switcher_chip')));
-    await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('host_switcher_chip')));
+      await tester.pump();
 
-    expect(switcherCalls, 1);
+      expect(switcherCalls, 1);
 
-    await tester.pumpWidget(const SizedBox());
-  });
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('left swipe asks for confirmation before stopping an agent', (
     tester,
@@ -605,23 +573,12 @@ void main() {
     final runner = FakeCommandRunner((_) => ok(_listEnvelope));
     final client = HerdrClient(runner);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: droverDarkTheme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HerdScreen(
-          client: client,
-          onOpenSettings: () {},
-          pollInterval: const Duration(hours: 1),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_herdApp(client: client));
     await tester.pump();
     await tester.pump();
 
     await tester.drag(
-      find.byKey(const ValueKey('agent-wA:p1')),
+      find.byKey(const ValueKey('agent-host-1-wA:p1')),
       const Offset(-500, 0),
     );
     await tester.pumpAndSettle();
@@ -644,23 +601,12 @@ void main() {
     final runner = FakeCommandRunner((_) => ok(_listEnvelope));
     final client = HerdrClient(runner);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: droverDarkTheme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HerdScreen(
-          client: client,
-          onOpenSettings: () {},
-          pollInterval: const Duration(hours: 1),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_herdApp(client: client));
     await tester.pump();
     await tester.pump();
 
     await tester.drag(
-      find.byKey(const ValueKey('agent-wA:p1')),
+      find.byKey(const ValueKey('agent-host-1-wA:p1')),
       const Offset(-500, 0),
     );
     await tester.pumpAndSettle();
@@ -681,18 +627,7 @@ void main() {
     final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: droverDarkTheme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HerdScreen(
-          client: client,
-          onOpenSettings: () {},
-          pollInterval: const Duration(hours: 1),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_herdApp(client: client));
     await tester.pump();
     await tester.pump();
 
@@ -716,22 +651,11 @@ void main() {
     final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: droverDarkTheme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HerdScreen(
-          client: client,
-          onOpenSettings: () {},
-          pollInterval: const Duration(hours: 1),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_herdApp(client: client));
     await tester.pump();
     await tester.pump();
 
-    await tester.longPress(find.byKey(const ValueKey('agent-wA:p1')));
+    await tester.longPress(find.byKey(const ValueKey('agent-host-1-wA:p1')));
     await tester.pumpAndSettle();
 
     expect(find.text('Rename agent'), findsOneWidget);
@@ -768,22 +692,11 @@ void main() {
       });
       final client = HerdrClient(runner);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: droverDarkTheme,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: HerdScreen(
-            client: client,
-            onOpenSettings: () {},
-            pollInterval: const Duration(hours: 1),
-          ),
-        ),
-      );
+      await tester.pumpWidget(_herdApp(client: client));
       await tester.pump();
       await tester.pump();
 
-      await tester.longPress(find.byKey(const ValueKey('agent-wB:p1')));
+      await tester.longPress(find.byKey(const ValueKey('agent-host-1-wB:p1')));
       await tester.pumpAndSettle();
 
       expect(find.text('Rename agent'), findsOneWidget);
@@ -823,22 +736,11 @@ void main() {
       });
       final client = HerdrClient(runner);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: droverDarkTheme,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: HerdScreen(
-            client: client,
-            onOpenSettings: () {},
-            pollInterval: const Duration(hours: 1),
-          ),
-        ),
-      );
+      await tester.pumpWidget(_herdApp(client: client));
       await tester.pump();
       await tester.pump();
 
-      await tester.longPress(find.byKey(const ValueKey('agent-wB:p1')));
+      await tester.longPress(find.byKey(const ValueKey('agent-host-1-wB:p1')));
       await tester.pumpAndSettle();
 
       expect(find.text('Rename agent'), findsOneWidget);
@@ -857,4 +759,296 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets(
+    'renders each host\'s agents under its own section header in the All '
+    'view',
+    (tester) async {
+      final runnerA = FakeCommandRunner(_respond);
+      final runnerB = FakeCommandRunner(_respondB);
+      final clientA = HerdrClient(runnerA);
+      final clientB = HerdrClient(runnerB);
+
+      await tester.pumpWidget(
+        _herdApp(
+          hosts: const [_hostRefA, _hostRefB],
+          clientFor: (ref) => ref.hostId == 'host-a' ? clientA : clientB,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Host section headers appear because more than one host is stored.
+      expect(find.text('Host One'), findsOneWidget);
+      expect(find.text('Host Two'), findsOneWidget);
+
+      // Each host's agents and workspace labels render in its section —
+      // including the same workspace id ("wA") existing on both hosts.
+      expect(find.textContaining('Agent One'), findsOneWidget);
+      expect(find.textContaining('Agent Bee'), findsOneWidget);
+      expect(find.text('Project A'), findsOneWidget);
+      expect(find.text('Project X'), findsOneWidget);
+
+      // Host A's section (first in the stored order) sits above host B's.
+      final headerATop = tester.getTopLeft(find.text('Host One')).dy;
+      final headerBTop = tester.getTopLeft(find.text('Host Two')).dy;
+      expect(headerATop, lessThan(headerBTop));
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'isolates one host\'s failure: its section shows the error and retry, '
+    'the other host still renders and drives the counts',
+    (tester) async {
+      final runnerA = FakeCommandRunner((_) => throw Exception('boom'));
+      final runnerB = FakeCommandRunner(_respondB);
+      final clientA = HerdrClient(runnerA);
+      final clientB = HerdrClient(runnerB);
+
+      await tester.pumpWidget(
+        _herdApp(
+          hosts: const [_hostRefA, _hostRefB],
+          clientFor: (ref) => ref.hostId == 'host-a' ? clientA : clientB,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Host A failed: an inline error with its per-host retry button.
+      expect(find.byType(ErrorMessageView), findsWidgets);
+      expect(find.byKey(const ValueKey('host_retry_host-a')), findsOneWidget);
+
+      // Host B is unaffected, and the global counts reflect it alone.
+      expect(find.textContaining('Agent Bee'), findsOneWidget);
+      expect(find.text('waiting for you 1'), findsOneWidget);
+      expect(find.text('working 0'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('the per-host retry button reloads that host', (tester) async {
+    var fail = true;
+    final runnerA = FakeCommandRunner((command) {
+      if (fail) throw Exception('boom');
+      return _respond(command);
+    });
+    final runnerB = FakeCommandRunner(_respondB);
+    final clientA = HerdrClient(runnerA);
+    final clientB = HerdrClient(runnerB);
+
+    await tester.pumpWidget(
+      _herdApp(
+        hosts: const [_hostRefA, _hostRefB],
+        clientFor: (ref) => ref.hostId == 'host-a' ? clientA : clientB,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('host_retry_host-a')), findsOneWidget);
+    expect(find.textContaining('Agent One'), findsNothing);
+
+    fail = false;
+    await tester.tap(find.byKey(const ValueKey('host_retry_host-a')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('host_retry_host-a')), findsNothing);
+    expect(find.textContaining('Agent One'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('polls only the filtered host and shows its name in the chip', (
+    tester,
+  ) async {
+    final runnerA = FakeCommandRunner(_respond);
+    final runnerB = FakeCommandRunner(_respondB);
+    final clientA = HerdrClient(runnerA);
+    final clientB = HerdrClient(runnerB);
+
+    await tester.pumpWidget(
+      _herdApp(
+        hosts: const [_hostRefA, _hostRefB],
+        clientFor: (ref) => ref.hostId == 'host-a' ? clientA : clientB,
+        filterHostId: 'host-a',
+        pollInterval: const Duration(seconds: 1),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+
+    expect(find.textContaining('Agent One'), findsOneWidget);
+    expect(find.textContaining('Agent Bee'), findsNothing);
+    expect(runnerB.commands, isEmpty);
+
+    // The chip carries the filtered host's name, not "All hosts". (The
+    // name also heads the section, hence two matches.)
+    expect(find.text('Host One'), findsWidgets);
+    expect(find.text('All hosts'), findsNothing);
+    expect(find.text('Host Two'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('greeting counts blocked agents across every host', (
+    tester,
+  ) async {
+    final runnerA = FakeCommandRunner(_respond);
+    final runnerB = FakeCommandRunner(_respondB);
+    final clientA = HerdrClient(runnerA);
+    final clientB = HerdrClient(runnerB);
+
+    await tester.pumpWidget(
+      _herdApp(
+        hosts: const [_hostRefA, _hostRefB],
+        clientFor: (ref) => ref.hostId == 'host-a' ? clientA : clientB,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // One blocked agent on each host.
+    expect(find.textContaining('2 agents', findRichText: true), findsOneWidget);
+    expect(find.text('waiting for you 2'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'FAB in the All view first asks which host to launch on, then opens the '
+    'launch sheet against the picked host',
+    (tester) async {
+      final runnerA = FakeCommandRunner(_respond);
+      final runnerB = FakeCommandRunner(_respondB);
+      final clientA = HerdrClient(runnerA);
+      final clientB = HerdrClient(runnerB);
+
+      await tester.pumpWidget(
+        _herdApp(
+          hosts: const [_hostRefA, _hostRefB],
+          clientFor: (ref) => ref.hostId == 'host-a' ? clientA : clientB,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('launch_agent_fab')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('launch_host_host-a')), findsOneWidget);
+      expect(find.byKey(const ValueKey('launch_host_host-b')), findsOneWidget);
+      expect(find.byType(LaunchAgentSheet), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('launch_host_host-b')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LaunchAgentSheet), findsOneWidget);
+      // The sheet's agent detection ran against host B, not host A.
+      expect(runnerB.commands.any((c) => c.contains('command -v')), isTrue);
+      expect(runnerA.commands.any((c) => c.contains('command -v')), isFalse);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('a revision bump resets the host\'s bucket and refetches', (
+    tester,
+  ) async {
+    const rebuiltEnvelope =
+        '{"id":"1","result":{"agents":['
+        '{"agent":"claude","agent_status":"idle","cwd":"/tmp/proj-a",'
+        '"focused":false,"pane_id":"wA:p1","tab_id":"wA:t1",'
+        '"workspace_id":"wA","name":"Agent New"}'
+        ']}}';
+    final oldClient = HerdrClient(FakeCommandRunner(_respond));
+    final newClient = HerdrClient(
+      FakeCommandRunner((command) {
+        if (command.contains("'workspace' 'list'")) {
+          return ok(
+            '{"id":"1","result":{"workspaces":['
+            '{"workspace_id":"wA","label":"Project A"}]}}',
+          );
+        }
+        return ok(rebuiltEnvelope);
+      }),
+    );
+
+    await tester.pumpWidget(_herdApp(client: oldClient));
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('Agent One'), findsOneWidget);
+
+    // The host's connection was rebuilt (config edit): same hostId, bumped
+    // revision, new client. The stale bucket must be dropped and refetched.
+    await tester.pumpWidget(
+      _herdApp(
+        client: newClient,
+        hosts: const [
+          HerdHostRef(hostId: 'host-1', displayName: 'Work Mac', revision: 1),
+        ],
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('Agent New'), findsOneWidget);
+    expect(find.textContaining('Agent One'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a failed host is skipped by the immediately following tick', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner((_) => throw Exception('boom'));
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      _herdApp(client: client, pollInterval: const Duration(seconds: 1)),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    int listCalls() =>
+        runner.commands.where((c) => c.contains("'agent' 'list'")).length;
+    expect(listCalls(), 1, reason: 'the initial load ran (and failed)');
+
+    // The next tick lands well inside the failure backoff window
+    // (2 x pollInterval on the first failure), so the host is skipped. The
+    // backoff schedule itself is unit-tested via [herdPollBackoff] — fake
+    // timers advance test time, but DateTime.now() stays real.
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    expect(listCalls(), 1);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  group('herdPollBackoff', () {
+    const interval = Duration(seconds: 2);
+
+    test('doubles per consecutive failure', () {
+      expect(herdPollBackoff(1, interval), const Duration(seconds: 4));
+      expect(herdPollBackoff(2, interval), const Duration(seconds: 8));
+      expect(herdPollBackoff(3, interval), const Duration(seconds: 16));
+    });
+
+    test('caps at 30 seconds', () {
+      expect(herdPollBackoff(4, interval), const Duration(seconds: 30));
+      expect(herdPollBackoff(5, interval), const Duration(seconds: 30));
+    });
+
+    test('clamps the exponent so a long streak cannot overflow', () {
+      expect(
+        herdPollBackoff(100, const Duration(milliseconds: 10)),
+        const Duration(milliseconds: 320),
+      );
+    });
+  });
 }
