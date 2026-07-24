@@ -224,6 +224,18 @@ abstract class AppLocalizations {
   /// **'Manage hosts'**
   String get hostSwitcherManage;
 
+  /// No description provided for @hostAllHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'All hosts'**
+  String get hostAllHosts;
+
+  /// No description provided for @hostPickLaunchTarget.
+  ///
+  /// In en, this message translates to:
+  /// **'Launch on…'**
+  String get hostPickLaunchTarget;
+
   /// No description provided for @commonCancel.
   ///
   /// In en, this message translates to:

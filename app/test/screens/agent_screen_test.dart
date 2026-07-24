@@ -2991,6 +2991,42 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('draftKeyPrefix host-scopes the stored draft key', (
+    tester,
+  ) async {
+    final store = AgentDraftStore();
+
+    Widget screen() => MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+      home: AgentScreen(
+        client: HerdrClient(StubCommandRunner(blockedPromptResponse)),
+        paneId: 'wB:p1',
+        draftStore: store,
+        draftKeyPrefix: 'hostX',
+        pollInterval: const Duration(hours: 1),
+      ),
+    );
+
+    await tester.pumpWidget(screen());
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'host-scoped draft');
+
+    // Leaving the screen persists the draft under the prefixed key — never
+    // the bare paneId, which another host's same-named pane would share.
+    await tester.pumpWidget(const SizedBox());
+    expect(store.read('hostX:wB:p1'), 'host-scoped draft');
+    expect(store.read('wB:p1'), isNull);
+
+    // Returning with the same prefix restores from the prefixed key.
+    await tester.pumpWidget(screen());
+    await tester.pump();
+    expect(find.text('host-scoped draft'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('clears the stored draft after a successful send', (
     tester,
   ) async {

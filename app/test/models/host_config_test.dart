@@ -52,6 +52,56 @@ void main() {
     });
   });
 
+  group('sameConnection', () {
+    HostConfig variant({
+      String? name,
+      String? host,
+      int? port,
+      String? user,
+      String? privateKeyPem,
+      String? passphrase,
+      String? herdrBin,
+      String? hostId,
+      String? hostKeyFingerprint,
+    }) {
+      final base = sample();
+      return HostConfig(
+        name: name,
+        host: host ?? base.host,
+        port: port ?? base.port,
+        user: user ?? base.user,
+        privateKeyPem: privateKeyPem ?? base.privateKeyPem,
+        passphrase: passphrase ?? base.passphrase,
+        herdrBin: herdrBin ?? base.herdrBin,
+        hostId: hostId ?? base.hostId,
+        hostKeyFingerprint: hostKeyFingerprint,
+      );
+    }
+
+    test('ignores name, hostId, and hostKeyFingerprint', () {
+      final cosmetic = variant(
+        name: 'renamed',
+        hostId: 'host-2',
+        hostKeyFingerprint: 'SHA256:abc',
+      );
+      expect(sample().sameConnection(cosmetic), isTrue);
+    });
+
+    test('detects a change in each connection-relevant field', () {
+      final changed = [
+        variant(host: 'other.example.com'),
+        variant(port: 22),
+        variant(user: 'bob'),
+        variant(privateKeyPem: '-----BEGIN OTHER KEY-----'),
+        variant(passphrase: 'different'),
+        variant(herdrBin: '/opt/herdr'),
+      ];
+      for (final other in changed) {
+        expect(sample().sameConnection(other), isFalse);
+      }
+    });
+  });
+
   group('withHostId', () {
     test('preserves hostKeyFingerprint', () {
       final config = sample(hostKeyFingerprint: 'SHA256:abc');

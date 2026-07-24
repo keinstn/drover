@@ -12,6 +12,8 @@ Future<void> showHostSwitcherSheet(
   required String? activeHostId,
   required ValueChanged<HostConfig> onSelect,
   required VoidCallback onManageHosts,
+  bool includeAllHosts = false,
+  VoidCallback? onSelectAll,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -20,6 +22,8 @@ Future<void> showHostSwitcherSheet(
       activeHostId: activeHostId,
       onSelect: onSelect,
       onManageHosts: onManageHosts,
+      includeAllHosts: includeAllHosts,
+      onSelectAll: onSelectAll,
     ),
   );
 }
@@ -30,12 +34,19 @@ class _HostSwitcherSheet extends StatelessWidget {
     required this.activeHostId,
     required this.onSelect,
     required this.onManageHosts,
+    required this.includeAllHosts,
+    required this.onSelectAll,
   });
 
   final List<HostConfig> hosts;
   final String? activeHostId;
   final ValueChanged<HostConfig> onSelect;
   final VoidCallback onManageHosts;
+
+  /// When true, an "All hosts" row appears above the host rows, marked
+  /// active while [activeHostId] is null (no filter).
+  final bool includeAllHosts;
+  final VoidCallback? onSelectAll;
 
   @override
   Widget build(BuildContext context) {
@@ -81,6 +92,23 @@ class _HostSwitcherSheet extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (includeAllHosts)
+                          ListTile(
+                            key: const ValueKey('host_switcher_all'),
+                            leading: Icon(
+                              activeHostId == null
+                                  ? Icons.radio_button_checked
+                                  : Icons.radio_button_unchecked,
+                              color: activeHostId == null
+                                  ? scheme.primary
+                                  : scheme.onSurfaceVariant,
+                            ),
+                            title: Text(l10n.hostAllHosts),
+                            onTap: () {
+                              Navigator.pop(context);
+                              onSelectAll?.call();
+                            },
+                          ),
                         for (final host in hosts)
                           ListTile(
                             leading: Icon(

@@ -48,6 +48,19 @@ class HostConfig {
     return '$user@$host';
   }
 
+  /// Whether [other] describes the same connection: host, port, user,
+  /// privateKeyPem, passphrase, and herdrBin all match. Excludes [name]
+  /// (cosmetic), [hostId], and [hostKeyFingerprint] — the fingerprint is
+  /// learned via TOFU pinning after the runner is built, so including it
+  /// would force a reconnect right after every first-connect pin.
+  bool sameConnection(HostConfig other) =>
+      host == other.host &&
+      port == other.port &&
+      user == other.user &&
+      privateKeyPem == other.privateKeyPem &&
+      passphrase == other.passphrase &&
+      herdrBin == other.herdrBin;
+
   HostConfig withHostId(String? value) => HostConfig(
     name: name,
     host: host,
