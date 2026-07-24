@@ -1,7 +1,8 @@
 /// The navigation target carried in an FCM data payload.
 ///
-/// Drover currently stores one Herdr host, so [hostId] is retained for the
-/// future host-pairing lookup while [paneId] identifies the current target.
+/// [hostId] names the stored Herdr host the event came from — drover switches
+/// to it when it isn't the active host — and [paneId] identifies the pane on
+/// that host.
 class NotificationTarget {
   const NotificationTarget({
     required this.paneId,

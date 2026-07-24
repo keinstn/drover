@@ -4,6 +4,7 @@ const kDefaultHerdrBin = '~/.local/bin/herdr';
 
 class HostConfig {
   const HostConfig({
+    this.name,
     required this.host,
     this.port = 22,
     required this.user,
@@ -16,6 +17,7 @@ class HostConfig {
 
   factory HostConfig.fromJson(Map<String, dynamic> json) {
     return HostConfig(
+      name: json['name'] as String?,
       host: json['host'] as String,
       port: json['port'] as int? ?? 22,
       user: json['user'] as String,
@@ -27,6 +29,8 @@ class HostConfig {
     );
   }
 
+  /// Optional user-facing label; when absent, UI falls back to [displayName].
+  final String? name;
   final String host;
   final int port;
   final String user;
@@ -36,7 +40,16 @@ class HostConfig {
   final String? hostId;
   final String? hostKeyFingerprint;
 
+  /// The label shown in host lists and the app bar: [name] when set,
+  /// otherwise `user@host`.
+  String get displayName {
+    final name = this.name;
+    if (name != null && name.trim().isNotEmpty) return name.trim();
+    return '$user@$host';
+  }
+
   HostConfig withHostId(String? value) => HostConfig(
+    name: name,
     host: host,
     port: port,
     user: user,
@@ -48,6 +61,7 @@ class HostConfig {
   );
 
   HostConfig withHostKeyFingerprint(String? value) => HostConfig(
+    name: name,
     host: host,
     port: port,
     user: user,
@@ -59,6 +73,7 @@ class HostConfig {
   );
 
   Map<String, dynamic> toJson() => {
+    'name': name,
     'host': host,
     'port': port,
     'user': user,

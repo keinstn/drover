@@ -24,10 +24,14 @@ import 'src/notifications/notification_registration.dart';
 import 'src/notifications/notification_target.dart';
 import 'src/notifications/host_pairing.dart';
 import 'src/notifications/plugin_auto_pairer.dart';
+import 'src/screens/agent_draft_store.dart';
 import 'src/screens/agent_screen.dart';
 import 'src/screens/herd_screen.dart';
+import 'src/screens/host_list_screen.dart';
 import 'src/screens/host_setup_screen.dart';
 import 'src/speech/speech_input.dart';
+import 'src/utils/mutex.dart';
+import 'src/widgets/host_switcher_sheet.dart';
 import 'src/widgets/top_toast.dart';
 
 Future<void> main() async {
@@ -51,27 +55,35 @@ Future<void> main() async {
     }
   }, context: 'firebase bootstrap');
   final store = HostStore();
-  HostConfig? config;
+  var hostsState = const HostsState(hosts: []);
   try {
-    config = await store.load();
+    hostsState = await store.loadHosts();
   } catch (_) {
-    config = null;
+    // Unreadable storage falls back to first-run setup.
   }
-  runApp(DroverApp(hostStore: store, initialConfig: config));
+  runApp(
+    DroverApp(
+      hostStore: store,
+      initialHosts: hostsState.hosts,
+      initialActiveHostId: hostsState.activeHostId,
+    ),
+  );
 }
 
 class DroverApp extends StatefulWidget {
   const DroverApp({
     super.key,
     required this.hostStore,
-    this.initialConfig,
+    this.initialHosts = const [],
+    this.initialActiveHostId,
     this.speechInput,
     this.notificationRegistration,
     this.hostPairingGateway,
   });
 
   final HostStore hostStore;
-  final HostConfig? initialConfig;
+  final List<HostConfig> initialHosts;
+  final String? initialActiveHostId;
   final SpeechInput? speechInput;
   final NotificationRegistration? notificationRegistration;
   final HostPairingGateway? hostPairingGateway;
@@ -82,7 +94,8 @@ class DroverApp extends StatefulWidget {
 
 class _DroverAppState extends State<DroverApp> {
   final _navKey = GlobalKey<NavigatorState>();
-  HostConfig? _config;
+  List<HostConfig> _hosts = [];
+  String? _activeHostId;
   SshCommandRunner? _runner;
   HerdrClient? _client;
   late final SpeechInput _speechInput;
@@ -91,6 +104,21 @@ class _DroverAppState extends State<DroverApp> {
   StreamSubscription<Object>? _notificationFailures;
   StreamSubscription<RemoteMessage>? _notificationOpens;
   final _handledNotificationEvents = <String>{};
+
+  /// Serializes every connection-changing section (activate, apply-config,
+  /// delete): each persists and disposes across awaits before swapping
+  /// `_runner`/`_client`, so two interleaved switches (e.g. a manual switch
+  /// racing an FCM deep-link) could otherwise orphan a live runner.
+  final _connectionMutex = Mutex();
+
+  /// The host the app is connected to: the [_activeHostId] match, else the
+  /// first stored host. Null when no hosts are configured.
+  HostConfig? get _activeHost {
+    for (final host in _hosts) {
+      if (host.hostId != null && host.hostId == _activeHostId) return host;
+    }
+    return _hosts.isEmpty ? null : _hosts.first;
+  }
 
   @override
   void initState() {
@@ -112,28 +140,51 @@ class _DroverAppState extends State<DroverApp> {
       // Firebase Messaging is unavailable (e.g. Firebase failed to initialize);
       // the app still runs without notification deep-linking.
     }
-    _config = widget.initialConfig;
-    if (_config != null) {
-      _runner = SshCommandRunner(_config!, onHostKeyLearned: _pinHostKey);
-      _client = HerdrClient(
-        _runner!,
-        herdrBin: _config!.herdrBin,
-        platform: HostPlatform.detect(_runner!),
-      );
+    _hosts = [...widget.initialHosts];
+    _activeHostId = widget.initialActiveHostId;
+    final active = _activeHost;
+    // Normalize a stale/absent active id to the host actually connected to.
+    _activeHostId = active?.hostId;
+    if (active != null) {
+      final (runner, client) = _buildConnection(active);
+      _runner = runner;
+      _client = client;
       _scheduleNotificationRegistration();
     }
   }
 
-  Future<void> _pinHostKey(String fingerprint) async {
-    final cfg = _config;
-    if (cfg == null || cfg.hostKeyFingerprint != null) return;
-    final updated = cfg.withHostKeyFingerprint(fingerprint);
+  /// Builds the SSH runner + herdr client pair for [host], binding the
+  /// host-key pin callback to that host's id — the learned fingerprint must
+  /// land on the host the runner was built for, even if another host has
+  /// become active in the meantime.
+  (SshCommandRunner, HerdrClient) _buildConnection(HostConfig host) {
+    final hostId = host.hostId;
+    final runner = SshCommandRunner(
+      host,
+      onHostKeyLearned: (fingerprint) => _pinHostKey(hostId, fingerprint),
+    );
+    final client = HerdrClient(
+      runner,
+      herdrBin: host.herdrBin,
+      platform: HostPlatform.detect(runner),
+    );
+    return (runner, client);
+  }
+
+  Future<void> _pinHostKey(String? hostId, String fingerprint) async {
+    if (hostId == null) return;
+    final index = _hosts.indexWhere((host) => host.hostId == hostId);
+    if (index < 0 || _hosts[index].hostKeyFingerprint != null) return;
+    final hosts = [..._hosts];
+    hosts[index] = hosts[index].withHostKeyFingerprint(fingerprint);
     await runBestEffort(
-      () => widget.hostStore.save(updated),
+      () => widget.hostStore.saveHosts(
+        HostsState(hosts: hosts, activeHostId: _activeHostId),
+      ),
       context: 'pin host key',
     );
     if (!mounted) return;
-    setState(() => _config = updated);
+    setState(() => _hosts = hosts);
   }
 
   @override
@@ -145,39 +196,73 @@ class _DroverAppState extends State<DroverApp> {
     super.dispose();
   }
 
-  Future<void> _applyConfig(HostConfig c) async {
-    final replacedHost = _config != null && _hostIdentityChanged(_config!, c);
-    if (replacedHost && _config!.hostId != null) {
-      await runBestEffort(
-        () => _hostPairingGateway.revokeHost(_config!.hostId!),
-        context: 'revoke replaced host',
+  Future<void> _persistHosts() => widget.hostStore.saveHosts(
+    HostsState(hosts: _hosts, activeHostId: _activeHostId),
+  );
+
+  Future<void> _applyConfig(HostConfig c) {
+    return _connectionMutex.run(() async {
+      // Editing an existing host when the submitted hostId matches a stored
+      // one; anything else is a brand-new host.
+      final index = c.hostId == null
+          ? -1
+          : _hosts.indexWhere((host) => host.hostId == c.hostId);
+      final stored = index < 0 ? null : _hosts[index];
+      final replacedHost = stored != null && _hostIdentityChanged(stored, c);
+      if (replacedHost && stored.hostId != null) {
+        await runBestEffort(
+          () => _hostPairingGateway.revokeHost(stored.hostId!),
+          context: 'revoke replaced host',
+        );
+      }
+      // The setup form never carries a host-key fingerprint, so preserve the
+      // one already pinned when the host identity is unchanged (a benign edit
+      // like the herdr path). A replaced host is a different machine, so its
+      // stale pin must be dropped and re-learned on first connect.
+      final config = _ensureHostId(
+        replacedHost
+            ? c.withHostId(null)
+            : c.withHostKeyFingerprint(stored?.hostKeyFingerprint),
       );
-    }
-    // The setup form never carries a host-key fingerprint, so preserve the
-    // one already pinned when the host identity is unchanged (a benign edit
-    // like the herdr path). A replaced host is a different machine, so its
-    // stale pin must be dropped and re-learned on first connect.
-    final config = _ensureHostId(
-      replacedHost
-          ? c.withHostId(null)
-          : c.withHostKeyFingerprint(_config?.hostKeyFingerprint),
-    );
-    await _runner?.dispose();
-    final runner = SshCommandRunner(config, onHostKeyLearned: _pinHostKey);
-    final client = HerdrClient(
-      runner,
-      herdrBin: config.herdrBin,
-      platform: HostPlatform.detect(runner),
-    );
-    await widget.hostStore.save(config);
-    if (!mounted) return;
-    setState(() {
-      _config = config;
-      _runner = runner;
-      _client = client;
+      final hosts = [..._hosts];
+      if (index < 0) {
+        hosts.add(config);
+      } else {
+        hosts[index] = config;
+      }
+      // A brand-new host becomes active; editing the active host rebuilds its
+      // connection in place (the settings may have changed). Editing a
+      // non-active host only updates storage — it must not hijack the live
+      // connection.
+      final isNewHost = stored == null;
+      final editsActive = !isNewHost && stored.hostId == _activeHost?.hostId;
+      SshCommandRunner? runner;
+      HerdrClient? client;
+      if (isNewHost || editsActive) {
+        await _runner?.dispose();
+        (runner, client) = _buildConnection(config);
+        if (isNewHost || replacedHost) {
+          // Drafts are keyed by paneId; a different machine must not
+          // inherit them.
+          AgentDraftStore.shared.clearAll();
+        }
+      }
+      final activeHostId = runner == null ? _activeHostId : config.hostId;
+      await widget.hostStore.saveHosts(
+        HostsState(hosts: hosts, activeHostId: activeHostId),
+      );
+      if (!mounted) return;
+      setState(() {
+        _hosts = hosts;
+        _activeHostId = activeHostId;
+        if (runner != null) {
+          _runner = runner;
+          _client = client;
+        }
+      });
+      if (runner != null) _scheduleNotificationRegistration();
+      _navKey.currentState?.popUntil((r) => r.isFirst);
     });
-    _scheduleNotificationRegistration();
-    _navKey.currentState?.popUntil((r) => r.isFirst);
   }
 
   HostConfig _ensureHostId(HostConfig config) =>
@@ -188,11 +273,91 @@ class _DroverAppState extends State<DroverApp> {
       previous.port != next.port ||
       previous.user != next.user;
 
+  /// Makes [host] the active one: persists the selection, tears down the old
+  /// connection, and connects to the new host. Drafts are keyed by paneId, so
+  /// they are cleared to keep a same-numbered pane on the new host from
+  /// inheriting them.
+  Future<void> _activateHost(HostConfig host) =>
+      _connectionMutex.run(() => _activateHostLocked(host));
+
+  /// Body of [_activateHost]; callers must already hold [_connectionMutex].
+  Future<void> _activateHostLocked(HostConfig host) async {
+    _activeHostId = host.hostId;
+    // Best-effort: a failed save must not block the in-memory switch; the
+    // next successful save reconciles storage.
+    await runBestEffort(_persistHosts, context: 'persist active host');
+    await _runner?.dispose();
+    final (runner, client) = _buildConnection(host);
+    AgentDraftStore.shared.clearAll();
+    _scheduleNotificationRegistration();
+    if (!mounted) return;
+    setState(() {
+      _runner = runner;
+      _client = client;
+    });
+  }
+
+  Future<void> _switchHost(HostConfig host) async {
+    if (host.hostId == null || host.hostId != _activeHost?.hostId) {
+      await _activateHost(host);
+      if (!mounted) return;
+    }
+    _navKey.currentState?.popUntil((r) => r.isFirst);
+  }
+
+  Future<void> _deleteHost(HostConfig host) {
+    return _connectionMutex.run(() async {
+      if (host.hostId != null) {
+        await runBestEffort(
+          () => _hostPairingGateway.revokeHost(host.hostId!),
+          context: 'revoke deleted host',
+        );
+      }
+      final wasActive = _activeHost?.hostId == host.hostId;
+      final hosts = [..._hosts]
+        ..removeWhere((other) => other.hostId == host.hostId);
+      setState(() => _hosts = hosts);
+      if (!wasActive) {
+        // The host list drops the tile itself; nothing to reconnect.
+        await runBestEffort(_persistHosts, context: 'persist deleted host');
+        return;
+      }
+      if (hosts.isNotEmpty) {
+        // Fall over to the first remaining host and navigate home — the open
+        // host list would otherwise keep showing a stale active marker.
+        await _activateHostLocked(hosts.first);
+        if (!mounted) return;
+        _navKey.currentState?.popUntil((r) => r.isFirst);
+        return;
+      }
+      _activeHostId = null;
+      await runBestEffort(_persistHosts, context: 'persist deleted host');
+      await _runner?.dispose();
+      if (!mounted) return;
+      setState(() {
+        _runner = null;
+        _client = null;
+      });
+      _navKey.currentState?.popUntil((r) => r.isFirst);
+    });
+  }
+
   Future<PairingCode> _createPairingCode(HostConfig config) async {
     final pairedConfig = _ensureHostId(config);
     if (pairedConfig.hostId != config.hostId) {
-      await widget.hostStore.save(pairedConfig);
-      if (mounted) setState(() => _config = pairedConfig);
+      // The config predates hostIds; store the minted pairing key on the
+      // host it came from.
+      final hosts = [..._hosts];
+      final index = hosts.indexWhere((host) => identical(host, config));
+      if (index < 0) {
+        hosts.add(pairedConfig);
+      } else {
+        hosts[index] = pairedConfig;
+      }
+      await widget.hostStore.saveHosts(
+        HostsState(hosts: hosts, activeHostId: _activeHostId),
+      );
+      if (mounted) setState(() => _hosts = hosts);
     }
     return _hostPairingGateway.createPairingCode(pairedConfig.hostId!);
   }
@@ -272,8 +437,22 @@ class _DroverAppState extends State<DroverApp> {
   }
 
   Future<void> _openNotificationTarget(NotificationTarget target) async {
+    if (_activeHost?.hostId != target.hostId) {
+      // The event came from another stored host: switch to it first, then
+      // deep-link into the pane there.
+      HostConfig? stored;
+      for (final host in _hosts) {
+        if (host.hostId == target.hostId) stored = host;
+      }
+      if (stored == null) {
+        _showNotificationTargetUnavailable();
+        return;
+      }
+      await _activateHost(stored);
+      if (!mounted) return;
+    }
     final client = _client;
-    if (client == null || _config?.hostId != target.hostId) {
+    if (client == null) {
       _showNotificationTargetUnavailable();
       return;
     }
@@ -320,25 +499,6 @@ class _DroverAppState extends State<DroverApp> {
     );
   }
 
-  Future<void> _resetConfig() async {
-    final hostId = _config?.hostId;
-    if (hostId != null) {
-      await runBestEffort(
-        () => _hostPairingGateway.revokeHost(hostId),
-        context: 'revoke host on reset',
-      );
-    }
-    await widget.hostStore.clear();
-    await _runner?.dispose();
-    if (!mounted) return;
-    setState(() {
-      _config = null;
-      _runner = null;
-      _client = null;
-    });
-    _navKey.currentState?.popUntil((r) => r.isFirst);
-  }
-
   Future<String> _testConnection(HostConfig c) async {
     final runner = SshCommandRunner(c);
     try {
@@ -355,8 +515,60 @@ class _DroverAppState extends State<DroverApp> {
     }
   }
 
+  void _openHostSwitcher() {
+    final context = _navKey.currentContext;
+    if (context == null) return;
+    showHostSwitcherSheet(
+      context,
+      hosts: _hosts,
+      activeHostId: _activeHostId,
+      onSelect: (host) => unawaited(_switchHost(host)),
+      onManageHosts: _openHostList,
+    );
+  }
+
+  void _openHostList() {
+    _navKey.currentState?.push(
+      MaterialPageRoute<void>(
+        builder: (_) => HostListScreen(
+          hosts: _hosts,
+          activeHostId: _activeHostId,
+          onSelect: _switchHost,
+          onAdd: _openAddHost,
+          onEdit: _openEditHost,
+          onDelete: _deleteHost,
+        ),
+      ),
+    );
+  }
+
+  void _openAddHost() {
+    _navKey.currentState?.push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            HostSetupScreen(onSubmit: _applyConfig, onTest: _testConnection),
+      ),
+    );
+  }
+
+  void _openEditHost(HostConfig host) {
+    _navKey.currentState?.push(
+      MaterialPageRoute<void>(
+        builder: (_) => HostSetupScreen(
+          initial: host,
+          onSubmit: _applyConfig,
+          onTest: _testConnection,
+          onCreatePairingCode: _createPairingCode,
+          onDetectPlugin: _detectNotifyPlugin,
+          onAutoPair: _autoPairNotifications,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final activeHost = _activeHost;
     return MaterialApp(
       title: 'Drover',
       navigatorKey: _navKey,
@@ -365,26 +577,18 @@ class _DroverAppState extends State<DroverApp> {
       theme: droverLightTheme,
       darkTheme: droverDarkTheme,
       themeMode: ThemeMode.system,
-      home: _config == null
+      home: activeHost == null
           ? HostSetupScreen(onSubmit: _applyConfig, onTest: _testConnection)
           : HerdScreen(
+              // HerdScreen state (agent list, workspace labels, native-history
+              // caches) is per-host: switching hosts must recreate the State
+              // instead of leaving it bound to the old host's connection.
+              key: ValueKey(activeHost.hostId),
               client: _client!,
               speechInput: _speechInput,
-              onOpenSettings: () {
-                _navKey.currentState?.push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => HostSetupScreen(
-                      initial: _config,
-                      onSubmit: _applyConfig,
-                      onTest: _testConnection,
-                      onReset: _resetConfig,
-                      onCreatePairingCode: _createPairingCode,
-                      onDetectPlugin: _detectNotifyPlugin,
-                      onAutoPair: _autoPairNotifications,
-                    ),
-                  ),
-                );
-              },
+              hostName: activeHost.displayName,
+              onOpenHostSwitcher: _openHostSwitcher,
+              onOpenSettings: _openHostList,
             ),
     );
   }

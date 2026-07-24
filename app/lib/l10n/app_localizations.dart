@@ -104,6 +104,12 @@ abstract class AppLocalizations {
   /// **'Host setup'**
   String get hostSetupTitle;
 
+  /// No description provided for @hostSetupNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Name (optional)'**
+  String get hostSetupNameLabel;
+
   /// No description provided for @hostSetupHostLabel.
   ///
   /// In en, this message translates to:
@@ -188,23 +194,35 @@ abstract class AppLocalizations {
   /// **'Save'**
   String get hostSetupSave;
 
-  /// No description provided for @hostSetupResetButton.
+  /// No description provided for @hostListTitle.
   ///
   /// In en, this message translates to:
-  /// **'Reset host'**
-  String get hostSetupResetButton;
+  /// **'Hosts'**
+  String get hostListTitle;
 
-  /// No description provided for @hostResetDialogTitle.
+  /// No description provided for @hostDeleteDialogTitle.
   ///
   /// In en, this message translates to:
-  /// **'Reset host?'**
-  String get hostResetDialogTitle;
+  /// **'Delete host?'**
+  String get hostDeleteDialogTitle;
 
-  /// No description provided for @hostResetDialogBody.
+  /// No description provided for @hostDeleteDialogBody.
   ///
   /// In en, this message translates to:
-  /// **'This deletes the saved connection details (including the SSH key) and returns to the setup screen.'**
-  String get hostResetDialogBody;
+  /// **'The saved connection details for {name} (including the SSH key) will be deleted.'**
+  String hostDeleteDialogBody(String name);
+
+  /// No description provided for @hostSwitcherTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch host'**
+  String get hostSwitcherTitle;
+
+  /// No description provided for @hostSwitcherManage.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage hosts'**
+  String get hostSwitcherManage;
 
   /// No description provided for @commonCancel.
   ///
@@ -212,11 +230,17 @@ abstract class AppLocalizations {
   /// **'Cancel'**
   String get commonCancel;
 
-  /// No description provided for @commonReset.
+  /// No description provided for @commonEdit.
   ///
   /// In en, this message translates to:
-  /// **'Reset'**
-  String get commonReset;
+  /// **'Edit'**
+  String get commonEdit;
+
+  /// No description provided for @commonDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get commonDelete;
 
   /// No description provided for @testConnectionOk.
   ///

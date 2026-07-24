@@ -537,6 +537,68 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('hides the host switcher chip when no host name is given', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: droverDarkTheme,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HerdScreen(
+          client: client,
+          onOpenSettings: () {},
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Drover'), findsOneWidget);
+    expect(find.byKey(const ValueKey('host_switcher_chip')), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('shows the host chip and opens the switcher when tapped', (
+    tester,
+  ) async {
+    var switcherCalls = 0;
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: droverDarkTheme,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HerdScreen(
+          client: client,
+          onOpenSettings: () {},
+          pollInterval: const Duration(hours: 1),
+          hostName: 'Work Mac',
+          onOpenHostSwitcher: () => switcherCalls++,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Drover'), findsOneWidget);
+    expect(find.text('Work Mac'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('host_switcher_chip')));
+    await tester.pump();
+
+    expect(switcherCalls, 1);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('left swipe asks for confirmation before stopping an agent', (
     tester,
   ) async {

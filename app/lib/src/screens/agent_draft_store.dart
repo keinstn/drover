@@ -25,4 +25,8 @@ class AgentDraftStore {
 
   /// Removes any saved draft for [paneId].
   void clear(String paneId) => _drafts.remove(paneId);
+
+  /// Drops every draft; called on host switch so a same-numbered pane on the
+  /// other host doesn't inherit them.
+  void clearAll() => _drafts.clear();
 }
