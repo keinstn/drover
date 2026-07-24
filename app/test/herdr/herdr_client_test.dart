@@ -103,6 +103,34 @@ void main() {
         ),
       );
     });
+
+    test(
+      'throws HerdrException with the failing command, exit code, stdout and '
+      'stderr on unparseable stdout',
+      () async {
+        final runner = FakeCommandRunner(
+          (_) => ok('not json\nwith a stray line'),
+        );
+        final client = HerdrClient(runner);
+
+        await expectLater(
+          client.listAgents(),
+          throwsA(
+            isA<HerdrException>()
+                .having((e) => e.code, 'code', 'transport')
+                .having(
+                  (e) => e.message,
+                  'message',
+                  allOf(
+                    contains('herdr agent list'),
+                    contains('exit 0'),
+                    contains(jsonEncode('not json\nwith a stray line')),
+                  ),
+                ),
+          ),
+        );
+      },
+    );
   });
 
   group('HerdrClient.getAgent', () {

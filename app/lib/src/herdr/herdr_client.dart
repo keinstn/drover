@@ -121,7 +121,10 @@ class HerdrClient {
     } catch (e) {
       throw HerdrException(
         'transport',
-        'unparseable response: ${result.stdout}',
+        'unparseable response to herdr ${args.join(' ')} '
+            '(exit ${result.exitCode}): '
+            'stdout=${jsonEncode(result.stdout)} '
+            'stderr=${jsonEncode(result.stderr)}',
       );
     }
 
@@ -137,7 +140,8 @@ class HerdrClient {
     if (res is! Map<String, dynamic>) {
       throw HerdrException(
         'transport',
-        'missing result field: ${result.stdout}',
+        'missing result field for herdr ${args.join(' ')}: '
+            '${jsonEncode(result.stdout)}',
       );
     }
     return res;
