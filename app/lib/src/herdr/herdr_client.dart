@@ -81,9 +81,35 @@ class HerdrClient {
     }
   }
 
-  /// Runs a herdr command and returns its raw result, throwing a transport
-  /// [HerdrException] on a spawn failure or a non-zero exit (herdr prints an
-  /// error envelope to stderr and exits non-zero on failure).
+  /// Parses [channel] as a herdr JSON envelope and extracts its coded error,
+  /// or returns null if [channel] isn't parseable JSON or carries no `error`
+  /// map. herdr's error channel (stdout vs stderr) and exit code are not
+  /// consistent across commands (see docs/herdr-notes.md), so callers probe
+  /// both channels with this same envelope shape rather than assuming either.
+  HerdrException? _codedErrorFrom(String channel) {
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(channel.trim());
+    } catch (_) {
+      return null;
+    }
+    if (decoded is! Map<String, dynamic>) return null;
+    final error = decoded['error'];
+    if (error is! Map<String, dynamic>) return null;
+    return HerdrException(
+      error['code'] as String? ?? 'unknown',
+      error['message'] as String? ?? 'unknown error',
+    );
+  }
+
+  /// Runs a herdr command and returns its raw result, throwing a coded
+  /// [HerdrException] when either channel carries a JSON error envelope, or a
+  /// generic transport [HerdrException] on a spawn failure or an unrecognized
+  /// non-zero exit. herdr has been observed reporting errors both as
+  /// non-zero exit with the envelope on stdout, and as exit 0 with an empty
+  /// stdout and the envelope on stderr — both are checked so callers keyed on
+  /// [HerdrException.code] (e.g. the `agent_pane_busy` retry in [startAgent])
+  /// see the real code regardless of which shape herdr used.
   Future<CommandResult> _exec(List<String> args) async {
     final platform = await _resolvePlatform();
     final command = platform.herdrCommand(
@@ -98,12 +124,16 @@ class HerdrClient {
     }
 
     if (result.exitCode != 0) {
-      throw HerdrException(
-        'transport',
-        'herdr ${args.join(' ')} failed (exit ${result.exitCode}): '
-            '${result.stderr}',
-      );
+      throw _codedErrorFrom(result.stdout) ??
+          _codedErrorFrom(result.stderr) ??
+          HerdrException(
+            'transport',
+            'herdr ${args.join(' ')} failed (exit ${result.exitCode}): '
+                '${result.stderr}',
+          );
     }
+    final codedError = _codedErrorFrom(result.stderr);
+    if (codedError != null) throw codedError;
     return result;
   }
 

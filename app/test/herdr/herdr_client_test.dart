@@ -104,6 +104,29 @@ void main() {
       );
     });
 
+    test('throws the coded error when a non-zero exit carries a JSON error '
+        'envelope on stderr', () async {
+      final runner = FakeCommandRunner(
+        (_) => const CommandResult(
+          exitCode: 1,
+          stdout: '',
+          stderr:
+              '{"id":"1","error":{"code":"not_found",'
+              '"message":"pane not found"}}',
+        ),
+      );
+      final client = HerdrClient(runner);
+
+      await expectLater(
+        client.listAgents(),
+        throwsA(
+          isA<HerdrException>()
+              .having((e) => e.code, 'code', 'not_found')
+              .having((e) => e.message, 'message', 'pane not found'),
+        ),
+      );
+    });
+
     test(
       'throws HerdrException with the failing command, exit code, stdout and '
       'stderr on unparseable stdout',
@@ -476,6 +499,43 @@ void main() {
             return ok(
               '{"id":"1","error":{"code":"agent_pane_busy",'
               '"message":"agent target pane is not an available shell"}}',
+            );
+          }
+          return ok('{"id":"1","result":{"type":"agent_started"}}');
+        }
+        throw StateError('unexpected command: $command');
+      });
+      final client = HerdrClient(
+        runner,
+        sleep: (duration) async {
+          sleeps.add(duration);
+        },
+      );
+
+      await client.startAgent(name: 'proj', kind: 'claude', paneId: 'wJ:p1');
+
+      expect(agentStartCalls(runner), 3);
+      expect(sleeps, [
+        const Duration(milliseconds: 250),
+        const Duration(milliseconds: 500),
+      ]);
+    });
+
+    test('retries when agent_pane_busy arrives as exit 0 with an empty stdout '
+        'and the error envelope on stderr', () async {
+      var starts = 0;
+      final sleeps = <Duration>[];
+      final runner = FakeCommandRunner((command) {
+        if (command.contains("'agent' 'start'")) {
+          starts++;
+          if (starts <= 2) {
+            return const CommandResult(
+              exitCode: 0,
+              stdout: '',
+              stderr:
+                  '{"id":"1","error":{"code":"agent_pane_busy",'
+                  '"message":"agent target pane is not an available '
+                  'shell"}}',
             );
           }
           return ok('{"id":"1","result":{"type":"agent_started"}}');
