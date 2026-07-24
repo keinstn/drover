@@ -120,6 +120,16 @@ which agent is running in the pane.
   in the herd/agent screens and strips known CLI-specific suffixes client-side
   (see `AgentInfo.sessionTitle` / `stripAgentTitleSuffix`); the per-agent
   suffixes are noted under `docs/agents/`.
+- **An error envelope's channel and exit code are not consistent across
+  commands.** (2026-07-24, herdr 0.7.5) `agent start --pane <busy pane>` was
+  observed returning `agent_pane_busy` with **exit 0, an empty stdout, and the
+  JSON error envelope on stderr** — not the "non-zero exit, envelope on
+  stdout" shape drover's client previously assumed everywhere. This broke
+  `HerdrClient.startAgent`'s busy-pane retry (the error's `code` was never
+  reached because the client only parsed stdout on exit 0). `HerdrClient._exec`
+  now checks both stdout and stderr for a JSON error envelope regardless of
+  exit code, so callers see the real `code` no matter which shape a given
+  herdr command uses.
 
 ## Measurements (Stage 0, 2026-07-18, localhost loopback, Claude Code agent)
 
