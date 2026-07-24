@@ -1911,6 +1911,38 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('places Esc button before Enter button in composer row', (
+    tester,
+  ) async {
+    final runner = StubCommandRunner(blockedPromptResponse);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final escDx = tester
+        .getTopLeft(find.byKey(const ValueKey('send_escape_button')))
+        .dx;
+    final enterDx = tester
+        .getTopLeft(find.byKey(const ValueKey('send_enter_button')))
+        .dx;
+    expect(escDx, lessThan(enterDx));
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('keeps send (not stop) when a working agent has a staged image', (
     tester,
   ) async {

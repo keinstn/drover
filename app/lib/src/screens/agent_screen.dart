@@ -2117,16 +2117,16 @@ class _Composer extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                 ],
-                _EnterButton(
-                  sending: sending,
-                  onPressed: () =>
-                      onAction(() => client.sendKeys(paneId, 'enter')),
-                ),
-                const SizedBox(width: 8),
                 _EscapeButton(
                   sending: sending,
                   onPressed: () =>
                       onAction(() => client.sendKeys(paneId, 'esc')),
+                ),
+                const SizedBox(width: 8),
+                _EnterButton(
+                  sending: sending,
+                  onPressed: () =>
+                      onAction(() => client.sendKeys(paneId, 'enter')),
                 ),
                 const Spacer(),
                 _MicrophoneButton(
