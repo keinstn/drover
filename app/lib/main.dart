@@ -17,6 +17,7 @@ import 'src/herdr/host_platform.dart';
 import 'src/infra/best_effort.dart';
 import 'src/infra/host_connections.dart';
 import 'src/infra/host_store.dart';
+import 'src/infra/settings_store.dart';
 import 'src/infra/ssh_command_runner.dart';
 import 'src/models/agent_info.dart';
 import 'src/models/host_config.dart';
@@ -29,6 +30,7 @@ import 'src/screens/agent_screen.dart';
 import 'src/screens/herd_screen.dart';
 import 'src/screens/host_list_screen.dart';
 import 'src/screens/host_setup_screen.dart';
+import 'src/screens/settings_screen.dart';
 import 'src/speech/speech_input.dart';
 import 'src/widgets/host_switcher_sheet.dart';
 import 'src/widgets/top_toast.dart';
@@ -60,11 +62,21 @@ Future<void> main() async {
   } catch (_) {
     // Unreadable storage falls back to first-run setup.
   }
+  final settingsStore = SettingsStore();
+  var settings = const AppSettings();
+  try {
+    settings = await settingsStore.load();
+  } catch (_) {
+    // Unreadable prefs fall back to the defaults (system theme, device
+    // locale) rather than blocking startup.
+  }
   runApp(
     DroverApp(
       hostStore: store,
+      settingsStore: settingsStore,
       initialHosts: hostsState.hosts,
       initialActiveHostId: hostsState.activeHostId,
+      initialSettings: settings,
     ),
   );
 }
@@ -73,16 +85,20 @@ class DroverApp extends StatefulWidget {
   const DroverApp({
     super.key,
     required this.hostStore,
+    required this.settingsStore,
     this.initialHosts = const [],
     this.initialActiveHostId,
+    this.initialSettings = const AppSettings(),
     this.speechInput,
     this.notificationRegistration,
     this.hostPairingGateway,
   });
 
   final HostStore hostStore;
+  final SettingsStore settingsStore;
   final List<HostConfig> initialHosts;
   final String? initialActiveHostId;
+  final AppSettings initialSettings;
   final SpeechInput? speechInput;
   final NotificationRegistration? notificationRegistration;
   final HostPairingGateway? hostPairingGateway;
@@ -99,6 +115,11 @@ class _DroverAppState extends State<DroverApp> {
   /// hosts". Persisted as [HostsState.activeHostId] — existing users simply
   /// start filtered to their previously active host.
   String? _activeHostId;
+
+  ThemeMode _themeMode = ThemeMode.system;
+
+  /// null = follow the device locale (see [build] for how that resolves).
+  Locale? _locale;
 
   /// One lazily built connection per host; HerdScreen resolves clients from
   /// it via [HerdScreen.clientFor], so no connection is opened for a host
@@ -139,6 +160,8 @@ class _DroverAppState extends State<DroverApp> {
     }
     _hosts = [...widget.initialHosts];
     _activeHostId = widget.initialActiveHostId;
+    _themeMode = widget.initialSettings.themeMode;
+    _locale = widget.initialSettings.locale;
     if (_hosts.isNotEmpty) {
       _scheduleNotificationRegistration();
     }
@@ -560,6 +583,47 @@ class _DroverAppState extends State<DroverApp> {
     );
   }
 
+  void _openSettings() {
+    _navKey.currentState?.push(
+      MaterialPageRoute<void>(
+        // The StatefulBuilder is load-bearing, not noise: a pushed route
+        // caches its page widget, so an app-level setState re-themes the app
+        // but leaves this already-built SettingsScreen holding the OLD
+        // themeMode/locale it was constructed with — its "current value" rows
+        // would go stale. `rebuildRoute` forces the route to re-read the
+        // fields below, which the callbacks have already mutated (hence its
+        // empty closure body).
+        builder: (_) => StatefulBuilder(
+          builder: (_, rebuildRoute) => SettingsScreen(
+            themeMode: _themeMode,
+            locale: _locale,
+            onThemeModeChanged: (mode) {
+              setState(() => _themeMode = mode);
+              rebuildRoute(() {});
+              unawaited(
+                runBestEffort(
+                  () => widget.settingsStore.saveThemeMode(mode),
+                  context: 'persist theme mode',
+                ),
+              );
+            },
+            onLocaleChanged: (locale) {
+              setState(() => _locale = locale);
+              rebuildRoute(() {});
+              unawaited(
+                runBestEffort(
+                  () => widget.settingsStore.saveLocale(locale),
+                  context: 'persist locale',
+                ),
+              );
+            },
+            onManageHosts: _openHostList,
+          ),
+        ),
+      ),
+    );
+  }
+
   HerdrClient _clientFor(HerdHostRef ref) {
     final host = _hosts.firstWhere((host) => host.hostId == ref.hostId);
     return _registry.obtain(host).client;
@@ -572,9 +636,13 @@ class _DroverAppState extends State<DroverApp> {
       navigatorKey: _navKey,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      // A null [_locale] is the intended default, not a gap: Flutter then
+      // resolves against [supportedLocales], whose order (en, ja) means a
+      // Japanese device gets ja and everything else falls back to en.
+      locale: _locale,
       theme: droverLightTheme,
       darkTheme: droverDarkTheme,
-      themeMode: ThemeMode.system,
+      themeMode: _themeMode,
       home: _hosts.isEmpty
           ? HostSetupScreen(onSubmit: _applyConfig, onTest: _testConnection)
           : HerdScreen(
@@ -593,7 +661,7 @@ class _DroverAppState extends State<DroverApp> {
               filterHostId: _filterHostId,
               speechInput: _speechInput,
               onOpenHostSwitcher: _openHostSwitcher,
-              onOpenSettings: _openHostList,
+              onOpenSettings: _openSettings,
             ),
     );
   }

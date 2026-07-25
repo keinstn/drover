@@ -187,5 +187,14 @@
   "dirPickerUse": "Use this directory",
   "dirPickerParent": "Parent directory",
   "dirPickerShowHidden": "Show hidden folders",
-  "dirPickerEmpty": "No subfolders"
+  "dirPickerEmpty": "No subfolders",
+
+  "settingsTitle": "Settings",
+  "settingsAppearance": "Appearance",
+  "settingsTheme": "Theme",
+  "settingsThemeSystem": "System",
+  "settingsThemeLight": "Light",
+  "settingsThemeDark": "Dark",
+  "settingsLanguage": "Language",
+  "settingsLanguageSystem": "System"
 }

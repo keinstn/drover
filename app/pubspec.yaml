@@ -50,6 +50,7 @@ dependencies:
   cloud_functions: ^6.3.5
   uuid: ^4.6.0
   firebase_app_check: ^0.4.5+2
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
