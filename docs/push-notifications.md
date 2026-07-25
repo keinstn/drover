@@ -14,12 +14,20 @@ Functions deployment and the Firestore TTL policy, before pairing a host.
 Installing the plugin is intentionally a manual host operation. The app never
 installs or updates executable code on the Herdr host.
 
-The host needs Herdr 0.7.0 or newer and Node.js 18 or newer. Make the Drover
-checkout available on the host, then link the plugin:
+The plugin lives in its own repo,
+[`keinstn/drover-notify`](https://github.com/keinstn/drover-notify). The host
+needs Herdr 0.7.0 or newer and Node.js 18 or newer. Clone the plugin repo onto
+the host — it's private, so clone over SSH — then link it:
 
 ```sh
-herdr plugin link /path/to/drover/plugins/drover-notify
+git clone git@github.com:keinstn/drover-notify.git
+herdr plugin link /path/to/drover-notify
 ```
+
+Once `keinstn/drover-notify` is public, `herdr plugin install
+keinstn/drover-notify` will replace the clone step above — **not yet
+available** while the repo is private, since `herdr plugin install` only
+supports an unauthenticated HTTPS clone.
 
 ## Pair the plugin
 
@@ -41,7 +49,7 @@ code**.
   Run the setup command on the host after linking the plugin:
 
   ```sh
-  node /path/to/drover/plugins/drover-notify/bin/setup.mjs \
+  node /path/to/drover-notify/bin/setup.mjs \
     --completion-url 'paste-the-completion-url-from-Drover' \
     --herdr-bin "$HOME/.local/bin/herdr"
   ```

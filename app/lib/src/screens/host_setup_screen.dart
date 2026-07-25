@@ -234,7 +234,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
       context: context,
       builder: (context) {
         final l10n = AppLocalizations.of(context)!;
-        final pluginPath = '/path/to/drover/plugins/drover-notify';
+        final pluginPath = '/path/to/drover-notify';
         final herdrBin = _shellCommandPath(config.herdrBin);
         final linkCommand = '$herdrBin plugin link $pluginPath';
         final setupCommand =
