@@ -2750,8 +2750,8 @@ void main() {
 
   testWidgets(
     'a pull-to-load-more that lands while a native poll is still in flight '
-    'is gated out rather than racing it, and proceeds normally once the '
-    'poll completes',
+    'waits for it instead of being dropped, then pages older entries in '
+    'without a second gesture',
     (tester) async {
       final runner = StubCommandRunner(workingResponse);
       final client = HerdrClient(runner);
@@ -2803,48 +2803,45 @@ void main() {
       await tester.pump();
       expect(adapter.loadCalls, 2);
 
-      // A pull-to-load-more gesture landing now must not call into the
-      // adapter's `loadOlder` while that poll is still awaiting its gate —
-      // it should be gated out by the shared `_nativeHistoryLoading` flag
-      // (see `AgentScreen._loadOlderNativeHistory`) instead of racing it.
-      // `pumpAndSettle` is safe here even with the poll's own load stuck:
-      // only that detached `load()` future is pending, and it isn't tied to
-      // any animation, so the pull gesture's own frames settle normally.
-      await tester.drag(
-        find.byKey(const ValueKey('transcript_scroll')),
-        const Offset(0, 1000),
-      );
-      await tester.pump();
-      await tester.fling(
-        find.byKey(const ValueKey('transcript_scroll')),
-        const Offset(0, 300),
-        1000,
-      );
-      await tester.pumpAndSettle();
+      Future<void> pumpFrames([int steps = 20]) async {
+        for (var i = 0; i < steps; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+      }
 
+      Future<void> pullToLoadMore() async {
+        await tester.drag(
+          find.byKey(const ValueKey('transcript_scroll')),
+          const Offset(0, 1000),
+        );
+        await tester.pump();
+        await tester.fling(
+          find.byKey(const ValueKey('transcript_scroll')),
+          const Offset(0, 300),
+          1000,
+        );
+        await pumpFrames();
+      }
+
+      // A pull-to-load-more gesture landing now must not call into the
+      // adapter's `loadOlder` while that poll is still awaiting its gate (the
+      // shared single-flight guard in `AgentScreen`), but it must not be
+      // dropped either: it waits. `pumpAndSettle` is unusable while the
+      // gesture is held — `RefreshIndicator` keeps its spinner animating
+      // until `onRefresh` completes — so drive a fixed number of frames.
+      await pullToLoadMore();
+      expect(find.byType(RefreshProgressIndicator), findsOneWidget);
       expect(adapter.loadOlderCalls, 0);
       expect(adapter.concurrentAccessDetected, isFalse);
 
-      // Release the poll; it completes normally, and pull-to-load-more now
-      // proceeds (un-gated) without ever having overlapped the poll.
+      // Release the poll: the waiting gesture takes the guard and pages the
+      // older chunk in on its own, with no second pull from the user and
+      // without ever having overlapped the poll.
       adapter.pendingLoad!.complete();
-      await tester.pumpAndSettle();
-      expect(adapter.concurrentAccessDetected, isFalse);
-
-      await tester.drag(
-        find.byKey(const ValueKey('transcript_scroll')),
-        const Offset(0, 1000),
-      );
-      await tester.pump();
-      await tester.fling(
-        find.byKey(const ValueKey('transcript_scroll')),
-        const Offset(0, 300),
-        1000,
-      );
-      await tester.pumpAndSettle();
-
+      await pumpFrames();
       expect(adapter.loadOlderCalls, 1);
       expect(adapter.concurrentAccessDetected, isFalse);
+
       await tester.drag(
         find.byKey(const ValueKey('transcript_scroll')),
         const Offset(0, 100000),
@@ -2853,6 +2850,82 @@ void main() {
       expect(find.textContaining('Older turn 0'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'a pull-to-load-more waiting on an in-flight native poll gives up when '
+    'the screen is disposed mid-wait',
+    (tester) async {
+      final runner = StubCommandRunner(workingResponse);
+      final client = HerdrClient(runner);
+      final recent = List.generate(
+        6,
+        (i) => TranscriptMessage(
+          speaker: TranscriptSpeaker.user,
+          text:
+              'Recent turn $i, with enough filler text to give this row '
+              'real height in the transcript list.',
+        ),
+      );
+      final adapter = _GatedNativeAdapter(NativeTranscript(recent))
+        ..olderChunks.add([
+          const TranscriptMessage(
+            speaker: TranscriptSpeaker.user,
+            text: 'Older turn — should never be loaded after disposal.',
+          ),
+        ]);
+      final history = NativeTranscriptHistory(
+        runner,
+        resolveAdapter: (agent) => _FixedNativeHistoryAdapter(adapter),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(seconds: 1),
+            nativeTranscriptHistory: history,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      adapter.pendingLoad = Completer<void>();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+      expect(adapter.loadCalls, 2);
+
+      Future<void> pumpFrames([int steps = 20]) async {
+        for (var i = 0; i < steps; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+      }
+
+      await tester.drag(
+        find.byKey(const ValueKey('transcript_scroll')),
+        const Offset(0, 1000),
+      );
+      await tester.pump();
+      await tester.fling(
+        find.byKey(const ValueKey('transcript_scroll')),
+        const Offset(0, 300),
+        1000,
+      );
+      await pumpFrames();
+      expect(find.byType(RefreshProgressIndicator), findsOneWidget);
+      expect(adapter.loadOlderCalls, 0);
+
+      // Tearing the screen down while the gesture is still waiting must end
+      // the wait, not resume into a read (and a setState) on a dead State.
+      await tester.pumpWidget(const SizedBox());
+      adapter.pendingLoad!.complete();
+      await tester.pumpAndSettle();
+      expect(adapter.loadOlderCalls, 0);
     },
   );
 
