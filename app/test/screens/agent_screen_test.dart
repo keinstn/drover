@@ -1364,6 +1364,81 @@ void main() {
     },
   );
 
+  testWidgets(
+    'keeps the live terminal visible when an old, unrelated native turn '
+    "happens to share short substrings with the pane's lines, as long as "
+    "enough recent history pushes it out of the comparison window "
+    '(regression: the duplicate check must not compare against unbounded '
+    'history — see the char-budget cap pull-to-refresh would otherwise '
+    'defeat)',
+    (tester) async {
+      CommandResult unrelatedPaneResponse(String command) {
+        if (command.contains("'agent' 'read'")) {
+          return ok('Building the project\nRunning tests now\n');
+        }
+        return workingResponse(command);
+      }
+
+      final runner = StubCommandRunner(unrelatedPaneResponse);
+      final client = HerdrClient(runner);
+      // An unrelated old turn that happens to contain both pane lines
+      // verbatim — the kind of coincidental short-substring match that,
+      // without a bounded comparison window, would trip the duplicate
+      // threshold once it's part of the loaded history (e.g. paged in via
+      // pull-to-refresh).
+      final oldUnrelatedMessage = const TranscriptMessage(
+        speaker: TranscriptSpeaker.user,
+        text:
+            'Long unrelated turn from a while back. Building the project '
+            'used to fail here for a completely different reason. Running '
+            'tests now was also flaky in that old run.',
+      );
+      // Padded well past the dedup char budget on its own, so it occupies
+      // the entire comparison window and the old message above never enters
+      // it — standing in for a long recent conversation that has
+      // accumulated since that old turn.
+      final recentFiller = List.generate(
+        30,
+        (i) => TranscriptMessage(
+          speaker: TranscriptSpeaker.user,
+          text:
+              'Recent filler turn $i: '
+              '${List.filled(20, 'padding text to grow this history entry well past the dedup budget. ').join()}',
+        ),
+      );
+      final adapter = _PagedNativeAdapter(
+        NativeTranscript([oldUnrelatedMessage, ...recentFiller]),
+      );
+      final history = NativeTranscriptHistory(
+        runner,
+        resolveAdapter: (agent) => _FixedNativeHistoryAdapter(adapter),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+            nativeTranscriptHistory: history,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The old message coincidentally contains both pane lines verbatim,
+      // but it's pushed out of the bounded comparison window by the recent
+      // filler history — the Live terminal section must stay visible rather
+      // than being hidden as "duplicate".
+      expect(find.text('Live terminal'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('falls back to pane history when native metadata is absent', (
     tester,
   ) async {
