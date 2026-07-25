@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:dartssh2/dartssh2.dart';
 import 'package:drover/src/infra/ssh_command_runner.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -68,6 +70,58 @@ void main() {
     test('rejects a different fingerprint', () {
       expect(decideHostKey('SHA256:abc', 'SHA256:xyz'), HostKeyDecision.reject);
     });
+  });
+
+  group('runDroppingWedgedClient', () {
+    test('returns the body result and never drops on success', () async {
+      var dropped = false;
+      final result = await runDroppingWedgedClient(
+        () async => 'ok',
+        () async => dropped = true,
+      );
+      expect(result, 'ok');
+      expect(dropped, isFalse);
+    });
+
+    test('drops the client and rethrows on SSHChannelOpenError', () async {
+      var dropped = false;
+      await expectLater(
+        runDroppingWedgedClient(
+          () async => throw SSHChannelOpenError(1, 'no such channel'),
+          () async => dropped = true,
+        ),
+        throwsA(isA<SSHChannelOpenError>()),
+      );
+      expect(dropped, isTrue);
+    });
+
+    test('drops the client and rethrows on TimeoutException', () async {
+      var dropped = false;
+      await expectLater(
+        runDroppingWedgedClient(
+          () async => throw TimeoutException('exec timed out'),
+          () async => dropped = true,
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      expect(dropped, isTrue);
+    });
+
+    test(
+      'does NOT drop the client for an unrelated failure (the command '
+      'ran and reported its own error — the connection is still fine)',
+      () async {
+        var dropped = false;
+        await expectLater(
+          runDroppingWedgedClient(
+            () async => throw StateError('command failed'),
+            () async => dropped = true,
+          ),
+          throwsA(isA<StateError>()),
+        );
+        expect(dropped, isFalse);
+      },
+    );
   });
 
   group('SshHostKeyMismatchException', () {

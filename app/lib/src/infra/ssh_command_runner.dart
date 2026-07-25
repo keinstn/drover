@@ -66,6 +66,38 @@ class SshHostKeyMismatchException implements Exception {
       'Expected: $expected\nReceived: $observed';
 }
 
+/// Runs [body], and if it throws [SSHChannelOpenError] or [TimeoutException]
+/// calls [dropClient] before rethrowing — both mean the shared connection is
+/// now unusable and must not be reused:
+/// - [SSHChannelOpenError]: a channel open was refused (e.g. the server hit
+///   its per-connection session limit). The TCP connection stays open, so
+///   without dropping it every later call would keep reusing this wedged
+///   client and fail identically.
+/// - [TimeoutException]: the command exceeded its bound (see
+///   [SshCommandRunner._execTimeout]) — dartssh2 gave no other signal that
+///   the connection had died.
+///
+/// Dropping the client is safe in both cases: neither means [body]'s command
+/// was ever confirmed to run, so this never risks re-sending a non-idempotent
+/// `agent send` / `send-keys` — [body] itself is never retried here, only the
+/// stale connection is discarded so the NEXT unrelated call reconnects fresh.
+/// Any other exception (the command's own failure) passes through untouched:
+/// the connection itself is still fine.
+Future<T> runDroppingWedgedClient<T>(
+  Future<T> Function() body,
+  Future<void> Function() dropClient,
+) async {
+  try {
+    return await body();
+  } on SSHChannelOpenError {
+    await dropClient();
+    rethrow;
+  } on TimeoutException {
+    await dropClient();
+    rethrow;
+  }
+}
+
 /// [CommandRunner] backed by an SSH connection to a [HostConfig] host.
 /// Connects lazily on first [run] and caches the client; a stale cached
 /// client (closed since it was last used) is reconnected before the command
@@ -176,43 +208,46 @@ class SshCommandRunner implements CommandRunner {
     }
   }
 
+  /// Bounds a single command's channel-open + exec wait. dartssh2 has no
+  /// built-in timeout on `execute()`/`session.done`: a network path that dies
+  /// mid-command otherwise waits indefinitely for dartssh2's own internal
+  /// dead-connection detection, which is not guaranteed to happen promptly (a
+  /// real-device repro of a VPN drop mid-session observed a ~17s stall with
+  /// zero signal, and because this runs under [_mutex] it blocks every other
+  /// operation on this connection — including a user-initiated retry — for
+  /// the whole stall). 15s is well above observed real-world command latency
+  /// (~150-200ms) and the same order of magnitude as [_connect]'s socket
+  /// timeout below.
+  static const _execTimeout = Duration(seconds: 15);
+
   Future<CommandResult> _execute(
     SSHClient client,
     String command, {
     String? stdin,
-  }) async {
-    final session = await client.execute(command);
-    if (stdin != null) {
-      session.stdin.add(utf8.encode(stdin));
-      await session.stdin.close();
-    }
-    final stdoutFuture = decodeRemoteOutput(session.stdout);
-    final stderrFuture = decodeRemoteOutput(session.stderr);
-    await session.done;
-    return CommandResult(
-      exitCode: session.exitCode ?? -1,
-      stdout: await stdoutFuture,
-      stderr: await stderrFuture,
-    );
+  }) {
+    return Future(() async {
+      final session = await client.execute(command);
+      if (stdin != null) {
+        session.stdin.add(utf8.encode(stdin));
+        await session.stdin.close();
+      }
+      final stdoutFuture = decodeRemoteOutput(session.stdout);
+      final stderrFuture = decodeRemoteOutput(session.stderr);
+      await session.done;
+      return CommandResult(
+        exitCode: session.exitCode ?? -1,
+        stdout: await stdoutFuture,
+        stderr: await stderrFuture,
+      );
+    }).timeout(_execTimeout);
   }
 
   /// Runs [body] with the shared client, serialized on [_mutex] so at most one
-  /// channel is ever open at a time. If a channel open is refused (e.g. the
-  /// server hit its per-connection session limit), the TCP connection stays
-  /// open, so [_ensureClient] would otherwise keep reusing this wedged client
-  /// forever and every later call would fail identically. Drop the client so
-  /// the next call reconnects. Resetting here is safe: a channel-open failure
-  /// means [body] never ran a command, so it cannot re-send a non-idempotent
-  /// `agent send` / `send-keys`.
+  /// channel is ever open at a time.
   Future<T> _withClient<T>(Future<T> Function(SSHClient client) body) {
     return _mutex.run(() async {
       final client = await _ensureClient();
-      try {
-        return await body(client);
-      } on SSHChannelOpenError {
-        await dispose();
-        rethrow;
-      }
+      return runDroppingWedgedClient(() => body(client), dispose);
     });
   }
 
