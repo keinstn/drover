@@ -69,13 +69,36 @@ const _tailLines = 120; // lines fetched on the live poll / first load
 const _lineStep = 240; // extra lines added per pull-to-load-more
 const _maxPaneLines = 1000; // herdr's `recent` buffer is finite
 
+// Caps how much native history the duplicate check below compares against.
+// `nativeHistory.messages` grows monotonically as older history is paged in
+// via pull-to-refresh (`_loadOlderNativeHistory`), while the pane tail stays
+// bounded (~_tailLines). Without this cap, comparing against the full,
+// ever-growing history makes incidental substring matches from unrelated old
+// turns (a repeated path, a common command) increasingly likely to trip the
+// duplicate threshold, hiding the Live terminal section even though nothing
+// currently visible actually duplicates it. Sized comfortably larger than a
+// _tailLines-line pane tail so genuinely duplicate recent content is still
+// caught.
+const _nativeDedupCharBudget = 20000;
+
+/// The most recent native messages, up to [_nativeDedupCharBudget] characters,
+/// joined in their original order.
+String _recentNativeText(List<TranscriptMessage> messages) {
+  final tail = <String>[];
+  var length = 0;
+  for (final message in messages.reversed) {
+    if (length >= _nativeDedupCharBudget) break;
+    tail.add(message.text);
+    length += message.text.length;
+  }
+  return tail.reversed.join('\n');
+}
+
 String? _liveTerminalText(String paneText, NativeTranscript? nativeHistory) {
   if (nativeHistory == null || nativeHistory.messages.isEmpty) {
     return paneText;
   }
-  final nativeText = nativeHistory.messages
-      .map((message) => message.text)
-      .join('\n');
+  final nativeText = _recentNativeText(nativeHistory.messages);
   final lines = paneText
       .split('\n')
       .map((line) => line.trim())
