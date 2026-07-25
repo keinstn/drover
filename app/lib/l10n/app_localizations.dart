@@ -374,6 +374,12 @@ abstract class AppLocalizations {
   /// **'Couldn\'t reach the host. Check that it\'s online and the address and port are correct.'**
   String get errorHostConnection;
 
+  /// No description provided for @errorHostConnectionLost.
+  ///
+  /// In en, this message translates to:
+  /// **'Lost the connection to the host. If you connect over a VPN, check that it\'s still active.'**
+  String get errorHostConnectionLost;
+
   /// No description provided for @herdrVersionTooOld.
   ///
   /// In en, this message translates to:

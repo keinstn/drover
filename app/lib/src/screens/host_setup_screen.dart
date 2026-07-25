@@ -85,6 +85,19 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     super.dispose();
   }
 
+  /// Whether the host currently described by the form has connected
+  /// successfully before, for picking the right connection-error message.
+  /// True only when editing a host ([widget.initial] non-null with a pinned
+  /// fingerprint) AND the address/port haven't been changed since — an
+  /// edited address/port reopens "maybe it's just wrong", which the pinned
+  /// fingerprint (from the OLD address) can't rule out.
+  bool get _hostEverConnected {
+    final initial = widget.initial;
+    if (initial == null || initial.hostKeyFingerprint == null) return false;
+    final port = int.tryParse(_portController.text.trim()) ?? 22;
+    return _hostController.text.trim() == initial.host && port == initial.port;
+  }
+
   HostConfig? _buildConfig() {
     if (!(_formKey.currentState?.validate() ?? false)) return null;
     final passphrase = _passphraseController.text;
@@ -414,7 +427,10 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
               const SizedBox(height: 12),
             ],
             if (_statusError != null) ...[
-              ErrorMessageView(_statusError!),
+              ErrorMessageView(
+                _statusError!,
+                hostEverConnected: _hostEverConnected,
+              ),
               const SizedBox(height: 12),
             ] else if (_statusMessage != null) ...[
               Text(

@@ -132,6 +132,12 @@ const _hostRefB = HerdHostRef(
   displayName: 'Host Two',
   revision: 0,
 );
+const _hostRefEverConnected = HerdHostRef(
+  hostId: 'host-a',
+  displayName: 'Host One',
+  revision: 0,
+  hostEverConnected: true,
+);
 
 /// The screen under test wrapped in an app shell. Single-client tests pass
 /// [client]; multi-host tests pass [hosts] plus a [clientFor] resolver.
@@ -923,6 +929,33 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a host that has connected before shows the lost-connection message, '
+    'not the generic address/port one',
+    (tester) async {
+      final runnerA = FakeCommandRunner((_) => throw Exception('boom'));
+      final runnerB = FakeCommandRunner(_respondB);
+      final clientA = HerdrClient(runnerA);
+      final clientB = HerdrClient(runnerB);
+
+      await tester.pumpWidget(
+        _herdApp(
+          hosts: const [_hostRefEverConnected, _hostRefB],
+          clientFor: (ref) => ref.hostId == 'host-a' ? clientA : clientB,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Both the agents-list error and the workspace-labels error rows show
+      // it, since the fake runner fails every command.
+      expect(find.textContaining('Lost the connection'), findsWidgets);
+      expect(find.textContaining('address and port are correct'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('the per-host retry button reloads that host', (tester) async {
     var fail = true;
     final runnerA = FakeCommandRunner((command) {
@@ -1122,6 +1155,24 @@ void main() {
     expect(listCalls(), 1);
 
     await tester.pumpWidget(const SizedBox());
+  });
+
+  group('HerdHostRef', () {
+    test('equality and hashCode account for hostEverConnected', () {
+      const a = HerdHostRef(hostId: 'h', displayName: 'H', revision: 0);
+      const b = HerdHostRef(
+        hostId: 'h',
+        displayName: 'H',
+        revision: 0,
+        hostEverConnected: true,
+      );
+      expect(a, isNot(equals(b)));
+      expect(a.hashCode, isNot(equals(b.hashCode)));
+      expect(
+        a,
+        equals(const HerdHostRef(hostId: 'h', displayName: 'H', revision: 0)),
+      );
+    });
   });
 
   group('herdPollBackoff', () {
