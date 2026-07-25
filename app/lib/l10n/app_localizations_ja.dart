@@ -393,4 +393,28 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get dirPickerEmpty => 'サブフォルダがありません';
+
+  @override
+  String get settingsTitle => '設定';
+
+  @override
+  String get settingsAppearance => '外観';
+
+  @override
+  String get settingsTheme => 'テーマ';
+
+  @override
+  String get settingsThemeSystem => 'システム';
+
+  @override
+  String get settingsThemeLight => 'ライト';
+
+  @override
+  String get settingsThemeDark => 'ダーク';
+
+  @override
+  String get settingsLanguage => '言語';
+
+  @override
+  String get settingsLanguageSystem => 'システム';
 }

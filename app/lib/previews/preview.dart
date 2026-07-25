@@ -33,6 +33,7 @@ import '../src/screens/agent_screen.dart';
 import '../src/screens/herd_screen.dart';
 import '../src/screens/host_setup_screen.dart';
 import '../src/screens/launch_agent_sheet.dart';
+import '../src/screens/settings_screen.dart';
 import '../src/widgets/error_message_view.dart';
 
 const _scenario = String.fromEnvironment('SCENARIO', defaultValue: 'idle');
@@ -220,6 +221,7 @@ final _previews = <String, PreviewBuilder>{
       existingCwds: const ['/home/dev/proj'],
     ),
   ),
+  'settings': (_, _) => const _SettingsPreview(),
   // Notification pairing: SCENARIO=idle (default) shows the manual dialog,
   // as if drover.notify were not linked on the host. SCENARIO=plugin-detected
   // shows the auto-pair confirmation → success path. SCENARIO=auto-pair-failure
@@ -373,6 +375,31 @@ class _PreviewGallery extends StatelessWidget {
               ),
         ],
       ),
+    );
+  }
+}
+
+/// Backs the 'settings' preview with local state so the theme/language
+/// sheets are actually exercisable — [SettingsScreen] itself is stateless.
+class _SettingsPreview extends StatefulWidget {
+  const _SettingsPreview();
+
+  @override
+  State<_SettingsPreview> createState() => _SettingsPreviewState();
+}
+
+class _SettingsPreviewState extends State<_SettingsPreview> {
+  ThemeMode _themeMode = ThemeMode.system;
+  Locale? _locale;
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsScreen(
+      themeMode: _themeMode,
+      locale: _locale,
+      onThemeModeChanged: (mode) => setState(() => _themeMode = mode),
+      onLocaleChanged: (locale) => setState(() => _locale = locale),
+      onManageHosts: () {},
     );
   }
 }
