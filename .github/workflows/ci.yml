@@ -5,7 +5,6 @@ on:
     paths:
       - "app/**"
       - "functions/**"
-      - "plugins/drover-notify/**"
       - "justfile"
       - ".github/workflows/ci.yml"
 
@@ -51,25 +50,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Check
-        run: npm run check
-
-      - name: Test
-        run: npm test
-
-  plugin:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: plugins/drover-notify
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
 
       - name: Check
         run: npm run check

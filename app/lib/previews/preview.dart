@@ -248,7 +248,7 @@ final _previews = <String, PreviewBuilder>{
         ? const PluginInfo(
             pluginId: 'drover.notify',
             enabled: true,
-            pluginRoot: '/home/dev/drover/plugins/drover-notify',
+            pluginRoot: '/home/dev/drover-notify',
           )
         : null,
     onAutoPair: (config, plugin, pairing) async {

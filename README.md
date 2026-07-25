@@ -35,9 +35,12 @@ drover/
 │   ├── lib/   # app source
 │   └── tool/  # tool/spike.dart — SSH/herdr CLI probe used during bring-up
 ├── functions/ # Firebase Functions notification backend
-├── plugins/   # Herdr plugins maintained with Drover
 └── docs/      # herdr-notes.md (herdr CLI behaviours & gotchas) + agents/ (per-agent CLI notes)
 ```
+
+The Herdr notification plugin (`drover.notify`) that used to live under
+`plugins/` now lives in its own repo,
+[`keinstn/drover-notify`](https://github.com/keinstn/drover-notify).
 
 ## Getting started
 
@@ -73,5 +76,6 @@ Messaging, and App Check. Set up a deployment environment with
 uses placeholders and documents which configuration and credentials must remain
 outside Git.
 
-To link and pair the manually installed Herdr plugin for `blocked`
-notifications, see [`docs/push-notifications.md`](docs/push-notifications.md).
+To link and pair the manually installed `drover.notify` Herdr plugin (from the
+separate `keinstn/drover-notify` repo) for `blocked` notifications, see
+[`docs/push-notifications.md`](docs/push-notifications.md).

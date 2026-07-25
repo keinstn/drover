@@ -721,7 +721,7 @@ void main() {
         (_) => ok(
           '{"id":"1","result":{"plugins":[{"description":"d",'
           '"enabled":true,"plugin_id":"drover.notify",'
-          '"plugin_root":"/checkout/plugins/drover-notify"}]}}',
+          '"plugin_root":"/checkout/drover-notify"}]}}',
         ),
       );
       final client = HerdrClient(runner);
@@ -731,7 +731,7 @@ void main() {
       expect(plugin, isNotNull);
       expect(plugin!.pluginId, 'drover.notify');
       expect(plugin.enabled, isTrue);
-      expect(plugin.pluginRoot, '/checkout/plugins/drover-notify');
+      expect(plugin.pluginRoot, '/checkout/drover-notify');
       expect(
         runner.commands.single,
         "~/.local/bin/herdr 'plugin' 'list' '--plugin' 'drover.notify' '--json'",

@@ -126,6 +126,16 @@ which agent is running in the pane.
   in the herd/agent screens and strips known CLI-specific suffixes client-side
   (see `AgentInfo.sessionTitle` / `stripAgentTitleSuffix`); the per-agent
   suffixes are noted under `docs/agents/`.
+- **`herdr plugin install <owner>/<repo>[/subdir]` clones over HTTPS with no
+  auth option, so it cannot install from a private repo.** (2026-07-25, herdr
+  0.7.5) `remote_url()` in `src/cli/plugin.rs` always builds an unauthenticated
+  `https://github.com/<owner>/<repo>.git` clone URL; there is no token/SSH flag.
+  Against a private repo this fails with `fatal: could not read Username for
+  'https://github.com'`. drover's docs therefore keep the `git clone` (over
+  SSH) + `herdr plugin link <path>` procedure for `drover.notify` while its
+  repo stays private, rather than documenting `plugin install` as working.
+  Also: a locally `link`ed plugin must be unlinked/uninstalled first — a
+  `plugin install` cannot replace an existing `link`ed instance in place.
 - **An error envelope's channel and exit code are not consistent across
   commands.** (2026-07-24, herdr 0.7.5) `agent start --pane <busy pane>` was
   observed returning `agent_pane_busy` with **exit 0, an empty stdout, and the

@@ -48,7 +48,7 @@ CommandResult ok(String stdout) =>
 const _plugin = PluginInfo(
   pluginId: 'drover.notify',
   enabled: true,
-  pluginRoot: '/checkout/plugins/drover-notify',
+  pluginRoot: '/checkout/drover-notify',
 );
 
 const _pairing = PairingCode(
@@ -78,7 +78,7 @@ void main() {
         (_) => ok(
           '{"id":"1","result":{"plugins":[{"enabled":true,'
           '"plugin_id":"drover.notify",'
-          '"plugin_root":"/checkout/plugins/drover-notify"}]}}',
+          '"plugin_root":"/checkout/drover-notify"}]}}',
         ),
       );
       final pairer = PluginAutoPairer(HerdrClient(runner));
@@ -86,7 +86,7 @@ void main() {
       final plugin = await pairer.detectPlugin();
 
       expect(plugin, isNotNull);
-      expect(plugin!.pluginRoot, '/checkout/plugins/drover-notify');
+      expect(plugin!.pluginRoot, '/checkout/drover-notify');
     });
 
     test('returns null when the plugin is linked but disabled', () async {
@@ -136,10 +136,7 @@ void main() {
       expect(pairCommand, isNot(contains('the-pairing-code')));
       expect(runner.stdinByCommand[pairCommand], 'the-pairing-code');
       expect(pairCommand, contains("'/usr/local/bin/node'"));
-      expect(
-        pairCommand,
-        contains("'/checkout/plugins/drover-notify/bin/pair.mjs'"),
-      );
+      expect(pairCommand, contains("'/checkout/drover-notify/bin/pair.mjs'"));
       expect(pairCommand, contains('--completion-url'));
       expect(
         pairCommand,
@@ -189,7 +186,7 @@ void main() {
     const windowsPlugin = PluginInfo(
       pluginId: 'drover.notify',
       enabled: true,
-      pluginRoot: r'C:\Users\dev\herdr\plugins\drover-notify',
+      pluginRoot: r'C:\Users\dev\drover-notify',
     );
 
     test('resolves node via Get-Command, runs pair.mjs through PowerShell, '
@@ -218,10 +215,7 @@ void main() {
       );
       final script = decodeScript(pairCommand);
       expect(script, contains(r"& 'C:\Program Files\Volta\node.exe'"));
-      expect(
-        script,
-        contains(r"'C:\Users\dev\herdr\plugins\drover-notify/bin/pair.mjs'"),
-      );
+      expect(script, contains(r"'C:\Users\dev\drover-notify/bin/pair.mjs'"));
       expect(script, contains("'--completion-url'"));
       expect(script, contains("'https://example.com/completePairing'"));
       expect(

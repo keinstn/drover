@@ -17,7 +17,7 @@ const _samplePairing = PairingCode(
 const _samplePlugin = PluginInfo(
   pluginId: 'drover.notify',
   enabled: true,
-  pluginRoot: '/checkout/plugins/drover-notify',
+  pluginRoot: '/checkout/drover-notify',
 );
 
 void main() {
