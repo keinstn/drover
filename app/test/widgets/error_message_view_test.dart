@@ -5,11 +5,13 @@ import 'package:drover/src/widgets/error_message_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Widget _host(Object error) => MaterialApp(
+Widget _host(Object error, {bool hostEverConnected = false}) => MaterialApp(
   localizationsDelegates: AppLocalizations.localizationsDelegates,
   supportedLocales: AppLocalizations.supportedLocales,
   locale: const Locale('en'),
-  home: Scaffold(body: ErrorMessageView(error)),
+  home: Scaffold(
+    body: ErrorMessageView(error, hostEverConnected: hostEverConnected),
+  ),
 );
 
 void main() {
@@ -63,5 +65,37 @@ void main() {
       // No wrapper-type noise leaks into the UI.
       expect(find.textContaining('HerdrException'), findsNothing);
     });
+
+    testWidgets('hostConnection defaults to the generic address/port message', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(HerdrException('transport', 'x', cause: Exception('socket'))),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('address and port are correct'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+      'hostConnection shows the lost-connection message when the host has '
+      'connected before',
+      (tester) async {
+        await tester.pumpWidget(
+          _host(
+            HerdrException('transport', 'x', cause: Exception('socket')),
+            hostEverConnected: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Lost the connection'), findsOneWidget);
+        expect(
+          find.textContaining('address and port are correct'),
+          findsNothing,
+        );
+      },
+    );
   });
 }

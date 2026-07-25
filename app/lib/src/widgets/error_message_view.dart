@@ -8,14 +8,30 @@ import '../infra/app_error.dart';
 /// by transient toasts (which have no room for a details expander) and as the
 /// headline of [ErrorMessageView]. For [AppErrorKind.unknown] it falls back to
 /// the cleaned technical detail, since there is no better wording to offer.
-String errorHeadline(AppLocalizations l10n, Object error) {
+///
+/// [hostEverConnected] only affects [AppErrorKind.hostConnection]: it should
+/// be true when the host this error came from has previously connected
+/// successfully (e.g. its host-key fingerprint is already pinned), which
+/// rules out "wrong address/port" by construction and lets the message point
+/// at a dropped connection instead. Defaults to false — the existing generic
+/// message is merely uninformative if shown wrongly, while the "lost
+/// connection" message makes a claim that would be actively wrong for a host
+/// that has never connected, so an un-updated caller should keep today's
+/// behavior rather than opt into the new wording.
+String errorHeadline(
+  AppLocalizations l10n,
+  Object error, {
+  bool hostEverConnected = false,
+}) {
   switch (classifyError(error)) {
     case AppErrorKind.hostKeyMismatch:
       return l10n.errorHostKeyMismatch;
     case AppErrorKind.sshAuth:
       return l10n.errorSshAuth;
     case AppErrorKind.hostConnection:
-      return l10n.errorHostConnection;
+      return hostEverConnected
+          ? l10n.errorHostConnectionLost
+          : l10n.errorHostConnection;
     case AppErrorKind.herdrVersionUnsupported:
       final e = error as HerdrVersionUnsupportedException;
       return l10n.herdrVersionTooOld(e.found, e.minimum);
@@ -30,8 +46,15 @@ String errorHeadline(AppLocalizations l10n, Object error) {
 /// inline / future-builder error states (it does NOT include a Retry control —
 /// callers keep their own). Toasts should use [errorHeadline] instead.
 class ErrorMessageView extends StatefulWidget {
-  const ErrorMessageView(this.error, {super.key});
+  const ErrorMessageView(
+    this.error, {
+    super.key,
+    this.hostEverConnected = false,
+  });
   final Object error;
+
+  /// See [errorHeadline]'s parameter of the same name.
+  final bool hostEverConnected;
 
   @override
   State<ErrorMessageView> createState() => _ErrorMessageViewState();
@@ -44,7 +67,11 @@ class _ErrorMessageViewState extends State<ErrorMessageView> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
-    final headline = errorHeadline(l10n, widget.error);
+    final headline = errorHeadline(
+      l10n,
+      widget.error,
+      hostEverConnected: widget.hostEverConnected,
+    );
     final detail = errorDetail(widget.error);
     // Only offer the expander when the detail adds something beyond the
     // headline (for unknown errors the headline already IS the detail).

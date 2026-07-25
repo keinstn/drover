@@ -57,21 +57,31 @@ class HerdHostRef {
     required this.hostId,
     required this.displayName,
     required this.revision,
+    this.hostEverConnected = false,
   });
 
   final String hostId;
   final String displayName;
   final int revision;
 
+  /// Whether this host has ever connected successfully (its host-key
+  /// fingerprint is pinned) — used to pick a more specific "lost the
+  /// connection" message over the generic "check the address" one when a
+  /// [_HostHerd.error] surfaces. Defaults to false so callers that don't
+  /// track this simply keep today's generic message.
+  final bool hostEverConnected;
+
   @override
   bool operator ==(Object other) =>
       other is HerdHostRef &&
       other.hostId == hostId &&
       other.displayName == displayName &&
-      other.revision == revision;
+      other.revision == revision &&
+      other.hostEverConnected == hostEverConnected;
 
   @override
-  int get hashCode => Object.hash(hostId, displayName, revision);
+  int get hashCode =>
+      Object.hash(hostId, displayName, revision, hostEverConnected);
 }
 
 /// Per-host slice of the herd state. Everything the pre-multi-host screen
@@ -910,12 +920,14 @@ class _HerdScreenState extends State<HerdScreen> {
           error,
           retryKey: ValueKey('host_retry_${host.hostId}'),
           onRetry: () => _retryHost(host),
+          hostEverConnected: host.hostEverConnected,
         ),
       if (workspaceLabelsError != null)
         _errorRow(
           l10n,
           workspaceLabelsError,
           onRetry: () => _retryWorkspaceLabels(host),
+          hostEverConnected: host.hostEverConnected,
         ),
       // No retry button: unlike a transient load failure, a stale herdr
       // binary on the host isn't fixed by retrying from drover.
@@ -971,13 +983,19 @@ class _HerdScreenState extends State<HerdScreen> {
     Object error, {
     Key? retryKey,
     required VoidCallback onRetry,
+    bool hostEverConnected = false,
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: ErrorMessageView(error)),
+          Expanded(
+            child: ErrorMessageView(
+              error,
+              hostEverConnected: hostEverConnected,
+            ),
+          ),
           TextButton(
             key: retryKey,
             onPressed: onRetry,

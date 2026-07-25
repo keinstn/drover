@@ -586,6 +586,7 @@ class _DroverAppState extends State<DroverApp> {
                     hostId: host.hostId!,
                     displayName: host.displayName,
                     revision: _hostRevisions[host.hostId] ?? 0,
+                    hostEverConnected: host.hostKeyFingerprint != null,
                   ),
               ],
               clientFor: _clientFor,

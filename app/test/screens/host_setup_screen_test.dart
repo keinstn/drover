@@ -1,5 +1,6 @@
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
+import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/models/host_config.dart';
 import 'package:drover/src/models/plugin_info.dart';
 import 'package:drover/src/notifications/host_pairing.dart';
@@ -466,5 +467,132 @@ void main() {
     );
 
     await tester.pumpWidget(const SizedBox());
+  });
+
+  group('test-connection failure message', () {
+    const pinnedHost = HostConfig(
+      host: 'example.com',
+      port: 22,
+      user: 'dev',
+      privateKeyPem:
+          '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----',
+      hostKeyFingerprint: 'SHA256:pinned',
+    );
+
+    testWidgets('a brand-new host (never connected) shows the generic message', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HostSetupScreen(
+            onSubmit: (config) async {},
+            onTest: (config) async => throw HerdrException(
+              'transport',
+              'x',
+              cause: Exception('unreachable'),
+            ),
+          ),
+        ),
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Host'),
+        'example.com',
+      );
+      await tester.enterText(find.widgetWithText(TextFormField, 'User'), 'dev');
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Private key PEM'),
+        '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----',
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Test connection'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('address and port are correct'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+      're-testing a previously-connected host with the same address shows '
+      'the lost-connection message',
+      (tester) async {
+        tester.view.physicalSize = const Size(800, 1600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: HostSetupScreen(
+              initial: pinnedHost,
+              onSubmit: (config) async {},
+              onTest: (config) async => throw HerdrException(
+                'transport',
+                'x',
+                cause: Exception('unreachable'),
+              ),
+            ),
+          ),
+        );
+
+        await tester.tap(
+          find.widgetWithText(OutlinedButton, 'Test connection'),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Lost the connection'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'editing the host address before testing falls back to the generic '
+      'message even though a fingerprint is pinned',
+      (tester) async {
+        tester.view.physicalSize = const Size(800, 1600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: HostSetupScreen(
+              initial: pinnedHost,
+              onSubmit: (config) async {},
+              onTest: (config) async => throw HerdrException(
+                'transport',
+                'x',
+                cause: Exception('unreachable'),
+              ),
+            ),
+          ),
+        );
+
+        await tester.enterText(
+          find.widgetWithText(TextFormField, 'Host'),
+          'different-host.example.com',
+        );
+        await tester.tap(
+          find.widgetWithText(OutlinedButton, 'Test connection'),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('address and port are correct'),
+          findsOneWidget,
+        );
+      },
+    );
   });
 }
