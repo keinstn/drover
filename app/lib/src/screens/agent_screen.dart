@@ -69,6 +69,13 @@ const _tailLines = 120; // lines fetched on the live poll / first load
 const _lineStep = 240; // extra lines added per pull-to-load-more
 const _maxPaneLines = 1000; // herdr's `recent` buffer is finite
 
+// How many times a pull-to-load-more re-waits for an in-flight native-history
+// operation before giving up (see `_loadOlderNativeHistory`). A poll's native
+// load measures ~140ms, so the first wait almost always wins; the extra rounds
+// only cover a poll tick that slips in while we were waiting, and the bound
+// keeps the gesture from spinning indefinitely.
+const _nativeHistoryWaitRounds = 3;
+
 // Caps how much native history the duplicate check below compares against.
 // `nativeHistory.messages` grows monotonically as older history is paged in
 // via pull-to-refresh (`_loadOlderNativeHistory`), while the pane tail stays
@@ -188,7 +195,11 @@ class _AgentScreenState extends State<AgentScreen> {
   NativeTranscript? _nativeHistory;
   String? _nativeHistorySessionIdentity;
   Object? _nativeHistoryError;
-  bool _nativeHistoryLoading = false;
+  // Non-null while a native-history operation (poll load or pull-to-load-more)
+  // is in flight, and completed when that operation releases the guard, so a
+  // pull-to-load-more can wait its turn instead of being dropped. See
+  // `_loadNativeHistory` / `_loadOlderNativeHistory`.
+  Completer<void>? _nativeHistoryLoad;
   Object? _loadError;
   bool _paneEndReached = false;
   bool _dictationStarting = false;
@@ -433,18 +444,23 @@ class _AgentScreenState extends State<AgentScreen> {
   /// never delays already-fetched pane output.
   ///
   /// Single-flights against itself (and against `_loadOlderNativeHistory`,
-  /// which shares the same `_nativeHistoryLoading` flag): the underlying
-  /// adapter keeps incremental parse state (byte offset, partial line) that
-  /// isn't safe to touch from two overlapping loads — e.g. a poll's
-  /// truncation-triggered reset racing a pull-to-load-more's read — so a
-  /// poll tick that lands while a previous native load (of either kind) is
-  /// still in flight simply skips starting another one — the next tick
-  /// retries. This preserves the same effective serialization the previous
-  /// fully-sequential `_load` gave native history for free.
+  /// which takes the same `_nativeHistoryLoad` guard): the underlying adapter
+  /// keeps incremental parse state (byte offset, partial line) that isn't safe
+  /// to touch from two overlapping loads — e.g. a poll's truncation-triggered
+  /// reset racing a pull-to-load-more's read — so a poll tick that lands while
+  /// a previous native operation (of either kind) is still in flight simply
+  /// skips starting another one — the next tick, two seconds out, retries.
+  /// This preserves the same effective serialization the previous
+  /// fully-sequential `_load` gave native history for free. Dropping a poll is
+  /// invisible; a dropped *pull* is not, which is why
+  /// `_loadOlderNativeHistory` waits instead of skipping.
   Future<void> _loadNativeHistory(AgentInfo agent) async {
-    if (_nativeHistoryLoading) return;
-    _nativeHistoryLoading = true;
+    if (_nativeHistoryLoad != null) return;
+    // Read the scroll position before taking the guard: nothing between the
+    // guard and its `finally` may throw, or the completer would never complete
+    // and a waiting pull-to-load-more would hang on it forever.
     final stickToBottom = _wasAtBottom;
+    final load = _nativeHistoryLoad = Completer<void>();
     try {
       final nativeHistorySessionIdentity =
           NativeTranscriptHistory.sessionIdentityFor(agent);
@@ -469,7 +485,8 @@ class _AgentScreenState extends State<AgentScreen> {
       _restoreScrollAfterLayout(stickToBottom: stickToBottom);
       _syncStructuredPromptSheet();
     } finally {
-      _nativeHistoryLoading = false;
+      _nativeHistoryLoad = null;
+      load.complete();
     }
   }
 
@@ -592,27 +609,50 @@ class _AgentScreenState extends State<AgentScreen> {
   /// jump. A no-op once the beginning of the native history has been reached
   /// (`hasOlderHistory` false) or before any agent/history has loaded.
   ///
-  /// Shares the same `_nativeHistoryLoading` single-flight guard as
+  /// Takes the same `_nativeHistoryLoad` single-flight guard as
   /// `_loadNativeHistory`: both ultimately mutate the same underlying
   /// `JsonlTranscriptWindow` (byte offset/partial-line/window state), which
   /// is not safe to touch from two overlapping calls — e.g. a poll tick
   /// landing (and possibly resetting state after a detected truncation)
-  /// while a pull-to-load-more is still awaiting its own read. A tick or
-  /// pull that finds the flag already set simply skips this round; a poll
-  /// tick retries on its next interval, and a skipped pull-to-load-more
-  /// gesture leaves `hasOlderHistory` unchanged for the user to retry.
+  /// while a pull-to-load-more is still awaiting its own read.
+  ///
+  /// Unlike a poll tick, this *waits* for an in-flight operation rather than
+  /// skipping. Skipping is rare — on a device the poll's own native load held
+  /// the guard for only ~8% of wall time — but it is *invisible* when it
+  /// happens: the user pulls, nothing moves, and nothing says a retry is
+  /// needed, so the previous "the gesture leaves `hasOlderHistory` unchanged
+  /// for the user to retry" justification assumed a discoverability the UI
+  /// does not provide. The wait costs about as long as one poll load (~140ms
+  /// measured) and removes the failure mode outright, so there is no reason to
+  /// keep it. Waiting keeps the one-at-a-time invariant (the
+  /// anchor below is captured only once the guard is free, so it can't go
+  /// stale behind another operation's scroll restore) while still honouring
+  /// the gesture. `RefreshIndicator` holds the gesture until this future
+  /// completes, so pulls can't stack up; the wait is bounded anyway
+  /// ([_nativeHistoryWaitRounds]) so a stream of poll loads can't keep the
+  /// gesture spinning forever.
   Future<void> _loadOlderNativeHistory() async {
+    for (var round = 0; round < _nativeHistoryWaitRounds; round++) {
+      final inFlight = _nativeHistoryLoad;
+      if (inFlight == null) break;
+      await inFlight.future;
+      if (!mounted) return;
+    }
     final agent = _agent;
     if (agent == null ||
         !_nativeTranscriptHistory.hasOlderHistory ||
-        _nativeHistoryLoading) {
+        _nativeHistoryLoad != null) {
       return;
     }
-    _nativeHistoryLoading = true;
+    // Captured after the wait (so it can't go stale behind another
+    // operation's scroll restore) but before the guard: nothing between the
+    // guard and its `finally` may throw, or the completer would never complete
+    // and the next pull would hang waiting on it.
     final anchorFromBottom = _scrollController.hasClients
         ? _scrollController.position.maxScrollExtent -
               _scrollController.position.pixels
         : null;
+    final load = _nativeHistoryLoad = Completer<void>();
     try {
       final updated = await _nativeTranscriptHistory.loadOlder(agent);
       if (!mounted || updated == null) return;
@@ -622,7 +662,8 @@ class _AgentScreenState extends State<AgentScreen> {
       if (!mounted) return;
       setState(() => _nativeHistoryError = e);
     } finally {
-      _nativeHistoryLoading = false;
+      _nativeHistoryLoad = null;
+      load.complete();
     }
   }
 
