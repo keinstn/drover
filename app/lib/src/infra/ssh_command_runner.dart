@@ -98,6 +98,35 @@ Future<T> runDroppingWedgedClient<T>(
   }
 }
 
+/// Runs [body] bounded by [timeout], and if it does not finish in time calls
+/// [closeClient] before rethrowing the [TimeoutException]: a wait that
+/// outlived its bound leaves the connection in an indeterminate state — for
+/// [SshCommandRunner._connect] a possibly half-authenticated [SSHClient] — so
+/// it must be torn down rather than left dangling.
+///
+/// The [TimeoutException] is deliberately rethrown bare rather than re-typed
+/// as an [SshAuthException]: `HerdrClient` wraps it into a cause-bearing
+/// `HerdrException('transport', ...)`, which `classifyError` reads as
+/// "host connection" — the right message for a network stall. An
+/// [SshAuthException] would instead tell the user to check their key.
+///
+/// Any other failure passes through untouched and [closeClient] is NOT called:
+/// those are the caller's own error paths (in [SshCommandRunner._connect], the
+/// host-key mismatch and auth-failure handling), which already decide what to
+/// tear down.
+Future<T> runClosingStalledClient<T>(
+  Future<T> Function() body,
+  Future<void> Function() closeClient, {
+  required Duration timeout,
+}) async {
+  try {
+    return await body().timeout(timeout);
+  } on TimeoutException {
+    await closeClient();
+    rethrow;
+  }
+}
+
 /// [CommandRunner] backed by an SSH connection to a [HostConfig] host.
 /// Connects lazily on first [run] and caches the client; a stale cached
 /// client (closed since it was last used) is reconnected before the command
@@ -111,13 +140,19 @@ Future<T> runDroppingWedgedClient<T>(
 /// [_mutex] so only one channel is ever open at a time on the shared
 /// connection.
 class SshCommandRunner implements CommandRunner {
-  SshCommandRunner(this._config, {this.onHostKeyLearned});
+  SshCommandRunner(this._config, {this.onHostKeyLearned, Duration? authTimeout})
+    : _authTimeout = authTimeout ?? _defaultAuthTimeout;
 
   final HostConfig _config;
 
   /// Invoked after a successful connect that learned a host key for the first
   /// time (no fingerprint was pinned), so the caller can persist it.
   final Future<void> Function(String fingerprint)? onHostKeyLearned;
+
+  /// Bound on the auth handshake — see [_defaultAuthTimeout] for the why.
+  /// Injectable so a test can stall a real handshake without waiting the
+  /// default out on the wall clock; production always takes the default.
+  final Duration _authTimeout;
 
   SSHClient? _client;
   Future<SSHClient>? _connecting;
@@ -145,6 +180,24 @@ class SshCommandRunner implements CommandRunner {
     }
   }
 
+  /// Bounds the SSH-level auth handshake that follows a connected TCP socket.
+  /// dartssh2 does not bound `client.authenticated` unless asked, so a network
+  /// path that dies in exactly that window — socket up, negotiation stalled —
+  /// would otherwise wait indefinitely (the same class of gap as
+  /// [_execTimeout], on the connect path instead of the exec path). A healthy
+  /// handshake is sub-second; 10s matches the `SSHSocket.connect` bound in
+  /// [_connect], so neither of the connect path's two network waits can exceed
+  /// 10s. (That bounds the waits, not [_connect] as a whole: the synchronous
+  /// `SSHKeyPair.fromPem` KDF and the [onHostKeyLearned] storage write are
+  /// still unbounded, and run under the same held [_mutex].)
+  ///
+  /// dartssh2's own opt-in `authTimeout` constructor argument is deliberately
+  /// not used: it fails the handshake with an `SSHAuthAbortError`, which is an
+  /// [SSHAuthError] and so would land in the clause below and be reported as
+  /// a key/passphrase problem. One [runClosingStalledClient] bound also covers
+  /// both windows dartssh2 splits between `handshakeTimeout` and `authTimeout`.
+  static const _defaultAuthTimeout = Duration(seconds: 10);
+
   Future<SSHClient> _connect() async {
     _authNotices.clear();
     _learnedThisConnect = null;
@@ -168,7 +221,11 @@ class SshCommandRunner implements CommandRunner {
       },
     );
     try {
-      await client.authenticated;
+      await runClosingStalledClient(
+        () => client.authenticated,
+        () async => client.close(),
+        timeout: _authTimeout,
+      );
     } on SSHAuthError catch (e) {
       if (_mismatch != null) {
         client.close();
@@ -176,6 +233,10 @@ class SshCommandRunner implements CommandRunner {
       }
       throw SshAuthException(describeSshAuthFailure(e, _authNotices));
     } catch (_) {
+      // Also where [_authTimeout]'s TimeoutException lands (it is not an
+      // [SSHAuthError], so the clause above cannot shadow it): a host-key
+      // mismatch still wins, and anything else propagates unchanged —
+      // [runClosingStalledClient] has already closed the client on timeout.
       if (_mismatch != null) {
         client.close();
         throw _mismatch!;
