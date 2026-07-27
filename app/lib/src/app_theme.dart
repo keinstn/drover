@@ -36,11 +36,15 @@ final ThemeData droverDarkTheme = _buildTheme(
 
 /// Warm light theme, same token structure as [droverDarkTheme].
 ///
-/// The surfaces keep the dark theme's warm hue but carry far less of it. The
-/// app icon is fully achromatic (white `#FEFEFE` / black `#1F1F1F`), and a warm
-/// cast that is invisible on the dark theme's L≈8 surfaces reads as a dirty
-/// white against it at L≈95. So the light surfaces/ink hold their hue and drop
-/// roughly 60% of their chroma, leaving [primary] as the one warm note.
+/// The surfaces keep the dark theme's warm hue but carry almost none of it.
+/// The app icon is fully achromatic (white `#FEFEFE` / black `#1F1F1F`), and a
+/// warm cast that is invisible on the dark theme's L≈8 surfaces reads as a
+/// dirty white against it at L≈95. So the light surfaces/ink hold their hue and
+/// shed nearly all of their chroma, leaving [primary] as the one warm note.
+///
+/// The target is deliberately near-achromatic rather than merely reduced: on
+/// device there is no white reference anywhere on screen to judge against, so
+/// even a trace cast over a large uniform field still reads as warm paper.
 final ThemeData droverLightTheme = _buildTheme(
   brightness: Brightness.light,
   scheme:
@@ -48,22 +52,22 @@ final ThemeData droverLightTheme = _buildTheme(
         seedColor: const Color(0xFFC2704E),
         brightness: Brightness.light,
       ).copyWith(
-        surface: const Color(0xFFF7F5F1),
-        surfaceContainerLowest: const Color(0xFFFBFAF7),
-        surfaceContainerLow: const Color(0xFFFBF9F6),
-        surfaceContainer: const Color(0xFFFFFEFC),
-        surfaceContainerHigh: const Color(0xFFFFFEFC),
+        surface: const Color(0xFFF7F6F4),
+        surfaceContainerLowest: const Color(0xFFFBFBF9),
+        surfaceContainerLow: const Color(0xFFFAFAF8),
+        surfaceContainer: const Color(0xFFFFFEFD),
+        surfaceContainerHigh: const Color(0xFFFFFEFD),
         // Sits below the scale rather than above it: its only consumer is the
         // tonal button in agent_screen, which has to read as filled against a
         // card. Left to the seed it came out pink (`#F1DFD9`), off-hue from the
         // rest of the theme and the most chromatic near-white on the ground.
-        surfaceContainerHighest: const Color(0xFFEAE8E3),
-        surfaceBright: const Color(0xFFFFFEFC),
-        surfaceDim: const Color(0xFFE7E4DE),
-        onSurface: const Color(0xFF26231F),
-        onSurfaceVariant: const Color(0xFF837E76),
-        outline: const Color(0xFFE5E2DC),
-        outlineVariant: const Color(0xFFE3E0DA),
+        surfaceContainerHighest: const Color(0xFFEAE9E6),
+        surfaceBright: const Color(0xFFFFFEFD),
+        surfaceDim: const Color(0xFFE6E5E2),
+        onSurface: const Color(0xFF232221),
+        onSurfaceVariant: const Color(0xFF7E7C78),
+        outline: const Color(0xFFE4E2DF),
+        outlineVariant: const Color(0xFFE2E0DD),
         primary: const Color(0xFFC2704E),
         onPrimary: const Color(0xFFFFF6EE),
         surfaceTint: const Color(0xFFC2704E),
@@ -229,19 +233,26 @@ class DroverColors extends ThemeExtension<DroverColors> {
     doneDot: Color(0xFF4E9465),
     donePillBg: Color(0xFFE2EFE3),
     donePillFg: Color(0xFF3E7C51),
-    idleDot: Color(0xFF9A8F7E),
-    idlePillBg: Color(0xFFEFE9DD),
-    idlePillFg: Color(0xFF83786A),
+    // idle (and the `unknown` status that reuses it) means "no particular
+    // state", so unlike blocked/working/done it carries no hue of its own.
+    // The beige it used to wear was inherited from the old warm ground, and
+    // with that ground gone it became the warmest thing on screen — every
+    // agent at rest put another chroma-18 lozenge on a near-neutral field.
+    idleDot: Color(0xFF8F8C87),
+    idlePillBg: Color(0xFFEBE9E5),
+    idlePillFg: Color(0xFF7C7975),
     brandClaude: Color(0xFFD9825F),
     brandCodex: Color(0xFF6FA287),
     brandCopilot: Color(0xFF8B9DC9),
-    brandFallback: Color(0xFF8A7E6E),
+    // Same reasoning: the fallback avatar for an unrecognised agent type is
+    // the absence of a brand color, not a warm one.
+    brandFallback: Color(0xFF837F7A),
     avatarFg: Color(0xFFFFF9F0),
     // Kept at its original chroma: the user's own bubble is accent-adjacent,
     // not ground, and reads as intentional now that the ground has stepped back.
     userBubble: Color(0xFFF0E2D0),
-    toolSurface: Color(0xFFF0EEEA),
-    tertiaryText: Color(0xFF918C84),
+    toolSurface: Color(0xFFEFEEEC),
+    tertiaryText: Color(0xFF8C8A86),
   );
 
   @override
