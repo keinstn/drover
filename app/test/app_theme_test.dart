@@ -55,7 +55,7 @@ void main() {
     test('light tokens match the spec', () {
       final scheme = droverLightTheme.colorScheme;
       expect(scheme.primary, const Color(0xFFC2704E));
-      expect(scheme.surface, const Color(0xFFF7F5F1));
+      expect(scheme.surface, const Color(0xFFF7F6F4));
 
       final colors = droverLightTheme.extension<DroverColors>()!;
       expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFC75B44));
@@ -63,10 +63,10 @@ void main() {
       // Brand colors are identical across themes.
       expect(colors.brandColor('codex'), const Color(0xFF6FA287));
       // Unknown/null agent type falls back to a neutral tone.
-      expect(colors.brandColor(null), const Color(0xFF8A7E6E));
+      expect(colors.brandColor(null), const Color(0xFF837F7A));
     });
 
-    test('light surfaces and ink stay near-neutral', () {
+    test('light neutrals stay near-neutral', () {
       final scheme = droverLightTheme.colorScheme;
       final colors = droverLightTheme.extension<DroverColors>()!;
       // The whole surface family, not just the steps currently read by a
@@ -75,7 +75,7 @@ void main() {
       // exhaustive so a token nobody uses today can't reintroduce the cast
       // the day someone reaches for it. inverseSurface/onInverseSurface are
       // deliberately absent — the toast is a dark island in either theme.
-      final grounds = <String, Color>{
+      final neutrals = <String, Color>{
         'surface': scheme.surface,
         'surfaceBright': scheme.surfaceBright,
         'surfaceDim': scheme.surfaceDim,
@@ -90,15 +90,22 @@ void main() {
         'outlineVariant': scheme.outlineVariant,
         'toolSurface': colors.toolSurface,
         'tertiaryText': colors.tertiaryText,
+        // Not grounds, but tokens whose whole job is to signal the absence of
+        // a state or a brand — they have to look as neutral as they mean.
+        'idleDot': colors.idleDot,
+        'idlePillBg': colors.idlePillBg,
+        'idlePillFg': colors.idlePillFg,
+        'brandFallback': colors.brandFallback,
       };
 
-      grounds.forEach((name, color) {
-        // The app icon is achromatic, so the light grounds/ink carry only a
-        // trace of the theme's warmth — chroma stays within 13/255 …
+      neutrals.forEach((name, color) {
+        // On device nothing achromatic shares the screen to judge against, so
+        // even a trace cast over a large field reads warm. Chroma stays within
+        // 9/255 …
         expect(
           _chroma(color),
-          lessThanOrEqualTo(13),
-          reason: '$name carries too much chroma for a near-neutral ground',
+          lessThanOrEqualTo(9),
+          reason: '$name carries too much chroma to read as neutral',
         );
         // … and what remains still leans warm, never cool.
         expect(
@@ -109,8 +116,20 @@ void main() {
       });
 
       // Guard against neutralising the whole palette: primary is the one
-      // deliberately chromatic token on the light ground.
+      // deliberately chromatic token on the light ground, and the statuses
+      // that do carry meaning have to stay readable as color.
       expect(_chroma(scheme.primary), greaterThan(100));
+      for (final status in [
+        AgentStatus.blocked,
+        AgentStatus.working,
+        AgentStatus.done,
+      ]) {
+        expect(
+          _chroma(colors.statusDot(status)),
+          greaterThan(40),
+          reason: '$status is a semantic color and must not be neutralised',
+        );
+      }
     });
 
     test('rgba pill backgrounds carry the spec alpha (dark)', () {
