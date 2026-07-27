@@ -372,4 +372,44 @@ void main() {
       );
     });
   });
+
+  group('nativePath', () {
+    test('Windows strips the extended-length prefix from a drive path', () {
+      const windows = WindowsHostPlatform();
+      expect(
+        windows.nativePath(r'\\?\C:\Users\dev\drover-notify'),
+        r'C:\Users\dev\drover-notify',
+      );
+    });
+
+    test('Windows rewrites the UNC long-path form to a plain UNC path', () {
+      const windows = WindowsHostPlatform();
+      // A strip (rather than a rewrite) would leave `UNC\srv\share\...`,
+      // which names no host at all.
+      expect(
+        windows.nativePath(r'\\?\UNC\srv\share\drover-notify'),
+        r'\\srv\share\drover-notify',
+      );
+    });
+
+    test('Windows leaves a path without the prefix untouched', () {
+      const windows = WindowsHostPlatform();
+      expect(
+        windows.nativePath(r'C:\Users\dev\drover-notify'),
+        r'C:\Users\dev\drover-notify',
+      );
+      expect(windows.nativePath(r'\\srv\share\x'), r'\\srv\share\x');
+    });
+
+    test('Unix passes any path through', () {
+      const unix = UnixHostPlatform();
+      expect(
+        unix.nativePath('/checkout/drover-notify'),
+        '/checkout/drover-notify',
+      );
+      // A backslash is an ordinary filename character on POSIX, so even a
+      // path that looks like the Windows prefix must survive verbatim.
+      expect(unix.nativePath(r'\\?\C:\x'), r'\\?\C:\x');
+    });
+  });
 }

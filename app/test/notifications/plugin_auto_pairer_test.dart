@@ -228,5 +228,42 @@ void main() {
       expect(script, isNot(contains('the-pairing-code')));
       expect(runner.stdinByCommand[pairCommand], 'the-pairing-code');
     });
+
+    test('strips the extended-length prefix herdr reports for plugin_root '
+        'so Node does not read it as a UNC path', () async {
+      // herdr canonicalizes plugin_root via Rust, which always emits the
+      // `\\?\` form on Windows; Node's loader then treats `?` as a server
+      // and `C:` as a share and fails with EISDIR before running pair.mjs.
+      const extendedPlugin = PluginInfo(
+        pluginId: 'drover.notify',
+        enabled: true,
+        pluginRoot: r'\\?\C:\Users\dev\drover-notify',
+      );
+      final runner = FakeCommandRunner((command) {
+        if (!command.startsWith(_encodedPrefix)) return ok('');
+        final script = decodeScript(command);
+        if (script.contains("Get-Command 'node'")) {
+          return ok(r'C:\Program Files\Volta\node.exe');
+        }
+        if (script.contains("'config-dir'")) {
+          return ok(r'C:\Users\dev\.herdr\plugins\config\drover.notify');
+        }
+        return ok('');
+      });
+      final pairer = PluginAutoPairer(
+        HerdrClient(runner, platform: const WindowsHostPlatform()),
+      );
+
+      await pairer.pair(plugin: extendedPlugin, pairing: _pairing);
+
+      final pairCommand = runner.commands.firstWhere(
+        (c) =>
+            c.startsWith(_encodedPrefix) &&
+            decodeScript(c).contains('pair.mjs'),
+      );
+      final script = decodeScript(pairCommand);
+      expect(script, contains(r"'C:\Users\dev\drover-notify/bin/pair.mjs'"));
+      expect(script, isNot(contains(r'\\?\')));
+    });
   });
 }
