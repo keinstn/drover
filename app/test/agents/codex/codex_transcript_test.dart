@@ -412,6 +412,15 @@ void main() {
       expect(CodexTranscriptLoader.supportsAgent(codexAgent()), isTrue);
     });
 
+    test('true for a codex agent with a UUIDv7 session id', () {
+      expect(
+        CodexTranscriptLoader.supportsAgent(
+          codexAgent(sessionId: '019bb62f-56c0-7c23-b85e-65e6e134e2c4'),
+        ),
+        isTrue,
+      );
+    });
+
     test('false for a non-codex agent kind', () {
       final agent = codexAgent();
       final other = AgentInfo(

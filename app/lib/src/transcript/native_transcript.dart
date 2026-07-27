@@ -521,15 +521,15 @@ class JsonlTranscriptWindow {
   }
 }
 
-/// Returns true if [value] matches the UUID v1–v5 pattern used as a
-/// native-transcript session identity by Claude Code and Copilot CLI.
-/// Both agents validate their session ids against this same pattern; sharing
-/// it here avoids the two copies drifting apart.
+/// Returns true if [value] matches the UUID v1–v8 pattern used as a
+/// native-transcript session identity by Claude Code, Codex CLI, and Copilot
+/// CLI. All three agents validate their session ids against this same pattern;
+/// sharing it here avoids the copies drifting apart.
 bool isNativeTranscriptSessionId(String value) =>
     _sessionIdPattern.hasMatch(value);
 
 final _sessionIdPattern = RegExp(
-  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
 );
 
 /// Shared session-identity / path-cache / window orchestration for JSONL

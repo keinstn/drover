@@ -41,6 +41,26 @@ List<String> _texts(NativeTranscript transcript) =>
     transcript.messages.map((message) => message.text).toList();
 
 void main() {
+  group('isNativeTranscriptSessionId', () {
+    test('accepts a UUIDv7 session id', () {
+      expect(
+        isNativeTranscriptSessionId('019bb62f-56c0-7c23-b85e-65e6e134e2c4'),
+        isTrue,
+      );
+    });
+
+    test('rejects invalid UUID shapes and version nibbles', () {
+      for (final value in [
+        '019bb62f-56c0-7c23-b85e-65e6e134e2c', // wrong length
+        '019bb62f-56c0-7c23-b85e-65e6e134e2cg', // non-hex
+        '019bb62f-56c0-0c23-b85e-65e6e134e2c4', // version 0
+        '019bb62f-56c0-9c23-b85e-65e6e134e2c4', // version 9
+      ]) {
+        expect(isNativeTranscriptSessionId(value), isFalse, reason: value);
+      }
+    });
+  });
+
   group('NativeTranscript.messages', () {
     test('filters to only chat messages, in order', () {
       final transcript = NativeTranscript(const [
