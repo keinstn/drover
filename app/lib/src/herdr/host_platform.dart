@@ -77,6 +77,18 @@ abstract class HostPlatform {
   /// [CommandRunner.runWithStdin]) — this only assembles the command line.
   String runProgramCommand(String program, List<String> args);
 
+  /// [path] made safe to hand to a host program as a file argument.
+  ///
+  /// Herdr's `plugin list --json` reports `plugin_root` through Rust's
+  /// `Path::canonicalize()`, which on Windows always emits the
+  /// extended-length form `\\?\C:\Users\dev\drover-notify`. Node's module
+  /// loader parses that as a UNC path (`?` = server, `C:` = share) and dies
+  /// in `realpathSync` before running a line of user code:
+  /// `EISDIR: illegal operation on a directory, lstat 'C:'`. Stripping the
+  /// prefix at the point of use (not when parsing the JSON) keeps the raw
+  /// herdr value intact everywhere else.
+  String nativePath(String path);
+
   /// Exec line printing the absolute path of the first file matching
   /// [namePattern] at exactly [depth] levels below the search root, or
   /// nothing. The root is `$HOME/<homeFallback>` (POSIX) unless [envVar] is
@@ -142,6 +154,11 @@ class UnixHostPlatform extends HostPlatform {
   @override
   String runProgramCommand(String program, List<String> args) =>
       [program, ...args].map(shQuote).join(' ');
+
+  // `\\?\` is Windows path syntax; it cannot occur in a POSIX path, where a
+  // backslash is an ordinary filename character.
+  @override
+  String nativePath(String path) => path;
 
   @override
   String findFileAtDepthCommand({
@@ -286,6 +303,17 @@ class WindowsHostPlatform extends HostPlatform {
         '$_prelude& ${_psQuote(program)} ${args.map(_psQuote).join(' ')};'
         r'exit $LASTEXITCODE';
     return _wrap(script);
+  }
+
+  @override
+  String nativePath(String path) {
+    // The UNC form must be tested first: `\\?\UNC\srv\share` is a rewrite to
+    // `\\srv\share`, not a strip — the generic branch would otherwise leave
+    // a bogus `UNC\srv\share`. Matched uppercase because the only producer
+    // here is Rust's `Path::canonicalize()`, which emits it uppercase.
+    if (path.startsWith(r'\\?\UNC\')) return '\\\\${path.substring(8)}';
+    if (path.startsWith(r'\\?\')) return path.substring(4);
+    return path;
   }
 
   /// PowerShell statements leaving the resolved search root in `$r`:

@@ -43,7 +43,9 @@ class PluginAutoPairer {
     final configDir = await _herdrClient.pluginConfigDir(_droverNotifyPluginId);
     final platform = await _herdrClient.hostPlatform;
     final command = platform.runProgramCommand(node, [
-      '${plugin.pluginRoot}/bin/pair.mjs',
+      // nativePath: herdr reports plugin_root as an extended-length
+      // `\\?\C:\...` path on Windows, which Node's loader misreads as UNC.
+      '${platform.nativePath(plugin.pluginRoot)}/bin/pair.mjs',
       '--completion-url',
       pairing.completionUrl,
       '--config-dir',
