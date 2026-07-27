@@ -35,6 +35,12 @@ final ThemeData droverDarkTheme = _buildTheme(
 );
 
 /// Warm light theme, same token structure as [droverDarkTheme].
+///
+/// The surfaces keep the dark theme's warm hue but carry far less of it. The
+/// app icon is fully achromatic (white `#FEFEFE` / black `#1F1F1F`), and a warm
+/// cast that is invisible on the dark theme's L≈8 surfaces reads as a dirty
+/// white against it at L≈95. So the light surfaces/ink hold their hue and drop
+/// roughly 60% of their chroma, leaving [primary] as the one warm note.
 final ThemeData droverLightTheme = _buildTheme(
   brightness: Brightness.light,
   scheme:
@@ -42,15 +48,22 @@ final ThemeData droverLightTheme = _buildTheme(
         seedColor: const Color(0xFFC2704E),
         brightness: Brightness.light,
       ).copyWith(
-        surface: const Color(0xFFF6F1E8),
-        surfaceContainerLowest: const Color(0xFFFBF7EF),
-        surfaceContainerLow: const Color(0xFFFBF6EC),
-        surfaceContainer: const Color(0xFFFFFCF6),
-        surfaceContainerHigh: const Color(0xFFFFFCF6),
-        onSurface: const Color(0xFF33291E),
-        onSurfaceVariant: const Color(0xFF8A7E6E),
-        outline: const Color(0xFFEAE1D1),
-        outlineVariant: const Color(0xFFE7DECF),
+        surface: const Color(0xFFF7F5F1),
+        surfaceContainerLowest: const Color(0xFFFBFAF7),
+        surfaceContainerLow: const Color(0xFFFBF9F6),
+        surfaceContainer: const Color(0xFFFFFEFC),
+        surfaceContainerHigh: const Color(0xFFFFFEFC),
+        // Sits below the scale rather than above it: its only consumer is the
+        // tonal button in agent_screen, which has to read as filled against a
+        // card. Left to the seed it came out pink (`#F1DFD9`), off-hue from the
+        // rest of the theme and the most chromatic near-white on the ground.
+        surfaceContainerHighest: const Color(0xFFEAE8E3),
+        surfaceBright: const Color(0xFFFFFEFC),
+        surfaceDim: const Color(0xFFE7E4DE),
+        onSurface: const Color(0xFF26231F),
+        onSurfaceVariant: const Color(0xFF837E76),
+        outline: const Color(0xFFE5E2DC),
+        outlineVariant: const Color(0xFFE3E0DA),
         primary: const Color(0xFFC2704E),
         onPrimary: const Color(0xFFFFF6EE),
         surfaceTint: const Color(0xFFC2704E),
@@ -224,9 +237,11 @@ class DroverColors extends ThemeExtension<DroverColors> {
     brandCopilot: Color(0xFF8B9DC9),
     brandFallback: Color(0xFF8A7E6E),
     avatarFg: Color(0xFFFFF9F0),
+    // Kept at its original chroma: the user's own bubble is accent-adjacent,
+    // not ground, and reads as intentional now that the ground has stepped back.
     userBubble: Color(0xFFF0E2D0),
-    toolSurface: Color(0xFFF1EBDF),
-    tertiaryText: Color(0xFF9A8F7E),
+    toolSurface: Color(0xFFF0EEEA),
+    tertiaryText: Color(0xFF918C84),
   );
 
   @override
