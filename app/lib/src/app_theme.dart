@@ -8,53 +8,55 @@ import 'models/agent_info.dart';
 /// fallback. Monospace usages (code/args/PEM) opt out locally and are untouched.
 const _roundedGothic = 'Hiragino Maru Gothic ProN';
 
-/// Warm dark theme. Surfaces/text come from the README's サーフェス token table;
-/// the semantic status/brand colors live in [DroverColors] below.
+/// Green-accent dark theme ("border collie × grassland"): near-neutral
+/// black surfaces, grassland-green reserved for tappable elements. Surfaces/
+/// text come from the README's サーフェス token table; the semantic
+/// status/brand colors live in [DroverColors] below.
 final ThemeData droverDarkTheme = _buildTheme(
   brightness: Brightness.dark,
   scheme:
       ColorScheme.fromSeed(
-        seedColor: const Color(0xFFE0956B),
+        seedColor: const Color(0xFF74B25C),
         brightness: Brightness.dark,
       ).copyWith(
-        surface: const Color(0xFF191511),
-        surfaceContainerLowest: const Color(0xFF15120E),
-        surfaceContainerLow: const Color(0xFF1D1812),
-        surfaceContainer: const Color(0xFF221D17),
-        surfaceContainerHigh: const Color(0xFF241E17),
-        onSurface: const Color(0xFFF0E9DF),
-        onSurfaceVariant: const Color(0xFFA69B8C),
-        outline: const Color(0xFF3B332A),
-        outlineVariant: const Color(0xFF2A241C),
-        primary: const Color(0xFFE0956B),
-        onPrimary: const Color(0xFF241409),
-        surfaceTint: const Color(0xFFE0956B),
-        error: const Color(0xFFE86A55),
+        surface: const Color(0xFF151815),
+        surfaceContainerLowest: const Color(0xFF131613),
+        surfaceContainerLow: const Color(0xFF1A1E19),
+        surfaceContainer: const Color(0xFF1D211C),
+        surfaceContainerHigh: const Color(0xFF1E231E),
+        onSurface: const Color(0xFFEDF0E9),
+        onSurfaceVariant: const Color(0xFF98A292),
+        outline: const Color(0xFF2E342D),
+        outlineVariant: const Color(0xFF262B25),
+        primary: const Color(0xFF74B25C),
+        onPrimary: const Color(0xFF0E1A09),
+        surfaceTint: const Color(0xFF74B25C),
+        error: const Color(0xFFE8705A),
       ),
   colors: DroverColors.dark,
 );
 
-/// Warm light theme, same token structure as [droverDarkTheme].
+/// Green-accent light theme, same token structure as [droverDarkTheme].
 final ThemeData droverLightTheme = _buildTheme(
   brightness: Brightness.light,
   scheme:
       ColorScheme.fromSeed(
-        seedColor: const Color(0xFFC2704E),
+        seedColor: const Color(0xFF3F7D39),
         brightness: Brightness.light,
       ).copyWith(
-        surface: const Color(0xFFF6F1E8),
-        surfaceContainerLowest: const Color(0xFFFBF7EF),
-        surfaceContainerLow: const Color(0xFFFBF6EC),
-        surfaceContainer: const Color(0xFFFFFCF6),
-        surfaceContainerHigh: const Color(0xFFFFFCF6),
-        onSurface: const Color(0xFF33291E),
-        onSurfaceVariant: const Color(0xFF8A7E6E),
-        outline: const Color(0xFFEAE1D1),
-        outlineVariant: const Color(0xFFE7DECF),
-        primary: const Color(0xFFC2704E),
-        onPrimary: const Color(0xFFFFF6EE),
-        surfaceTint: const Color(0xFFC2704E),
-        error: const Color(0xFFC75B44),
+        surface: const Color(0xFFF5F3EB),
+        surfaceContainerLowest: const Color(0xFFFAF8F1),
+        surfaceContainerLow: const Color(0xFFFAF8F1),
+        surfaceContainer: const Color(0xFFFDFCF6),
+        surfaceContainerHigh: const Color(0xFFFDFCF6),
+        onSurface: const Color(0xFF1E221C),
+        onSurfaceVariant: const Color(0xFF6B7268),
+        outline: const Color(0xFFE4E2D6),
+        outlineVariant: const Color(0xFFE4E2D6),
+        primary: const Color(0xFF3F7D39),
+        onPrimary: const Color(0xFFF4F9F0),
+        surfaceTint: const Color(0xFF3F7D39),
+        error: const Color(0xFFC25742),
       ),
   colors: DroverColors.light,
 );
@@ -92,9 +94,9 @@ const modePlan = Color(0xFF5FAF82);
 const modeAuto = Color(0xFFFFC107);
 const modeBypass = Color(0xFFE5695E);
 
-/// Warm-redesign color tokens that don't map onto Material's [ColorScheme]:
-/// per-status pill colors, agent brand colors, and a few bespoke surfaces.
-/// Registered on both themes; read via [DroverColors.of].
+/// Green-accent theme color tokens that don't map onto Material's
+/// [ColorScheme]: per-status pill colors, agent brand colors, and a few
+/// bespoke surfaces. Registered on both themes; read via [DroverColors.of].
 @immutable
 class DroverColors extends ThemeExtension<DroverColors> {
   const DroverColors({
@@ -184,49 +186,49 @@ class DroverColors extends ThemeExtension<DroverColors> {
       Theme.of(context).extension<DroverColors>()!;
 
   static const DroverColors dark = DroverColors(
-    blockedDot: Color(0xFFE86A55),
-    blockedPillBg: Color.fromRGBO(232, 106, 85, 0.16),
-    blockedPillFg: Color(0xFFF09480),
-    workingDot: Color(0xFFE0A93F),
-    workingPillBg: Color.fromRGBO(224, 169, 63, 0.14),
-    workingPillFg: Color(0xFFE6B863),
-    doneDot: Color(0xFF7CBE8C),
-    donePillBg: Color.fromRGBO(124, 190, 140, 0.14),
-    donePillFg: Color(0xFF95CFA4),
-    idleDot: Color(0xFF8D8478),
-    idlePillBg: Color.fromRGBO(160, 150, 136, 0.12),
-    idlePillFg: Color(0xFFA69B8C),
-    brandClaude: Color(0xFFD9825F),
-    brandCodex: Color(0xFF6FA287),
-    brandCopilot: Color(0xFF8B9DC9),
-    brandFallback: Color(0xFFA69B8C),
-    avatarFg: Color(0xFF1D150E),
-    userBubble: Color(0xFF3A2E22),
-    toolSurface: Color(0xFF221D17),
-    tertiaryText: Color(0xFF8C8172),
+    blockedDot: Color(0xFFE8705A),
+    blockedPillBg: Color.fromRGBO(232, 112, 90, 0.16),
+    blockedPillFg: Color(0xFFF0937E),
+    workingDot: Color(0xFFE7B444),
+    workingPillBg: Color.fromRGBO(231, 180, 68, 0.14),
+    workingPillFg: Color(0xFFEFC873),
+    doneDot: Color(0xFF6FB6DE),
+    donePillBg: Color.fromRGBO(111, 182, 222, 0.14),
+    donePillFg: Color(0xFF8CC8E8),
+    idleDot: Color(0xFF8B948A),
+    idlePillBg: Color.fromRGBO(150, 160, 148, 0.12),
+    idlePillFg: Color(0xFF98A292),
+    brandClaude: Color(0xFFC9743F),
+    brandCodex: Color(0xFF4E93B0),
+    brandCopilot: Color(0xFF9A8BC4),
+    brandFallback: Color(0xFF98A292),
+    avatarFg: Color(0xFF14170F),
+    userBubble: Color(0xFF2C332B),
+    toolSurface: Color(0xFF1D211C),
+    tertiaryText: Color(0xFF8A9387),
   );
 
   static const DroverColors light = DroverColors(
-    blockedDot: Color(0xFFC75B44),
-    blockedPillBg: Color(0xFFF9E4DE),
-    blockedPillFg: Color(0xFFA94B36),
-    workingDot: Color(0xFFB8862F),
-    workingPillBg: Color(0xFFF6EBD2),
-    workingPillFg: Color(0xFF8F6A1D),
-    doneDot: Color(0xFF4E9465),
-    donePillBg: Color(0xFFE2EFE3),
-    donePillFg: Color(0xFF3E7C51),
-    idleDot: Color(0xFF9A8F7E),
-    idlePillBg: Color(0xFFEFE9DD),
-    idlePillFg: Color(0xFF83786A),
-    brandClaude: Color(0xFFD9825F),
-    brandCodex: Color(0xFF6FA287),
-    brandCopilot: Color(0xFF8B9DC9),
-    brandFallback: Color(0xFF8A7E6E),
+    blockedDot: Color(0xFFC25742),
+    blockedPillBg: Color(0xFFF8E3DD),
+    blockedPillFg: Color(0xFFA64834),
+    workingDot: Color(0xFFB0821F),
+    workingPillBg: Color(0xFFF5EBD0),
+    workingPillFg: Color(0xFF8A6618),
+    doneDot: Color(0xFF3D7EA6),
+    donePillBg: Color(0xFFDFEDF6),
+    donePillFg: Color(0xFF2F6787),
+    idleDot: Color(0xFF8A9086),
+    idlePillBg: Color(0xFFE9EBE4),
+    idlePillFg: Color(0xFF6B736A),
+    brandClaude: Color(0xFFC9743F),
+    brandCodex: Color(0xFF4E93B0),
+    brandCopilot: Color(0xFF9A8BC4),
+    brandFallback: Color(0xFF6B7268),
     avatarFg: Color(0xFFFFF9F0),
-    userBubble: Color(0xFFF0E2D0),
-    toolSurface: Color(0xFFF1EBDF),
-    tertiaryText: Color(0xFF9A8F7E),
+    userBubble: Color(0xFFE6E7DD),
+    toolSurface: Color(0xFFEFEFE4),
+    tertiaryText: Color(0xFF8A9086),
   );
 
   @override

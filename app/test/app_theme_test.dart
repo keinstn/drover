@@ -26,14 +26,14 @@ void main() {
 
     test('dark tokens match the spec', () {
       final scheme = droverDarkTheme.colorScheme;
-      expect(scheme.primary, const Color(0xFFE0956B));
-      expect(scheme.surface, const Color(0xFF191511));
+      expect(scheme.primary, const Color(0xFF74B25C));
+      expect(scheme.surface, const Color(0xFF151815));
       expect(droverDarkTheme.scaffoldBackgroundColor, scheme.surface);
 
       final colors = droverDarkTheme.extension<DroverColors>()!;
-      expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFE86A55));
-      expect(colors.userBubble, const Color(0xFF3A2E22));
-      expect(colors.brandColor('claude'), const Color(0xFFD9825F));
+      expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFE8705A));
+      expect(colors.userBubble, const Color(0xFF2C332B));
+      expect(colors.brandColor('claude'), const Color(0xFFC9743F));
       // unknown status reuses the idle triple.
       expect(
         colors.statusDot(AgentStatus.unknown),
@@ -43,23 +43,23 @@ void main() {
 
     test('light tokens match the spec', () {
       final scheme = droverLightTheme.colorScheme;
-      expect(scheme.primary, const Color(0xFFC2704E));
-      expect(scheme.surface, const Color(0xFFF6F1E8));
+      expect(scheme.primary, const Color(0xFF3F7D39));
+      expect(scheme.surface, const Color(0xFFF5F3EB));
 
       final colors = droverLightTheme.extension<DroverColors>()!;
-      expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFC75B44));
-      expect(colors.userBubble, const Color(0xFFF0E2D0));
+      expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFC25742));
+      expect(colors.userBubble, const Color(0xFFE6E7DD));
       // Brand colors are identical across themes.
-      expect(colors.brandColor('codex'), const Color(0xFF6FA287));
+      expect(colors.brandColor('codex'), const Color(0xFF4E93B0));
       // Unknown/null agent type falls back to a neutral tone.
-      expect(colors.brandColor(null), const Color(0xFF8A7E6E));
+      expect(colors.brandColor(null), const Color(0xFF6B7268));
     });
 
     test('rgba pill backgrounds carry the spec alpha (dark)', () {
       final colors = droverDarkTheme.extension<DroverColors>()!;
       expect(
         colors.statusPillBg(AgentStatus.blocked),
-        const Color.fromRGBO(232, 106, 85, 0.16),
+        const Color.fromRGBO(232, 112, 90, 0.16),
       );
     });
   });
