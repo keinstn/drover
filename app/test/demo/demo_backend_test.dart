@@ -3,12 +3,22 @@ import 'dart:convert';
 import 'package:drover/src/demo/demo_backend.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/models/agent_info.dart';
+import 'package:drover/src/transcript/native_transcript.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Future<String> _transcript(HerdrClient client) async =>
     utf8.decode(await client.runner.readFile(demoTranscriptPath));
 
 void main() {
+  test('the demo session id is a real UUID, as every native-transcript '
+      'loader requires', () {
+    // Not cosmetic: `ClaudeTranscriptLoader.supportsAgent` gates on this, so a
+    // non-conforming id means no adapter is created and the demo silently
+    // renders no chat at all (see demo_screen_test.dart).
+    final sessionId = demoTranscriptPath.split('/').last.split('.').first;
+    expect(isNativeTranscriptSessionId(sessionId), isTrue, reason: sessionId);
+  });
+
   test('opens blocked, with the permission prompt already on screen', () async {
     final client = DemoBackend().buildClient();
 

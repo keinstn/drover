@@ -651,6 +651,9 @@ class _DroverAppState extends State<DroverApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Drover',
+      // No effect on release builds; keeps debug builds usable for App Store
+      // screenshot capture, which needs the debug-only Marionette hookup.
+      debugShowCheckedModeBanner: false,
       navigatorKey: _navKey,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
