@@ -18,7 +18,14 @@ const demoWorkspaceId = 'demo:w1';
 const demoTabId = 'demo:t1';
 
 const _demoHerdrVersion = '0.7.5';
-const _sessionId = 'demo-session';
+
+/// The demo session's identity, reported as the agent's `agent_session` value.
+/// Must be a real UUID: every native-transcript loader gates on
+/// `isNativeTranscriptSessionId`, so a made-up id (e.g. `demo-session`) makes
+/// the adapter refuse the session and the demo renders no chat at all —
+/// silently, since "no adapter resolved" is not an error. Guarded by
+/// `demo_backend_test.dart`.
+const _sessionId = '01988e5a-0c1d-7a3f-9b2e-4d6c8f0a1b23';
 const _cwd = '/home/demo/drover-demo';
 
 /// Where the demo's native transcript "lives", answered for herdr's `find`
