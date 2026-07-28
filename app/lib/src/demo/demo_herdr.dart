@@ -113,7 +113,7 @@ CommandResult blockedPromptResponse(String command) {
       '{"id":"1","result":{"agents":[{"agent":"claude",'
       '"agent_status":"blocked","cwd":"/tmp/proj","focused":false,'
       '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-      '"terminal_title_stripped":"OAuth callback を実装"}]}}',
+      '"terminal_title_stripped":"Implement the OAuth callback"}]}}',
     );
   }
   if (command.contains("'agent' 'read'")) {
@@ -139,7 +139,7 @@ CommandResult idleWithModeResponse(String command) {
       '{"id":"1","result":{"agents":[{"agent":"claude",'
       '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
       '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-      '"terminal_title_stripped":"OAuth callback を実装"}]}}',
+      '"terminal_title_stripped":"Implement the OAuth callback"}]}}',
     );
   }
   if (command.contains("'agent' 'read'")) {
@@ -317,7 +317,7 @@ CommandResult nativeHistoryResponse(String command) {
       '{"id":"1","result":{"agents":[{"agent":"claude",'
       '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
       '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-      '"terminal_title_stripped":"OAuth callback を実装",'
+      '"terminal_title_stripped":"Implement the OAuth callback",'
       '"agent_session":{"source":"claude","agent":"claude","kind":"id",'
       '"value":"$_nativeSessionId"}}]}}',
     );

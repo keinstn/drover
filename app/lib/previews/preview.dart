@@ -96,7 +96,7 @@ const _barExtraAgents =
 String _currentAgent(String status) =>
     '{"agent":"claude","agent_status":"$status","cwd":"/tmp/proj",'
     '"focused":false,"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-    '"terminal_title_stripped":"OAuth callback を実装"}';
+    '"terminal_title_stripped":"Implement the OAuth callback"}';
 
 /// Wraps [base] so `agent list` returns wB:p1 (at [status]) plus the two extra
 /// agents — making the switcher bar visible — while every other command
@@ -118,7 +118,7 @@ const _herdListEnvelope =
     '{"id":"1","result":{"agents":['
     '{"agent":"claude","agent_status":"idle","cwd":"/tmp/proj-a",'
     '"focused":false,"pane_id":"wA:p1","tab_id":"wA:t1",'
-    '"workspace_id":"wA","terminal_title_stripped":"OAuth callback を実装"},'
+    '"workspace_id":"wA","terminal_title_stripped":"Implement the OAuth callback"},'
     '{"agent":"claude","agent_status":"blocked","cwd":"/tmp/proj-a",'
     '"focused":false,"pane_id":"wA:p2","tab_id":"wA:t1",'
     '"workspace_id":"wA",'
@@ -329,6 +329,9 @@ void main() {
   runApp(
     MaterialApp(
       title: 'Drover preview',
+      // Previews are the source for App Store screenshots, so the debug ribbon
+      // has to go — same reason `main.dart` sets it.
+      debugShowCheckedModeBanner: false,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       theme: droverLightTheme,
