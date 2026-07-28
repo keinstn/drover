@@ -82,14 +82,27 @@ gcloud firestore fields ttls update expiresAt \
   --project=<PROJECT_ID>
 ```
 
-Check the policy:
+`pairingCodes` documents carry `expiresAt` too, and abandoned pairing attempts
+accumulate permanently without a matching policy:
+
+```sh
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=pairingCodes \
+  --enable-ttl \
+  --project=<PROJECT_ID>
+```
+
+Check both policies:
 
 ```sh
 gcloud firestore fields ttls list --project=<PROJECT_ID>
 ```
 
-TTL deletion is asynchronous. `events` documents remain harmless after their
-`expiresAt` value until Firestore's background cleanup deletes them.
+Confirm `events` and `pairingCodes` both appear in the output.
+
+TTL deletion is asynchronous. `events` and `pairingCodes` documents remain
+harmless after their `expiresAt` value until Firestore's background cleanup
+deletes them.
 
 ## App Check verification and enforcement
 
