@@ -64,6 +64,28 @@ void main() {
     },
   );
 
+  test(
+    'a follow-up containing multiple single-quoted words round-trips intact',
+    () async {
+      // Regression: extracting the free-text argument used to scan for the
+      // last `' '` (quote-space-quote) boundary anywhere in the command
+      // line, which a message like this one also produces internally,
+      // corrupting the extraction. See _promptText's doc comment.
+      final client = DemoBackend().buildClient();
+      const message = "please check 'a' 'b' first";
+
+      await client.prompt(demoPaneId, '1');
+      await client.listAgents();
+      await client.listAgents();
+      expect((await client.listAgents()).single.status, AgentStatus.idle);
+
+      await client.prompt(demoPaneId, message);
+
+      final transcript = await _transcript(client);
+      expect(transcript, contains(message));
+    },
+  );
+
   test('cycling the mode updates the live pane text', () async {
     final client = DemoBackend().buildClient();
     // Answer the initial prompt first: the mode line only appears once past

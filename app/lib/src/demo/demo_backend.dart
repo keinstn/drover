@@ -169,11 +169,12 @@ class DemoBackend extends ChangeNotifier {
     }
     if (command.contains("'agent' 'read'")) return ok(_liveText);
     if (command.contains("'agent' 'prompt'")) {
-      _onPrompt(_lastQuotedArg(command));
+      _onPrompt(_promptText(command));
       return ok('{"id":"1","result":{}}');
     }
-    if (command.contains("'pane' 'send-text'") &&
-        _lastQuotedArg(command) == '[Z') {
+    // The mode-cycle escape sequence is a fixed literal, so a direct suffix
+    // check is enough — no need to parse it out of the command line.
+    if (command.endsWith("'[Z'")) {
       _modeIndex = (_modeIndex + 1) % _modeLines.length;
       notifyListeners();
     }
@@ -222,12 +223,16 @@ class DemoBackend extends ChangeNotifier {
   }
 }
 
-/// Extracts the final shell-quoted argument from a command line built by
-/// [buildHerdrCommand], reversing [shQuote]'s `'\''` escaping for embedded
-/// quotes. Used to recover the free-text argument to `agent prompt` (a real
-/// user's follow-up message may itself contain an apostrophe).
-String _lastQuotedArg(String command) {
-  final start = command.lastIndexOf("' '") + 2;
-  final raw = command.substring(start + 1, command.length - 1);
-  return raw.replaceAll("'\\''", "'");
+/// Extracts the free-text argument from an `agent prompt <paneId> <text>`
+/// command line built by [buildHerdrCommand], reversing [shQuote]'s `'\''`
+/// escaping for embedded quotes. Anchored on the command's known, fixed
+/// prefix rather than scanning for the last `' '` argument boundary: the
+/// user's own follow-up text can itself contain a `' '`-shaped run (e.g. two
+/// quoted words separated by a space, like `check 'a' or 'b'`), which would
+/// make a generic reverse scan find a boundary inside the text instead of
+/// before it.
+String _promptText(String command) {
+  final prefix = "'agent' 'prompt' '$demoPaneId' '";
+  final start = command.indexOf(prefix) + prefix.length;
+  return command.substring(start, command.length - 1).replaceAll("'\\''", "'");
 }

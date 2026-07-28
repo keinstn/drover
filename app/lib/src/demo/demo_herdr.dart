@@ -1,6 +1,6 @@
 // Stub herdr backend: canned command responses and a small in-memory SFTP
 // file map. Shared by dev previews, widget tests, and drover's production
-// demo mode (main.dart's `_demoMode` branch) — see demo_backend.dart for the
+// demo mode (main.dart's `_demo` branch) — see demo_backend.dart for the
 // stateful fake the demo session runs against.
 import 'dart:convert';
 
