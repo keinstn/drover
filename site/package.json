@@ -1,0 +1,16 @@
+{
+  "name": "drover-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Public site for Drover for Herdr (privacy policy and support).",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vitepress dev .",
+    "build": "vitepress build .",
+    "preview": "vitepress preview ."
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.4"
+  }
+}
