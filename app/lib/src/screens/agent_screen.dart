@@ -1651,7 +1651,7 @@ final _assistantMarkdownThemeDark = _buildAssistantMarkdownTheme(
 );
 final _assistantMarkdownThemeLight = _buildAssistantMarkdownTheme(
   Brightness.light,
-  const Color(0xFF232221),
+  const Color(0xFF1F1F22),
 );
 
 class _AssistantMessage extends StatefulWidget {

@@ -55,7 +55,7 @@ void main() {
     test('light tokens match the spec', () {
       final scheme = droverLightTheme.colorScheme;
       expect(scheme.primary, const Color(0xFFC2704E));
-      expect(scheme.surface, const Color(0xFFF7F6F4));
+      expect(scheme.surface, const Color(0xFFF3F3F7));
 
       final colors = droverLightTheme.extension<DroverColors>()!;
       expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFC75B44));
@@ -63,7 +63,7 @@ void main() {
       // Brand colors are identical across themes.
       expect(colors.brandColor('codex'), const Color(0xFF6FA287));
       // Unknown/null agent type falls back to a neutral tone.
-      expect(colors.brandColor(null), const Color(0xFF837F7A));
+      expect(colors.brandColor(null), const Color(0xFF7E7E83));
     });
 
     test('light neutrals stay near-neutral', () {
@@ -100,18 +100,20 @@ void main() {
 
       neutrals.forEach((name, color) {
         // On device nothing achromatic shares the screen to judge against, so
-        // even a trace cast over a large field reads warm. Chroma stays within
-        // 9/255 …
+        // even a trace cast over a large field is visible. Chroma stays within
+        // 6/255 …
         expect(
           _chroma(color),
-          lessThanOrEqualTo(9),
+          lessThanOrEqualTo(6),
           reason: '$name carries too much chroma to read as neutral',
         );
-        // … and what remains still leans warm, never cool.
+        // … and what remains leans cool, never warm. This is the inverse of
+        // the assertion this test shipped with: the light theme now sits on
+        // iOS's axis, where "neutral" means faintly blue.
         expect(
-          _channel(color.r),
-          greaterThanOrEqualTo(_channel(color.b)),
-          reason: '$name drifted to a cool cast',
+          _channel(color.b),
+          greaterThanOrEqualTo(_channel(color.r)),
+          reason: '$name drifted to a warm cast',
         );
       });
 
@@ -128,6 +130,30 @@ void main() {
           _chroma(colors.statusDot(status)),
           greaterThan(40),
           reason: '$status is a semantic color and must not be neutralised',
+        );
+      }
+    });
+
+    test('semantic pill backgrounds are tinted but never a wash', () {
+      final colors = droverLightTheme.extension<DroverColors>()!;
+      for (final status in [
+        AgentStatus.blocked,
+        AgentStatus.working,
+        AgentStatus.done,
+      ]) {
+        final bg = colors.statusPillBg(status);
+        // Low enough that it reads as a tint on the cool ground rather than a
+        // loose colored card — this is what the old warm-ground values were.
+        expect(
+          _chroma(bg),
+          lessThanOrEqualTo(15),
+          reason: '$status pill background is washing the ground again',
+        );
+        // …but high enough to still say which status it is at a glance.
+        expect(
+          _chroma(bg),
+          greaterThanOrEqualTo(5),
+          reason: '$status pill background lost its hue',
         );
       }
     });
