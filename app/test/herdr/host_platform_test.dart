@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:drover/src/dev/stub_herdr.dart';
+import 'package:drover/src/demo/demo_herdr.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/host_platform.dart';
 import 'package:drover/src/models/host_config.dart';

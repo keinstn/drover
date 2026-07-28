@@ -58,6 +58,24 @@ class AppLocalizationsJa extends AppLocalizations {
   String get hostSetupSave => '保存';
 
   @override
+  String get hostSetupDemoIntro => 'drover が初めてですか？ host なしで試せるデモセッションがあります。';
+
+  @override
+  String get hostSetupDemoButton => 'デモを試す';
+
+  @override
+  String get demoHostDisplayName => 'デモ';
+
+  @override
+  String get demoBannerExit => 'デモを終了';
+
+  @override
+  String get demoBannerSetupConnection => '接続を設定';
+
+  @override
+  String get demoBannerDoneCopy => 'これはデモです。自分の host を接続すると本番になります。';
+
+  @override
   String get hostListTitle => 'ホスト';
 
   @override

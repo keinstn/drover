@@ -1,5 +1,7 @@
-// Dev-only stub herdr backend for previews and widget tests. Not referenced
-// by production `main.dart`, so it is excluded from release builds.
+// Stub herdr backend: canned command responses and a small in-memory SFTP
+// file map. Shared by dev previews, widget tests, and drover's production
+// demo mode (main.dart's `_demoMode` branch) — see demo_backend.dart for the
+// stateful fake the demo session runs against.
 import 'dart:convert';
 
 import '../herdr/command_runner.dart';
@@ -78,6 +80,11 @@ class StubCommandRunner extends CommandRunner {
 
 CommandResult ok(String stdout) =>
     CommandResult(exitCode: 0, stdout: stdout, stderr: '');
+
+/// A canned `herdr --version` reply reporting [version] — moved here so any
+/// responder answering `--version` (the production demo backend, or a
+/// preview scenario like `herdr-too-old`) shares the same shape.
+CommandResult versionResponse(String version) => ok('herdr $version\n');
 
 const blockedPromptText =
     'Bash command\n'

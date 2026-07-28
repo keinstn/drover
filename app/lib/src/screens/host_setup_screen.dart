@@ -19,12 +19,19 @@ class HostSetupScreen extends StatefulWidget {
     this.onCreatePairingCode,
     this.onDetectPlugin,
     this.onAutoPair,
+    this.onEnterDemo,
   });
 
   final HostConfig? initial;
   final Future<void> Function(HostConfig) onSubmit;
   final Future<String> Function(HostConfig)? onTest;
   final Future<PairingCode> Function(HostConfig)? onCreatePairingCode;
+
+  /// Enters the scripted demo session. Non-null only on the first-run
+  /// instance of this screen (not the routes pushed to add/edit a host) —
+  /// the demo is an intro for someone with no host yet, not an option to
+  /// surface while already managing one.
+  final VoidCallback? onEnterDemo;
 
   /// Detects whether the `drover.notify` plugin is already linked and
   /// enabled on the host. Returning null (including on detection failure)
@@ -343,6 +350,26 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (widget.onEnterDemo != null) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(l10n.hostSetupDemoIntro),
+                      const SizedBox(height: 12),
+                      OutlinedButton(
+                        key: const ValueKey('enter_demo_button'),
+                        onPressed: widget.onEnterDemo,
+                        child: Text(l10n.hostSetupDemoButton),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
             TextFormField(
               controller: _nameController,
               decoration: InputDecoration(labelText: l10n.hostSetupNameLabel),

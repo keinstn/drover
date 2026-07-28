@@ -21,6 +21,55 @@ const _samplePlugin = PluginInfo(
 );
 
 void main() {
+  testWidgets('renders the demo entry when onEnterDemo is provided', (
+    tester,
+  ) async {
+    var demoTaps = 0;
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HostSetupScreen(
+          onSubmit: (config) async {},
+          onEnterDemo: () => demoTaps++,
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('enter_demo_button')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('enter_demo_button')));
+    expect(demoTaps, 1);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'omits the demo entry when onEnterDemo is null, as on the add/edit routes',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HostSetupScreen(onSubmit: (config) async {}),
+        ),
+      );
+
+      expect(find.byKey(const ValueKey('enter_demo_button')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('submits a HostConfig with defaults for port and herdrBin', (
     tester,
   ) async {

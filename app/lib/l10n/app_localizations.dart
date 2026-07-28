@@ -194,6 +194,42 @@ abstract class AppLocalizations {
   /// **'Save'**
   String get hostSetupSave;
 
+  /// No description provided for @hostSetupDemoIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'New to drover? Try a scripted demo session first — no host required.'**
+  String get hostSetupDemoIntro;
+
+  /// No description provided for @hostSetupDemoButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Try the demo'**
+  String get hostSetupDemoButton;
+
+  /// No description provided for @demoHostDisplayName.
+  ///
+  /// In en, this message translates to:
+  /// **'Demo'**
+  String get demoHostDisplayName;
+
+  /// No description provided for @demoBannerExit.
+  ///
+  /// In en, this message translates to:
+  /// **'Exit demo'**
+  String get demoBannerExit;
+
+  /// No description provided for @demoBannerSetupConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up a connection'**
+  String get demoBannerSetupConnection;
+
+  /// No description provided for @demoBannerDoneCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'This is a demo. Connect your own host and this becomes real.'**
+  String get demoBannerDoneCopy;
+
   /// No description provided for @hostListTitle.
   ///
   /// In en, this message translates to:
