@@ -202,5 +202,7 @@
   "settingsThemeLight": "Light",
   "settingsThemeDark": "Dark",
   "settingsLanguage": "Language",
-  "settingsLanguageSystem": "System"
+  "settingsLanguageSystem": "System",
+  "settingsDemo": "Try the demo",
+  "settingsDemoSubtitle": "A scripted session — no host required"
 }

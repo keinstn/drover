@@ -14,6 +14,7 @@ class SettingsScreen extends StatelessWidget {
     required this.onThemeModeChanged,
     required this.onLocaleChanged,
     required this.onManageHosts,
+    this.onEnterDemo,
   });
 
   final ThemeMode themeMode;
@@ -23,6 +24,12 @@ class SettingsScreen extends StatelessWidget {
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final ValueChanged<Locale?> onLocaleChanged;
   final VoidCallback onManageHosts;
+
+  /// Enters the scripted demo session. The first-run setup screen offers it
+  /// too, but only there — this row is how someone who already configured a
+  /// host (or dismissed the first-run offer) can still find the intro. Null
+  /// hides the row, e.g. when settings was opened from inside the demo.
+  final VoidCallback? onEnterDemo;
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +46,15 @@ class SettingsScreen extends StatelessWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: onManageHosts,
           ),
+          if (onEnterDemo != null)
+            ListTile(
+              key: const ValueKey('settings_demo_tile'),
+              leading: const Icon(Icons.play_circle_outline),
+              title: Text(l10n.settingsDemo),
+              subtitle: Text(l10n.settingsDemoSubtitle),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: onEnterDemo,
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(

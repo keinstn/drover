@@ -439,4 +439,10 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get settingsLanguageSystem => 'システム';
+
+  @override
+  String get settingsDemo => 'デモを試す';
+
+  @override
+  String get settingsDemoSubtitle => 'host なしで試せる台本付きのセッション';
 }

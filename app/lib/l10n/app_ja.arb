@@ -144,5 +144,7 @@
   "settingsThemeLight": "ライト",
   "settingsThemeDark": "ダーク",
   "settingsLanguage": "言語",
-  "settingsLanguageSystem": "システム"
+  "settingsLanguageSystem": "システム",
+  "settingsDemo": "デモを試す",
+  "settingsDemoSubtitle": "host なしで試せる台本付きのセッション"
 }

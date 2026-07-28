@@ -901,6 +901,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'System'**
   String get settingsLanguageSystem;
+
+  /// No description provided for @settingsDemo.
+  ///
+  /// In en, this message translates to:
+  /// **'Try the demo'**
+  String get settingsDemo;
+
+  /// No description provided for @settingsDemoSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A scripted session — no host required'**
+  String get settingsDemoSubtitle;
 }
 
 class _AppLocalizationsDelegate

@@ -140,7 +140,7 @@ class HerdScreen extends StatefulWidget {
     required this.hosts,
     required this.clientFor,
     this.filterHostId,
-    required this.onOpenHostSwitcher,
+    this.onOpenHostSwitcher,
     required this.onOpenSettings,
     this.speechInput,
     this.pollInterval = const Duration(seconds: 2),
@@ -159,7 +159,10 @@ class HerdScreen extends StatefulWidget {
   final String? filterHostId;
 
   /// Opens the host switcher (the app-bar chip tap); main owns the sheet.
-  final VoidCallback onOpenHostSwitcher;
+  /// Null hides the chip entirely, for callers with nothing to switch between
+  /// — the demo, which has no hosts at all. A visible control that does
+  /// nothing (or opens an empty sheet) reads as broken.
+  final VoidCallback? onOpenHostSwitcher;
 
   final VoidCallback onOpenSettings;
   final SpeechInput? speechInput;
@@ -799,12 +802,15 @@ class _HerdScreenState extends State<HerdScreen> {
 
   /// The plain bold 'Drover' title plus a smaller tappable "▾ host" chip
   /// beneath it that opens the host switcher: the filtered host's name, or
-  /// "All hosts" when no filter is set.
+  /// "All hosts" when no filter is set. The chip is omitted entirely when
+  /// [HerdScreen.onOpenHostSwitcher] is null (see its doc).
   Widget _appBarTitle(AppLocalizations l10n) {
     const title = Text(
       'Drover',
       style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
     );
+    final onOpenHostSwitcher = widget.onOpenHostSwitcher;
+    if (onOpenHostSwitcher == null) return title;
     var label = l10n.hostAllHosts;
     for (final host in widget.hosts) {
       if (host.hostId == widget.filterHostId) label = host.displayName;
@@ -817,7 +823,7 @@ class _HerdScreenState extends State<HerdScreen> {
         title,
         InkWell(
           key: const ValueKey('host_switcher_chip'),
-          onTap: widget.onOpenHostSwitcher,
+          onTap: onOpenHostSwitcher,
           borderRadius: BorderRadius.circular(6),
           child: Row(
             mainAxisSize: MainAxisSize.min,
