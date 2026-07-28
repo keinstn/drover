@@ -1025,8 +1025,10 @@ class _HerdScreenState extends State<HerdScreen> {
         border: isLight ? Border.all(color: scheme.outline) : null,
         boxShadow: isLight
             ? const [
+                // Cool to match the light theme's axis; this was a warm brown
+                // left over from the original warm palette.
                 BoxShadow(
-                  color: Color.fromRGBO(120, 100, 70, 0.06),
+                  color: Color.fromRGBO(60, 60, 75, 0.07),
                   blurRadius: 8,
                   offset: Offset(0, 2),
                 ),

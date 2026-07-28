@@ -48,6 +48,10 @@ final ThemeData droverDarkTheme = _buildTheme(
 ///
 /// The dark theme deliberately stays warm — at L≈8 the cast is imperceptible,
 /// and the two are never on screen together.
+///
+/// Note the inverted elevation: [ColorScheme.surface] is the *brightest* light
+/// token and the `surfaceContainer*` ladder descends from it. See the comment
+/// on `surface` below.
 final ThemeData droverLightTheme = _buildTheme(
   brightness: Brightness.light,
   scheme:
@@ -55,27 +59,39 @@ final ThemeData droverLightTheme = _buildTheme(
         seedColor: const Color(0xFFC2704E),
         brightness: Brightness.light,
       ).copyWith(
-        // The ground also sits a step deeper than it used to, and the cards go
-        // to pure white. Part of what reads as "clean" on the platform's own
-        // screens is the size of that step: iOS runs 243 → 255, drover ran
-        // 247 → 255.
-        surface: const Color(0xFFF3F3F7),
-        surfaceContainerLowest: const Color(0xFFFAFAFC),
-        surfaceContainerLow: const Color(0xFFF8F8FB),
-        surfaceContainer: const Color(0xFFFFFFFF),
-        surfaceContainerHigh: const Color(0xFFFFFFFF),
-        // Sits below the scale rather than above it: its only consumer is the
-        // tonal button in agent_screen, which has to read as filled against a
-        // card. Left to the seed it came out pink (`#F1DFD9`), off-hue from the
-        // rest of the theme and the most chromatic near-white on the ground.
-        surfaceContainerHighest: const Color(0xFFE8E8EC),
+        // The elevation ladder runs *downwards*: the page is the icon's own
+        // white and every container step recedes from it, rather than the
+        // Material default of a tinted page with raised white cards. Keeping
+        // the page at #FFFFFF was the requirement; the cards then need a fill
+        // difference to stay legible as groups, and a 1px outline alone did
+        // not survive on device. So they recede instead of rising.
+        surface: const Color(0xFFFFFFFF),
         surfaceBright: const Color(0xFFFFFFFF),
+        // Flush with the page: this is the transcript body, which should read
+        // as the page itself rather than as a panel on it.
+        surfaceContainerLowest: const Color(0xFFFFFFFF),
+        // The agent screen's bottom switcher bar — chrome, so barely off-page,
+        // and it carries its own top border.
+        surfaceContainerLow: const Color(0xFFFAFAFC),
+        // Herd cards.
+        surfaceContainer: const Color(0xFFF9F9FC),
+        surfaceContainerHigh: const Color(0xFFF9F9FC),
+        // The deepest step, and the only one that was already recessed before
+        // the ladder flipped: the tonal button in agent_screen, which has to
+        // read as filled. Left to the seed it came out pink (`#F1DFD9`).
+        surfaceContainerHighest: const Color(0xFFE8E8EC),
         surfaceDim: const Color(0xFFE4E4E9),
         // Same lightness as the icon's black (`#1F1F1F`).
         onSurface: const Color(0xFF1F1F22),
         onSurfaceVariant: const Color(0xFF78787D),
         outline: const Color(0xFFE0E0E5),
         outlineVariant: const Color(0xFFDEDEE3),
+        // top_toast's background and text. Previously left to the seed, which
+        // made them warm brown/cream — the only warm dark surface in an app
+        // whose two other fixed-dark panels (`_transcriptBg` #1B1B1F and
+        // `_codeSurface` #26262B in agent_screen) are both cool.
+        inverseSurface: const Color(0xFF2C2C31),
+        onInverseSurface: const Color(0xFFF2F2F5),
         primary: const Color(0xFFC2704E),
         onPrimary: const Color(0xFFFFF6EE),
         surfaceTint: const Color(0xFFC2704E),
@@ -262,10 +278,13 @@ class DroverColors extends ThemeExtension<DroverColors> {
     // `brandColor(type)`, and for an unrecognised type that is now the cool
     // grey [brandFallback] rather than an accent.
     avatarFg: Color(0xFFFFFFFF),
-    // Kept at its original chroma: the user's own bubble is accent-adjacent,
-    // not ground. It only appears in the chat view, which has not been judged
-    // against the cool ground yet.
-    userBubble: Color(0xFFF0E2D0),
+    // Retinted from the old sandy `#F0E2D0` into the accent's own hue. Seen
+    // against the cool ground it read as a leftover rather than a member of
+    // the palette; sharing a hue with the avatar directly above it is what
+    // makes it legible as "your own message". A neutral grey bubble was the
+    // other candidate and was rejected on rendering: it collided with the
+    // tool chips and inline code, which are already grey lozenges.
+    userBubble: Color(0xFFF3E2DC),
     toolSurface: Color(0xFFEDEDF1),
     // A shade darker than the axis shift alone would give, to make up the
     // contrast the deeper ground (247 → 243) would otherwise have cost it.

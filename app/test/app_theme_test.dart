@@ -55,11 +55,11 @@ void main() {
     test('light tokens match the spec', () {
       final scheme = droverLightTheme.colorScheme;
       expect(scheme.primary, const Color(0xFFC2704E));
-      expect(scheme.surface, const Color(0xFFF3F3F7));
+      expect(scheme.surface, const Color(0xFFFFFFFF));
 
       final colors = droverLightTheme.extension<DroverColors>()!;
       expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFC75B44));
-      expect(colors.userBubble, const Color(0xFFF0E2D0));
+      expect(colors.userBubble, const Color(0xFFF3E2DC));
       // Brand colors are identical across themes.
       expect(colors.brandColor('codex'), const Color(0xFF6FA287));
       // Unknown/null agent type falls back to a neutral tone.
@@ -73,8 +73,7 @@ void main() {
       // widget: anything left to ColorScheme.fromSeed comes back chromatic,
       // and the seed's own surfaceContainerHighest was pink. Keep this list
       // exhaustive so a token nobody uses today can't reintroduce the cast
-      // the day someone reaches for it. inverseSurface/onInverseSurface are
-      // deliberately absent — the toast is a dark island in either theme.
+      // the day someone reaches for it.
       final neutrals = <String, Color>{
         'surface': scheme.surface,
         'surfaceBright': scheme.surfaceBright,
@@ -88,6 +87,12 @@ void main() {
         'onSurfaceVariant': scheme.onSurfaceVariant,
         'outline': scheme.outline,
         'outlineVariant': scheme.outlineVariant,
+        // top_toast. Excluded when this test was written, on the grounds that
+        // a dark overlay is an island — but the app's two other fixed-dark
+        // panels are cool, so the toast's seed-generated brown was the odd
+        // one out among drover's own dark surfaces, not just against iOS.
+        'inverseSurface': scheme.inverseSurface,
+        'onInverseSurface': scheme.onInverseSurface,
         'toolSurface': colors.toolSurface,
         'tertiaryText': colors.tertiaryText,
         // Not grounds, but tokens whose whole job is to signal the absence of
@@ -132,6 +137,41 @@ void main() {
           reason: '$status is a semantic color and must not be neutralised',
         );
       }
+    });
+
+    test('the light elevation ladder descends from a pure white page', () {
+      final scheme = droverLightTheme.colorScheme;
+      // The page is the app icon's own white, and every container step recedes
+      // from it — the inverse of Material's default. Assert the direction, not
+      // just the values, so restoring a tinted page with raised white cards
+      // fails here rather than passing the chroma guard unnoticed.
+      expect(scheme.surface, const Color(0xFFFFFFFF));
+      final descending = [
+        ('surfaceContainerLowest', scheme.surfaceContainerLowest),
+        ('surfaceContainerLow', scheme.surfaceContainerLow),
+        ('surfaceContainer', scheme.surfaceContainer),
+        ('surfaceContainerHigh', scheme.surfaceContainerHigh),
+        ('surfaceContainerHighest', scheme.surfaceContainerHighest),
+      ];
+      var previous = _channel(scheme.surface.g);
+      for (final (name, color) in descending) {
+        final level = _channel(color.g);
+        expect(
+          level,
+          lessThanOrEqualTo(previous),
+          reason:
+              '$name is brighter than the step above it — the ladder only '
+              'reads as recessed panels if it descends monotonically',
+        );
+        previous = level;
+      }
+      // Cards have to differ from the page by a fill, not just their 1px
+      // outline: on device the outline alone did not hold the grouping.
+      expect(
+        _channel(scheme.surface.g) - _channel(scheme.surfaceContainer.g),
+        greaterThanOrEqualTo(4),
+        reason: 'herd cards lost the fill difference that separates them',
+      );
     });
 
     test('semantic pill backgrounds are tinted but never a wash', () {
