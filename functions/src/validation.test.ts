@@ -70,6 +70,65 @@ void test("accepts pairing and blocked notification payloads", () => {
   );
 });
 
+void test("collapses whitespace runs in agent names", () => {
+  assert.deepEqual(
+    parseBlockedNotification({
+      hostId: "host_123",
+      paneId: "workspace:pane",
+      eventId: "event_123",
+      agentName: "Claude\r\nAn agent is blocked.\r\nClaude",
+    }),
+    {
+      hostId: "host_123",
+      paneId: "workspace:pane",
+      eventId: "event_123",
+      agentName: "Claude An agent is blocked. Claude",
+    },
+  );
+  assert.deepEqual(
+    parseBlockedNotification({
+      hostId: "host_123",
+      paneId: "workspace:pane",
+      eventId: "event_123",
+      agentName: "  codex\tcli  ",
+    }),
+    {
+      hostId: "host_123",
+      paneId: "workspace:pane",
+      eventId: "event_123",
+      agentName: "codex cli",
+    },
+  );
+});
+
+void test("drops agent names that sanitize to nothing", () => {
+  assert.deepEqual(
+    parseBlockedNotification({
+      hostId: "host_123",
+      paneId: "workspace:pane",
+      eventId: "event_123",
+      agentName: " \r\n\t ",
+    }),
+    {
+      hostId: "host_123",
+      paneId: "workspace:pane",
+      eventId: "event_123",
+    },
+  );
+});
+
+void test("bounds agent name length before sanitizing", () => {
+  assert.equal(
+    parseBlockedNotification({
+      hostId: "host_123",
+      paneId: "workspace:pane",
+      eventId: "event_123",
+      agentName: `claude${" ".repeat(251)}codex`,
+    }),
+    null,
+  );
+});
+
 void test("rejects unsafe pairing and notification payloads", () => {
   assert.equal(parsePairingCodeRequest({ hostId: "../host" }), null);
   assert.equal(parsePairingCompletion({ pairingCode: "short" }), null);

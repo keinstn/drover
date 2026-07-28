@@ -22,7 +22,15 @@ import {
 
 initializeApp();
 
-setGlobalOptions({ region: "us-central1", maxInstances: 10 });
+// maxInstances x concurrency is the in-flight request ceiling: 10 x 10 = 100.
+// Pinned explicitly instead of inheriting the platform default (80 requests per
+// instance) so the ceiling is visible here and a flood against the two publicly
+// invokable onRequest endpoints stays bounded.
+setGlobalOptions({
+  region: "us-central1",
+  maxInstances: 10,
+  concurrency: 10,
+});
 
 const db = getFirestore();
 const messaging = getMessaging();
@@ -379,6 +387,7 @@ export const revokeHost = onCall({ enforceAppCheck: true }, async (request) => {
   const pairingCodes = await db
     .collection("pairingCodes")
     .where("hostId", "==", pairing.hostId)
+    .where("uid", "==", uid)
     .limit(500)
     .get();
   const batch = db.batch();
