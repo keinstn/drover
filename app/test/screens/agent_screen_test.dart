@@ -6,7 +6,7 @@ import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/agents/agent_adapter.dart';
 import 'package:drover/src/agents/agent_capabilities.dart';
 import 'package:drover/src/agents/agent_native_history.dart';
-import 'package:drover/src/dev/stub_herdr.dart';
+import 'package:drover/src/demo/demo_herdr.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/herdr/host_platform.dart';

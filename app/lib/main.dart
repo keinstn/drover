@@ -11,6 +11,8 @@ import 'package:uuid/uuid.dart';
 
 import 'l10n/app_localizations.dart';
 import 'src/app_theme.dart';
+import 'src/demo/demo_backend.dart';
+import 'src/demo/demo_screen.dart';
 import 'src/firebase/app_check.dart';
 import 'src/herdr/herdr_client.dart';
 import 'src/herdr/host_platform.dart';
@@ -111,6 +113,11 @@ class _DroverAppState extends State<DroverApp> {
   final _navKey = GlobalKey<NavigatorState>();
   List<HostConfig> _hosts = [];
 
+  /// Non-null while the scripted demo session is showing. Built lazily on
+  /// entry (not in [build]) so a rebuild triggered by something else — e.g.
+  /// the theme changing — doesn't reset the transcript mid-session.
+  DemoBackend? _demo;
+
   /// The herd screen's host filter: a stored host's id, or null for "All
   /// hosts". Persisted as [HostsState.activeHostId] — existing users simply
   /// start filtered to their previously active host.
@@ -209,6 +216,7 @@ class _DroverAppState extends State<DroverApp> {
     _notificationFailures?.cancel();
     _notificationRegistration.dispose();
     unawaited(_registry.disposeAll());
+    _demo?.dispose();
     super.dispose();
   }
 
@@ -559,6 +567,16 @@ class _DroverAppState extends State<DroverApp> {
     );
   }
 
+  void _enterDemo() {
+    setState(() => _demo = DemoBackend());
+  }
+
+  void _exitDemo() {
+    final demo = _demo;
+    setState(() => _demo = null);
+    demo?.dispose();
+  }
+
   void _openAddHost() {
     _navKey.currentState?.push(
       MaterialPageRoute<void>(
@@ -643,8 +661,18 @@ class _DroverAppState extends State<DroverApp> {
       theme: droverLightTheme,
       darkTheme: droverDarkTheme,
       themeMode: _themeMode,
-      home: _hosts.isEmpty
-          ? HostSetupScreen(onSubmit: _applyConfig, onTest: _testConnection)
+      home: _demo != null
+          ? DemoScreen(
+              backend: _demo!,
+              hasConfiguredHost: _hosts.isNotEmpty,
+              onExitDemo: _exitDemo,
+            )
+          : _hosts.isEmpty
+          ? HostSetupScreen(
+              onSubmit: _applyConfig,
+              onTest: _testConnection,
+              onEnterDemo: _enterDemo,
+            )
           : HerdScreen(
               // Deliberately NOT keyed by host: the screen holds one state
               // bucket per host and must survive filter and host-set changes.

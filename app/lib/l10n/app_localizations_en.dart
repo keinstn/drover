@@ -59,6 +59,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hostSetupSave => 'Save';
 
   @override
+  String get hostSetupDemoIntro =>
+      'New to drover? Try a scripted demo session first — no host required.';
+
+  @override
+  String get hostSetupDemoButton => 'Try the demo';
+
+  @override
+  String get demoHostDisplayName => 'Demo';
+
+  @override
+  String get demoBannerExit => 'Exit demo';
+
+  @override
+  String get demoBannerSetupConnection => 'Set up a connection';
+
+  @override
+  String get demoBannerDoneCopy =>
+      'This is a demo. Connect your own host and this becomes real.';
+
+  @override
   String get hostListTitle => 'Hosts';
 
   @override

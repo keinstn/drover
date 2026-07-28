@@ -21,7 +21,7 @@ import 'package:marionette_flutter/marionette_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../src/app_theme.dart';
-import '../src/dev/stub_herdr.dart';
+import '../src/demo/demo_herdr.dart';
 import '../src/herdr/command_runner.dart';
 import '../src/herdr/herdr_client.dart';
 import '../src/herdr/herdr_version.dart';
@@ -167,7 +167,7 @@ CommandResult _herdResponder(String command) {
 /// Reports a herdr version below drover's minimum, so the version-warning
 /// banner and blocked launch can be eyeballed (`SCENARIO=herdr-too-old`).
 CommandResult _herdrTooOldResponder(String command) {
-  if (command.contains("'--version'")) return ok('herdr 0.7.0\n');
+  if (command.contains("'--version'")) return versionResponse('0.7.0');
   return _herdResponder(command);
 }
 
