@@ -106,14 +106,23 @@ export function parseBlockedNotification(
   ) {
     return null;
   }
+  const agentName =
+    typeof input.agentName === "string"
+      ? sanitizeSingleLine(input.agentName)
+      : "";
   return {
     hostId: input.hostId,
     paneId: input.paneId,
     eventId: input.eventId,
-    ...(typeof input.agentName === "string"
-      ? { agentName: input.agentName }
-      : {}),
+    ...(agentName.length > 0 ? { agentName } : {}),
   };
+}
+
+// agentName is interpolated into the push-notification body, so collapse CR/LF
+// and other whitespace runs into single spaces to stop caller-supplied text
+// from faking extra notification lines.
+function sanitizeSingleLine(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
 }
 
 function isDocumentId(value: unknown): value is string {
