@@ -27,7 +27,9 @@ You need:
      `C:\ProgramData\ssh\administrators_authorized_keys`, not
      `~\.ssh\authorized_keys` — otherwise the connection fails with "All
      authentication methods failed".
-3. **Herdr 0.7.0 or newer** on that machine.
+3. **Herdr 0.7.5 or newer** on that machine. Drover enforces this — starting an
+   agent on an older Herdr fails, because `agent prompt` and the `--pane` /
+   `--until` command shapes it relies on only exist from 0.7.5.
 
 If you just want to see what Drover does before setting any of this up, use the
 demo on the setup screen. It runs entirely on your device with sample data.
