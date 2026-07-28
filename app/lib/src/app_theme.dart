@@ -34,17 +34,20 @@ final ThemeData droverDarkTheme = _buildTheme(
   colors: DroverColors.dark,
 );
 
-/// Warm light theme, same token structure as [droverDarkTheme].
+/// Light theme. Unlike [droverDarkTheme] its neutrals sit on a faintly *cool*
+/// axis (R−B around −4), not the warm one.
 ///
-/// The surfaces keep the dark theme's warm hue but carry almost none of it.
-/// The app icon is fully achromatic (white `#FEFEFE` / black `#1F1F1F`), and a
-/// warm cast that is invisible on the dark theme's L≈8 surfaces reads as a
-/// dirty white against it at L≈95. So the light surfaces/ink hold their hue and
-/// shed nearly all of their chroma, leaving [primary] as the one warm note.
+/// That looks like a break from the dark theme, and it is a deliberate one. The
+/// warm surfaces predate the app icon — they arrived with the redesign, and the
+/// monochrome icon came afterwards. Three passes of pulling chroma out of the
+/// light grounds (#130, #133) still read as cream on device, because on iOS
+/// "neutral" is normed cool: every system surface around drover is
+/// `systemGroupedBackground` `#F2F2F7`. Against that, even a fully achromatic
+/// ground reads slightly warm. So the light theme joins the platform's axis and
+/// [primary] carries all of drover's warmth on its own.
 ///
-/// The target is deliberately near-achromatic rather than merely reduced: on
-/// device there is no white reference anywhere on screen to judge against, so
-/// even a trace cast over a large uniform field still reads as warm paper.
+/// The dark theme deliberately stays warm — at L≈8 the cast is imperceptible,
+/// and the two are never on screen together.
 final ThemeData droverLightTheme = _buildTheme(
   brightness: Brightness.light,
   scheme:
@@ -52,22 +55,27 @@ final ThemeData droverLightTheme = _buildTheme(
         seedColor: const Color(0xFFC2704E),
         brightness: Brightness.light,
       ).copyWith(
-        surface: const Color(0xFFF7F6F4),
-        surfaceContainerLowest: const Color(0xFFFBFBF9),
-        surfaceContainerLow: const Color(0xFFFAFAF8),
-        surfaceContainer: const Color(0xFFFFFEFD),
-        surfaceContainerHigh: const Color(0xFFFFFEFD),
+        // The ground also sits a step deeper than it used to, and the cards go
+        // to pure white. Part of what reads as "clean" on the platform's own
+        // screens is the size of that step: iOS runs 243 → 255, drover ran
+        // 247 → 255.
+        surface: const Color(0xFFF3F3F7),
+        surfaceContainerLowest: const Color(0xFFFAFAFC),
+        surfaceContainerLow: const Color(0xFFF8F8FB),
+        surfaceContainer: const Color(0xFFFFFFFF),
+        surfaceContainerHigh: const Color(0xFFFFFFFF),
         // Sits below the scale rather than above it: its only consumer is the
         // tonal button in agent_screen, which has to read as filled against a
         // card. Left to the seed it came out pink (`#F1DFD9`), off-hue from the
         // rest of the theme and the most chromatic near-white on the ground.
-        surfaceContainerHighest: const Color(0xFFEAE9E6),
-        surfaceBright: const Color(0xFFFFFEFD),
-        surfaceDim: const Color(0xFFE6E5E2),
-        onSurface: const Color(0xFF232221),
-        onSurfaceVariant: const Color(0xFF7E7C78),
-        outline: const Color(0xFFE4E2DF),
-        outlineVariant: const Color(0xFFE2E0DD),
+        surfaceContainerHighest: const Color(0xFFE8E8EC),
+        surfaceBright: const Color(0xFFFFFFFF),
+        surfaceDim: const Color(0xFFE4E4E9),
+        // Same lightness as the icon's black (`#1F1F1F`).
+        onSurface: const Color(0xFF1F1F22),
+        onSurfaceVariant: const Color(0xFF78787D),
+        outline: const Color(0xFFE0E0E5),
+        outlineVariant: const Color(0xFFDEDEE3),
         primary: const Color(0xFFC2704E),
         onPrimary: const Color(0xFFFFF6EE),
         surfaceTint: const Color(0xFFC2704E),
@@ -224,35 +232,44 @@ class DroverColors extends ThemeExtension<DroverColors> {
   );
 
   static const DroverColors light = DroverColors(
+    // The status dots and pill text are untouched — at chroma 70–137 (dots)
+    // and 62–115 (text) they already carry the whole signal. Only the pill
+    // *backgrounds* move: they were washes tuned for a warm ground, and on the
+    // cool one they read as loose yellow and pink cards. Each is pulled toward
+    // the neutral axis at its own lightness, so the hue survives and the
+    // text/background contrast is unchanged to two decimals.
     blockedDot: Color(0xFFC75B44),
-    blockedPillBg: Color(0xFFF9E4DE),
+    blockedPillBg: Color(0xFFF1E6E4),
     blockedPillFg: Color(0xFFA94B36),
     workingDot: Color(0xFFB8862F),
-    workingPillBg: Color(0xFFF6EBD2),
+    workingPillBg: Color(0xFFF0EBE2),
     workingPillFg: Color(0xFF8F6A1D),
     doneDot: Color(0xFF4E9465),
-    donePillBg: Color(0xFFE2EFE3),
+    donePillBg: Color(0xFFE5EEE7),
     donePillFg: Color(0xFF3E7C51),
     // idle (and the `unknown` status that reuses it) means "no particular
     // state", so unlike blocked/working/done it carries no hue of its own.
-    // The beige it used to wear was inherited from the old warm ground, and
-    // with that ground gone it became the warmest thing on screen — every
-    // agent at rest put another chroma-18 lozenge on a near-neutral field.
-    idleDot: Color(0xFF8F8C87),
-    idlePillBg: Color(0xFFEBE9E5),
-    idlePillFg: Color(0xFF7C7975),
+    idleDot: Color(0xFF8B8B90),
+    idlePillBg: Color(0xFFE9E9ED),
+    idlePillFg: Color(0xFF76767B),
     brandClaude: Color(0xFFD9825F),
     brandCodex: Color(0xFF6FA287),
     brandCopilot: Color(0xFF8B9DC9),
     // Same reasoning: the fallback avatar for an unrecognised agent type is
-    // the absence of a brand color, not a warm one.
-    brandFallback: Color(0xFF837F7A),
-    avatarFg: Color(0xFFFFF9F0),
+    // the absence of a brand color.
+    brandFallback: Color(0xFF7E7E83),
+    // Unlike [ColorScheme.onPrimary] this one cannot stay warm: it sits on
+    // `brandColor(type)`, and for an unrecognised type that is now the cool
+    // grey [brandFallback] rather than an accent.
+    avatarFg: Color(0xFFFFFFFF),
     // Kept at its original chroma: the user's own bubble is accent-adjacent,
-    // not ground, and reads as intentional now that the ground has stepped back.
+    // not ground. It only appears in the chat view, which has not been judged
+    // against the cool ground yet.
     userBubble: Color(0xFFF0E2D0),
-    toolSurface: Color(0xFFEFEEEC),
-    tertiaryText: Color(0xFF8C8A86),
+    toolSurface: Color(0xFFEDEDF1),
+    // A shade darker than the axis shift alone would give, to make up the
+    // contrast the deeper ground (247 → 243) would otherwise have cost it.
+    tertiaryText: Color(0xFF86868B),
   );
 
   @override
