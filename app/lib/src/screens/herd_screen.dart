@@ -143,6 +143,7 @@ class HerdScreen extends StatefulWidget {
     this.onOpenHostSwitcher,
     required this.onOpenSettings,
     this.speechInput,
+    this.showComposerFor,
     this.pollInterval = const Duration(seconds: 2),
   });
 
@@ -166,6 +167,11 @@ class HerdScreen extends StatefulWidget {
 
   final VoidCallback onOpenSettings;
   final SpeechInput? speechInput;
+
+  /// Forwarded verbatim to every [AgentScreen] this screen opens; see
+  /// [AgentScreen.showComposerFor]. Null — the default, and every real host —
+  /// leaves the composer visible on every pane.
+  final bool Function(String paneId)? showComposerFor;
   final Duration pollInterval;
 
   @override
@@ -580,6 +586,7 @@ class _HerdScreenState extends State<HerdScreen> {
           draftKeyPrefix: host.hostId,
           nativeTranscriptHistory: _nativeHistoryFor(host, agent.paneId),
           nativeHistoryResolver: (paneId) => _nativeHistoryFor(host, paneId),
+          showComposerFor: widget.showComposerFor,
         ),
       ),
     );

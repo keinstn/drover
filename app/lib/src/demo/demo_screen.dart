@@ -79,6 +79,12 @@ class _DemoScreenState extends State<DemoScreen> {
                   // nothing to switch between and the chip is hidden.
                   onOpenHostSwitcher: null,
                   onOpenSettings: widget.onOpenSettings,
+                  // Same rule as the switcher chip above: only the scripted
+                  // pane can act on a message, so only it shows a composer.
+                  // The two scenery agents have no script behind them, and a
+                  // composer there would swallow a message the user had
+                  // already taken the trouble to type.
+                  showComposerFor: (paneId) => paneId == demoPaneId,
                 ),
               ),
             ),

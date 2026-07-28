@@ -22,6 +22,10 @@ import 'package:flutter_test/flutter_test.dart';
 const _thinking = "I'll create an empty file with touch.";
 const _reply1 = "Done — I've created spike-test.txt";
 
+/// A phrase unique to the *second* canned reply, which only lands after a
+/// follow-up has been sent through the composer.
+const _reply2 = "This demo's script ends here";
+
 /// A line that appears only inside the fenced Dart block, and one that appears
 /// only inside the fenced diff (it is a removed line, so the code block's
 /// fixed version never contains it). Single lines on purpose: fenced blocks
@@ -66,10 +70,18 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
-Future<void> _openScriptedAgent(WidgetTester tester) async {
-  await tester.tap(find.byKey(ValueKey('agent-$demoHostId-$demoPaneId')));
+Future<void> _openAgent(WidgetTester tester, String paneId) async {
+  await tester.tap(find.byKey(ValueKey('agent-$demoHostId-$paneId')));
   await _settle(tester);
 }
+
+Future<void> _openScriptedAgent(WidgetTester tester) =>
+    _openAgent(tester, demoPaneId);
+
+/// The composer, found by its own key rather than by `TextField`: a key says
+/// "this control" unambiguously in both the present and the absent assertion,
+/// and survives the composer's internal layout changing.
+final _composer = find.byKey(const ValueKey('agent_composer'));
 
 void main() {
   testWidgets('the demo session renders its chat transcript', (tester) async {
@@ -175,6 +187,90 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('the scenery agents have no composer', (tester) async {
+    _useTallViewport(tester);
+
+    await tester.pumpWidget(_demo(DemoBackend()));
+    await _settle(tester);
+
+    // Hidden, not wired to a canned reply: nothing is behind these panes, and
+    // a send that silently swallows a typed message is worse than no control
+    // at all — the user pays the typing first.
+    await _openAgent(tester, demoReviewPaneId);
+    expect(_composer, findsNothing);
+
+    // Back to the herd via the switcher bar's herd tab, then the other one.
+    await tester.tap(find.byKey(const ValueKey('switcher_herd_tab')));
+    await _settle(tester);
+    await _openAgent(tester, demoDocsPaneId);
+    expect(_composer, findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'switching to a scenery agent from the switcher bar drops the composer',
+    (tester) async {
+      _useTallViewport(tester);
+
+      await tester.pumpWidget(_demo(DemoBackend()));
+      await _settle(tester);
+      await _openScriptedAgent(tester);
+      expect(_composer, findsOneWidget);
+
+      // The bottom bar replaces this screen in place rather than going back
+      // through the herd, so the composer decision has to be re-asked for the
+      // pane switched *to* — the path a per-screen flag would get wrong.
+      await tester.tap(
+        find.byKey(ValueKey('switcher_agent_$demoReviewPaneId')),
+      );
+      await _settle(tester);
+      expect(_composer, findsNothing);
+
+      // And switching back restores it.
+      await tester.tap(find.byKey(ValueKey('switcher_agent_$demoPaneId')));
+      await _settle(tester);
+      expect(_composer, findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('the scripted agent keeps a working composer', (tester) async {
+    _useTallViewport(tester);
+
+    await tester.pumpWidget(_demo(DemoBackend()));
+    await _settle(tester);
+    await _openScriptedAgent(tester);
+
+    expect(_composer, findsOneWidget);
+
+    // Answer the permission prompt so the session reaches the phase that
+    // accepts a follow-up.
+    await tester.tap(find.widgetWithText(FilledButton, 'Yes'));
+    await _settle(tester);
+
+    // Send a follow-up through the real composer, and require the canned
+    // second reply to *render* — hiding the scenery composers must not break
+    // the one interactive path the demo exists to show.
+    await tester.enterText(
+      find.descendant(of: _composer, matching: find.byType(TextField)),
+      'and now run the tests',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('send_message_button')));
+    await _settle(tester);
+
+    expect(find.textContaining(_reply2, findRichText: true), findsOneWidget);
+    // The user's own follow-up is echoed back into the transcript too.
+    expect(
+      find.textContaining('and now run the tests', findRichText: true),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('the demo has no host switcher control', (tester) async {
     _useTallViewport(tester);

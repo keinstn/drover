@@ -22,7 +22,8 @@ const demoTabId = 'demo:t1';
 
 /// The two agents that exist only to give the herd screen a realistic spread
 /// of statuses. They are not interactive: opening one shows a plain live
-/// terminal, and nothing they receive advances the script.
+/// terminal with no composer (see [DemoScreen]'s `showComposerFor`), and
+/// nothing they receive advances the script.
 ///
 /// One tab each, not three panes sharing [demoTabId]: three agents in one tab
 /// is a split tab with two backgrounded panes, which is a herdr configuration
