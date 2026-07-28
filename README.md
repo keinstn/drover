@@ -79,3 +79,7 @@ outside Git.
 To link and pair the manually installed `drover.notify` Herdr plugin (from the
 separate `keinstn/drover-notify` repo) for `blocked` notifications, see
 [`docs/push-notifications.md`](docs/push-notifications.md).
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
