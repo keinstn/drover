@@ -458,4 +458,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsLanguageSystem => 'System';
+
+  @override
+  String get settingsDemo => 'Try the demo';
+
+  @override
+  String get settingsDemoSubtitle => 'A scripted session — no host required';
 }

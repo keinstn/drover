@@ -9,6 +9,7 @@ Widget _app({
   ValueChanged<ThemeMode>? onThemeModeChanged,
   ValueChanged<Locale?>? onLocaleChanged,
   VoidCallback? onManageHosts,
+  VoidCallback? onEnterDemo,
 }) {
   return MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -19,6 +20,7 @@ Widget _app({
       onThemeModeChanged: onThemeModeChanged ?? (_) {},
       onLocaleChanged: onLocaleChanged ?? (_) {},
       onManageHosts: onManageHosts ?? () {},
+      onEnterDemo: onEnterDemo,
     ),
   );
 }
@@ -130,6 +132,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(picked, isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the demo row shows and invokes onEnterDemo when one is given', (
+    tester,
+  ) async {
+    var demoCalls = 0;
+    await tester.pumpWidget(_app(onEnterDemo: () => demoCalls++));
+
+    expect(find.text('Try the demo'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('settings_demo_tile')));
+    await tester.pumpAndSettle();
+
+    expect(demoCalls, 1);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the demo row is absent without an onEnterDemo callback — e.g. '
+      'when settings was opened from inside the demo', (tester) async {
+    await tester.pumpWidget(_app());
+
+    expect(find.byKey(const ValueKey('settings_demo_tile')), findsNothing);
+    expect(find.text('Try the demo'), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
   });

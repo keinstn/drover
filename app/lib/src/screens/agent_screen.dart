@@ -123,7 +123,7 @@ String? _liveTerminalText(String paneText, NativeTranscript? nativeHistory) {
 }
 
 /// Detail screen for a single agent's pane: a live transcript, quick actions,
-/// and a message composer.
+/// and a message composer (which [showComposerFor] can suppress).
 class AgentScreen extends StatefulWidget {
   const AgentScreen({
     super.key,
@@ -138,6 +138,7 @@ class AgentScreen extends StatefulWidget {
     this.draftKeyPrefix,
     this.nativeTranscriptHistory,
     this.nativeHistoryResolver,
+    this.showComposerFor,
     this.pollInterval = const Duration(seconds: 2),
   });
 
@@ -175,6 +176,21 @@ class AgentScreen extends StatefulWidget {
   /// forwards the resolver; when null the next screen builds its own (the
   /// existing standalone/preview/test default).
   final NativeTranscriptHistory Function(String paneId)? nativeHistoryResolver;
+
+  /// Whether the message composer is shown for a given pane. Null — the
+  /// default, and every real host — shows it always.
+  ///
+  /// Keyed by pane id rather than being a plain flag because the bottom
+  /// switcher bar can move between panes without leaving this screen (see
+  /// [_switchToAgent]), so the answer has to be re-asked for the pane being
+  /// switched to. It is a *presentation* gate, not a capability claim: the
+  /// prompt card and the quick actions are deliberately not covered by it.
+  ///
+  /// Its only caller is the demo, whose two scenery agents have no backend
+  /// behind them — a composer there would take the user's typed message and
+  /// silently drop it, which is the class of visible-but-dead control this
+  /// screen otherwise avoids.
+  final bool Function(String paneId)? showComposerFor;
   final Duration pollInterval;
 
   @override
@@ -835,6 +851,7 @@ class _AgentScreenState extends State<AgentScreen> {
           pollInterval: widget.pollInterval,
           nativeTranscriptHistory: resolver?.call(target.paneId),
           nativeHistoryResolver: resolver,
+          showComposerFor: widget.showComposerFor,
         ),
       ),
     );
@@ -1021,24 +1038,26 @@ class _AgentScreenState extends State<AgentScreen> {
                 client: widget.client,
                 paneId: widget.paneId,
               ),
-            _Composer(
-              controller: _messageController,
-              sending: _sending,
-              dictationStarting: _dictationStarting,
-              dictating: _dictating,
-              agentRunning: agent?.status == AgentStatus.working,
-              pendingImages: _pendingImages,
-              canAttachImages: _imagesCapability != null,
-              onRemoveImage: _removePendingImage,
-              onDictation: _toggleDictation,
-              onAttach: _attachImage,
-              onSend: _sendMessage,
-              mode: mode,
-              modeCapability: modeCapability,
-              onAction: _send,
-              client: widget.client,
-              paneId: widget.paneId,
-            ),
+            if (widget.showComposerFor?.call(widget.paneId) ?? true)
+              _Composer(
+                key: const ValueKey('agent_composer'),
+                controller: _messageController,
+                sending: _sending,
+                dictationStarting: _dictationStarting,
+                dictating: _dictating,
+                agentRunning: agent?.status == AgentStatus.working,
+                pendingImages: _pendingImages,
+                canAttachImages: _imagesCapability != null,
+                onRemoveImage: _removePendingImage,
+                onDictation: _toggleDictation,
+                onAttach: _attachImage,
+                onSend: _sendMessage,
+                mode: mode,
+                modeCapability: modeCapability,
+                onAction: _send,
+                client: widget.client,
+                paneId: widget.paneId,
+              ),
             _AgentSwitcherBar(
               agents: _agents,
               currentPaneId: widget.paneId,
@@ -2046,6 +2065,7 @@ String _modeLabel(AgentMode mode, AppLocalizations l10n) {
 
 class _Composer extends StatelessWidget {
   const _Composer({
+    super.key,
     required this.controller,
     required this.sending,
     required this.dictationStarting,
@@ -2643,7 +2663,8 @@ class _AgentSwitcherBarState extends State<_AgentSwitcherBar>
       builder: (context, _) {
         final t = _curve.value.clamp(0.0, 1.0);
         // Settled hidden: the bar is gone entirely (no children in the tree),
-        // leaving only the home-indicator inset so the composer keeps its
+        // leaving only the home-indicator inset so whatever sits above it (the
+        // composer, or the transcript when the composer is hidden) keeps its
         // clearance.
         if (t == 0 && !_visible) {
           return SizedBox(width: double.infinity, height: bottomInset);

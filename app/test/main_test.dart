@@ -1,5 +1,7 @@
 import 'package:drover/main.dart';
 import 'package:drover/src/demo/demo_backend.dart';
+import 'package:drover/src/demo/demo_content_en.dart';
+import 'package:drover/src/demo/demo_content_ja.dart';
 import 'package:drover/src/infra/host_store.dart';
 import 'package:drover/src/infra/settings_store.dart';
 import 'package:drover/src/notifications/host_pairing.dart';
@@ -78,9 +80,13 @@ class _NoopSpeechInput implements SpeechInput {
 
 /// Builds a [DroverApp] with every Firebase-backed collaborator replaced by a
 /// fake, so it can run under `flutter test` without `Firebase.initializeApp`.
-Widget _app({required HostStore hostStore}) => DroverApp(
+Widget _app({
+  required HostStore hostStore,
+  AppSettings settings = const AppSettings(),
+}) => DroverApp(
   hostStore: hostStore,
   settingsStore: SettingsStore(),
+  initialSettings: settings,
   notificationRegistration: NotificationRegistration(
     messaging: _FakePushMessaging(),
     gateway: _FakeDeviceRegistrationGateway(),
@@ -162,4 +168,66 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('the settings control inside the demo opens the real settings '
+      'screen', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_app(hostStore: _SpyHostStore()));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('enter_demo_button')));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.settings));
+    await tester.pumpAndSettle();
+
+    // Theme and language are host-independent, so they work in the demo just
+    // as they do outside it. Regression guard for the gear being a visible
+    // control that did nothing (App Store guideline 2.1).
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.byKey(const ValueKey('settings_theme_tile')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('settings_language_tile')),
+      findsOneWidget,
+    );
+    // ...but the demo is already showing, so it is not offered again.
+    expect(find.byKey(const ValueKey('settings_demo_tile')), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a ja app enters the demo in Japanese, with the CLI output left '
+      'in English', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _app(
+        hostStore: _SpyHostStore(),
+        settings: const AppSettings(locale: Locale('ja')),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('enter_demo_button')));
+    await tester.pump();
+    await tester.pump();
+
+    // Covers the wiring main.dart owns: resolving the effective locale (which
+    // may come from the device, not from a stored setting) into the demo's
+    // content. `demo_screen_test.dart` covers the rendering in depth.
+    expect(find.text(demoContentJa.scriptedTitle), findsOneWidget);
+    expect(find.text(demoContentEn.scriptedTitle), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
 }

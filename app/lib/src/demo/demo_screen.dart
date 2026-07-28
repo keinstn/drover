@@ -8,23 +8,30 @@ import 'demo_backend.dart';
 /// [Navigator] — [HerdScreen] pushes its `AgentScreen` route via
 /// `Navigator.of(context)`, which resolves to the *nearest* ancestor, so
 /// nesting it here keeps [_DemoBanner] visible above that pushed route too,
-/// without touching `herd_screen.dart` or `agent_screen.dart` (out of this
-/// PR's write scope).
+/// without needing any demo-specific branch in `agent_screen.dart`.
 class DemoScreen extends StatefulWidget {
   const DemoScreen({
     super.key,
     required this.backend,
     required this.hasConfiguredHost,
     required this.onExitDemo,
+    required this.onOpenSettings,
   });
 
   final DemoBackend backend;
 
-  /// Gates the "Set up a connection" ending copy: a future entry point that
-  /// reaches the demo with hosts already configured must not tell that user
-  /// to set one up.
+  /// Gates the "Set up a connection" ending copy: an entry point that reaches
+  /// the demo with hosts already configured (the settings entry) must not tell
+  /// that user to set one up.
   final bool hasConfiguredHost;
   final VoidCallback onExitDemo;
+
+  /// Opens the real settings screen. Theme and language are host-independent,
+  /// so they work exactly as they do outside the demo — and picking a language
+  /// is plausibly the first thing a new user wants. Pushed on the *root*
+  /// navigator by main, not the inner one, so settings covers the demo banner
+  /// like any other app-level screen.
+  final VoidCallback onOpenSettings;
 
   @override
   State<DemoScreen> createState() => _DemoScreenState();
@@ -68,8 +75,16 @@ class _DemoScreenState extends State<DemoScreen> {
                   hosts: [host],
                   clientFor: (_) => _client,
                   filterHostId: demoHostId,
-                  onOpenHostSwitcher: () {},
-                  onOpenSettings: () {},
+                  // Null, not a no-op: the demo has no hosts, so there is
+                  // nothing to switch between and the chip is hidden.
+                  onOpenHostSwitcher: null,
+                  onOpenSettings: widget.onOpenSettings,
+                  // Same rule as the switcher chip above: only the scripted
+                  // pane can act on a message, so only it shows a composer.
+                  // The two scenery agents have no script behind them, and a
+                  // composer there would swallow a message the user had
+                  // already taken the trouble to type.
+                  showComposerFor: (paneId) => paneId == demoPaneId,
                 ),
               ),
             ),

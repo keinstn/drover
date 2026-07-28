@@ -12,6 +12,7 @@ import 'package:uuid/uuid.dart';
 import 'l10n/app_localizations.dart';
 import 'src/app_theme.dart';
 import 'src/demo/demo_backend.dart';
+import 'src/demo/demo_content.dart';
 import 'src/demo/demo_screen.dart';
 import 'src/firebase/app_check.dart';
 import 'src/herdr/herdr_client.dart';
@@ -567,8 +568,17 @@ class _DroverAppState extends State<DroverApp> {
     );
   }
 
+  /// Enters the scripted demo. The session's content language is resolved
+  /// once, here: [_locale] is null by default ("follow the device"), so the
+  /// effective locale has to come from [Localizations], not from the field.
+  /// See [DemoBackend] for why it is then fixed for the session.
   void _enterDemo() {
-    setState(() => _demo = DemoBackend());
+    final context = _navKey.currentContext;
+    final locale = context == null ? null : Localizations.localeOf(context);
+    setState(() => _demo = DemoBackend(content: demoContentFor(locale)));
+    // Reachable from the settings screen too, which is a pushed route — the
+    // demo replaces `home`, so anything stacked above it has to go.
+    _navKey.currentState?.popUntil((route) => route.isFirst);
   }
 
   void _exitDemo() {
@@ -636,6 +646,9 @@ class _DroverAppState extends State<DroverApp> {
               );
             },
             onManageHosts: _openHostList,
+            // Hidden while the demo is already showing — settings is reached
+            // from inside it, so offering the demo again would be a no-op row.
+            onEnterDemo: _demo == null ? _enterDemo : null,
           ),
         ),
       ),
@@ -669,6 +682,7 @@ class _DroverAppState extends State<DroverApp> {
               backend: _demo!,
               hasConfiguredHost: _hosts.isNotEmpty,
               onExitDemo: _exitDemo,
+              onOpenSettings: _openSettings,
             )
           : _hosts.isEmpty
           ? HostSetupScreen(
