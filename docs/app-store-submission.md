@@ -197,8 +197,33 @@ and make sure the privacy policy discloses the logging — it does.
 - **Price** — Free.
 - **Privacy policy URL** — `https://keinstn.github.io/drover/privacy`
 - **Support URL** — `https://keinstn.github.io/drover/support`
-- **Screenshots** — 6.9" only (the app is iPhone-only, so no iPad sizes are
-  required). `site/public/screenshots/{en,ja}/`, four per locale.
+- **Screenshots** — `site/public/screenshots/{en,ja}/`, four per locale. See
+  below; the app is iPhone-only, so no iPad sizes are required.
+
+### Uploading the screenshots
+
+Media Manager splits iPhone screenshots by display size, and **the wrong
+section rejects a correct file**. Dropping a 1320 × 2868 capture into the 6.5"
+section fails with "screenshots must be 1242 × 2688px, 2688 × 1242px,
+1284 × 2778px or 2778 × 1284px" — those are 6.5" sizes, and nothing is wrong
+with the file.
+
+Use **iPhone 6.9-inch Display**. It accepts 1320 × 2868 and states that it
+covers **6.5", 6.7" and 6.9"**, so this one section is the whole iPhone
+requirement — there is no second set to capture.
+
+Two things that are easy to get wrong:
+
+- **Upload per locale.** The language selector sits at the top right of Media
+  Manager. Set it to English before uploading `en/`, switch it to Japanese
+  before uploading `ja/`. Uploading without switching puts Japanese captures on
+  the English listing.
+- **Order matters.** Only the **first three** screenshots appear in the app
+  install sheet. Upload in filename order — `01-hero-prompt` (the permission
+  prompt as tappable buttons, the thing that distinguishes drover from a mobile
+  terminal), `02-chat` (markdown, code and a diff), `03-herd` (several agents
+  and their states), then `04-setup`, which is the one that does not make the
+  install sheet.
 
 ### Age rating
 
