@@ -137,17 +137,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get hostPairingCodeIntro =>
-      'On the Herdr host, copy and run these commands. Replace /path/to/drover with the checkout path. When setup asks, paste the pairing code.';
+      'Drover couldn\'t find the notification plugin on this host. Run this on the Herdr host to install it, then tap Create notification pairing code again — Drover will find it and pair for you.';
 
   @override
-  String get hostPairingLinkCommandLabel =>
-      '1. Link the plugin (first time only)';
+  String get hostPairingInstallCommandLabel => 'Install the plugin';
 
   @override
-  String get hostPairingSetupCommandLabel => '2. Run setup';
+  String get hostPairingManualNote =>
+      'Pairing by hand instead? The plugin\'s own setup script asks for the code and the URL below.';
 
   @override
-  String get hostPairingCodeLabel => '3. Pairing code';
+  String get hostPairingCodeLabel => 'Pairing code';
 
   @override
   String get hostPairingUrlLabel => 'Completion URL';

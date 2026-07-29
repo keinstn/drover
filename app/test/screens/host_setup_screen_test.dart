@@ -328,6 +328,65 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets(
+    'the manual pairing dialog offers `plugin install` with no path to edit',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HostSetupScreen(
+            initial: const HostConfig(
+              host: 'example.com',
+              user: 'dev',
+              herdrBin: '~/.local/bin/herdr',
+              privateKeyPem:
+                  '-----BEGIN OPENSSH PRIVATE KEY-----\n'
+                  'abc\n'
+                  '-----END OPENSSH PRIVATE KEY-----',
+            ),
+            onSubmit: (_) async {},
+            onCreatePairingCode: (_) async => _samplePairing,
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'Create notification pairing code'),
+      );
+      await tester.pumpAndSettle();
+
+      // The one-liner installs from GitHub, so nothing in it is a placeholder
+      // the user has to replace by hand.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('pairing_install_command')),
+          matching: find.textContaining(
+            'plugin install keinstn/drover-notify',
+          ),
+        ),
+        findsOneWidget,
+      );
+
+      // Nothing anywhere in the dialog asks the user to substitute a path, and
+      // the fabricated `node <path>/bin/setup.mjs` step is gone with it.
+      expect(find.textContaining('/path/to/'), findsNothing);
+      expect(find.textContaining('plugin link'), findsNothing);
+      expect(find.textContaining('setup.mjs'), findsNothing);
+
+      // The pairing code and completion URL stay, for pairing by hand.
+      expect(find.text(_samplePairing.code), findsOneWidget);
+      expect(find.text(_samplePairing.completionUrl), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('detected plugin: confirming auto-pairs and shows success', (
     tester,
   ) async {

@@ -323,25 +323,25 @@ abstract class AppLocalizations {
   /// No description provided for @hostPairingCodeIntro.
   ///
   /// In en, this message translates to:
-  /// **'On the Herdr host, copy and run these commands. Replace /path/to/drover with the checkout path. When setup asks, paste the pairing code.'**
+  /// **'Drover couldn\'t find the notification plugin on this host. Run this on the Herdr host to install it, then tap Create notification pairing code again — Drover will find it and pair for you.'**
   String get hostPairingCodeIntro;
 
-  /// No description provided for @hostPairingLinkCommandLabel.
+  /// No description provided for @hostPairingInstallCommandLabel.
   ///
   /// In en, this message translates to:
-  /// **'1. Link the plugin (first time only)'**
-  String get hostPairingLinkCommandLabel;
+  /// **'Install the plugin'**
+  String get hostPairingInstallCommandLabel;
 
-  /// No description provided for @hostPairingSetupCommandLabel.
+  /// No description provided for @hostPairingManualNote.
   ///
   /// In en, this message translates to:
-  /// **'2. Run setup'**
-  String get hostPairingSetupCommandLabel;
+  /// **'Pairing by hand instead? The plugin\'s own setup script asks for the code and the URL below.'**
+  String get hostPairingManualNote;
 
   /// No description provided for @hostPairingCodeLabel.
   ///
   /// In en, this message translates to:
-  /// **'3. Pairing code'**
+  /// **'Pairing code'**
   String get hostPairingCodeLabel;
 
   /// No description provided for @hostPairingUrlLabel.

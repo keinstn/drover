@@ -241,12 +241,13 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
       context: context,
       builder: (context) {
         final l10n = AppLocalizations.of(context)!;
-        final pluginPath = '/path/to/drover-notify';
         final herdrBin = _shellCommandPath(config.herdrBin);
-        final linkCommand = '$herdrBin plugin link $pluginPath';
-        final setupCommand =
-            'node $pluginPath/bin/setup.mjs --completion-url '
-            '${_shellQuote(pairing.completionUrl)} --herdr-bin $herdrBin';
+        // `plugin install` clones from GitHub, so there is no checkout path for
+        // the user to substitute, and the install location is herdr's to
+        // choose — which is why no setup command is offered here. Once the
+        // plugin is installed, [_detectPlugin] finds it and pairing runs
+        // automatically; the code and URL below are only for pairing by hand.
+        final installCommand = '$herdrBin plugin install keinstn/drover-notify';
         return AlertDialog(
           title: Text(l10n.hostPairingCodeTitle),
           content: SingleChildScrollView(
@@ -257,14 +258,12 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 Text(l10n.hostPairingCodeIntro),
                 const SizedBox(height: 16),
                 _CopyableValue(
-                  label: l10n.hostPairingLinkCommandLabel,
-                  value: linkCommand,
+                  key: const ValueKey('pairing_install_command'),
+                  label: l10n.hostPairingInstallCommandLabel,
+                  value: installCommand,
                 ),
                 const SizedBox(height: 16),
-                _CopyableValue(
-                  label: l10n.hostPairingSetupCommandLabel,
-                  value: setupCommand,
-                ),
+                Text(l10n.hostPairingManualNote),
                 const SizedBox(height: 16),
                 _CopyableValue(
                   label: l10n.hostPairingCodeLabel,
@@ -516,7 +515,7 @@ String _shellCommandPath(String value) => value.startsWith('~/')
 String _shellQuote(String value) => "'${value.replaceAll("'", "'\"'\"'")}'";
 
 class _CopyableValue extends StatelessWidget {
-  const _CopyableValue({required this.label, required this.value});
+  const _CopyableValue({super.key, required this.label, required this.value});
 
   final String label;
   final String value;
