@@ -7,6 +7,7 @@ import '../models/host_config.dart';
 import '../models/plugin_info.dart';
 import '../notifications/host_pairing.dart';
 import '../widgets/error_message_view.dart';
+import '../widgets/text_context_menu.dart';
 
 /// Form for entering (or editing) the SSH connection details for the dev
 /// machine running Herdr.
@@ -414,6 +415,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
               ),
               style: const TextStyle(fontFamily: 'monospace'),
               maxLines: 6,
+              contextMenuBuilder: noScanTextContextMenuBuilder,
               validator: (v) {
                 final t = v?.trim() ?? '';
                 if (t.isEmpty) return l10n.hostSetupPrivateKeyRequired;

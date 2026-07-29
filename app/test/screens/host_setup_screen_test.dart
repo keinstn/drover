@@ -5,6 +5,7 @@ import 'package:drover/src/models/host_config.dart';
 import 'package:drover/src/models/plugin_info.dart';
 import 'package:drover/src/notifications/host_pairing.dart';
 import 'package:drover/src/screens/host_setup_screen.dart';
+import 'package:drover/src/widgets/text_context_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -21,6 +22,32 @@ const _samplePlugin = PluginInfo(
 );
 
 void main() {
+  testWidgets('disables Scan Text for the SSH private-key input', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HostSetupScreen(onSubmit: (config) async {}),
+      ),
+    );
+
+    final privateKeyEditableText = tester.widget<EditableText>(
+      find.descendant(
+        of: find.widgetWithText(TextFormField, 'Private key PEM'),
+        matching: find.byType(EditableText),
+      ),
+    );
+
+    expect(
+      privateKeyEditableText.contextMenuBuilder,
+      same(noScanTextContextMenuBuilder),
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('renders the demo entry when onEnterDemo is provided', (
     tester,
   ) async {
