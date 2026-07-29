@@ -2,7 +2,7 @@
 titleTemplate: false
 ---
 
-# Drover for Herdr — Support
+# Drover — Support
 
 Drover lets you supervise and steer AI coding agents running on your own
 computer, from your phone.

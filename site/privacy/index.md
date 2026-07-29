@@ -2,7 +2,7 @@
 titleTemplate: false
 ---
 
-# Privacy Policy — Drover for Herdr
+# Privacy Policy — Drover
 
 **Effective date:** 2026-07-28
 **Developer:** Keisuke Nishitani

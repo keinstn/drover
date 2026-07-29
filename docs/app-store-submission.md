@@ -4,42 +4,87 @@ Everything that goes into App Store Connect, kept here so it stays consistent
 between versions and so the *reasoning* survives — App Store Connect has no
 field for "why we answered it this way".
 
-App Apple ID `6792428012` · bundle `com.keinstn.drover` · store name
-**Drover for Herdr**.
+App Apple ID `6792428012` · bundle `com.keinstn.drover`.
 
 > The App Review contact phone number is deliberately not recorded here. Enter
 > it directly in App Store Connect.
 
-## Subtitle (30 characters)
+## Name and subtitle (30 characters each, both per-locale)
 
-**en** — `Steer coding agents on the go`
+| | en | ja |
+|---|---|---|
+| **Name** | `Drover: Steer AI Coding Agents` (30) | `Drover: AIコーディングを見守る` (20) |
+| **Subtitle** | `For Herdr. No relay, just SSH` (29) | `HerdrへSSHで直結。中継サーバーなし` (22) |
 
-**ja** — `自分のマシンのエージェントを操作`
+Both fields are per-locale — they are not translations of each other, and should
+not be kept in sync.
+
+### Why the name does not contain "Herdr"
+
+Guideline **4.1(c)**, new as of 2025-11-13: *"You cannot use another developer's
+icon, brand, or product name in your app's icon or name, without approval from
+the developer."* Herdr is a third-party project
+(`github.com/ogulcancelik/herdr`, Apache-2.0) that we do not own, so
+`Drover for Herdr` — the name this app was reserved under — needs the
+maintainer's written approval to be compliant.
+
+It is deliberately **not** on the critical path. Approval would make
+`Drover for Herdr` usable, and name and subtitle are metadata-only changes that
+need no new build — so it stays available as an upgrade, not a blocker.
+
+### Why the subtitle does contain it
+
+Guideline **2.3.7** says subtitles "should not … reference other apps", so this
+is a known, deliberate exposure rather than an oversight. Three things make it
+the right trade:
+
+- The failure mode is cheap. A flagged subtitle is a text edit; a flagged
+  *name* would break the store identity, the site and the docs together.
+- It is widely done — 7 of 14 surveyed apps in this exact category put a
+  third-party product name in the subtitle.
+- Qualifying the audience matters more than reach here. Someone who does not
+  run Herdr cannot use this app, and the subtitle says so in four words.
+
+The description carries a disclaimer, which addresses the *affiliation* concern
+(5.2.1) — note that it does **not** cure 2.3.7, which forbids the reference
+itself rather than the implication.
+
+### Word choice
+
+"No relay" rather than "no server": the app still needs a machine of your own to
+connect to. "No server" reads as "nothing to set up", which is wrong. The ja
+`中継サーバーなし` carries the same distinction.
 
 ## Keywords (100 characters, comma-separated)
 
-Do not repeat words already in the app name — "Drover" and "Herdr" are indexed
-from the title, so spending keyword characters on them is waste.
+Do not repeat words the name already carries. The name now indexes *coding*,
+*agents* and *AI*, and the subtitle indexes *Herdr* and *SSH* — so none of those
+belong here.
 
 **en**
 
 ```
-ssh,terminal,cli,developer,devtools,coding,agent,claude,codex,copilot,remote,tmux,prompt
+terminal,cli,developer,devtools,claude,codex,copilot,remote,tmux,prompt,mobile,pair
 ```
 
 **ja**
 
 ```
-SSH,ターミナル,開発,エージェント,claude,codex,copilot,リモート,CLI,コーディング,端末,監視
+ターミナル,開発,claude,codex,copilot,リモート,CLI,端末,監視,通知,スマホ,遠隔
 ```
+
+`claude,codex,copilot` are third-party marks. Genuine-compatibility use is
+common and these are the terms Japanese developers actually search for, but note
+the exposure is larger than "Herdr" ever was, because those rights-holders
+enforce.
 
 ## Description
 
 ### en
 
 ```
-Drover turns the AI coding agents running on your own computer into something
-you can supervise from your phone.
+Drover is a mobile client for the AI coding agents you run under Herdr on your
+own computer. It turns them into something you can supervise from your phone.
 
 It is not a mobile terminal. Drover speaks the agent's language: it renders a
 running session as a readable chat, turns permission prompts into buttons you
@@ -74,13 +119,17 @@ PRIVACY
 Speech recognition runs entirely on your device — Drover will not fall back to
 a server. Notifications carry a fixed message and never any of your transcript.
 Your SSH key is stored in the iOS Keychain and never leaves your device.
+
+Drover is an independent project. It is not affiliated with, endorsed by, or
+sponsored by the Herdr project, Anthropic, OpenAI, or GitHub, and is not
+certified by any of them.
 ```
 
 ### ja
 
 ```
-Drover は、自分のコンピュータで動いている AI コーディングエージェントを、
-スマートフォンから監督できるようにするアプリです。
+Drover は、自分のコンピュータの Herdr で動かしている AI コーディング
+エージェントを、スマートフォンから監督するためのクライアントです。
 
 モバイルターミナルではありません。Drover はエージェントの言葉を話します。
 実行中のセッションを読めるチャットとして描画し、許可プロンプトをタップできる
@@ -114,15 +163,21 @@ Drover は、すでにあなたが持っているマシンのためのクライ�
 音声認識は完全に端末内で処理され、サーバーにフォールバックすることはありません。
 通知には固定の文面のみが入り、トランスクリプトの内容は一切含まれません。SSH の
 秘密鍵は iOS キーチェーンに保存され、端末の外に出ることはありません。
+
+Drover は独立したプロジェクトです。Herdr プロジェクト、Anthropic、OpenAI、
+GitHub のいずれとも関係がなく、公認・推薦・認定を受けたものではありません。
 ```
 
 ## Promotional text (170 characters, optional)
 
 Updatable without a new build or review, so use it for anything time-sensitive.
+It sits **above** the description and is visible without tapping "more" — which
+makes it, along with the description's first line, the place to put Herdr where
+no guideline restricts it.
 
-**en** — `Supervise the coding agents on your own machine from your phone. Read the session as chat, answer permission prompts with a tap, and get told the moment one is blocked.`
+**en** — `A Herdr companion for your phone. Supervise the AI coding agents on your own machine: read the session as chat, answer prompts with a tap, know when one is blocked.`
 
-**ja** — `自分のマシンで動くコーディングエージェントを、スマートフォンから監督。セッションをチャットとして読み、許可プロンプトはタップで答え、止まった瞬間に通知が届きます。`
+**ja** — `Herdr のためのモバイルクライアント。自分のマシンで動く AI コーディングエージェントを監督し、セッションはチャットとして読み、許可プロンプトはタップで答え、止まった瞬間に通知が届きます。`
 
 ## App Review Information
 
@@ -198,7 +253,9 @@ and make sure the privacy policy discloses the logging — it does.
 - **Privacy policy URL** — `https://keinstn.github.io/drover/privacy`
 - **Support URL** — `https://keinstn.github.io/drover/support`
 - **Screenshots** — `site/public/screenshots/{en,ja}/`, four per locale. See
-  below; the app is iPhone-only, so no iPad sizes are required.
+  below; the app is iPhone-only, so no iPad sizes are required. They carry no
+  caption overlays, so nothing in them repeats the name or has to be re-rendered
+  when the store copy changes.
 
 ### Uploading the screenshots
 

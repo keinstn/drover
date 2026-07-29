@@ -7,7 +7,7 @@ const base = '/drover/'
 
 export default defineConfig({
   base,
-  title: 'Drover for Herdr',
+  title: 'Drover',
   description:
     'Supervise and steer AI coding agents running on your own computer, from your phone.',
   cleanUrls: false,
