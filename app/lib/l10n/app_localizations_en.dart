@@ -137,7 +137,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get hostPairingCodeIntro =>
-      'On the Herdr host, copy and run these commands. Replace /path/to/drover with the checkout path. When setup asks, paste the pairing code.';
+      'On the Herdr host, copy and run these commands. Replace /path/to/drover-notify with the plugin path. When setup asks, paste the pairing code.';
 
   @override
   String get hostPairingLinkCommandLabel =>

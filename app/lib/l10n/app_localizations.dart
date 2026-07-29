@@ -323,7 +323,7 @@ abstract class AppLocalizations {
   /// No description provided for @hostPairingCodeIntro.
   ///
   /// In en, this message translates to:
-  /// **'On the Herdr host, copy and run these commands. Replace /path/to/drover with the checkout path. When setup asks, paste the pairing code.'**
+  /// **'On the Herdr host, copy and run these commands. Replace /path/to/drover-notify with the plugin path. When setup asks, paste the pairing code.'**
   String get hostPairingCodeIntro;
 
   /// No description provided for @hostPairingLinkCommandLabel.

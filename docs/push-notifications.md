@@ -16,18 +16,28 @@ installs or updates executable code on the Herdr host.
 
 The plugin lives in its own repo,
 [`keinstn/drover-notify`](https://github.com/keinstn/drover-notify). The host
-needs Herdr 0.7.0 or newer and Node.js 18 or newer. Clone the plugin repo onto
-the host — it's private, so clone over SSH — then link it:
+needs Herdr 0.7.5 or newer and Node.js 18 or newer. Install it on the host:
 
 ```sh
-git clone git@github.com:keinstn/drover-notify.git
-herdr plugin link /path/to/drover-notify
+herdr plugin install keinstn/drover-notify
 ```
 
-Once `keinstn/drover-notify` is public, `herdr plugin install
-keinstn/drover-notify` will replace the clone step above — **not yet
-available** while the repo is private, since `herdr plugin install` only
-supports an unauthenticated HTTPS clone.
+`herdr plugin install` fetches over unauthenticated HTTPS, which is why this is
+the one-line path now that the repo is public.
+
+drover-notify's own README says Herdr 0.7.0, which is right for the plugin by
+itself. The floor above is drover's — `kMinHerdrVersion` in
+`app/lib/src/herdr/herdr_version.dart` is `(0, 7, 5)` — because below it drover
+still reads and steers agents but refuses to start them. **Do not lower this
+number to match the plugin's README.**
+
+If you would rather run your own checkout — a fork, or a branch you are testing
+— clone it and link that instead:
+
+```sh
+git clone https://github.com/keinstn/drover-notify.git
+herdr plugin link /path/to/drover-notify
+```
 
 ## Pair the plugin
 

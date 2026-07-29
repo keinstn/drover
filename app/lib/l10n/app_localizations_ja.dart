@@ -127,7 +127,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get hostPairingCodeIntro =>
-      'Herdr host で、次のコマンドをコピーして実行してください。/path/to/drover は checkout のパスに置き換えます。setup が表示した prompt にペアリングコードを貼り付けてください。';
+      'Herdr host で、次のコマンドをコピーして実行してください。/path/to/drover-notify は plugin のパスに置き換えます。setup が表示した prompt にペアリングコードを貼り付けてください。';
 
   @override
   String get hostPairingLinkCommandLabel => '1. plugin を link（初回のみ）';

@@ -47,7 +47,7 @@
   "notificationTargetUnavailable": "The agent from this notification is no longer available.",
   "hostPairNotifications": "Create notification pairing code",
   "hostPairingCodeTitle": "Pair the notification plugin",
-  "hostPairingCodeIntro": "On the Herdr host, copy and run these commands. Replace /path/to/drover with the checkout path. When setup asks, paste the pairing code.",
+  "hostPairingCodeIntro": "On the Herdr host, copy and run these commands. Replace /path/to/drover-notify with the plugin path. When setup asks, paste the pairing code.",
   "hostPairingLinkCommandLabel": "1. Link the plugin (first time only)",
   "hostPairingSetupCommandLabel": "2. Run setup",
   "hostPairingCodeLabel": "3. Pairing code",
