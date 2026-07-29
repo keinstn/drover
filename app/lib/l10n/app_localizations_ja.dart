@@ -127,16 +127,17 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get hostPairingCodeIntro =>
-      'Herdr host で、次のコマンドをコピーして実行してください。/path/to/drover-notify は plugin のパスに置き換えます。setup が表示した prompt にペアリングコードを貼り付けてください。';
+      'この host に通知 plugin が見つかりませんでした。Herdr host で次のコマンドを実行してインストールし、もう一度「通知用のペアリングコードを作成」をタップしてください。Drover が検出して自動でペアリングします。';
 
   @override
-  String get hostPairingLinkCommandLabel => '1. plugin を link（初回のみ）';
+  String get hostPairingInstallCommandLabel => 'plugin をインストール';
 
   @override
-  String get hostPairingSetupCommandLabel => '2. setup を実行';
+  String get hostPairingManualNote =>
+      '手動でペアリングする場合は、plugin の setup スクリプトが下のコードと URL を尋ねます。';
 
   @override
-  String get hostPairingCodeLabel => '3. ペアリングコード';
+  String get hostPairingCodeLabel => 'ペアリングコード';
 
   @override
   String get hostPairingUrlLabel => '完了 URL';
