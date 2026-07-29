@@ -37,9 +37,12 @@ demo on the setup screen. It runs entirely on your device with sample data.
 ## Common problems
 
 **"Connection closed before authentication"**
-If your host has Tailscale SSH enabled, its connection check can intercept the
-SSH session before the operating system's SSH server ever sees it. Disable
-Tailscale SSH for that machine, or connect over its regular SSH port.
+Something on the host is answering the SSH port before the operating system's
+SSH server does, so the OS never sees the connection. The usual cause is
+**Tailscale SSH**, whose connection check intercepts the session — turn
+Tailscale SSH off for that machine, or connect on the machine's regular SSH
+port instead. Being on a VPN is not itself a problem: Drover works fine over
+one, so check for something intercepting the port rather than the VPN.
 
 **The transcript shows raw terminal text instead of a readable chat**
 Drover reads your agent's own session history when a Herdr integration is
@@ -55,10 +58,6 @@ An integration only takes effect for sessions started **after** you install it,
 so start a fresh agent session afterwards. Without an integration, Drover falls
 back to reading the terminal pane, which is bounded by how much scrollback Herdr
 retains.
-
-**An agent does not respond to what I send**
-If the agent's pane is in a split tab and is not the active pane in that tab,
-keystrokes can be dropped. Make that pane the active one in its tab.
 
 **Dictation will not start**
 Drover only uses on-device speech recognition. If your device cannot perform
