@@ -22,9 +22,7 @@ const _samplePlugin = PluginInfo(
 );
 
 void main() {
-  testWidgets('disables Scan Text for the SSH private-key input', (
-    tester,
-  ) async {
+  testWidgets('disables Scan Text for every host setup input', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -32,16 +30,34 @@ void main() {
         home: HostSetupScreen(onSubmit: (config) async {}),
       ),
     );
+    final editableTexts = tester.widgetList<EditableText>(
+      find.byType(EditableText),
+    );
 
-    final privateKeyEditableText = tester.widget<EditableText>(
+    expect(editableTexts, hasLength(6));
+    for (final editableText in editableTexts) {
+      expect(
+        editableText.contextMenuBuilder,
+        same(noScanTextContextMenuBuilder),
+      );
+    }
+
+    await tester.scrollUntilVisible(
+      find.byType(ExpansionTile),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byType(ExpansionTile));
+    await tester.pumpAndSettle();
+
+    final herdrBinEditableText = tester.widget<EditableText>(
       find.descendant(
-        of: find.widgetWithText(TextFormField, 'Private key PEM'),
+        of: find.byType(ExpansionTile),
         matching: find.byType(EditableText),
       ),
     );
-
     expect(
-      privateKeyEditableText.contextMenuBuilder,
+      herdrBinEditableText.contextMenuBuilder,
       same(noScanTextContextMenuBuilder),
     );
 
