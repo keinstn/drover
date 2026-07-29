@@ -2,8 +2,8 @@
 layout: home
 
 hero:
-  name: Drover for Herdr
-  text: Steer your coding agents from your phone
+  name: Drover
+  text: Steer AI coding agents from your phone
   tagline: Supervise and steer AI coding agents running on your own computer — over SSH, with no server in between.
   actions:
     - theme: brand
