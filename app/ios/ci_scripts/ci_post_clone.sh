@@ -32,7 +32,7 @@ cd "$CI_PRIMARY_REPOSITORY_PATH/app"
 flutter pub get
 
 # Both the marketing version (CFBundleShortVersionString) and the build number
-# (CFBundleVersion) come straight from pubspec's `version:` field. The Xcode
-# Cloud workflow only builds when app/pubspec.yaml changes, so bumping that
-# field is what triggers a release.
+# (CFBundleVersion) come straight from pubspec's `version:` field. Nothing here
+# decides *when* to build: the workflow is manual-start only, and `just release`
+# bumps that field and then starts the build through the App Store Connect API.
 flutter build ios --config-only --release --no-codesign

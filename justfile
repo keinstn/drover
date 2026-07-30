@@ -38,6 +38,68 @@ preview name='gallery' *args:
 spike *args:
     fvm dart run tool/spike.dart {{args}}
 
+# --- Release (Xcode Cloud) ---
+#
+# The workflow is manual-start only; pushing builds nothing. Its previous
+# start condition watched app/pubspec.yaml, but that file also changes whenever
+# a dependency moves — 13 of 47 such commits carried no version change, and each
+# one built a duplicate build number that App Store Connect rejects. Starting
+# the build explicitly is the only exact trigger, because Xcode Cloud start
+# conditions match paths and cannot read a file's contents.
+#
+# Needs `asc` (brew install asc), authenticated once with `asc auth login`.
+# Credentials live in the system keychain — never in this repo.
+
+bundle_id := "com.keinstn.drover"
+workflow := "Default"
+
+# Bump the app version, push, and start an Xcode Cloud build.
+#   just release        1.0.0+48 -> 1.0.0+49  (same version, next build)
+#   just release 1.0.1  1.0.0+48 -> 1.0.1+49  (new App Store version)
+release semver='':
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Every check runs before the first mutation: a failure after the push would
+    # leave a version bump behind with no build to go with it.
+    if [ -n "{{semver}}" ] && ! printf '%s' "{{semver}}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+        echo "invalid semver '{{semver}}' (expected e.g. 1.0.1)" >&2
+        exit 1
+    fi
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    if [ "$branch" != "main" ]; then
+        echo "on '$branch', but the workflow always builds main" >&2
+        exit 1
+    fi
+    if ! git diff --quiet HEAD -- app/pubspec.yaml; then
+        echo "app/pubspec.yaml has uncommitted changes — commit or stash first" >&2
+        exit 1
+    fi
+    if ! command -v asc >/dev/null; then
+        echo "asc not found — brew install asc, then asc auth login" >&2
+        exit 1
+    fi
+    current=$(grep -E '^version: ' app/pubspec.yaml | head -1 | sed 's/^version: //')
+    name=${current%+*}
+    number=${current##*+}
+    if [ "$number" = "$current" ]; then
+        echo "version '$current' has no build number (expected e.g. 1.0.0+48)" >&2
+        exit 1
+    fi
+    if [ -n "{{semver}}" ]; then
+        name="{{semver}}"
+    fi
+    next="$name+$((number + 1))"
+    sed -i.bak "s/^version: .*/version: $next/" app/pubspec.yaml
+    rm -f app/pubspec.yaml.bak
+    # Commit the one path explicitly; `-a` would sweep up unrelated work.
+    git commit -m "chore(app): bump version to $next" -- app/pubspec.yaml
+    git push
+    # Builds whatever Xcode Cloud currently sees as main's tip, so a slow SCM
+    # sync could pick up the previous commit. Check Git Ref against the bump
+    # commit if a build ever archives an unexpected version.
+    asc xcode-cloud run --app {{bundle_id}} --workflow {{workflow}} --branch main --output table
+    echo "Bumped to $next and started an Xcode Cloud build."
+
 # --- App Store screenshots (iOS simulator) ---
 #
 # See `.claude/skills/screenshots/SKILL.md` for what to shoot and how to get
