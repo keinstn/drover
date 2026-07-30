@@ -18,6 +18,11 @@ notes (`claude-notes.md`, `copilot-notes.md`, `codex-notes.md`).
 - [marionette_mcp](https://pub.dev/packages/marionette_mcp) (lets Claude Code
   inspect/tap/screenshot the running app via the Dart VM service): `dart pub global
   activate marionette_mcp`, then ensure `~/.pub-cache/bin` is on PATH.
+- [`asc`](https://asccli.sh) (starts Xcode Cloud builds — only needed to
+  release): `brew install asc`, then `asc auth login --name drover --key-id …
+  --issuer-id … --private-key …p8`. An App Store Connect API key with the
+  **Developer** role is enough. Credentials go to the system keychain, so the
+  `.p8` can be deleted afterwards.
 - On the Herdr host (the SSH target running your agents): install a herdr
   integration for each agent you want native transcript history for:
   `herdr integration install claude`, `herdr integration install codex`,
@@ -52,6 +57,20 @@ fvm flutter run
 fvm flutter gen-l10n # regenerate localizations after editing lib/l10n/*.arb
 fvm dart run tool/spike.dart --host <host> agents
 ```
+
+## Releasing
+
+The Xcode Cloud workflow is **manual-start only** — pushing builds nothing. Bump
+the version and start a build in one step, from `main`:
+
+```sh
+just release        # 1.0.0+48 -> 1.0.0+49, same version, next build
+just release 1.0.1  # 1.0.0+48 -> 1.0.1+49, new App Store version
+```
+
+App Store *releases* need a new marketing version: once 1.0.0 is live, App Store
+Connect will not take a second build for it. TestFlight has no such limit, so
+plain `just release` can iterate on one version indefinitely.
 
 ## UI previews
 
