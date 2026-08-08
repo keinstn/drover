@@ -7,6 +7,7 @@ import '../models/host_config.dart';
 import '../models/plugin_info.dart';
 import '../notifications/host_pairing.dart';
 import '../widgets/error_message_view.dart';
+import '../widgets/text_context_menu.dart';
 
 /// Form for entering (or editing) the SSH connection details for the dev
 /// machine running Herdr.
@@ -372,11 +373,13 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
             TextFormField(
               controller: _nameController,
               decoration: InputDecoration(labelText: l10n.hostSetupNameLabel),
+              contextMenuBuilder: noScanTextContextMenuBuilder,
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _hostController,
               decoration: InputDecoration(labelText: l10n.hostSetupHostLabel),
+              contextMenuBuilder: noScanTextContextMenuBuilder,
               validator: (v) => (v == null || v.trim().isEmpty)
                   ? l10n.hostSetupHostRequired
                   : null,
@@ -386,6 +389,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
               controller: _portController,
               decoration: InputDecoration(labelText: l10n.hostSetupPortLabel),
               keyboardType: TextInputType.number,
+              contextMenuBuilder: noScanTextContextMenuBuilder,
               // Blank is allowed and defaults to 22 (see _buildConfig); only a
               // non-blank value has to be a valid port number.
               validator: (v) {
@@ -402,6 +406,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
             TextFormField(
               controller: _userController,
               decoration: InputDecoration(labelText: l10n.hostSetupUserLabel),
+              contextMenuBuilder: noScanTextContextMenuBuilder,
               validator: (v) => (v == null || v.trim().isEmpty)
                   ? l10n.hostSetupUserRequired
                   : null,
@@ -414,6 +419,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
               ),
               style: const TextStyle(fontFamily: 'monospace'),
               maxLines: 6,
+              contextMenuBuilder: noScanTextContextMenuBuilder,
               validator: (v) {
                 final t = v?.trim() ?? '';
                 if (t.isEmpty) return l10n.hostSetupPrivateKeyRequired;
@@ -430,6 +436,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 labelText: l10n.hostSetupPassphraseLabel,
               ),
               obscureText: true,
+              contextMenuBuilder: noScanTextContextMenuBuilder,
             ),
             const SizedBox(height: 12),
             ExpansionTile(
@@ -441,6 +448,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                   decoration: InputDecoration(
                     labelText: l10n.hostSetupHerdrBinLabel,
                   ),
+                  contextMenuBuilder: noScanTextContextMenuBuilder,
                 ),
               ],
             ),
