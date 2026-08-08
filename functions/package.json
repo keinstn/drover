@@ -23,7 +23,7 @@
     "firebase-functions": "^7.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.5",
+    "@biomejs/biome": "2.5.7",
     "firebase-functions-test": "^3.4.1",
     "typescript": "^7.0.2"
   },
