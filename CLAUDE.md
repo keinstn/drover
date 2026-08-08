@@ -23,6 +23,9 @@ notes (`claude-notes.md`, `copilot-notes.md`, `codex-notes.md`).
   --issuer-id … --private-key …p8`. An App Store Connect API key with the
   **Developer** role is enough. Credentials go to the system keychain, so the
   `.p8` can be deleted afterwards.
+- [git-cliff](https://git-cliff.org) (generates `CHANGELOG.md` entries on a
+  semver release — only needed to release a new App Store version):
+  `brew install git-cliff`.
 - On the Herdr host (the SSH target running your agents): install a herdr
   integration for each agent you want native transcript history for:
   `herdr integration install claude`, `herdr integration install codex`,
@@ -71,6 +74,12 @@ just release 1.0.1  # 1.0.0+48 -> 1.0.1+49, new App Store version
 App Store *releases* need a new marketing version: once 1.0.0 is live, App Store
 Connect will not take a second build for it. TestFlight has no such limit, so
 plain `just release` can iterate on one version indefinitely.
+
+Passing a semver also updates `CHANGELOG.md`: `git-cliff` generates a new
+`vX.Y.Z` section from the Conventional Commits since the last `vX.Y.Z` tag,
+prepends it, and the recipe tags the release commit. A build-only bump never
+touches the changelog or tags — it isn't a user-facing release. See
+`cliff.toml` for the commit grouping/skip rules.
 
 ## UI previews
 

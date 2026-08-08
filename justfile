@@ -78,6 +78,23 @@ release semver='':
         echo "asc not found — brew install asc, then asc auth login" >&2
         exit 1
     fi
+    # Only a semver release touches CHANGELOG.md and tags — a build-only bump
+    # (no argument) stays silent, since it isn't a user-facing release.
+    if [ -n "{{semver}}" ]; then
+        if ! command -v git-cliff >/dev/null; then
+            echo "git-cliff not found — brew install git-cliff" >&2
+            exit 1
+        fi
+        if ! git diff --quiet HEAD -- CHANGELOG.md; then
+            echo "CHANGELOG.md has uncommitted changes — commit or stash first" >&2
+            exit 1
+        fi
+        tag="v{{semver}}"
+        if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "tag '$tag' already exists" >&2
+            exit 1
+        fi
+    fi
     current=$(grep -E '^version: ' app/pubspec.yaml | head -1 | sed 's/^version: //')
     name=${current%+*}
     number=${current##*+}
@@ -91,9 +108,19 @@ release semver='':
     next="$name+$((number + 1))"
     sed -i.bak "s/^version: .*/version: $next/" app/pubspec.yaml
     rm -f app/pubspec.yaml.bak
-    # Commit the one path explicitly; `-a` would sweep up unrelated work.
-    git commit -m "chore(app): bump version to $next" -- app/pubspec.yaml
-    git push
+    if [ -n "{{semver}}" ]; then
+        # `--unreleased` scopes generation to commits after the last matching
+        # tag, so the entry covers only what's new since v$previous.
+        git-cliff --tag "$tag" --unreleased --prepend CHANGELOG.md
+        # Commit the two paths explicitly; `-a` would sweep up unrelated work.
+        git commit -m "chore(app): bump version to $next" -- app/pubspec.yaml CHANGELOG.md
+        git tag -a "$tag" -m "$tag"
+        git push
+        git push origin "$tag"
+    else
+        git commit -m "chore(app): bump version to $next" -- app/pubspec.yaml
+        git push
+    fi
     # Builds whatever Xcode Cloud currently sees as main's tip, so a slow SCM
     # sync could pick up the previous commit. Check Git Ref against the bump
     # commit if a build ever archives an unexpected version.
