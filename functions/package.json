@@ -25,7 +25,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.5",
     "firebase-functions-test": "^3.4.1",
-    "typescript": "^6.0.0"
+    "typescript": "^7.0.2"
   },
   "private": true
 }
