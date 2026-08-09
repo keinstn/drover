@@ -52,24 +52,65 @@ spike *args:
 
 bundle_id := "com.keinstn.drover"
 workflow := "Default"
+# `asc versions`/`asc builds` need the numeric App Store Connect app ID —
+# unlike `asc xcode-cloud run --app`, they don't resolve a bundle ID.
+app_id := "6792428012"
 
-# Bump the app version, push, and start an Xcode Cloud build.
-#   just release        1.0.0+48 -> 1.0.0+49  (same version, next build)
-#   just release 1.0.1  1.0.0+48 -> 1.0.1+49  (new App Store version)
-release semver='':
+# Shared preflight checks for `release`/`tag-release`, wired in as just
+# dependencies (see `check:` below for the existing precedent) so they run
+# before either recipe's body starts.
+[private]
+_check-semver-format semver:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Every check runs before the first mutation: a failure after the push would
-    # leave a version bump behind with no build to go with it.
     if [ -n "{{semver}}" ] && ! printf '%s' "{{semver}}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
         echo "invalid semver '{{semver}}' (expected e.g. 1.0.1)" >&2
         exit 1
     fi
+
+[private]
+_check-on-main:
+    #!/usr/bin/env bash
+    set -euo pipefail
     branch=$(git rev-parse --abbrev-ref HEAD)
     if [ "$branch" != "main" ]; then
-        echo "on '$branch', but the workflow always builds main" >&2
+        echo "on '$branch', but this only runs from main" >&2
         exit 1
     fi
+
+# Not a plain dependency: both callers need fresh remote tags fetched first
+# (a stale local view would silently miss an already-shipped tag), so this is
+# called explicitly from each recipe's body, after that recipe's own fetch.
+# No-op when semver is empty, so `release`'s build-only path (no semver, thus
+# nothing to have shipped yet) can call this unconditionally too.
+[private]
+_check-tag-absent semver:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "{{semver}}" ]; then
+        exit 0
+    fi
+    tag="v{{semver}}"
+    if ! git rev-parse "$tag" >/dev/null 2>&1; then
+        exit 0
+    fi
+    if git ls-remote --exit-code --tags origin "$tag" >/dev/null 2>&1; then
+        echo "tag '$tag' already exists — {{semver}} already shipped, use a new semver" >&2
+    else
+        echo "tag '$tag' exists locally but not on origin — a previous run's push likely failed; push it manually (git push origin $tag) or delete it (git tag -d $tag) and retry" >&2
+    fi
+    exit 1
+
+# Bump the app version, push, and start an Xcode Cloud build.
+#   just release        1.0.0+48 -> 1.0.0+49  (same version, next build)
+#   just release 1.0.1  1.0.0+48 -> 1.0.1+49  (new App Store version)
+release semver='': (_check-semver-format semver) _check-on-main
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Every check runs before the first mutation: a failure after the push would
+    # leave a version bump behind with no build to go with it.
+    git fetch origin --tags --quiet
+    just _check-tag-absent "{{semver}}"
     if ! git diff --quiet HEAD -- app/pubspec.yaml; then
         echo "app/pubspec.yaml has uncommitted changes — commit or stash first" >&2
         exit 1
@@ -77,23 +118,6 @@ release semver='':
     if ! command -v asc >/dev/null; then
         echo "asc not found — brew install asc, then asc auth login" >&2
         exit 1
-    fi
-    # Only a semver release touches CHANGELOG.md and tags — a build-only bump
-    # (no argument) stays silent, since it isn't a user-facing release.
-    if [ -n "{{semver}}" ]; then
-        if ! command -v git-cliff >/dev/null; then
-            echo "git-cliff not found — brew install git-cliff" >&2
-            exit 1
-        fi
-        if ! git diff --quiet HEAD -- CHANGELOG.md; then
-            echo "CHANGELOG.md has uncommitted changes — commit or stash first" >&2
-            exit 1
-        fi
-        tag="v{{semver}}"
-        if git rev-parse "$tag" >/dev/null 2>&1; then
-            echo "tag '$tag' already exists" >&2
-            exit 1
-        fi
     fi
     current=$(grep -E '^version: ' app/pubspec.yaml | head -1 | sed 's/^version: //')
     name=${current%+*}
@@ -108,24 +132,110 @@ release semver='':
     next="$name+$((number + 1))"
     sed -i.bak "s/^version: .*/version: $next/" app/pubspec.yaml
     rm -f app/pubspec.yaml.bak
-    if [ -n "{{semver}}" ]; then
-        # `--unreleased` scopes generation to commits after the last matching
-        # tag, so the entry covers only what's new since v$previous.
-        git-cliff --tag "$tag" --unreleased --prepend CHANGELOG.md
-        # Commit the two paths explicitly; `-a` would sweep up unrelated work.
-        git commit -m "chore(app): bump version to $next" -- app/pubspec.yaml CHANGELOG.md
-        git tag -a "$tag" -m "$tag"
-        git push
-        git push origin "$tag"
-    else
-        git commit -m "chore(app): bump version to $next" -- app/pubspec.yaml
-        git push
-    fi
+    git commit -m "chore(app): bump version to $next" -- app/pubspec.yaml
+    git push
     # Builds whatever Xcode Cloud currently sees as main's tip, so a slow SCM
     # sync could pick up the previous commit. Check Git Ref against the bump
     # commit if a build ever archives an unexpected version.
     asc xcode-cloud run --app {{bundle_id}} --workflow {{workflow}} --branch main --output table
     echo "Bumped to $next and started an Xcode Cloud build."
+
+# Record a shipped release in CHANGELOG.md and tag it. Run this only after
+# confirming in App Store Connect that the version is actually live — `just
+# release <semver>` starts a build, but review/rejection/resubmission can
+# take days, during which main keeps moving. Tagging at that point (instead of
+# at release time) keeps the tag and changelog range pinned to the commit that
+# actually shipped rather than to whatever HEAD happened to be later.
+tag-release semver: (_check-semver-format semver) _check-on-main
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Every check runs before the first mutation, same as `release`.
+    for cmd in git-cliff asc jq; do
+        if ! command -v "$cmd" >/dev/null; then
+            echo "$cmd not found — brew install $cmd" >&2
+            exit 1
+        fi
+    done
+    # This recipe runs long after `release` pushed, possibly from a different
+    # clone — a stale local main would compute the wrong shipped commit below,
+    # and a stale local tag view would miss an already-existing tag (plain
+    # `git fetch` only auto-follows tags on newly-fetched objects, not ones
+    # added to a commit this clone already has).
+    git fetch origin main --tags --quiet
+    if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+        echo "local main is out of sync with origin/main — pull first" >&2
+        exit 1
+    fi
+    if ! git diff --quiet HEAD -- CHANGELOG.md; then
+        echo "CHANGELOG.md has uncommitted changes — commit or stash first" >&2
+        exit 1
+    fi
+    just _check-tag-absent "{{semver}}"
+    tag="v{{semver}}"
+    version_id=$(asc versions list --app {{app_id}} --version "{{semver}}" --platform IOS | jq -r '.data[0].id')
+    if [ -z "$version_id" ] || [ "$version_id" = "null" ]; then
+        echo "no App Store version found for {{semver}} (platform IOS)" >&2
+        exit 1
+    fi
+    # `--include-build` resolves the version's actual attached-build
+    # relationship — the build Apple submitted/approved for it — not just the
+    # newest upload under that marketing version. They can differ: a
+    # build-only `just release` run after submission (still allowed pre-ship)
+    # uploads a newer build that was never the one reviewed.
+    version_info=$(asc versions view --version-id "$version_id" --include-build)
+    # A rejected or still-in-review submission has no place in the changelog.
+    # ponytail: only matches READY_FOR_DISTRIBUTION; if this ever needs to run
+    # after a later version has superseded it, tag by hand instead of loosening
+    # this check.
+    state=$(printf '%s' "$version_info" | jq -r '.state')
+    if [ "$state" != "READY_FOR_DISTRIBUTION" ]; then
+        echo "App Store version {{semver}} is not live yet (state: ${state:-not found}) — check App Store Connect before tagging" >&2
+        exit 1
+    fi
+    # Resolve the commit Apple actually shipped via Xcode Cloud's own build-run
+    # records, not by matching pubspec's build number in a commit message:
+    # Xcode Cloud assigns CFBundleVersion from its own run counter, which does
+    # not always match the number just bumped to in app/pubspec.yaml (confirmed
+    # 2026-08-09 — the commit bumping to 1.0.0+49 was not the commit that
+    # shipped ASC build 49; run-number 49's sourceCommit had pubspec at +48).
+    build_number=$(printf '%s' "$version_info" | jq -r '.buildVersion')
+    if [ -z "$build_number" ] || [ "$build_number" = "null" ]; then
+        echo "no build attached to App Store version {{semver}} (platform IOS)" >&2
+        exit 1
+    fi
+    workflow_id=$(asc xcode-cloud workflows --app {{bundle_id}} --paginate | jq -r --arg w "{{workflow}}" '.data[] | select(.attributes.name == $w) | .id')
+    if [ -z "$workflow_id" ]; then
+        echo "no Xcode Cloud workflow named '{{workflow}}' found for {{bundle_id}}" >&2
+        exit 1
+    fi
+    sha=$(asc xcode-cloud build-runs --workflow-id "$workflow_id" --sort "-number" --paginate \
+        | jq -r --arg n "$build_number" '.data[] | select((.attributes.number | tostring) == $n) | .attributes.sourceCommit.commitSha')
+    if [ -z "$sha" ]; then
+        echo "no Xcode Cloud build run found producing build {{semver}}+${build_number}" >&2
+        exit 1
+    fi
+    # The nearest tag reachable from $sha, not just the highest tag overall —
+    # a later semver can ship (and get tagged) before an earlier delayed one.
+    # v1.0.0 always exists (see CHANGELOG.md bootstrap), so finding none here
+    # means something is wrong with the tag history — error instead of
+    # silently falling back to "the entire commit history" as the range.
+    prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' "$sha" 2>/dev/null || true)
+    if [ -z "$prev" ]; then
+        echo "no prior vX.Y.Z tag reachable from ${sha:0:7} — check tag history before tagging" >&2
+        exit 1
+    fi
+    # ponytail: if a later semver is tag-released before an earlier delayed
+    # one, `prev` (its nearest ancestor tag) predates the delay, so its range
+    # absorbs the delayed version's commits too — and tagging the delayed
+    # version afterward repeats them under its own section. Edit CHANGELOG.md
+    # by hand to dedupe if this ever happens; upgrade path is tracking already-
+    # published commit ranges instead of deriving them from tag ancestry alone.
+    git-cliff "$prev..$sha" --tag "$tag" --prepend CHANGELOG.md
+    git commit -m "chore(release): add {{semver}} changelog entry" -- CHANGELOG.md
+    git tag -a "$tag" "$sha" -m "$tag"
+    git push
+    git push origin "$tag"
+    echo "Tagged $tag at ${sha:0:7} (build ${build_number}) and updated CHANGELOG.md."
 
 # --- App Store screenshots (iOS simulator) ---
 #
