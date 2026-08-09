@@ -31,8 +31,13 @@ flutter precache --ios
 cd "$CI_PRIMARY_REPOSITORY_PATH/app"
 flutter pub get
 
-# Both the marketing version (CFBundleShortVersionString) and the build number
-# (CFBundleVersion) come straight from pubspec's `version:` field. Nothing here
-# decides *when* to build: the workflow is manual-start only, and `just release`
-# bumps that field and then starts the build through the App Store Connect API.
+# This wires CFBundleShortVersionString and CFBundleVersion from pubspec's
+# `version:` field, but the build number in the artifact Xcode Cloud actually
+# uploads doesn't reliably match: build-run history shows Xcode Cloud assigning
+# CFBundleVersion from its own run counter regardless (confirmed 2026-08-09 —
+# see `just tag-release` in the repo root justfile, which resolves the shipped
+# commit via that counter rather than trusting this field). The marketing
+# version isn't affected. Nothing here decides *when* to build: the workflow
+# is manual-start only, and `just release` bumps this field and then starts
+# the build through the App Store Connect API.
 flutter build ios --config-only --release --no-codesign

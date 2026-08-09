@@ -23,9 +23,11 @@ notes (`claude-notes.md`, `copilot-notes.md`, `codex-notes.md`).
   --issuer-id … --private-key …p8`. An App Store Connect API key with the
   **Developer** role is enough. Credentials go to the system keychain, so the
   `.p8` can be deleted afterwards.
-- [git-cliff](https://git-cliff.org) (generates `CHANGELOG.md` entries on a
-  semver release — only needed to release a new App Store version):
+- [git-cliff](https://git-cliff.org) (generates `CHANGELOG.md` entries — only
+  needed for `just tag-release`, run after a version actually ships):
   `brew install git-cliff`.
+- [`jq`](https://jqlang.org) (reads the App Store version state in
+  `just tag-release` — only needed for that recipe): `brew install jq`.
 - On the Herdr host (the SSH target running your agents): install a herdr
   integration for each agent you want native transcript history for:
   `herdr integration install claude`, `herdr integration install codex`,
@@ -71,14 +73,32 @@ just release        # 1.0.0+48 -> 1.0.0+49, same version, next build
 just release 1.0.1  # 1.0.0+48 -> 1.0.1+49, new App Store version
 ```
 
-App Store *releases* need a new marketing version: once 1.0.0 is live, App Store
-Connect will not take a second build for it. TestFlight has no such limit, so
-plain `just release` can iterate on one version indefinitely.
+Once a marketing version has actually been released on the App Store (state
+`READY_FOR_DISTRIBUTION`), Apple closes that version's pre-release train for
+new build uploads entirely — TestFlight-only iteration is **not** exempt
+(confirmed 2026-08-09: a build-only bump on an already-released 1.0.0 failed
+with ITMS-90186 "Invalid Pre-Release Train" + ITMS-90062). Plain `just release`
+only works while the current marketing version hasn't shipped yet; once it has,
+the next release needs a new semver.
 
-Passing a semver also updates `CHANGELOG.md`: `git-cliff` generates a new
-`vX.Y.Z` section from the Conventional Commits since the last `vX.Y.Z` tag,
-prepends it, and the recipe tags the release commit. A build-only bump never
-touches the changelog or tags — it isn't a user-facing release. See
+`just release` never touches `CHANGELOG.md` or tags — it only starts a build,
+and a build can be rejected or resubmitted before it actually ships. Once
+`asc versions list` (or the App Store Connect dashboard) shows the target
+semver as `READY_FOR_DISTRIBUTION`, record it:
+
+```sh
+just tag-release 1.0.1
+```
+
+`tag-release` re-checks that state itself, then asks App Store Connect which
+Xcode Cloud build run actually produced the approved build and tags *that*
+commit — not `HEAD`, which may have moved on while the build sat in review,
+and not just "the last commit that bumped pubspec to this version": Xcode
+Cloud assigns the shipped build number from its own counter, which doesn't
+always match the number `just release` last wrote to `app/pubspec.yaml`. It
+then generates a `CHANGELOG.md` section from the Conventional Commits since
+the previous release tag and commits it separately on top of current `main`,
+so the entry lands after the tagged commit rather than inside it. See
 `cliff.toml` for the commit grouping/skip rules.
 
 ## UI previews
