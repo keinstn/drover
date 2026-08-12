@@ -14,6 +14,9 @@ enum AppErrorKind {
   /// The transport layer could not reach or stay connected to the host.
   hostConnection,
 
+  /// SSH reached the host, but herdr's background server isn't running there.
+  herdrServerUnreachable,
+
   /// The host's herdr is older than drover's minimum supported version.
   herdrVersionUnsupported,
 
@@ -26,16 +29,22 @@ enum AppErrorKind {
 /// SSH failures reach the UI two ways: bare (from direct SFTP calls like
 /// listDirectory/resolvePath) or wrapped as a [HerdrException] whose [cause]
 /// is the original SSH exception (from herdr commands, which funnel through
-/// `_exec`). Both are handled. A [HerdrException] with a non-null [cause]
-/// means the transport threw (a real connectivity problem); one with no cause
-/// means herdr ran and reported a failure (or returned junk) — treated as
-/// [AppErrorKind.unknown] so we never tell the user to "check the connection"
-/// for a command that actually reached the host.
+/// `_exec`). Both are handled. A [HerdrException]'s `code` is checked first —
+/// `server_not_running` means SSH reached the host but herdr's background
+/// server is down, regardless of whether a [cause] happens to be set. Only
+/// then does [cause] matter: non-null means the transport threw (a real
+/// connectivity problem); null means herdr ran and reported some other
+/// failure (or returned junk) — treated as [AppErrorKind.unknown] so we never
+/// tell the user to "check the connection" for a command that actually
+/// reached the host.
 AppErrorKind classifyError(Object error) {
   if (error is HerdrVersionUnsupportedException) {
     return AppErrorKind.herdrVersionUnsupported;
   }
   if (error is HerdrException) {
+    if (error.code == 'server_not_running') {
+      return AppErrorKind.herdrServerUnreachable;
+    }
     final cause = error.cause;
     if (cause is SshHostKeyMismatchException) {
       return AppErrorKind.hostKeyMismatch;

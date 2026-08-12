@@ -143,6 +143,6 @@ void main() {
 
   test('reports a supported herdr version', () async {
     final client = DemoBackend().buildClient();
-    expect(await client.version(), contains('0.7.5'));
+    expect(await client.version(), contains('0.8.0'));
   });
 }

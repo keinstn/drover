@@ -25,7 +25,9 @@ which agent is running in the pane.
   <text>`, which types the text and submits it in a single atomic call.
   drover's `HerdrClient.prompt` uses `agent prompt` directly (no fallback, no
   version detection — herdr 0.7.5+ only).
-- (2026-07-24) drover now enforces this 0.7.5 floor itself: `HerdScreen` reads
+- (2026-07-24) drover now enforces a version floor itself — 0.7.5 at the time,
+  raised to 0.8.0 on 2026-08-13 (see the `server_not_running` note below).
+  `HerdScreen` reads
   `herdr --version` per host (`HerdrClient.version`, `herdr_version.dart`'s
   `kMinHerdrVersion`) and shows a persistent warning plus blocks launching new
   agents on any host reporting an older version, since the `agent prompt`/
@@ -146,6 +148,18 @@ which agent is running in the pane.
   now checks both stdout and stderr for a JSON error envelope regardless of
   exit code, so callers see the real `code` no matter which shape a given
   herdr command uses.
+- **A stopped/unreachable herdr background server surfaces as a coded error
+  envelope.** (2026-08-13, herdr 0.8.0) Pointing a command at a missing or
+  listener-less socket (`HERDR_SOCKET_PATH=/tmp/nope.sock herdr agent list`)
+  returns exit 1 with an **empty stdout** and the envelope on **stderr**:
+  `{"error":{"code":"server_not_running","message":"no herdr server is running
+  at /tmp/nope.sock; run herdr to start or attach it"}}`. No client change was
+  needed — `HerdrClient._exec` already probes both channels on a non-zero exit
+  — but note the channel: a stdout-only probe would miss this entirely. Older
+  herdr instead printed a bare `Error: Os { code: 61, kind: ConnectionRefused,
+  ... }` string on stderr with exit 0 for the same situation, which drover
+  surfaces as an opaque message users misread as an SSH failure (issue #160);
+  that is why the minimum supported herdr version moved to 0.8.0.
 
 ## Measurements (Stage 0, 2026-07-18, localhost loopback, Claude Code agent)
 

@@ -64,6 +64,7 @@
   "errorSshAuth": "Couldn't sign in to the host. Check the username, private key, and passphrase.",
   "errorHostConnection": "Couldn't reach the host. Check that it's online and the address and port are correct.",
   "errorHostConnectionLost": "Lost the connection to the host. If you connect over a VPN, check that it's still active.",
+  "errorHerdrServerUnreachable": "Connected to the host, but herdr isn't running on it. Start herdr on the host, then try again.",
   "herdrVersionTooOld": "herdr {found} on this host is older than the minimum supported version {minimum}. Update herdr on the host to start agents.",
   "@herdrVersionTooOld": {
     "placeholders": {

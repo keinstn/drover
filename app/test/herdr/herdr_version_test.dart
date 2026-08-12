@@ -36,8 +36,8 @@ void main() {
     });
 
     test('accepts a version above the minimum', () {
-      expect(isHerdrVersionSupported((0, 7, 6)), isTrue);
-      expect(isHerdrVersionSupported((0, 8, 0)), isTrue);
+      expect(isHerdrVersionSupported((0, 8, 1)), isTrue);
+      expect(isHerdrVersionSupported((0, 9, 0)), isTrue);
       expect(isHerdrVersionSupported((1, 0, 0)), isTrue);
     });
   });

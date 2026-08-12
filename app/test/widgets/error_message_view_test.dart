@@ -97,5 +97,24 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'server_not_running shows a distinct herdr-not-running message',
+      (tester) async {
+        await tester.pumpWidget(
+          _host(const HerdrException('server_not_running', 'no server')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.textContaining("herdr isn't running on it"),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('address and port are correct'),
+          findsNothing,
+        );
+        expect(find.textContaining('Lost the connection'), findsNothing);
+      },
+    );
   });
 }

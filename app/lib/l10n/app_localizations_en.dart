@@ -192,6 +192,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Lost the connection to the host. If you connect over a VPN, check that it\'s still active.';
 
   @override
+  String get errorHerdrServerUnreachable =>
+      'Connected to the host, but herdr isn\'t running on it. Start herdr on the host, then try again.';
+
+  @override
   String herdrVersionTooOld(String found, String minimum) {
     return 'herdr $found on this host is older than the minimum supported version $minimum. Update herdr on the host to start agents.';
   }

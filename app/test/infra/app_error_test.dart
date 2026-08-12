@@ -54,6 +54,24 @@ void main() {
       expect(classifyError(error), AppErrorKind.unknown);
     });
 
+    test(
+      'server_not_running without a cause classifies as herdrServerUnreachable',
+      () {
+        final error = HerdrException('server_not_running', 'no server');
+        expect(classifyError(error), AppErrorKind.herdrServerUnreachable);
+      },
+    );
+
+    test('server_not_running with a cause still classifies as '
+        'herdrServerUnreachable', () {
+      final error = HerdrException(
+        'server_not_running',
+        'no server',
+        cause: Exception('socket'),
+      );
+      expect(classifyError(error), AppErrorKind.herdrServerUnreachable);
+    });
+
     test('a plain exception classifies as unknown', () {
       expect(classifyError(Exception('weird')), AppErrorKind.unknown);
     });

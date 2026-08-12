@@ -32,6 +32,8 @@ String errorHeadline(
       return hostEverConnected
           ? l10n.errorHostConnectionLost
           : l10n.errorHostConnection;
+    case AppErrorKind.herdrServerUnreachable:
+      return l10n.errorHerdrServerUnreachable;
     case AppErrorKind.herdrVersionUnsupported:
       final e = error as HerdrVersionUnsupportedException;
       return l10n.herdrVersionTooOld(e.found, e.minimum);

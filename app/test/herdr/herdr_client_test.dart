@@ -104,6 +104,34 @@ void main() {
       );
     });
 
+    test('throws a server_not_running HerdrException when herdr reports its '
+        'background server is down', () async {
+      final runner = FakeCommandRunner(
+        (_) => const CommandResult(
+          exitCode: 1,
+          stdout: '',
+          // Verified against herdr 0.8.0: the envelope lands on stderr with
+          // an empty stdout (see docs/herdr-notes.md).
+          stderr:
+              '{"id":"cli:agent:list","error":{"code":"server_not_running",'
+              '"message":"no herdr server is running at /tmp/nope.sock; run '
+              '`herdr` to start or attach it"}}',
+        ),
+      );
+      final client = HerdrClient(runner);
+
+      await expectLater(
+        client.listAgents(),
+        throwsA(
+          isA<HerdrException>().having(
+            (e) => e.code,
+            'code',
+            'server_not_running',
+          ),
+        ),
+      );
+    });
+
     test('throws the coded error when a non-zero exit carries a JSON error '
         'envelope on stderr', () async {
       final runner = FakeCommandRunner(

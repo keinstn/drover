@@ -181,6 +181,10 @@ class AppLocalizationsJa extends AppLocalizations {
       'ホストとの接続が切れました。VPN経由で接続している場合は、有効になっているか確認してください。';
 
   @override
+  String get errorHerdrServerUnreachable =>
+      'ホストへの接続はできましたが、herdr が起動していません。ホストで herdr を起動してから、もう一度お試しください。';
+
+  @override
   String herdrVersionTooOld(String found, String minimum) {
     return 'このホストの herdr $found は、drover が対応する最小バージョン $minimum を下回っています。エージェントを起動するには、ホスト側の herdr を更新してください。';
   }

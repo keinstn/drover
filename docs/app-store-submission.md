@@ -113,7 +113,7 @@ before setting anything up.
 WHAT YOU NEED
 Drover is a client for a machine you already own. To use it for real you need a
 computer running Herdr (herdr.dev) with your coding agents in it, SSH access to
-that machine with key-based authentication, and Herdr 0.7.5 or newer.
+that machine with key-based authentication, and Herdr 0.8.0 or newer.
 
 PRIVACY
 Speech recognition runs entirely on your device — Drover will not fall back to
@@ -157,7 +157,7 @@ Drover は端末から自分のマシンへ SSH で直接つなぎます。途�
 必要なもの
 Drover は、すでにあなたが持っているマシンのためのクライアントです。実際に使う
 には、コーディングエージェントを動かしている Herdr (herdr.dev) 入りのコンピュータ、
-鍵認証による SSH アクセス、そして Herdr 0.7.5 以降が必要です。
+鍵認証による SSH アクセス、そして Herdr 0.8.0 以降が必要です。
 
 プライバシー
 音声認識は完全に端末内で処理され、サーバーにフォールバックすることはありません。
