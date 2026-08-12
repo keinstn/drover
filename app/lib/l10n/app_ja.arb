@@ -54,6 +54,7 @@
   "errorSshAuth": "ホストにサインインできませんでした。ユーザー名・秘密鍵・パスフレーズを確認してください。",
   "errorHostConnection": "ホストに接続できませんでした。オンラインであること、アドレスとポートが正しいことを確認してください。",
   "errorHostConnectionLost": "ホストとの接続が切れました。VPN経由で接続している場合は、有効になっているか確認してください。",
+  "errorHerdrServerUnreachable": "ホストへの接続はできましたが、herdr が起動していません。ホストで herdr を起動してから、もう一度お試しください。",
   "herdrVersionTooOld": "このホストの herdr {found} は、drover が対応する最小バージョン {minimum} を下回っています。エージェントを起動するには、ホスト側の herdr を更新してください。",
   "errorGeneric": "問題が発生しました。",
   "errorDetailsLabel": "詳細",

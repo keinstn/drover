@@ -312,7 +312,7 @@ final _errorSamples = <(String, Object)>[
   ),
   (
     'herdr version unsupported',
-    const HerdrVersionUnsupportedException(found: '0.7.0', minimum: '0.7.5'),
+    const HerdrVersionUnsupportedException(found: '0.7.0', minimum: '0.8.0'),
   ),
 ];
 

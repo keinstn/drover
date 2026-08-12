@@ -34,7 +34,7 @@ const demoDocsPaneId = 'demo:p3';
 const _reviewTabId = 'demo:t2';
 const _docsTabId = 'demo:t3';
 
-const _demoHerdrVersion = '0.7.5';
+const _demoHerdrVersion = '0.8.0';
 
 /// The demo session's identity, reported as the agent's `agent_session` value.
 /// Must be a real UUID: every native-transcript loader gates on

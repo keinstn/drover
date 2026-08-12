@@ -5,7 +5,14 @@ typedef HerdrVersion = (int, int, int);
 /// prompt` with no fallback or version detection, and `startAgent`/`agent
 /// wait` rely on the `--pane`/`--until` shapes — all 0.7.5-only behaviors
 /// documented in docs/herdr-notes.md. Below this, starting an agent errors.
-const kMinHerdrVersion = (0, 7, 5);
+/// Raised from 0.7.5 to 0.8.0 on 2026-08-13 as a deliberate diagnosability
+/// floor, not because a command shape changed: 0.8.0 is the first version that
+/// reports a stopped herdr server as a `server_not_running` error envelope,
+/// which `app_error.dart` classifies into a message naming herdr rather than
+/// the network. On 0.7.x that same failure surfaces as a bare `Error: Os
+/// { ... }` string users misread as an SSH failure (issue #160), and drover
+/// deliberately does not parse it.
+const kMinHerdrVersion = (0, 8, 0);
 
 /// Extracts the first `major.minor.patch` run of digits from raw `herdr
 /// --version` stdout (e.g. `"herdr 0.7.5\n"`), or null if none is found.

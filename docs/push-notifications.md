@@ -16,7 +16,7 @@ installs or updates executable code on the Herdr host.
 
 The plugin lives in its own repo,
 [`keinstn/drover-notify`](https://github.com/keinstn/drover-notify). The host
-needs Herdr 0.7.5 or newer and Node.js 18 or newer. Install it on the host:
+needs Herdr 0.8.0 or newer and Node.js 18 or newer. Install it on the host:
 
 ```sh
 herdr plugin install keinstn/drover-notify

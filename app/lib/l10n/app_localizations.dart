@@ -416,6 +416,12 @@ abstract class AppLocalizations {
   /// **'Lost the connection to the host. If you connect over a VPN, check that it\'s still active.'**
   String get errorHostConnectionLost;
 
+  /// No description provided for @errorHerdrServerUnreachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected to the host, but herdr isn\'t running on it. Start herdr on the host, then try again.'**
+  String get errorHerdrServerUnreachable;
+
   /// No description provided for @herdrVersionTooOld.
   ///
   /// In en, this message translates to:
