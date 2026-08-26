@@ -51,12 +51,12 @@ in `C:\ProgramData\ssh\administrators_authorized_keys`, not
 `~\.ssh\authorized_keys`, or the connection fails with "All authentication
 methods failed"). Install a herdr integration for each agent
 you want native transcript history for — for example,
-`herdr integration install claude`, `herdr integration install codex`, or
-`herdr integration install copilot`. Without an integration, drover falls back
-to pane-text history (bounded by herdr's retained pane buffer); the integration
-must be installed before starting the session (it only takes effect from the
-next `SessionStart`). Full setup and command reference live in
-[`CLAUDE.md`](CLAUDE.md).
+`herdr integration install claude`, `herdr integration install codex`,
+`herdr integration install copilot`, or `herdr integration install pi`.
+Without an integration, drover falls back to pane-text history (bounded by
+herdr's retained pane buffer); the integration must be installed before
+starting the session (it only takes effect from the next `SessionStart`).
+Full setup and command reference live in [`CLAUDE.md`](CLAUDE.md).
 
 A `justfile` wraps the common recipes (`just` to list them):
 

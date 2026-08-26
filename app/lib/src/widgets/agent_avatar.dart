@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import '../app_theme.dart';
 
 /// A rounded-rect avatar for an agent, filled with the agent type's brand
-/// color and stamped with a single initial (claude→C, codex→X, copilot→P;
-/// otherwise the first letter of the type, or `?` when unknown). Gives each
-/// agent a recognizable "face" in lists and the switcher bar.
+/// color and stamped with a single initial (claude→C, codex→X, copilot→P,
+/// pi→π; otherwise the first letter of the type, or `?` when unknown). Gives
+/// each agent a recognizable "face" in lists and the switcher bar.
 class AgentAvatar extends StatelessWidget {
   const AgentAvatar({
     super.key,
@@ -14,7 +14,7 @@ class AgentAvatar extends StatelessWidget {
     this.radius = 14,
   });
 
-  /// Agent type (e.g. `claude`, `codex`, `copilot`); null when unknown.
+  /// Agent type (e.g. `claude`, `codex`, `copilot`, `pi`); null when unknown.
   final String? agent;
   final double size;
   final double radius;
@@ -27,6 +27,9 @@ class AgentAvatar extends StatelessWidget {
         return 'X';
       case 'copilot':
         return 'P';
+      // Not the fallback's `P` — that would collide with copilot.
+      case 'pi':
+        return 'π';
     }
     final type = agent?.trim();
     if (type == null || type.isEmpty) return '?';

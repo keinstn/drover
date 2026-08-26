@@ -45,6 +45,7 @@ void main() {
       expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFE86A55));
       expect(colors.userBubble, const Color(0xFF3A2E22));
       expect(colors.brandColor('claude'), const Color(0xFFD9825F));
+      expect(colors.brandColor('pi'), const Color(0xFFB98AC9));
       // unknown status reuses the idle triple.
       expect(
         colors.statusDot(AgentStatus.unknown),
@@ -62,6 +63,8 @@ void main() {
       expect(colors.userBubble, const Color(0xFFF3E2DC));
       // Brand colors are identical across themes.
       expect(colors.brandColor('codex'), const Color(0xFF6FA287));
+      expect(colors.brandColor('pi'), const Color(0xFFB98AC9));
+      expect(colors.brandColor('pi'), isNot(colors.brandFallback));
       // Unknown/null agent type falls back to a neutral tone.
       expect(colors.brandColor(null), const Color(0xFF7E7E83));
     });
@@ -226,6 +229,12 @@ void main() {
 
       await pump(tester, 'copilot');
       expect(find.text('P'), findsOneWidget);
+
+      // π, not the fallback's `P` — that would be indistinguishable from
+      // copilot.
+      await pump(tester, 'pi');
+      expect(find.text('π'), findsOneWidget);
+      expect(find.text('P'), findsNothing);
     });
 
     testWidgets('falls back to first letter and ? for unknown', (tester) async {

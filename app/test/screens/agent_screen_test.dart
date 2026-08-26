@@ -229,6 +229,69 @@ class BrokenNativeHistoryRunner extends NativeHistoryRunner {
       Future.error(StateError('transcript access denied'));
 }
 
+/// The pi flavour of [NativeHistoryRunner]: herdr reports pi's session as
+/// `kind:'path'`, so there is no `command find` lookup at all — the loader
+/// stats/reads the reported path directly, and these overrides refuse any
+/// other path so a test can't pass on content served from the wrong file.
+class PiNativeHistoryRunner extends StubCommandRunner {
+  PiNativeHistoryRunner() : super(_response);
+
+  static const path =
+      '/home/dev/.pi/sessions/'
+      '01a03d2d-e087-756b-809c-bc55bfaa7777.jsonl';
+
+  String contents =
+      '{"type":"session","version":3,'
+      '"id":"01a03d2d-e087-756b-809c-bc55bfaa7777",'
+      '"timestamp":"2026-08-26T08:26:51.911Z","cwd":"/tmp/proj"}\n'
+      '{"type":"message","id":"a1","parentId":null,'
+      '"timestamp":"2026-08-26T08:26:52.000Z","message":{"role":"user",'
+      '"content":[{"type":"text","text":"Pi native question"}]}}\n'
+      '{"type":"message","id":"a2","parentId":"a1",'
+      '"timestamp":"2026-08-26T08:26:53.000Z","message":{"role":"assistant",'
+      '"content":[{"type":"thinking","thinking":"hidden"},'
+      '{"type":"text","text":"Pi native reply"},'
+      '{"type":"toolCall","id":"call_abc","name":"bash",'
+      '"arguments":{"command":"echo hello"}}]}}\n'
+      '{"type":"message","id":"a3","parentId":"a2",'
+      '"timestamp":"2026-08-26T08:26:54.000Z","message":{"role":"toolResult",'
+      '"toolCallId":"call_abc","toolName":"bash",'
+      '"content":[{"type":"text","text":"hello"}],"isError":false}}\n';
+
+  static CommandResult _response(String command) {
+    if (command.contains("'agent' 'list'")) {
+      return ok(
+        '{"id":"1","result":{"agents":[{"agent":"pi",'
+        '"agent_status":"working","cwd":"/tmp/proj","focused":false,'
+        '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+        '"agent_session":{"source":"herdr:pi","agent":"pi","kind":"path",'
+        '"value":"$path"}}]}}',
+      );
+    }
+    return workingResponse(command);
+  }
+
+  @override
+  Future<RemoteFileStat> statFile(String requested) async {
+    expect(requested, path);
+    return RemoteFileStat(size: utf8.encode(contents).length);
+  }
+
+  @override
+  Future<List<int>> readFile(
+    String requested, {
+    int offset = 0,
+    int? length,
+  }) async {
+    expect(requested, path);
+    final bytes = utf8.encode(contents);
+    final end = length == null
+        ? bytes.length
+        : (offset + length).clamp(0, bytes.length);
+    return bytes.sublist(offset, end);
+  }
+}
+
 /// A native-history runner whose `statFile` call (part of the
 /// locate/stat/read/parse sequence) blocks on [nativeGate] until the test
 /// completes it, so a widget test can assert on state while native history is
@@ -1144,6 +1207,48 @@ void main() {
 
     expect(find.text('a new turn'), findsOneWidget);
     expect(find.textContaining('"command"'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('renders a pi pane\'s native transcript, including its append', (
+    tester,
+  ) async {
+    final runner = PiNativeHistoryRunner();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: AgentScreen(
+          client: HerdrClient(runner),
+          paneId: 'wB:p1',
+          pollInterval: const Duration(seconds: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The leading `type:"session"` record is skipped without derailing the
+    // message records that follow it.
+    expect(find.text('Pi native question'), findsOneWidget);
+    expect(find.text('Pi native reply'), findsOneWidget);
+
+    await tester.tap(find.text('bash'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('"command"'), findsOneWidget);
+
+    runner.contents =
+        '${runner.contents}'
+        '{"type":"message","id":"a4","parentId":"a3",'
+        '"timestamp":"2026-08-26T08:26:55.000Z","message":{"role":"user",'
+        '"content":[{"type":"text","text":"Pi follow-up"}]}}\n';
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pi follow-up'), findsOneWidget);
+    expect(find.text('Pi native question'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
