@@ -38,14 +38,6 @@ jobs:
   # release build runs — unless checked here. Resolution-only: no compile.
   ios-deps:
     runs-on: macos-latest
-    # Only dependency/manifest changes can break or stale SPM resolution;
-    # skip macOS minutes on ordinary code PRs.
-    paths:
-      - "app/pubspec.yaml"
-      - "app/pubspec.lock"
-      - "app/.fvmrc"
-      - "app/ios/**"
-      - ".github/workflows/ci-flutter.yml"
     defaults:
       run:
         working-directory: app
