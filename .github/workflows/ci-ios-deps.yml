@@ -1,0 +1,52 @@
+name: ci-ios-deps
+
+# Xcode Cloud archives with automatic package resolution disabled, so a stale
+# Package.resolved or conflicting SPM pins only fail at release time unless
+# checked here. Only dependency/manifest changes can break SPM resolution;
+# gating on them skips macOS minutes on ordinary code PRs.
+on:
+  pull_request:
+    paths:
+      - "app/pubspec.yaml"
+      - "app/pubspec.lock"
+      - "app/.fvmrc"
+      - "app/ios/**"
+      - ".github/workflows/ci-ios-deps.yml"
+
+jobs:
+  # Xcode Cloud resolves iOS packages with automatic resolution disabled, so a
+  # stale Package.resolved or conflicting SPM pins (e.g. two Firebase plugins
+  # requiring different exact firebase-ios-sdk versions) only surface when a
+  # release build runs — unless checked here. Resolution-only: no compile.
+  ios-deps:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: app/.fvmrc
+          cache: true
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Generate iOS build config
+        run: flutter build ios --config-only --release --no-codesign
+
+      - name: Resolve SPM packages
+        run: |
+          cd ios
+          xcodebuild -resolvePackageDependencies \
+            -workspace Runner.xcworkspace -scheme Runner
+
+      - name: Check Package.resolved is fresh
+        run: >-
+          git diff --exit-code
+          ios/Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved
+          ios/Runner.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
