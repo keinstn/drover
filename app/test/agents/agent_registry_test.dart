@@ -3,6 +3,7 @@ import 'package:drover/src/agents/agent_registry.dart';
 import 'package:drover/src/agents/claude/claude_adapter.dart';
 import 'package:drover/src/agents/codex/codex_adapter.dart';
 import 'package:drover/src/agents/copilot/copilot_adapter.dart';
+import 'package:drover/src/agents/pi/pi_adapter.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/host_platform.dart';
 import 'package:drover/src/models/agent_info.dart';
@@ -56,6 +57,12 @@ void main() {
       final adapter = resolveAgentAdapter(_agent('codex'));
 
       expect(adapter, isA<CodexAgentAdapter>());
+    });
+
+    test('resolves a pi agent to PiAgentAdapter', () {
+      final adapter = resolveAgentAdapter(_agent('pi'));
+
+      expect(adapter, isA<PiAgentAdapter>());
     });
 
     test('returns null for an unrecognized agent', () {
@@ -203,6 +210,59 @@ void main() {
 
       expect(loader, isNotNull);
     });
+  });
+
+  group('PiAgentAdapter capabilities', () {
+    const adapter = PiAgentAdapter();
+
+    test('supports only the pi agent', () {
+      expect(adapter.supports(_agent('pi')), isTrue);
+      expect(adapter.supports(_agent('claude')), isFalse);
+      expect(adapter.supports(_agent('codex')), isFalse);
+      expect(adapter.supports(_agent('copilot')), isFalse);
+    });
+
+    test('exposes no mode, structured-prompt or image capability', () {
+      // pi has no built-in cyclable mode, and its ask_question prompt UI is
+      // out of scope for this phase — the generic fallbacks cover both.
+      expect(adapter.mode, isNull);
+      expect(adapter.structuredPrompt, isNull);
+      expect(adapter.images, isNull);
+    });
+
+    test(
+      'createNativeHistory returns null without a matching agent session',
+      () {
+        final loader = adapter.createNativeHistory(
+          _FakeCommandRunner(),
+          const UnixHostPlatform(),
+          _agent('pi'),
+        );
+
+        expect(loader, isNull);
+      },
+    );
+
+    test(
+      'createNativeHistory returns a loader for a valid pi path session',
+      () {
+        final loader = adapter.createNativeHistory(
+          _FakeCommandRunner(),
+          const UnixHostPlatform(),
+          _agent(
+            'pi',
+            agentSession: const AgentSession(
+              source: 'herdr:pi',
+              agent: 'pi',
+              kind: 'path',
+              value: '/home/dev/.pi/sessions/01932f4e-session.jsonl',
+            ),
+          ),
+        );
+
+        expect(loader, isNotNull);
+      },
+    );
   });
 
   group('unsupported agent fallback', () {

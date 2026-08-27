@@ -18,4 +18,5 @@ const kAgentPresets = <AgentPreset>[
   AgentPreset(label: 'Claude Code', bin: 'claude', kind: 'claude'),
   AgentPreset(label: 'Codex', bin: 'codex', kind: 'codex'),
   AgentPreset(label: 'Copilot CLI', bin: 'copilot', kind: 'copilot'),
+  AgentPreset(label: 'pi', bin: 'pi', kind: 'pi'),
 ];
