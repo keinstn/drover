@@ -1,3 +1,15 @@
+## [1.0.1] - 2026-08-27
+
+### 🐛 Bug Fixes
+
+- Disable host setup text scanning (#150)
+- *(app)* [**breaking**] Name herdr as down instead of blaming the connection (#167)
+- *(app)* Align Firebase iOS SDK SPM pins on 12.17.0 (#177)
+
+### ⚙️ Miscellaneous Tasks
+
+- Split ci.yml into per-path flutter and functions workflows (#165)
+- *(release)* Decouple CHANGELOG/tagging from starting a build (#166)
 ## [1.0.0] - 2026-07-30
 
 ### 🚀 Features
