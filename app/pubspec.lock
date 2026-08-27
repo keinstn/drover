@@ -157,10 +157,10 @@ packages:
     dependency: "direct main"
     description:
       name: dartssh2
-      sha256: ce7347d76fd7115994f3785b3b7b7c61e957641faa01a2ce066699609f2b45be
+      sha256: "1a21ef1e62f2ece3ee71de7ec106dc8faf67762b12ca2ab59b1cd08d5aa1f6ab"
       url: "https://pub.dev"
     source: hosted
-    version: "2.22.5"
+    version: "3.3.1"
   fake_async:
     dependency: transitive
     description:
