@@ -37,7 +37,7 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   dartssh2: ^3.3.1
-  gpt_markdown: ^1.1.8
+  gpt_markdown: ^1.2.1
   re_highlight: ^0.0.3
   flutter_secure_storage: ^11.0.0
   intl: any
