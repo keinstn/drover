@@ -47,7 +47,7 @@ dependencies:
   firebase_core: ^4.12.1
   firebase_auth: ^6.5.7
   firebase_messaging: ^16.5.0
-  cloud_functions: ^6.3.6
+  cloud_functions: ^6.4.0
   uuid: ^4.6.0
   firebase_app_check: ^0.4.6
   shared_preferences: ^2.5.5
