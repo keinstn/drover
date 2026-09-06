@@ -1748,19 +1748,18 @@ class _AssistantMessageState extends State<_AssistantMessage> {
             ),
           ),
           // Inline code: a small tonal panel keeps it readable on the surface.
-          highlightBuilder: (context, code, style) => Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-            decoration: BoxDecoration(
-              color: colors.toolSurface,
-              borderRadius: BorderRadius.circular(6),
+          inlineCodeBuilder: (context, code, style, codeStyle) => CodeTextSpan(
+            text: code,
+            codeStyle: codeStyle.copyWith(
+              backgroundColor: colors.toolSurface,
+              borderColor: Colors.transparent,
+              borderRadius: const Radius.circular(6),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
             ),
-            child: Text(
-              code,
-              style: style.copyWith(
-                fontFamily: 'monospace',
-                fontSize: 12.5,
-                color: scheme.onSurface,
-              ),
+            style: style.copyWith(
+              fontFamily: 'monospace',
+              fontSize: 12.5,
+              color: scheme.onSurface,
             ),
           ),
           // Fenced code: syntax-highlighted when the fence tag names a known
