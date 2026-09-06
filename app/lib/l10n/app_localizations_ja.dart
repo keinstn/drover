@@ -268,10 +268,10 @@ class AppLocalizationsJa extends AppLocalizations {
   String get agentSendEnter => 'Enter キーを送信';
 
   @override
-  String get agentShowArrowKeys => '矢印キーを表示';
+  String get agentShowArrowKeys => 'キーを表示';
 
   @override
-  String get agentHideArrowKeys => '矢印キーを非表示';
+  String get agentHideArrowKeys => 'キーを非表示';
 
   @override
   String get agentSendArrowLeft => '左矢印キーを送信';

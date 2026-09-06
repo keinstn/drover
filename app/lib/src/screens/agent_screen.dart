@@ -2289,6 +2289,20 @@ class _Composer extends StatelessWidget {
                     icon: Icons.arrow_forward,
                     onPressed: () => onSendKey('right'),
                   ),
+                  // A wider gap so the arrows and the Esc/Enter pair read as
+                  // two groups rather than one run of six keys.
+                  const SizedBox(width: 16),
+                  _EscapeButton(
+                    sending: sending,
+                    onPressed: () =>
+                        onAction(() => client.sendKeys(paneId, 'esc')),
+                  ),
+                  const SizedBox(width: 8),
+                  _EnterButton(
+                    sending: sending,
+                    onPressed: () =>
+                        onAction(() => client.sendKeys(paneId, 'enter')),
+                  ),
                 ],
               ),
             ],
@@ -2296,24 +2310,23 @@ class _Composer extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // This cluster grows with the agent's mode label and the
-                // attach affordance, and on a narrow phone it no longer fits
-                // beside the pinned controls. It scrolls instead of
-                // overflowing; where it does fit it lays out exactly as a
-                // Spacer left it.
+                // Attach and the mode pill fit beside the pinned controls
+                // even on the narrowest phone now that Esc and Enter live in
+                // the key row. The scroll view stays as slack for an
+                // unusually long mode label; where everything fits it lays
+                // out exactly as a Spacer left it.
                 Expanded(
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        if (canAttachImages) ...[
+                        if (canAttachImages)
                           _AttachButton(
                             sending: sending || dictationStarting || dictating,
                             onPick: onAttach,
                           ),
-                          const SizedBox(width: 8),
-                        ],
                         if (mode != null) ...[
+                          if (canAttachImages) const SizedBox(width: 8),
                           _ModeButton(
                             mode: mode,
                             sending: sending,
@@ -2321,27 +2334,14 @@ class _Composer extends StatelessWidget {
                               () => modeCapability!.cycleMode(client, paneId),
                             ),
                           ),
-                          const SizedBox(width: 8),
                         ],
-                        _EscapeButton(
-                          sending: sending,
-                          onPressed: () =>
-                              onAction(() => client.sendKeys(paneId, 'esc')),
-                        ),
-                        const SizedBox(width: 8),
-                        _EnterButton(
-                          sending: sending,
-                          onPressed: () =>
-                              onAction(() => client.sendKeys(paneId, 'enter')),
-                        ),
                       ],
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Pinned outside the scroll view: it is this feature's only
-                // entry point, and on the narrowest phones the scrollable
-                // cluster is already wider than its slot.
+                // Pinned outside the scroll view: it is the key row's only
+                // entry point, so it must never be scrolled out of reach.
                 _ArrowKeysToggleButton(
                   open: keysRowOpen,
                   onPressed: onToggleKeysRow,
@@ -2546,7 +2546,7 @@ class _ModeButton extends StatelessWidget {
   }
 }
 
-/// An always-available way to send a raw Enter key to the agent, without
+/// A key-row button that sends a raw Enter key to the agent, without
 /// typing anything in the composer. Useful for executing a prompt the agent
 /// has already staged in the pane's own input line (e.g. a suggested
 /// command), which a normal composer send can't reach. Disabled only while a
@@ -2581,7 +2581,7 @@ class _EnterButton extends StatelessWidget {
   }
 }
 
-/// An always-available escape hatch that sends a raw Esc key to the agent.
+/// A key-row escape hatch that sends a raw Esc key to the agent.
 /// Unlike the send/stop button (which only offers Esc while the agent is
 /// working), this stays enabled whatever the agent's status, so the user can
 /// dismiss a full-screen interactive TUI (e.g. a `/usage` slash-command
