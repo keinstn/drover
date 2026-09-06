@@ -189,6 +189,39 @@ noted otherwise.
   and aborts (throws `CopilotAskUserSubmitError`, never sends Esc) on any
   unrecognized state rather than guessing.
 
+## Input dropped while the pane believes it is unfocused
+
+- **Copilot CLI discards key input while it believes its pane is unfocused.**
+  (2026-07-22, github/copilot-cli#4213 via herdrdev/herdr#1698) Copilot
+  enables terminal focus reporting (DEC mode 1004); herdr reports focus-lost
+  to every pane that isn't the currently-focused one, and Copilot then drops
+  key input — including the Enter that submits a prompt — so a prompt landed
+  in the composer but was never submitted. drover works around this by
+  bracketing Copilot prompt delivery with synthetic focus-gained/focus-lost
+  escapes (`\x1b[I` / `\x1b[O`) in `CopilotAgentAdapter.deliverPrompt`;
+  harmless when the pane really is focused, so no background-state detection
+  is needed. Claude Code and Codex are unaffected (see
+  `codex-notes.md`) and keep the plain delivery path.
+
+- **herdr 0.8.2 sends focus-gained itself — but only for `agent prompt`.**
+  (2026-09-06, herdrdev/herdr#2734) `queue_agent_prompt` now emits
+  `\x1b[I` before the text whenever the detected agent is Copilot. drover's
+  own bracket stays: `kMinHerdrVersion` is 0.8.0 (and 0.8.1 was never
+  released, so 0.8.0 hosts are real), and herdr never restores focus-lost
+  afterwards, which drover's trailing `\x1b[O` does. On 0.8.2 the duplicate
+  focus-gained is idempotent. Remove the bracket once `kMinHerdrVersion`
+  reaches 0.8.2.
+
+- **The other input paths are unprotected on both sides.** herdr's fix lives
+  in the `agent prompt` handler only — `pane send-text` and `pane send-keys`
+  get no focus-gained — and drover brackets only `deliverPrompt`. So the mode
+  cycling (`\x1b[Z`) and `ask_user` answer paths, which both go through
+  `pane send-text`, can still have their keystrokes dropped on a backgrounded
+  Copilot pane. **Unverified** — no drover report so far, and the read-driven
+  ask_user submitter would surface it as a `CopilotAskUserSubmitError` rather
+  than a silent hang. If it reproduces, the fix is to reuse the same two
+  escapes around those sends.
+
 ## Scrollbar glyph strands a floating `|` in wrapped pane text
 
 (Copilot-specific; no Claude Code counterpart.)
