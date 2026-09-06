@@ -20,9 +20,15 @@ import 'copilot_transcript.dart';
 /// and submit it even when its pane is a backgrounded split — harmless when
 /// the pane is actually focused, so no background-state detection is needed.
 ///
-/// TEMPORARY workaround for ogulcancelik/herdr#1698; remove once herdr stops
-/// reporting focus-lost to backgrounded panes (or Copilot stops discarding
-/// input while "unfocused").
+/// herdr 0.8.2 sends the same focus-gained itself before an `agent prompt` to
+/// a detected Copilot pane (herdrdev/herdr#2734), making the leading escape a
+/// harmless duplicate there. The bracket still stays: `kMinHerdrVersion` is
+/// 0.8.0 (0.8.1 was never released), and herdr never restores focus-lost
+/// afterwards. Remove it once `kMinHerdrVersion` reaches 0.8.2 — or once
+/// Copilot stops discarding input while "unfocused"
+/// (github/copilot-cli#4213, via herdrdev/herdr#1698). herdr's fix covers
+/// `agent prompt` only, not `pane send-text`/`send-keys`; see
+/// docs/agents/copilot-notes.md.
 const _focusGained = '\x1b[I';
 const _focusLost = '\x1b[O';
 
