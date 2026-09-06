@@ -2,8 +2,13 @@
 // JSONL session format into the shared `TranscriptEntry` model, and
 // incrementally loads it from the session file herdr reports.
 //
-// Observed on pi 0.84.3 (herdr integration pi v8): each line is one JSON
-// record with a top-level `type`. Only `type='message'` carries user-visible
+// omp (Oh My Pi) is pi's successor and reuses this format byte for byte, so
+// the parser and loader below serve both agents; only the agent name is
+// parameterized (see `docs/agents/omp-notes.md`).
+//
+// Observed on pi 0.84.3 (herdr integration pi v8) and unchanged on omp 18.1.11
+// (herdr integration omp v8): each line is one JSON record with a top-level
+// `type`. Only `type='message'` carries user-visible
 // content; `custom` (e.g. customType='web-search-results'), `model_change`,
 // `session` and `thinking_level_change` records are noise and are skipped.
 //
@@ -125,10 +130,14 @@ class PiTranscriptParser {
 /// trust boundary — it comes from the host's herdr integration and is fed
 /// straight into a remote stat/read — so it must be an absolute POSIX path,
 /// free of any `..` traversal segment, and named like a JSONL session file.
-/// A Windows host never reaches here: pi's integration only reports a path
-/// when it starts with `/`, so it falls back to reporting a session id there
-/// and [PiTranscriptLoader.supportsAgent] rejects the `kind:'id'` session
-/// (see `docs/agents/pi-notes.md`).
+/// A Windows host never gets a native transcript, by two different routes:
+/// pi's integration only reports a path when it starts with `/`, so it falls
+/// back to reporting a session id there and [PiTranscriptLoader.supportsAgent]
+/// rejects the `kind:'id'` session; omp's v8 integration uses
+/// `path.win32.isAbsolute` too, so it does report `kind:'path'` with a `C:\…`
+/// value — which this POSIX-only validator rejects instead. Same pane-text
+/// fallback, different gate (see `docs/agents/pi-notes.md` and
+/// `docs/agents/omp-notes.md`).
 bool _isSafeTranscriptPath(String path) =>
     path.startsWith('/') &&
     !path.split('/').contains('..') &&
@@ -145,30 +154,41 @@ bool _isSafeTranscriptPath(String path) =>
 /// Because herdr reports pi's session as `kind:'path'`, this loader needs no
 /// [HostPlatform] and issues no lookup command at all — unlike the Claude,
 /// Codex and Copilot loaders, which each have to find their session file.
+///
+/// [agentName] is the one thing that is not shared with omp: the herdr
+/// integration stamps its own name on both the agent and the session, and an
+/// omp agent carrying a pi session (or vice versa) is a mismatch worth
+/// rejecting rather than papering over.
 class PiTranscriptLoader implements NativeTranscriptAdapter {
   PiTranscriptLoader(
     this._runner, {
+    this.agentName = 'pi',
     PiTranscriptParser? parser,
     JsonlTranscriptWindow? window,
   }) : _parser = parser ?? const PiTranscriptParser(),
        _loader = JsonlSessionLoader(window: window);
 
   final CommandRunner _runner;
+
+  /// The herdr agent name this loader is bound to — `pi`, or `omp` for the
+  /// successor that shares the format.
+  final String agentName;
+
   final PiTranscriptParser _parser;
   final JsonlSessionLoader _loader;
 
-  static bool supportsAgent(AgentInfo agent) {
+  static bool supportsAgent(AgentInfo agent, {String agentName = 'pi'}) {
     final session = agent.agentSession;
-    return agent.agent == 'pi' &&
+    return agent.agent == agentName &&
         session != null &&
-        session.agent == 'pi' &&
+        session.agent == agentName &&
         session.kind == 'path' &&
         _isSafeTranscriptPath(session.value);
   }
 
   @override
   Future<NativeTranscript?> load(AgentInfo agent) {
-    if (!supportsAgent(agent)) return Future.value(null);
+    if (!supportsAgent(agent, agentName: agentName)) return Future.value(null);
     final path = agent.agentSession!.value;
     return _loader.load(
       sessionId: path,

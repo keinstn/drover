@@ -52,7 +52,8 @@ in `C:\ProgramData\ssh\administrators_authorized_keys`, not
 methods failed"). Install a herdr integration for each agent
 you want native transcript history for — for example,
 `herdr integration install claude`, `herdr integration install codex`,
-`herdr integration install copilot`, or `herdr integration install pi`.
+`herdr integration install copilot`, `herdr integration install pi`, or
+`herdr integration install omp`.
 Without an integration, drover falls back to pane-text history (bounded by
 herdr's retained pane buffer); the integration must be installed before
 starting the session (it only takes effect from the next `SessionStart`).

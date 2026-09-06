@@ -6,6 +6,7 @@ import 'agent_adapter.dart';
 import 'claude/claude_adapter.dart';
 import 'codex/codex_adapter.dart';
 import 'copilot/copilot_adapter.dart';
+import 'omp/omp_adapter.dart';
 import 'pi/pi_adapter.dart';
 
 /// Every known [AgentAdapter], in resolution order. Add a new agent's
@@ -15,6 +16,7 @@ const _adapters = <AgentAdapter>[
   CopilotAgentAdapter(),
   CodexAgentAdapter(),
   PiAgentAdapter(),
+  OmpAgentAdapter(),
 ];
 
 /// Resolves the [AgentAdapter] that supports [agent] by [AgentAdapter.supports],
