@@ -19,6 +19,16 @@ void main() {
     expect(store.read('%1'), isNull);
   });
 
+  test('keysRowOpen starts closed and holds what is written to it', () {
+    final store = AgentDraftStore();
+
+    expect(store.keysRowOpen, isFalse);
+
+    store.keysRowOpen = true;
+
+    expect(store.keysRowOpen, isTrue);
+  });
+
   test('clear() removes only the given key', () {
     final store = AgentDraftStore();
     store.write('%1', 'draft one');

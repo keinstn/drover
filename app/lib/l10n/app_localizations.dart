@@ -584,6 +584,42 @@ abstract class AppLocalizations {
   /// **'Send Enter key'**
   String get agentSendEnter;
 
+  /// No description provided for @agentShowArrowKeys.
+  ///
+  /// In en, this message translates to:
+  /// **'Show arrow keys'**
+  String get agentShowArrowKeys;
+
+  /// No description provided for @agentHideArrowKeys.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide arrow keys'**
+  String get agentHideArrowKeys;
+
+  /// No description provided for @agentSendArrowLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Send Left arrow key'**
+  String get agentSendArrowLeft;
+
+  /// No description provided for @agentSendArrowUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Send Up arrow key'**
+  String get agentSendArrowUp;
+
+  /// No description provided for @agentSendArrowDown.
+  ///
+  /// In en, this message translates to:
+  /// **'Send Down arrow key'**
+  String get agentSendArrowDown;
+
+  /// No description provided for @agentSendArrowRight.
+  ///
+  /// In en, this message translates to:
+  /// **'Send Right arrow key'**
+  String get agentSendArrowRight;
+
   /// No description provided for @agentNativeHistory.
   ///
   /// In en, this message translates to:

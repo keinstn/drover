@@ -172,6 +172,19 @@ class FakeSpeechInput implements SpeechInput {
   void error(String message) => _onError?.call(message);
 }
 
+/// A claude pane whose mode line resolves to the widest mode pill label
+/// ("Accept Edits"), so a narrow-screen layout test measures the composer's
+/// button row at its worst case.
+CommandResult acceptEditsModeResponse(String command) {
+  if (command.contains("'agent' 'read'")) {
+    return ok(
+      'Working on the task…\n'
+      '  -- INSERT -- ⏵⏵ accept edits on (shift+tab to cycle)\n',
+    );
+  }
+  return workingResponse(command);
+}
+
 class NativeHistoryRunner extends StubCommandRunner {
   NativeHistoryRunner() : super(_response);
 
@@ -348,6 +361,57 @@ class DuplicatePaneRunner extends NativeHistoryRunner {
     if (command.contains("'agent' 'read'")) {
       commands.add(command);
       return ok('Native question\nNative reply\n');
+    }
+    return super.run(command);
+  }
+}
+
+/// Holds the Esc `send-keys` call open on [escGate] so a test can keep a
+/// `_send` in flight (which disables the composer's Esc/Enter buttons) while
+/// asserting the arrow-key row still works. Arrow keys resolve out of order
+/// unless they're queued — 'down' is slow, every other arrow is instant — and
+/// [arrowsCompleted] records them as they *finish*, so the order it ends up
+/// with distinguishes a serialized queue from parallel sends.
+class ArrowKeyRunner extends StubCommandRunner {
+  ArrowKeyRunner() : super(workingResponse);
+
+  final escGate = Completer<void>();
+  final arrowsCompleted = <String>[];
+
+  static const _arrows = ['left', 'up', 'down', 'right'];
+
+  @override
+  Future<CommandResult> run(String command) async {
+    if (command.contains('send-keys')) {
+      commands.add(command);
+      if (command.contains("'esc'")) {
+        await escGate.future;
+        return ok('{"id":"1","result":{}}');
+      }
+      final arrow = _arrows.firstWhere(
+        (a) => command.contains("'$a'"),
+        orElse: () => '',
+      );
+      if (arrow.isNotEmpty) {
+        // 'left' always fails, so a test can check the queue survives one.
+        // Shaped the way HerdrClient actually detects a failure: an error
+        // envelope on stderr (exit 0 with an envelope under `result` is not
+        // an error to the client at all).
+        if (arrow == 'left') {
+          return const CommandResult(
+            exitCode: 0,
+            stdout: '',
+            stderr:
+                '{"error":{"code":"transport",'
+                '"message":"arrow key rejected"}}',
+          );
+        }
+        if (arrow == 'down') {
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+        }
+        arrowsCompleted.add(arrow);
+        return ok('{"id":"1","result":{}}');
+      }
     }
     return super.run(command);
   }
@@ -3732,6 +3796,272 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'No'), findsOneWidget);
     // No option button carries the leading "N. " numbering.
     expect(find.widgetWithText(FilledButton, '1. Yes'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'reveals four arrow buttons on toggle, each sending its herdr key token',
+    (tester) async {
+      final runner = StubCommandRunner(blockedPromptResponse);
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+            draftStore: AgentDraftStore(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // The row is collapsed by default: the toggle is the only new affordance.
+      expect(
+        find.byKey(const ValueKey('toggle_arrow_keys_button')),
+        findsOneWidget,
+      );
+      for (final key in ['left', 'up', 'down', 'right']) {
+        expect(find.byKey(ValueKey('send_key_$key')), findsNothing);
+      }
+
+      await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+      await tester.pumpAndSettle();
+
+      for (final key in ['left', 'up', 'down', 'right']) {
+        expect(find.byKey(ValueKey('send_key_$key')), findsOneWidget);
+      }
+
+      await tester.tap(find.byKey(const ValueKey('send_key_down')));
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        runner.commands.any(
+          (c) => c.contains('send-keys') && c.contains("'down'"),
+        ),
+        isTrue,
+      );
+
+      // Tapping the toggle again puts the row away.
+      await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('send_key_down')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'keeps the arrow keys live while a send is in flight, and sends them in '
+    'tap order',
+    (tester) async {
+      final runner = ArrowKeyRunner();
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+            draftStore: AgentDraftStore(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+      await tester.pumpAndSettle();
+
+      // Start a send that never completes: Esc goes through `_send`, so the
+      // composer's own buttons go dead for its whole round-trip.
+      await tester.tap(find.byKey(const ValueKey('send_escape_button')));
+      await tester.pump();
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.byKey(const ValueKey('send_escape_button')),
+            )
+            .onPressed,
+        isNull,
+      );
+
+      // The arrows are unaffected: three rapid taps all land.
+      await tester.tap(find.byKey(const ValueKey('send_key_down')));
+      await tester.tap(find.byKey(const ValueKey('send_key_down')));
+      await tester.tap(find.byKey(const ValueKey('send_key_right')));
+      // Plain pumps, not pumpAndSettle: the in-flight send spins the send
+      // button's progress indicator, which never settles.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+
+      // 'down' is the slow one, so this order is only reachable if the sends
+      // are queued rather than fired off in parallel.
+      expect(runner.arrowsCompleted, ['down', 'down', 'right']);
+
+      // A failing key must surface, and must not poison the queue for the
+      // ones behind it.
+      await tester.tap(find.byKey(const ValueKey('send_key_left')));
+      await tester.tap(find.byKey(const ValueKey('send_key_up')));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+      expect(find.textContaining('arrow key rejected'), findsOneWidget);
+      expect(runner.arrowsCompleted.last, 'up');
+
+      runner.escGate.complete();
+      await tester.pump();
+      await tester.pump();
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'shows the live terminal once an arrow key is sent from this screen, '
+    'even for pane text the native transcript would otherwise hide as '
+    'duplicate',
+    (tester) async {
+      final client = HerdrClient(DuplicatePaneRunner());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+            draftStore: AgentDraftStore(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Every pane line is already in the native conversation, so the section
+      // is suppressed as redundant.
+      expect(find.text('Live terminal'), findsNothing);
+
+      // Merely opening the row is not enough: the flag behind it is
+      // process-global, so a screen the user never drove keeps its dedup.
+      await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+      await tester.pumpAndSettle();
+      expect(find.text('Live terminal'), findsNothing);
+
+      // Actually pressing an arrow means a TUI overlay is being driven from
+      // here and the raw pane has to be watchable, so the dedup is bypassed.
+      await tester.tap(find.byKey(const ValueKey('send_key_down')));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Live terminal'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('keeps the arrow-key row open across a rebuild of the screen', (
+    tester,
+  ) async {
+    final client = HerdrClient(StubCommandRunner(blockedPromptResponse));
+    final store = AgentDraftStore();
+
+    Widget screen() => MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+      home: AgentScreen(
+        client: client,
+        paneId: 'wB:p1',
+        pollInterval: const Duration(hours: 1),
+        draftStore: store,
+      ),
+    );
+
+    await tester.pumpWidget(screen());
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('send_key_down')), findsOneWidget);
+
+    // Popping and re-pushing the route disposes the State; the store outlives
+    // it, so the row comes back open.
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(screen());
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('send_key_down')), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('composer button row never overflows on a narrow phone', (
+    tester,
+  ) async {
+    // The narrowest phone drover targets (iPhone SE / 13 mini logical size).
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final client = HerdrClient(StubCommandRunner(acceptEditsModeResponse));
+    final store = AgentDraftStore()..keysRowOpen = true;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+          draftStore: store,
+          imagePicker: FakeImagePicker(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // Everything the row can hold at once: attach, the widest mode pill, Esc,
+    // Enter, the arrow-key toggle, mic and send — plus the open arrow row.
+    expect(find.byKey(const ValueKey('attach_image_button')), findsOneWidget);
+    expect(find.text('Accept Edits'), findsOneWidget);
+
+    // `find.byKey` also matches widgets clipped out of the viewport, so these
+    // must be asserted as reachable and on-screen: the toggle is the
+    // feature's only entry point, and send is the composer's primary action.
+    for (final key in [
+      'toggle_arrow_keys_button',
+      'dictate_button',
+      'send_message_button',
+      'send_key_left',
+      'send_key_up',
+      'send_key_down',
+      'send_key_right',
+    ]) {
+      final finder = find.byKey(ValueKey(key));
+      expect(finder.hitTestable(), findsOneWidget, reason: key);
+      final rect = tester.getRect(finder);
+      expect(rect.left, greaterThanOrEqualTo(0.0), reason: key);
+      expect(rect.right, lessThanOrEqualTo(375.0), reason: key);
+    }
+
+    expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox());
   });

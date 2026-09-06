@@ -279,6 +279,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentSendEnter => 'Send Enter key';
 
   @override
+  String get agentShowArrowKeys => 'Show arrow keys';
+
+  @override
+  String get agentHideArrowKeys => 'Hide arrow keys';
+
+  @override
+  String get agentSendArrowLeft => 'Send Left arrow key';
+
+  @override
+  String get agentSendArrowUp => 'Send Up arrow key';
+
+  @override
+  String get agentSendArrowDown => 'Send Down arrow key';
+
+  @override
+  String get agentSendArrowRight => 'Send Right arrow key';
+
+  @override
   String get agentNativeHistory => 'Conversation history';
 
   @override
