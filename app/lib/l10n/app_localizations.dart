@@ -587,13 +587,13 @@ abstract class AppLocalizations {
   /// No description provided for @agentShowArrowKeys.
   ///
   /// In en, this message translates to:
-  /// **'Show arrow keys'**
+  /// **'Show keys'**
   String get agentShowArrowKeys;
 
   /// No description provided for @agentHideArrowKeys.
   ///
   /// In en, this message translates to:
-  /// **'Hide arrow keys'**
+  /// **'Hide keys'**
   String get agentHideArrowKeys;
 
   /// No description provided for @agentSendArrowLeft.

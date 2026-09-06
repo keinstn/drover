@@ -753,7 +753,10 @@ void main() {
   // and any draft a test types is persisted there on dispose. Reset the shared
   // draft for the common paneId before each test so that leak never carries a
   // stale draft into a later test's composer.
-  setUp(() => AgentDraftStore.shared.clear('wB:p1'));
+  setUp(() {
+    AgentDraftStore.shared.clear('wB:p1');
+    AgentDraftStore.shared.keysRowOpen = false;
+  });
 
   testWidgets('renders native Claude history with a separated live terminal', (
     tester,
@@ -2074,7 +2077,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('sends Esc from the always-available escape button when idle', (
+  testWidgets('sends Esc from the escape button when idle', (
     tester,
   ) async {
     final runner = StubCommandRunner(blockedPromptResponse);
@@ -2098,6 +2101,10 @@ void main() {
     // The agent is not running, so the send/stop button is not in stop mode.
     expect(find.byIcon(Icons.stop), findsNothing);
 
+    // Esc lives in the collapsible key row, so open it first.
+    await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+    await tester.pumpAndSettle();
+
     // The dedicated escape button is present regardless and sends Esc.
     expect(find.byKey(const ValueKey('send_escape_button')), findsOneWidget);
 
@@ -2115,7 +2122,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('sends Enter from the always-available enter button when idle', (
+  testWidgets('sends Enter from the enter button when idle', (
     tester,
   ) async {
     final runner = StubCommandRunner(blockedPromptResponse);
@@ -2135,6 +2142,10 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
+
+    // Enter lives in the collapsible key row, so open it first.
+    await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+    await tester.pumpAndSettle();
 
     // The dedicated enter button is present regardless of agent status and
     // sends a raw Enter, letting the user execute a prompt already staged in
@@ -2155,7 +2166,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('places Esc button before Enter button in composer row', (
+  testWidgets('places Esc button before Enter button in the key row', (
     tester,
   ) async {
     final runner = StubCommandRunner(blockedPromptResponse);
@@ -2175,6 +2186,9 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+    await tester.pumpAndSettle();
 
     final escDx = tester
         .getTopLeft(find.byKey(const ValueKey('send_escape_button')))
@@ -3858,6 +3872,47 @@ void main() {
     },
   );
 
+  testWidgets('reveals Esc and Enter in the same collapsible key row', (
+    tester,
+  ) async {
+    final runner = StubCommandRunner(blockedPromptResponse);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+          draftStore: AgentDraftStore(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // Collapsed by default: Esc and Enter ride the key row, not the button row.
+    expect(find.byKey(const ValueKey('send_escape_button')), findsNothing);
+    expect(find.byKey(const ValueKey('send_enter_button')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('send_escape_button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('send_enter_button')), findsOneWidget);
+
+    // And they go away again with the arrows.
+    await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('send_escape_button')), findsNothing);
+    expect(find.byKey(const ValueKey('send_enter_button')), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'keeps the arrow keys live while a send is in flight, and sends them in '
     'tap order',
@@ -4037,8 +4092,9 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // Everything the row can hold at once: attach, the widest mode pill, Esc,
-    // Enter, the arrow-key toggle, mic and send — plus the open arrow row.
+    // Everything the composer can hold at once: attach and the widest mode
+    // pill beside the arrow-key toggle, mic and send — plus the open key row
+    // carrying the four arrows, Esc and Enter.
     expect(find.byKey(const ValueKey('attach_image_button')), findsOneWidget);
     expect(find.text('Accept Edits'), findsOneWidget);
 
@@ -4053,6 +4109,8 @@ void main() {
       'send_key_up',
       'send_key_down',
       'send_key_right',
+      'send_escape_button',
+      'send_enter_button',
     ]) {
       final finder = find.byKey(ValueKey(key));
       expect(finder.hitTestable(), findsOneWidget, reason: key);
