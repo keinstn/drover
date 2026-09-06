@@ -12,6 +12,14 @@ typedef HerdrVersion = (int, int, int);
 /// the network. On 0.7.x that same failure surfaces as a bare `Error: Os
 /// { ... }` string users misread as an SSH failure (issue #160), and drover
 /// deliberately does not parse it.
+///
+/// Raising this floor above 0.8.0 unblocks one cleanup: herdr 0.8.2 fixed
+/// `pane send-keys shift+tab` (herdr issue #1561), so the three
+/// `AgentModeCapability.cycleMode` implementations — which each send a raw
+/// `ESC [ Z` via `pane send-text` to work around it — could collapse to a
+/// plain `sendKeys(paneId, 'shift+tab')`. Not done while 0.8.0 is supported:
+/// there is no 0.8.1, and on 0.8.0 `send-keys shift+tab` fails silently
+/// (writes a plain Tab, no error). See docs/herdr-notes.md.
 const kMinHerdrVersion = (0, 8, 0);
 
 /// Extracts the first `major.minor.patch` run of digits from raw `herdr

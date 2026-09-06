@@ -67,10 +67,12 @@ class ClaudeModeCapability implements AgentModeCapability {
   AgentMode? parseMode(String paneText) => parseAgentMode(paneText);
 
   /// Cycle the agent's interaction mode — the runtime equivalent of pressing
-  /// shift+tab. herdr's `pane send-keys shift+tab` mis-encodes to a plain Tab
-  /// for kitty-keyboard agents like Claude Code (herdr issue #1561), so send
-  /// the raw backtab escape sequence (ESC [ Z) via `pane send-text`, which is
-  /// verified to cycle the mode end-to-end.
+  /// shift+tab. Sent as the raw backtab escape sequence (ESC [ Z) via `pane
+  /// send-text`, which is verified to cycle the mode end-to-end. On herdr
+  /// 0.8.0 — drover's floor — `pane send-keys shift+tab` mis-encodes to a
+  /// plain Tab for kitty-keyboard agents like Claude Code (herdr issue
+  /// #1561). Fixed in herdr 0.8.2; `kMinHerdrVersion` in
+  /// `herdr_version.dart` says why drover still sends raw backtab.
   @override
   Future<void> cycleMode(HerdrClient client, String paneId) =>
       client.sendPaneText(paneId, '\u001b[Z');

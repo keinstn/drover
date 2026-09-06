@@ -57,10 +57,13 @@ class CodexModeCapability implements AgentModeCapability {
   AgentMode? parseMode(String paneText) => parseCodexMode(paneText);
 
   /// Cycle the agent's interaction mode — the runtime equivalent of pressing
-  /// shift+tab with the composer focused. herdr's `pane send-keys shift+tab`
-  /// mis-encodes to a plain Tab for kitty-keyboard agents (herdr issue #1561),
-  /// so send the raw backtab escape sequence (ESC [ Z) via `pane send-text`,
-  /// verified on live Codex CLI 0.144.6 to cycle normal → plan → normal.
+  /// shift+tab with the composer focused. Sent as the raw backtab escape
+  /// sequence (ESC [ Z) via `pane send-text`, verified on live Codex CLI
+  /// 0.144.6 to cycle normal → plan → normal. On herdr 0.8.0 — drover's
+  /// floor — `pane send-keys shift+tab` mis-encodes to a plain Tab for
+  /// kitty-keyboard agents (herdr issue #1561). Fixed in herdr 0.8.2;
+  /// `kMinHerdrVersion` in `herdr_version.dart` says why drover still sends
+  /// raw backtab.
   @override
   Future<void> cycleMode(HerdrClient client, String paneId) =>
       client.sendPaneText(paneId, '\u001b[Z');

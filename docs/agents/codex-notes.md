@@ -47,13 +47,14 @@ noted otherwise.
 
 ## Mode cycling
 
-- **Mode cycling via raw backtab.** (2026-07-22, herdr issue #1561) `pane
-  send-keys shift+tab` is broken for every agent (see `../herdr-notes.md`);
-  drover cycles Codex's mode by sending the raw backtab escape sequence
-  `ESC [ Z` (bytes `1b 5b 5a`) via `pane send-text`. Verified end-to-end
-  against a live Codex agent. The cycle order observed is:
-  normal → plan → (back to normal). The footer in normal mode reads
-  `<model> <effort> · <cwd>`; plan mode shows
+- **Mode cycling via raw backtab.** (2026-07-22, herdr issue #1561; upstream
+  fix noted 2026-09-06) `pane send-keys shift+tab` was broken for every agent
+  up to herdr 0.8.0 and is fixed in 0.8.2, but drover keeps sending raw
+  backtab while its floor is 0.8.0 (see `../herdr-notes.md`); it cycles
+  Codex's mode by sending the escape sequence `ESC [ Z` (bytes `1b 5b 5a`) via
+  `pane send-text`. Verified end-to-end against a live Codex agent. The cycle
+  order observed is: normal → plan → (back to normal). The footer in normal
+  mode reads `<model> <effort> · <cwd>`; plan mode shows
   `Plan mode (shift+tab to cycle)` in the footer. The verified raw-backtab
   cycle exposed only normal and plan; the adapter maps only those and does not
   infer additional modes.

@@ -25,12 +25,14 @@ noted otherwise.
 
 ## Mode cycling and footer
 
-- **Mode cycling and footer.** (2026-07-21) With the composer focused, the raw
-  backtab escape sequence `ESC [ Z` (same workaround as Claude Code — `pane
-  send-keys shift+tab` is equally broken for Copilot CLI and must not be used,
-  see `../herdr-notes.md`) cycles `interactive` (the default, no on-screen
-  label) → `plan` → `autopilot` → back to `interactive`. The composer's footer
-  comes in two forms, and both name `plan`/`autopilot` explicitly when active:
+- **Mode cycling and footer.** (2026-07-21; upstream herdr fix noted
+  2026-09-06) With the composer focused, the raw backtab escape sequence
+  `ESC [ Z` (same workaround as Claude Code — `pane send-keys shift+tab` was
+  equally broken for Copilot CLI up to herdr 0.8.0 and is fixed in 0.8.2, but
+  must not be used while drover's floor is 0.8.0, see `../herdr-notes.md`)
+  cycles `interactive` (the default, no on-screen label) → `plan` →
+  `autopilot` → back to `interactive`. The composer's footer comes in two
+  forms, and both name `plan`/`autopilot` explicitly when active:
   - idle: `/ commands · ? help · tab next tab`, becoming
     `plan · / commands · ? help · tab next tab`; autopilot instead shows
     `autopilot · / commands · tab next tab` (without `? help`).
