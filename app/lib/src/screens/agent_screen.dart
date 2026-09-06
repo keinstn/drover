@@ -235,6 +235,18 @@ class _AgentScreenState extends State<AgentScreen> {
   // still current (never the AgentScreen route beneath it).
   ModalRoute<void>? _structuredPromptSheetRoute;
 
+  // Raw key presses from the arrow-key row are chained here so two fast taps
+  // reach herdr in the order they were tapped, and debounced into a single
+  // refresh — see `_sendKey`.
+  Future<void> _keyQueue = Future.value();
+  Timer? _keyRefreshTimer;
+  // Whether an arrow key has been sent from *this* screen. The row's open
+  // state is process-global (it lives on the draft store), but the
+  // live-terminal dedup bypass it enables must not be: leaving it lifted for
+  // every pane the user later opens would re-render every transcript twice —
+  // the regression PR #116 fixed. See `build`.
+  bool _keySentHere = false;
+
   final _scrollController = ScrollController();
   final _messageController = TextEditingController();
   late final SpeechInput _speechInput;
@@ -281,6 +293,7 @@ class _AgentScreenState extends State<AgentScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _keyRefreshTimer?.cancel();
     if (_dictationStarting || _dictating) {
       unawaited(_speechInput.cancel());
     }
@@ -700,6 +713,49 @@ class _AgentScreenState extends State<AgentScreen> {
     }
   }
 
+  /// Sends a raw key to the pane outside the [_send] path, for the composer's
+  /// arrow-key row: navigating a TUI dialog means several taps in a row, and
+  /// [_send] would disable the whole composer for an SSH round-trip plus a
+  /// full `_load()` after every one of them.
+  ///
+  /// Taps are chained on a single queue so two fast presses can't arrive out
+  /// of order, and a failure is reported without poisoning that queue. The
+  /// refresh is debounced into one `_load()` per burst; the 2s poll covers
+  /// anything that lands after it.
+  void _sendKey(String key) {
+    HapticFeedback.selectionClick();
+    _keySentHere = true;
+    _keyQueue = _keyQueue
+        .then((_) async {
+          try {
+            await widget.client.sendKeys(widget.paneId, key);
+          } catch (e) {
+            if (!mounted) return;
+            showTopToast(
+              context,
+              errorHeadline(AppLocalizations.of(context)!, e),
+            );
+          }
+        })
+        // The catch above covers the send; this covers everything else in the
+        // callback (a toast with no Overlay mounted, say), which would
+        // otherwise leave every later tap chaining off an errored future.
+        .catchError((_) {});
+    _keyRefreshTimer?.cancel();
+    _keyRefreshTimer = Timer(const Duration(milliseconds: 250), _load);
+  }
+
+  /// Shows or hides the arrow-key row, remembering the choice in the draft
+  /// store so it survives this route being popped and re-pushed. Opening it
+  /// sticks the transcript to the bottom, so the Live terminal section the
+  /// first key press can un-hide (see the dedup bypass in `build`) lands in
+  /// view rather than below the fold.
+  void _toggleKeysRow() {
+    final open = !_draftStore.keysRowOpen;
+    setState(() => _draftStore.keysRowOpen = open);
+    if (open) _restoreScrollAfterLayout(stickToBottom: true);
+  }
+
   /// Sends the composer's text and any staged images together. With staged
   /// images the whole turn goes through the resolved agent's
   /// [ImageAttachmentCapability] (caption + paths); otherwise it's a plain
@@ -887,7 +943,18 @@ class _AgentScreenState extends State<AgentScreen> {
     final hasNativeHistory =
         nativeHistory != null && nativeHistory.entries.isNotEmpty;
     final paneText = stripTuiChrome(_text);
-    final liveTerminalText = _liveTerminalText(paneText, nativeHistory);
+    final keysRowOpen = _draftStore.keysRowOpen;
+    // Once the user drives a TUI overlay from here (a `/model` picker, say)
+    // it draws on top of already-transcribed conversation — exactly the shape
+    // the duplicate check reads as redundant, so it would hide the pane just
+    // as they need to watch their key presses. Withholding the native history
+    // bypasses the check. Gated on a key actually having been sent from this
+    // screen, not merely on the row being open, so a pane the user never
+    // touched with an arrow keeps its dedup.
+    final liveTerminalText = _liveTerminalText(
+      paneText,
+      keysRowOpen && _keySentHere ? null : nativeHistory,
+    );
     // Neither the pane nor the native transcript have produced anything to
     // show yet: while the very first load is still in flight (and hasn't
     // already failed — that gets its own retryable banner below) show a
@@ -1055,6 +1122,9 @@ class _AgentScreenState extends State<AgentScreen> {
                 mode: mode,
                 modeCapability: modeCapability,
                 onAction: _send,
+                keysRowOpen: keysRowOpen,
+                onToggleKeysRow: _toggleKeysRow,
+                onSendKey: _sendKey,
                 client: widget.client,
                 paneId: widget.paneId,
               ),
@@ -2080,6 +2150,9 @@ class _Composer extends StatelessWidget {
     required this.mode,
     required this.modeCapability,
     required this.onAction,
+    required this.keysRowOpen,
+    required this.onToggleKeysRow,
+    required this.onSendKey,
     required this.client,
     required this.paneId,
   });
@@ -2117,6 +2190,15 @@ class _Composer extends StatelessWidget {
   /// [modeCapability]. This can only cycle through modes, not jump to a
   /// specific one.
   final Future<bool> Function(Future<void> Function()) onAction;
+
+  /// Whether the arrow-key row is expanded.
+  final bool keysRowOpen;
+  final VoidCallback onToggleKeysRow;
+
+  /// Sends one raw arrow key. Deliberately not routed through [onAction]: the
+  /// arrows stay live while a send is in flight, so a burst of taps isn't
+  /// swallowed by a disabled button.
+  final void Function(String key) onSendKey;
   final HerdrClient client;
   final String paneId;
 
@@ -2180,39 +2262,91 @@ class _Composer extends StatelessWidget {
                 contentPadding: const EdgeInsets.symmetric(vertical: 4),
               ),
             ),
+            if (keysRowOpen) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _ArrowKeyButton(
+                    keyName: 'left',
+                    icon: Icons.arrow_back,
+                    onPressed: () => onSendKey('left'),
+                  ),
+                  const SizedBox(width: 8),
+                  _ArrowKeyButton(
+                    keyName: 'up',
+                    icon: Icons.arrow_upward,
+                    onPressed: () => onSendKey('up'),
+                  ),
+                  const SizedBox(width: 8),
+                  _ArrowKeyButton(
+                    keyName: 'down',
+                    icon: Icons.arrow_downward,
+                    onPressed: () => onSendKey('down'),
+                  ),
+                  const SizedBox(width: 8),
+                  _ArrowKeyButton(
+                    keyName: 'right',
+                    icon: Icons.arrow_forward,
+                    onPressed: () => onSendKey('right'),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 4),
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                if (canAttachImages) ...[
-                  _AttachButton(
-                    sending: sending || dictationStarting || dictating,
-                    onPick: onAttach,
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                if (mode != null) ...[
-                  _ModeButton(
-                    mode: mode,
-                    sending: sending,
-                    onPressed: () => onAction(
-                      () => modeCapability!.cycleMode(client, paneId),
+                // This cluster grows with the agent's mode label and the
+                // attach affordance, and on a narrow phone it no longer fits
+                // beside the pinned controls. It scrolls instead of
+                // overflowing; where it does fit it lays out exactly as a
+                // Spacer left it.
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        if (canAttachImages) ...[
+                          _AttachButton(
+                            sending: sending || dictationStarting || dictating,
+                            onPick: onAttach,
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        if (mode != null) ...[
+                          _ModeButton(
+                            mode: mode,
+                            sending: sending,
+                            onPressed: () => onAction(
+                              () => modeCapability!.cycleMode(client, paneId),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        _EscapeButton(
+                          sending: sending,
+                          onPressed: () =>
+                              onAction(() => client.sendKeys(paneId, 'esc')),
+                        ),
+                        const SizedBox(width: 8),
+                        _EnterButton(
+                          sending: sending,
+                          onPressed: () =>
+                              onAction(() => client.sendKeys(paneId, 'enter')),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                ],
-                _EscapeButton(
-                  sending: sending,
-                  onPressed: () =>
-                      onAction(() => client.sendKeys(paneId, 'esc')),
                 ),
                 const SizedBox(width: 8),
-                _EnterButton(
-                  sending: sending,
-                  onPressed: () =>
-                      onAction(() => client.sendKeys(paneId, 'enter')),
+                // Pinned outside the scroll view: it is this feature's only
+                // entry point, and on the narrowest phones the scrollable
+                // cluster is already wider than its slot.
+                _ArrowKeysToggleButton(
+                  open: keysRowOpen,
+                  onPressed: onToggleKeysRow,
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
                 _MicrophoneButton(
                   starting: dictationStarting,
                   dictating: dictating,
@@ -2486,6 +2620,85 @@ class _EscapeButton extends StatelessWidget {
   }
 }
 
+/// Shows or hides the composer's arrow-key row. Emphasised like the mode chip
+/// while the row is open, so the composer's extra row has a visible source.
+/// Unlike Esc/Enter it stays enabled while a send is in flight — the arrows it
+/// reveals do too.
+class _ArrowKeysToggleButton extends StatelessWidget {
+  const _ArrowKeysToggleButton({required this.open, required this.onPressed});
+
+  final bool open;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Tooltip(
+        message: open ? l10n.agentHideArrowKeys : l10n.agentShowArrowKeys,
+        child: OutlinedButton(
+          key: const ValueKey('toggle_arrow_keys_button'),
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            shape: const CircleBorder(),
+            padding: EdgeInsets.zero,
+            backgroundColor: open ? DroverColors.of(context).idlePillBg : null,
+            foregroundColor: open ? scheme.onSurface : scheme.onSurfaceVariant,
+            side: open ? BorderSide.none : BorderSide(color: scheme.outline),
+          ),
+          child: const Icon(Icons.gamepad_outlined, size: 18),
+        ),
+      ),
+    );
+  }
+}
+
+/// One cursor key in the composer's arrow-key row, sending herdr's [keyName]
+/// token ('left', 'up', 'down', 'right') straight to the pane so the user can
+/// drive a TUI dialog — an agent's `/model` picker, say — from the app.
+class _ArrowKeyButton extends StatelessWidget {
+  const _ArrowKeyButton({
+    required this.keyName,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String keyName;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Tooltip(
+        message: switch (keyName) {
+          'left' => l10n.agentSendArrowLeft,
+          'up' => l10n.agentSendArrowUp,
+          'down' => l10n.agentSendArrowDown,
+          _ => l10n.agentSendArrowRight,
+        },
+        child: OutlinedButton(
+          key: ValueKey('send_key_$keyName'),
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            shape: const CircleBorder(),
+            padding: EdgeInsets.zero,
+            foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+            side: BorderSide(color: Theme.of(context).colorScheme.outline),
+          ),
+          child: Icon(icon, size: 18),
+        ),
+      ),
+    );
+  }
+}
+
 class _MicrophoneButton extends StatelessWidget {
   const _MicrophoneButton({
     required this.starting,
@@ -2507,6 +2720,7 @@ class _MicrophoneButton extends StatelessWidget {
       child: Tooltip(
         message: dictating ? l10n.agentStopDictation : l10n.agentDictateMessage,
         child: OutlinedButton(
+          key: const ValueKey('dictate_button'),
           onPressed: enabled ? onPressed : null,
           style: OutlinedButton.styleFrom(
             shape: const CircleBorder(),

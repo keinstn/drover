@@ -1,4 +1,5 @@
-/// In-memory store for a pane's in-progress composer draft, keyed by paneId.
+/// In-memory store for composer state that must outlive the screen: a pane's
+/// in-progress draft (keyed by paneId), plus the arrow-key row's toggle.
 ///
 /// The [AgentScreen] is a route that gets popped and re-pushed as the user
 /// navigates the herd, disposing its `TextEditingController` each time. Keeping
@@ -25,4 +26,9 @@ class AgentDraftStore {
 
   /// Removes any saved draft for [paneId].
   void clear(String paneId) => _drafts.remove(paneId);
+
+  /// Whether the composer's arrow-key row is expanded. Deliberately global
+  /// rather than per-pane: a user who needs cursor keys to drive a TUI dialog
+  /// needs them on every agent, not just the one they first opened them on.
+  bool keysRowOpen = false;
 }
