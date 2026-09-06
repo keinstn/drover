@@ -1,3 +1,12 @@
+## [1.0.2] - 2026-09-06
+
+### 🚀 Features
+
+- *(app)* Add pi agent support (#179)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(app)* Check iOS SPM dependency resolution on macOS (#178)
 ## [1.0.1] - 2026-08-27
 
 ### 🐛 Bug Fixes
