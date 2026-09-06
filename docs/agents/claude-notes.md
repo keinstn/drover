@@ -8,12 +8,13 @@ channel, the `agent_session` mechanism), see `../herdr-notes.md`.
 ## Mode cycling
 
 - **Cycle order via the raw backtab workaround.** (2026-07-18, herdr issue
-  #1561) `pane send-keys shift+tab` is broken for every agent (see
-  `../herdr-notes.md`); drover cycles Claude Code's mode by sending the raw
-  backtab escape sequence `ESC [ Z` (bytes `1b 5b 5a`) via `pane send-text`.
-  Verified end-to-end against a live Claude Code agent: it cycles the mode
-  exactly like a physical shift+tab. The cycle order is:
-  manual → accept edits → plan → auto → (back to manual).
+  #1561; upstream fix noted 2026-09-06) `pane send-keys shift+tab` was broken
+  for every agent up to herdr 0.8.0 and is fixed in 0.8.2, but drover keeps
+  sending raw backtab while its floor is 0.8.0 (see `../herdr-notes.md`); it
+  cycles Claude Code's mode by sending the escape sequence `ESC [ Z` (bytes
+  `1b 5b 5a`) via `pane send-text`. Verified end-to-end against a live Claude
+  Code agent: it cycles the mode exactly like a physical shift+tab. The cycle
+  order is: manual → accept edits → plan → auto → (back to manual).
   - Caveat 1 (resolved 2026-07-23, issue #62): `accept edits` and `auto` are
     two distinct positions in the cycle. drover's `parseAgentMode` used to
     collapse both into one `AgentMode.autoAccept` value — carried from an

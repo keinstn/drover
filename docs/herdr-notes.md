@@ -70,17 +70,28 @@ which agent is running in the pane.
   reports detection-hook install state, and an agent can be running while its
   integration reads "not installed". To decide what can be launched, probe the
   host PATH (`command -v <bin>`) instead.
-- **`pane send-keys <pane> shift+tab` is broken — herdr writes a plain Tab
-  byte.** (2026-07-18, herdr issue #1561) herdr encodes the `shift+tab` token
+- **`pane send-keys <pane> shift+tab` writes a plain Tab byte on herdr 0.8.0 —
+  fixed in 0.8.2, but drover still sends raw backtab.** (2026-07-18, herdr
+  issue #1561) Up to and including 0.8.0, herdr encoded the `shift+tab` token
   as a plain Tab byte (0x09), identical to `tab` — not the backtab sequence
   agent TUIs need to cycle their mode. Verified by capturing the bytes herdr
-  writes to the PTY. **Workaround:** send the raw backtab escape sequence
-  `ESC [ Z` (bytes `1b 5b 5a`) via `pane send-text` instead. Verified
-  end-to-end against Claude Code, Copilot CLI, and Codex CLI: it cycles a
-  live agent's mode exactly like a physical shift+tab. `pane send-keys
-  shift+tab` must not be used for any agent. The per-agent cycle order and
-  how drover maps each position onto `AgentMode` are documented in the agent
-  notes under `docs/agents/`.
+  writes to the PTY. Fixed upstream in herdr v0.8.2 (2026-08-19, per its
+  release notes: "`pane send-keys` and `agent send-keys` now preserve Shift
+  when sending `shift+tab`, allowing agent permission modes to be cycled
+  programmatically"); not independently re-verified here. **drover keeps the
+  workaround anyway:** it sends the raw backtab escape sequence `ESC [ Z`
+  (bytes `1b 5b 5a`) via `pane send-text`, verified end-to-end against Claude
+  Code, Copilot CLI, and Codex CLI — it cycles a live agent's mode exactly
+  like a physical shift+tab. This is a deliberate compatibility decision, not
+  an open bug: drover's floor is herdr 0.8.0 (`kMinHerdrVersion`), there is no
+  0.8.1, and on 0.8.0 `send-keys shift+tab` fails *silently* — no error, just
+  an agent whose mode never changes. Raw backtab bypasses herdr's key encoder
+  entirely and so behaves identically on every supported version.
+  `pane send-keys shift+tab` must not be used for any agent while the floor is
+  0.8.0; raising the floor past it collapses the three `cycleMode`
+  implementations to a single `send-keys shift+tab`. The per-agent cycle order
+  and how drover maps each position onto `AgentMode` are documented in the
+  agent notes under `docs/agents/`.
 - **The agent input channel is text-only — images go via SFTP + a path
   reference.** (2026-07-18) `agent send` / `pane send-text` / `pane send-keys`
   carry only text or key events; there is no attachment/image-injection

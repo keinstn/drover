@@ -2013,8 +2013,8 @@ void main() {
     expect(find.widgetWithText(ActionChip, 'Esc'), findsNothing);
 
     // Tapping the mode button cycles it by sending the raw backtab escape
-    // sequence via `pane send-text` (herdr's `send-keys shift+tab` mis-encodes
-    // it — see herdr issue #1561).
+    // sequence via `pane send-text` (on drover's herdr floor of 0.8.0,
+    // `send-keys shift+tab` mis-encodes it — see herdr issue #1561).
     await tester.tap(find.byKey(const ValueKey('cycle_mode_button')));
     await tester.pump();
     await tester.pump();
