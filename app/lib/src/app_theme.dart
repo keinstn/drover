@@ -155,6 +155,7 @@ class DroverColors extends ThemeExtension<DroverColors> {
     required this.brandCodex,
     required this.brandCopilot,
     required this.brandPi,
+    required this.brandOmp,
     required this.brandFallback,
     required this.avatarFg,
     required this.userBubble,
@@ -181,6 +182,7 @@ class DroverColors extends ThemeExtension<DroverColors> {
   final Color brandCodex;
   final Color brandCopilot;
   final Color brandPi;
+  final Color brandOmp;
   final Color brandFallback;
 
   // Bespoke surfaces/text not covered by ColorScheme.
@@ -213,13 +215,14 @@ class DroverColors extends ThemeExtension<DroverColors> {
     AgentStatus.idle || AgentStatus.unknown => idlePillFg,
   };
 
-  /// Brand color for an agent [type] (e.g. `claude`/`codex`/`copilot`/`pi`);
-  /// unknown or null types fall back to a neutral tone.
+  /// Brand color for an agent [type] (e.g. `claude`/`codex`/`copilot`/`pi`/
+  /// `omp`); unknown or null types fall back to a neutral tone.
   Color brandColor(String? type) => switch (type?.toLowerCase()) {
     'claude' => brandClaude,
     'codex' => brandCodex,
     'copilot' => brandCopilot,
     'pi' => brandPi,
+    'omp' => brandOmp,
     _ => brandFallback,
   };
 
@@ -244,6 +247,7 @@ class DroverColors extends ThemeExtension<DroverColors> {
     brandCodex: Color(0xFF6FA287),
     brandCopilot: Color(0xFF8B9DC9),
     brandPi: Color(0xFFB98AC9),
+    brandOmp: Color(0xFF55AAB9),
     brandFallback: Color(0xFFA69B8C),
     avatarFg: Color(0xFF1D150E),
     userBubble: Color(0xFF3A2E22),
@@ -276,6 +280,7 @@ class DroverColors extends ThemeExtension<DroverColors> {
     brandCodex: Color(0xFF6FA287),
     brandCopilot: Color(0xFF8B9DC9),
     brandPi: Color(0xFFB98AC9),
+    brandOmp: Color(0xFF55AAB9),
     // Same reasoning: the fallback avatar for an unrecognised agent type is
     // the absence of a brand color.
     brandFallback: Color(0xFF7E7E83),
@@ -314,6 +319,7 @@ class DroverColors extends ThemeExtension<DroverColors> {
     Color? brandCodex,
     Color? brandCopilot,
     Color? brandPi,
+    Color? brandOmp,
     Color? brandFallback,
     Color? avatarFg,
     Color? userBubble,
@@ -336,6 +342,7 @@ class DroverColors extends ThemeExtension<DroverColors> {
     brandCodex: brandCodex ?? this.brandCodex,
     brandCopilot: brandCopilot ?? this.brandCopilot,
     brandPi: brandPi ?? this.brandPi,
+    brandOmp: brandOmp ?? this.brandOmp,
     brandFallback: brandFallback ?? this.brandFallback,
     avatarFg: avatarFg ?? this.avatarFg,
     userBubble: userBubble ?? this.userBubble,
@@ -363,6 +370,7 @@ class DroverColors extends ThemeExtension<DroverColors> {
       brandCodex: Color.lerp(brandCodex, other.brandCodex, t)!,
       brandCopilot: Color.lerp(brandCopilot, other.brandCopilot, t)!,
       brandPi: Color.lerp(brandPi, other.brandPi, t)!,
+      brandOmp: Color.lerp(brandOmp, other.brandOmp, t)!,
       brandFallback: Color.lerp(brandFallback, other.brandFallback, t)!,
       avatarFg: Color.lerp(avatarFg, other.avatarFg, t)!,
       userBubble: Color.lerp(userBubble, other.userBubble, t)!,

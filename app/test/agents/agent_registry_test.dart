@@ -3,6 +3,7 @@ import 'package:drover/src/agents/agent_registry.dart';
 import 'package:drover/src/agents/claude/claude_adapter.dart';
 import 'package:drover/src/agents/codex/codex_adapter.dart';
 import 'package:drover/src/agents/copilot/copilot_adapter.dart';
+import 'package:drover/src/agents/omp/omp_adapter.dart';
 import 'package:drover/src/agents/pi/pi_adapter.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/host_platform.dart';
@@ -63,6 +64,12 @@ void main() {
       final adapter = resolveAgentAdapter(_agent('pi'));
 
       expect(adapter, isA<PiAgentAdapter>());
+    });
+
+    test('resolves an omp agent to OmpAgentAdapter', () {
+      final adapter = resolveAgentAdapter(_agent('omp'));
+
+      expect(adapter, isA<OmpAgentAdapter>());
     });
 
     test('returns null for an unrecognized agent', () {
@@ -256,6 +263,60 @@ void main() {
               agent: 'pi',
               kind: 'path',
               value: '/home/dev/.pi/sessions/01932f4e-session.jsonl',
+            ),
+          ),
+        );
+
+        expect(loader, isNotNull);
+      },
+    );
+  });
+
+  group('OmpAgentAdapter capabilities', () {
+    const adapter = OmpAgentAdapter();
+
+    test('supports only the omp agent', () {
+      expect(adapter.supports(_agent('omp')), isTrue);
+      // Notably not pi: omp shares pi's transcript format, not its name.
+      expect(adapter.supports(_agent('pi')), isFalse);
+      expect(adapter.supports(_agent('claude')), isFalse);
+    });
+
+    test('exposes no mode, structured-prompt or image capability', () {
+      // shift+tab cycles omp's thinking level rather than an interaction
+      // mode, and its `ask` tool renders an arrow-key dialog the generic
+      // numbered-prompt fallback cannot drive either.
+      expect(adapter.mode, isNull);
+      expect(adapter.structuredPrompt, isNull);
+      expect(adapter.images, isNull);
+    });
+
+    test(
+      'createNativeHistory returns null without a matching agent session',
+      () {
+        final loader = adapter.createNativeHistory(
+          _FakeCommandRunner(),
+          const UnixHostPlatform(),
+          _agent('omp'),
+        );
+
+        expect(loader, isNull);
+      },
+    );
+
+    test(
+      'createNativeHistory returns a loader for a valid omp path session',
+      () {
+        final loader = adapter.createNativeHistory(
+          _FakeCommandRunner(),
+          const UnixHostPlatform(),
+          _agent(
+            'omp',
+            agentSession: const AgentSession(
+              source: 'herdr:omp',
+              agent: 'omp',
+              kind: 'path',
+              value: '/home/dev/.omp/agent/sessions/proj/2026-09-06_abc.jsonl',
             ),
           ),
         );

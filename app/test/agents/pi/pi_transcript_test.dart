@@ -515,4 +515,63 @@ void main() {
       expect(older.messages.first.text, startsWith('entry-0'));
     });
   });
+
+  // omp is pi's successor and reuses the JSONL format verbatim, so the same
+  // loader serves it — bound to a different agent name.
+  group('PiTranscriptLoader bound to omp', () {
+    const ompPath = '/home/dev/.omp/agent/sessions/proj/2026-09-06_abc.jsonl';
+
+    AgentInfo ompAgent({String agent = 'omp', String sessionAgent = 'omp'}) =>
+        piAgent(agent: agent, sessionAgent: sessionAgent, value: ompPath);
+
+    test('supportsAgent is true for an omp agent with an omp path session', () {
+      expect(
+        PiTranscriptLoader.supportsAgent(ompAgent(), agentName: 'omp'),
+        isTrue,
+      );
+    });
+
+    test('rejects a crossed agent/session name in either direction', () {
+      // The name is threaded into BOTH checks, so an omp agent carrying a pi
+      // session (or the reverse) stays unsupported rather than being parsed
+      // by whichever loader happens to see it first.
+      expect(
+        PiTranscriptLoader.supportsAgent(
+          ompAgent(sessionAgent: 'pi'),
+          agentName: 'omp',
+        ),
+        isFalse,
+      );
+      expect(
+        PiTranscriptLoader.supportsAgent(
+          ompAgent(agent: 'pi'),
+          agentName: 'omp',
+        ),
+        isFalse,
+      );
+      // And the default-named (pi) loader keeps rejecting omp outright.
+      expect(PiTranscriptLoader.supportsAgent(ompAgent()), isFalse);
+    });
+
+    test(
+      'load parses an omp session, while the pi-bound loader does not',
+      () async {
+        final contents = '${_message('user', '[${_text('One')}]')}\n';
+        final ompLoader = PiTranscriptLoader(
+          MemoryRunner(contents),
+          agentName: 'omp',
+        );
+
+        final transcript = await ompLoader.load(ompAgent());
+        expect(transcript?.messages.map((m) => m.text), ['One']);
+
+        // `load` re-applies `supportsAgent`, so a loader left on the default
+        // name would silently return null forever for the same session.
+        expect(
+          await PiTranscriptLoader(MemoryRunner(contents)).load(ompAgent()),
+          isNull,
+        );
+      },
+    );
+  });
 }

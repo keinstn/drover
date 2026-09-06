@@ -46,6 +46,8 @@ void main() {
       expect(colors.userBubble, const Color(0xFF3A2E22));
       expect(colors.brandColor('claude'), const Color(0xFFD9825F));
       expect(colors.brandColor('pi'), const Color(0xFFB98AC9));
+      expect(colors.brandColor('omp'), const Color(0xFF55AAB9));
+      expect(colors.brandColor('omp'), isNot(colors.brandFallback));
       // unknown status reuses the idle triple.
       expect(
         colors.statusDot(AgentStatus.unknown),
@@ -65,6 +67,8 @@ void main() {
       expect(colors.brandColor('codex'), const Color(0xFF6FA287));
       expect(colors.brandColor('pi'), const Color(0xFFB98AC9));
       expect(colors.brandColor('pi'), isNot(colors.brandFallback));
+      expect(colors.brandColor('omp'), const Color(0xFF55AAB9));
+      expect(colors.brandColor('omp'), isNot(colors.brandFallback));
       // Unknown/null agent type falls back to a neutral tone.
       expect(colors.brandColor(null), const Color(0xFF7E7E83));
     });
@@ -240,6 +244,11 @@ void main() {
     testWidgets('falls back to first letter and ? for unknown', (tester) async {
       await pump(tester, 'gemini');
       expect(find.text('G'), findsOneWidget);
+
+      // omp has no case arm on purpose: the fallback's first letter is `O`,
+      // which is already unique among the five known agents.
+      await pump(tester, 'omp');
+      expect(find.text('O'), findsOneWidget);
 
       await pump(tester, null);
       expect(find.text('?'), findsOneWidget);
