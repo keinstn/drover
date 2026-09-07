@@ -1,3 +1,27 @@
+## [1.0.3] - 2026-09-07
+
+### 🚀 Features
+
+- *(app)* Add a collapsible arrow-key row to the agent composer (#191)
+- *(agents)* Add omp agent support (#192)
+
+### 🐛 Bug Fixes
+
+- *(app)* Move Esc and Enter into the collapsible key row (#195)
+- *(functions)* Bump firebase-admin to 14.3.0, drop unused firebase-functions-test (#202)
+
+### 📚 Documentation
+
+- *(copilot)* Record herdr 0.8.2's own Copilot focus fix (#193)
+- *(herdr)* Note herdr 0.8.2 fixes #1561, keep raw-backtab workaround (#194)
+
+### 🧪 Testing
+
+- *(app)* Add unit coverage for FirebasePushMessaging.requestAuthorization (#203)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(app)* Align firebase-ios-sdk versions across firebase packages (#199)
 ## [1.0.2] - 2026-09-06
 
 ### 🚀 Features
