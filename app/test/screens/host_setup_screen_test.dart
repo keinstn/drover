@@ -91,6 +91,46 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('the demo button renders the themed neutral treatment', (
+    tester,
+  ) async {
+    // The screen's buttons carry no `style:` of their own any more — the
+    // neutral fill, hairline and control radius come from
+    // `outlinedButtonTheme`. Asserted on what is painted, not on the theme,
+    // so a call site that overrode it would fail here.
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: droverDarkTheme,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HostSetupScreen(onSubmit: (config) async {}, onEnterDemo: () {}),
+      ),
+    );
+
+    final material = tester.widget<Material>(
+      find.descendant(
+        of: find.byKey(const ValueKey('enter_demo_button')),
+        matching: find.byType(Material),
+      ),
+    );
+    final scheme = droverDarkTheme.colorScheme;
+    expect(material.color, scheme.surfaceContainerHigh);
+    expect(
+      material.shape,
+      RoundedRectangleBorder(
+        side: BorderSide(color: scheme.outline),
+        borderRadius: BorderRadius.circular(droverRadiusControl),
+      ),
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'omits the demo entry when onEnterDemo is null, as on the add/edit routes',
     (tester) async {
@@ -145,7 +185,7 @@ void main() {
       '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----',
     );
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.tap(find.widgetWithText(FilledButton, 'SAVE'));
     await tester.pump();
     await tester.pump();
 
@@ -192,7 +232,7 @@ void main() {
     );
 
     // Left blank, the name submits as null.
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.tap(find.widgetWithText(FilledButton, 'SAVE'));
     await tester.pump();
     await tester.pump();
     expect(captured, isNotNull);
@@ -203,7 +243,7 @@ void main() {
       find.widgetWithText(TextFormField, 'Name (optional)'),
       '  Work Mac  ',
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.tap(find.widgetWithText(FilledButton, 'SAVE'));
     await tester.pump();
     await tester.pump();
     expect(captured!.name, 'Work Mac');
@@ -237,7 +277,7 @@ void main() {
     );
     await tester.enterText(find.widgetWithText(TextFormField, 'Port'), '70000');
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.tap(find.widgetWithText(FilledButton, 'SAVE'));
     await tester.pump();
 
     expect(captured, isNull);
@@ -274,7 +314,7 @@ void main() {
       'ssh-ed25519 AAAAC3NzaC1lZDI1... not a private key',
     );
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.tap(find.widgetWithText(FilledButton, 'SAVE'));
     await tester.pump();
 
     expect(captured, isNull);
@@ -310,12 +350,12 @@ void main() {
       '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----',
     );
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.tap(find.widgetWithText(FilledButton, 'SAVE'));
     await tester.pump();
     await tester.pump();
 
     final saveButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Save'),
+      find.widgetWithText(FilledButton, 'SAVE'),
     );
     expect(saveButton.onPressed, isNotNull);
 
@@ -363,7 +403,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(TextButton, 'Close'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.tap(find.widgetWithText(FilledButton, 'SAVE'));
     await tester.pumpAndSettle();
 
     expect(captured?.hostId, 'paired-host');
@@ -409,9 +449,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('pairing_install_command')),
-          matching: find.textContaining(
-            'plugin install keinstn/drover-notify',
-          ),
+          matching: find.textContaining('plugin install keinstn/drover-notify'),
         ),
         findsOneWidget,
       );

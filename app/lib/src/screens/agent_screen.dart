@@ -33,7 +33,11 @@ import 'structured_prompt_sheet.dart';
 // The transcript renders on a fixed dark surface regardless of app theme:
 // agent output carries absolute (truecolor) colours picked for a dark
 // terminal, so a dark panel keeps them faithful and legible.
-const _transcriptBg = Color(0xFF1B1B1F);
+const _transcriptBg = Color(0xFF1A1D22);
+// Against the ink page (`surfaceContainerLowest` #131316) these fixed-dark
+// panels are only a few units lighter than their ground, so the hairline —
+// not the fill — is what makes them read as panels at all.
+const _transcriptBorder = Color(0xFF2B3038);
 const _transcriptFg = Color(0xFFE4E4E7);
 // Dimmed foreground for secondary rows (tool-use summaries, thinking blocks)
 // that should read as quieter than the main conversation text.
@@ -41,6 +45,16 @@ const _transcriptFgDim = Color(0xFF8B8B92);
 // Panel behind inline/fenced code, a touch lighter than the transcript surface
 // so code stays legible without the pure-white background of light themes.
 const _codeSurface = Color(0xFF26262B);
+// Same reason as _transcriptBorder: the code panel needs an edge, not a
+// stronger fill, to separate from the ink surfaces.
+const _codeBorder = Color(0xFF35353D);
+
+// The one control shape on this screen. Material's own defaults are circles
+// and stadiums, which the ink geometry has none of, so every button — the
+// composer's icon buttons included — pins this explicitly.
+const _controlShape = RoundedRectangleBorder(
+  borderRadius: BorderRadius.all(Radius.circular(droverRadiusControl)),
+);
 // Muted diff tints painted over _codeSurface: low-chroma red/green (~20% alpha)
 // that stay calm on the dark Ink surface.
 const _diffRemoveBg = Color(0x33F85149);
@@ -49,7 +63,7 @@ const _diffAddBg = Color(0x333FB950);
 // Base style for fenced code: kept in sync with the plain-text fallback so
 // highlighted and unhighlighted blocks read identically apart from colour.
 const _codeTextStyle = TextStyle(
-  fontFamily: 'monospace',
+  fontFamily: droverMonoFamily,
   fontSize: 13,
   height: 1.4,
   color: _transcriptFg,
@@ -561,6 +575,14 @@ class _AgentScreenState extends State<AgentScreen> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      // As with the attach sheet: M3's 28pt top radius, pinned to the panel
+      // radius. Only the route can set a modal sheet's shape, so it lives at
+      // the call site rather than in StructuredPromptSheet itself.
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(droverRadiusPanel),
+        ),
+      ),
       builder: (sheetContext) {
         _structuredPromptSheetRoute = ModalRoute.of(sheetContext);
         return StructuredPromptSheet(
@@ -1176,10 +1198,15 @@ class _AgentHeader extends StatelessWidget {
             color: scheme.primary,
             iconSize: 22,
             visualDensity: VisualDensity.compact,
+            style: IconButton.styleFrom(shape: _controlShape),
             onPressed: () => Navigator.maybePop(context),
           ),
           const SizedBox(width: 4),
-          AgentAvatar(agent: agentTypeForAvatar, size: 34, radius: 12),
+          AgentAvatar(
+            agent: agentTypeForAvatar,
+            size: 34,
+            radius: droverRadiusControl,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -1196,10 +1223,14 @@ class _AgentHeader extends StatelessWidget {
                   ),
                 ),
                 Text(
+                  // Not through `droverLabelText`: the workspace label is
+                  // user-chosen and renameable, and an agent type is a
+                  // case-sensitive command name.
                   '$agentType · ${workspaceLabel ?? ''}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: droverLabelStyle(
+                    context,
                     fontSize: 10.5,
                     color: scheme.onSurfaceVariant,
                   ),
@@ -1234,7 +1265,8 @@ class _Transcript extends StatelessWidget {
       width: double.infinity,
       decoration: BoxDecoration(
         color: _transcriptBg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(droverRadiusPanel),
+        border: Border.all(color: _transcriptBorder),
       ),
       clipBehavior: Clip.antiAlias,
       padding: const EdgeInsets.all(12),
@@ -1243,7 +1275,7 @@ class _Transcript extends StatelessWidget {
         child: SelectableText.rich(
           TextSpan(
             style: const TextStyle(
-              fontFamily: 'monospace',
+              fontFamily: droverMonoFamily,
               fontSize: 13.5,
               height: 1.4,
               color: _transcriptFg,
@@ -1275,13 +1307,12 @@ class _TranscriptSectionLabel extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
-        label,
+        droverLabelText(context, label),
         textAlign: TextAlign.center,
-        style: TextStyle(
+        style: droverLabelStyle(
+          context,
+          fontSize: 9.5,
           color: DroverColors.of(context).tertiaryText,
-          fontWeight: FontWeight.w700,
-          fontSize: 10.5,
-          letterSpacing: 1,
         ),
       ),
     );
@@ -1396,10 +1427,15 @@ class _ToolUseChipState extends State<_ToolUseChip> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Material(
-          color: colors.toolSurface,
-          borderRadius: BorderRadius.circular(12),
+          // Outline only: the chip is machinery around the conversation, so it
+          // is drawn as an edge rather than as another filled surface.
+          color: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            side: BorderSide(color: scheme.outline),
+            borderRadius: BorderRadius.circular(droverRadiusChip),
+          ),
           child: InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(droverRadiusChip),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1422,7 +1458,7 @@ class _ToolUseChipState extends State<_ToolUseChip> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontFamily: 'monospace',
+                        fontFamily: droverMonoFamily,
                         fontSize: 11.5,
                         color: colors.tertiaryText,
                       ),
@@ -1508,7 +1544,8 @@ class _JsonDetailState extends State<_JsonDetail> {
       constraints: const BoxConstraints(maxHeight: 240),
       decoration: BoxDecoration(
         color: _codeSurface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(droverRadiusPanel),
+        border: Border.all(color: _codeBorder),
       ),
       child: SingleChildScrollView(
         child: SingleChildScrollView(
@@ -1517,7 +1554,7 @@ class _JsonDetailState extends State<_JsonDetail> {
           child: Text(
             _pretty,
             style: const TextStyle(
-              fontFamily: 'monospace',
+              fontFamily: droverMonoFamily,
               fontSize: 12,
               height: 1.4,
               color: _transcriptFg,
@@ -1557,7 +1594,7 @@ class _DiffCard extends StatelessWidget {
         '$gutter $text',
         softWrap: false,
         style: const TextStyle(
-          fontFamily: 'monospace',
+          fontFamily: droverMonoFamily,
           fontSize: 12,
           height: 1.4,
           color: _transcriptFg,
@@ -1591,7 +1628,7 @@ class _DiffCard extends StatelessWidget {
           child: Text(
             '… +${total - _maxLines} lines',
             style: const TextStyle(
-              fontFamily: 'monospace',
+              fontFamily: droverMonoFamily,
               fontSize: 12,
               color: _transcriptFgDim,
             ),
@@ -1605,7 +1642,8 @@ class _DiffCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: _codeSurface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(droverRadiusPanel),
+        border: Border.all(color: _codeBorder),
       ),
       child: SingleChildScrollView(
         child: SingleChildScrollView(
@@ -1691,11 +1729,13 @@ class _UserBubble extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
           decoration: BoxDecoration(
             color: DroverColors.of(context).userBubble,
+            // The clipped bottom-right corner is the bubble's "tail"; it stays
+            // one step tighter than the other three.
             borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16),
-              topRight: Radius.circular(16),
-              bottomLeft: Radius.circular(16),
-              bottomRight: Radius.circular(4),
+              topLeft: Radius.circular(droverRadiusPanel),
+              topRight: Radius.circular(droverRadiusPanel),
+              bottomLeft: Radius.circular(droverRadiusPanel),
+              bottomRight: Radius.circular(droverRadiusChip),
             ),
           ),
           child: SelectableText(
@@ -1736,7 +1776,7 @@ GptMarkdownThemeData _buildAssistantMarkdownTheme(
 // here so the heading colour is a compile-time constant per cached instance.
 final _assistantMarkdownThemeDark = _buildAssistantMarkdownTheme(
   Brightness.dark,
-  const Color(0xFFF0E9DF),
+  const Color(0xFFEAE8EE),
 );
 final _assistantMarkdownThemeLight = _buildAssistantMarkdownTheme(
   Brightness.light,
@@ -1797,7 +1837,7 @@ class _AssistantMessageState extends State<_AssistantMessage> {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: BoxDecoration(
               color: colors.toolSurface,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(droverRadiusPanel),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -1808,7 +1848,7 @@ class _AssistantMessageState extends State<_AssistantMessage> {
                   child: Text(
                     imageUrl,
                     style: TextStyle(
-                      fontFamily: 'monospace',
+                      fontFamily: droverMonoFamily,
                       fontSize: 13,
                       color: scheme.onSurface,
                     ),
@@ -1817,17 +1857,18 @@ class _AssistantMessageState extends State<_AssistantMessage> {
               ],
             ),
           ),
-          // Inline code: a small tonal panel keeps it readable on the surface.
+          // Inline code: a small tonal panel keeps it readable on the surface,
+          // with a hairline so the panel still has an edge on the ink ground.
           inlineCodeBuilder: (context, code, style, codeStyle) => CodeTextSpan(
             text: code,
             codeStyle: codeStyle.copyWith(
               backgroundColor: colors.toolSurface,
-              borderColor: Colors.transparent,
-              borderRadius: const Radius.circular(6),
+              borderColor: scheme.outline,
+              borderRadius: const Radius.circular(droverRadiusChip),
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
             ),
             style: style.copyWith(
-              fontFamily: 'monospace',
+              fontFamily: droverMonoFamily,
               fontSize: 12.5,
               color: scheme.onSurface,
             ),
@@ -1976,7 +2017,8 @@ class _FencedCodeState extends State<_FencedCode> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: _codeSurface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(droverRadiusPanel),
+        border: Border.all(color: _codeBorder),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -2026,13 +2068,17 @@ class _PromptCard extends StatelessWidget {
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     );
+    // Full-width rows rather than a wrapped run of pills: the answers are a
+    // list to pick from, and a row is easier to hit than a pill on a phone.
     if (option.selected) {
       return FilledButton(
         onPressed: press,
         style: FilledButton.styleFrom(
-          minimumSize: const Size(0, 38),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          shape: const StadiumBorder(),
+          backgroundColor: scheme.primary,
+          foregroundColor: scheme.onPrimary,
+          minimumSize: const Size.fromHeight(44),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          alignment: Alignment.centerLeft,
           textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
         ),
         child: label,
@@ -2041,11 +2087,12 @@ class _PromptCard extends StatelessWidget {
     return FilledButton.tonal(
       onPressed: press,
       style: FilledButton.styleFrom(
-        backgroundColor: scheme.surfaceContainerHighest,
+        backgroundColor: scheme.surfaceContainerHigh,
         foregroundColor: scheme.onSurface,
-        minimumSize: const Size(0, 38),
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        shape: const StadiumBorder(),
+        minimumSize: const Size.fromHeight(44),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        alignment: Alignment.centerLeft,
+        side: BorderSide(color: scheme.outline),
         textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
       ),
       child: label,
@@ -2061,13 +2108,13 @@ class _PromptCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: isDark ? scheme.surfaceContainerHigh : scheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(droverRadiusPanel),
         border: Border.all(color: scheme.outline),
         boxShadow: isDark
             ? null
             : const [
                 BoxShadow(
-                  color: Color(0x0F786446),
+                  color: Color.fromRGBO(60, 60, 75, 0.07),
                   blurRadius: 8,
                   offset: Offset(0, 2),
                 ),
@@ -2088,12 +2135,14 @@ class _PromptCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
           ],
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              for (final option in question.options)
+              for (final (index, option) in question.options.indexed) ...[
+                if (index > 0) const SizedBox(height: 8),
                 _optionButton(context, option),
+              ],
             ],
           ),
         ],
@@ -2212,13 +2261,13 @@ class _Composer extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: scheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(droverRadiusPanel),
           border: Border.all(color: scheme.outlineVariant),
           boxShadow: isDark
               ? null
               : const [
                   BoxShadow(
-                    color: Color(0x0F786446),
+                    color: Color.fromRGBO(60, 60, 75, 0.07),
                     blurRadius: 8,
                     offset: Offset(0, 2),
                   ),
@@ -2397,7 +2446,7 @@ class _PendingImagePreview extends StatelessWidget {
             left: 4,
             top: 8,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(droverRadiusControl),
               child: Image.memory(
                 image.bytes,
                 width: 44,
@@ -2414,6 +2463,9 @@ class _PendingImagePreview extends StatelessWidget {
               key: ValueKey('remove_image_button_$index'),
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
+              // IconButton's M3 default shape is a stadium — pinned, as on the
+              // header's back button.
+              style: IconButton.styleFrom(shape: _controlShape),
               constraints: const BoxConstraints.tightFor(width: 22, height: 22),
               tooltip: l10n.agentRemoveImage,
               icon: const Icon(Icons.cancel, size: 18),
@@ -2444,10 +2496,8 @@ class _AttachButton extends StatelessWidget {
           key: const ValueKey('attach_image_button'),
           onPressed: sending ? null : () => _handleTap(context),
           style: OutlinedButton.styleFrom(
-            shape: const CircleBorder(),
             padding: EdgeInsets.zero,
             foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
-            side: BorderSide(color: Theme.of(context).colorScheme.outline),
           ),
           child: const Icon(Icons.add, size: 20),
         ),
@@ -2470,6 +2520,13 @@ class _AttachButton extends StatelessWidget {
     final l10n = AppLocalizations.of(context)!;
     return showModalBottomSheet<ImageAttachSource>(
       context: context,
+      // M3's sheet default is a 28pt top radius, which the ink geometry has no
+      // room for; pinned here rather than inherited.
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(droverRadiusPanel),
+        ),
+      ),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2508,36 +2565,46 @@ class _ModeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
-    // Muted pill; the foreground carries the mode's meaning for non-normal
-    // modes, and reads as a quiet default (onSurfaceVariant) for normal.
-    final fg = mode == AgentMode.normal
-        ? scheme.onSurfaceVariant
-        : _modeColor(mode);
+    // The chip itself stays neutral and the mode's colour becomes a 2px left
+    // edge: a chip *filled* or *lettered* in a status hue reads as a status,
+    // which a mode is not. Non-uniform borders can't carry a borderRadius, so
+    // the rounding is a clip around the decoration.
     return SizedBox(
       height: 40,
       child: Tooltip(
         message: l10n.agentCycleModeTooltip,
-        child: OutlinedButton(
-          key: const ValueKey('cycle_mode_button'),
-          onPressed: sending ? null : onPressed,
-          style: OutlinedButton.styleFrom(
-            shape: const StadiumBorder(),
-            padding: const EdgeInsets.symmetric(horizontal: 13),
-            backgroundColor: DroverColors.of(context).idlePillBg,
-            foregroundColor: fg,
-            side: BorderSide.none,
-            textStyle: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(droverRadiusChip),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHigh,
+              border: Border(
+                left: BorderSide(color: _modeColor(mode), width: 2),
+              ),
             ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.tune, size: 16),
-              const SizedBox(width: 5),
-              Text(_modeLabel(mode, l10n)),
-            ],
+            child: OutlinedButton(
+              key: const ValueKey('cycle_mode_button'),
+              onPressed: sending ? null : onPressed,
+              style: OutlinedButton.styleFrom(
+                shape: const RoundedRectangleBorder(),
+                padding: const EdgeInsets.symmetric(horizontal: 11),
+                backgroundColor: Colors.transparent,
+                foregroundColor: scheme.onSurface,
+                side: BorderSide.none,
+                textStyle: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.tune, size: 16),
+                  const SizedBox(width: 5),
+                  Text(_modeLabel(mode, l10n)),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -2568,10 +2635,8 @@ class _EnterButton extends StatelessWidget {
           key: const ValueKey('send_enter_button'),
           onPressed: sending ? null : onPressed,
           style: OutlinedButton.styleFrom(
-            shape: const CircleBorder(),
             padding: EdgeInsets.zero,
             foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
-            side: BorderSide(color: Theme.of(context).colorScheme.outline),
           ),
           child: const Icon(Icons.keyboard_return, size: 18),
         ),
@@ -2604,14 +2669,12 @@ class _EscapeButton extends StatelessWidget {
           key: const ValueKey('send_escape_button'),
           onPressed: sending ? null : onPressed,
           style: OutlinedButton.styleFrom(
-            shape: const CircleBorder(),
             padding: EdgeInsets.zero,
             foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
-            side: BorderSide(color: Theme.of(context).colorScheme.outline),
           ),
-          child: const Text(
-            'Esc',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          child: Text(
+            droverLabelText(context, 'Esc'),
+            style: droverLabelStyle(context, fontSize: 10.5),
           ),
         ),
       ),
@@ -2642,11 +2705,12 @@ class _ArrowKeysToggleButton extends StatelessWidget {
           key: const ValueKey('toggle_arrow_keys_button'),
           onPressed: onPressed,
           style: OutlinedButton.styleFrom(
-            shape: const CircleBorder(),
             padding: EdgeInsets.zero,
-            backgroundColor: open ? DroverColors.of(context).idlePillBg : null,
+            backgroundColor: open ? scheme.surfaceContainerHigh : null,
             foregroundColor: open ? scheme.onSurface : scheme.onSurfaceVariant,
-            side: open ? BorderSide.none : BorderSide(color: scheme.outline),
+            // Borderless while open (it is filled instead); otherwise null,
+            // which falls through to `outlinedButtonTheme`'s state-aware side.
+            side: open ? BorderSide.none : null,
           ),
           child: const Icon(Icons.gamepad_outlined, size: 18),
         ),
@@ -2686,10 +2750,8 @@ class _ArrowKeyButton extends StatelessWidget {
           key: ValueKey('send_key_$keyName'),
           onPressed: onPressed,
           style: OutlinedButton.styleFrom(
-            shape: const CircleBorder(),
             padding: EdgeInsets.zero,
             foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
-            side: BorderSide(color: Theme.of(context).colorScheme.outline),
           ),
           child: Icon(icon, size: 18),
         ),
@@ -2722,10 +2784,8 @@ class _MicrophoneButton extends StatelessWidget {
           key: const ValueKey('dictate_button'),
           onPressed: enabled ? onPressed : null,
           style: OutlinedButton.styleFrom(
-            shape: const CircleBorder(),
             padding: EdgeInsets.zero,
             foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
-            side: BorderSide(color: Theme.of(context).colorScheme.outline),
           ),
           child: starting
               ? const SizedBox(
@@ -2777,7 +2837,7 @@ class _SendButton extends StatelessWidget {
             key: const ValueKey('send_message_button'),
             onPressed: busy ? null : (showStop ? onStop : onSend),
             style: FilledButton.styleFrom(
-              shape: const CircleBorder(),
+              shape: _controlShape,
               padding: EdgeInsets.zero,
             ),
             child: busy
@@ -2946,7 +3006,7 @@ class _AgentSwitcherBarState extends State<_AgentSwitcherBar>
         height: 44,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(droverRadiusControl),
           border: Border.all(color: scheme.outline, width: 1.5),
         ),
         child: Icon(Icons.grid_view, size: 20, color: scheme.onSurfaceVariant),
@@ -2975,13 +3035,19 @@ class _AgentSwitcherBarState extends State<_AgentSwitcherBar>
               // The ring paints over the avatar's edge, so current/other keep
               // the same 44px footprint (only the border colour differs).
               foregroundDecoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(droverRadiusControl),
                 border: Border.all(
-                  color: isCurrent ? scheme.primary : Colors.transparent,
+                  // accentText, not primary: #3E63DD on this switcher ground
+                  // is only 2.5:1 and doesn't read as a selection at all.
+                  color: isCurrent ? colors.accentText : Colors.transparent,
                   width: 2.5,
                 ),
               ),
-              child: AgentAvatar(agent: agent.agent, size: 44, radius: 16),
+              child: AgentAvatar(
+                agent: agent.agent,
+                size: 44,
+                radius: droverRadiusControl,
+              ),
             ),
             Positioned(
               right: -3,
@@ -2989,9 +3055,10 @@ class _AgentSwitcherBarState extends State<_AgentSwitcherBar>
               child: Container(
                 width: 12,
                 height: 12,
+                // Square, not round: an LED rather than a bullet, matching
+                // StatusPill's.
                 decoration: BoxDecoration(
                   color: colors.statusDot(agent.status),
-                  shape: BoxShape.circle,
                   border: Border.all(
                     color: scheme.surfaceContainerLow,
                     width: 2.5,
@@ -3003,7 +3070,7 @@ class _AgentSwitcherBarState extends State<_AgentSwitcherBar>
         ),
       ),
       label: _shortLabel(_displayName(agent)),
-      labelColor: isCurrent ? scheme.primary : colors.tertiaryText,
+      labelColor: isCurrent ? colors.accentText : colors.tertiaryText,
     );
   }
 }
@@ -3037,15 +3104,13 @@ class _BarCell extends StatelessWidget {
           SizedBox(
             width: 52,
             child: Text(
+              // Not through `droverLabelText`: the bar label comes from the
+              // agent's user-chosen session title or name.
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                color: labelColor,
-              ),
+              style: droverLabelStyle(context, fontSize: 9, color: labelColor),
             ),
           ),
         ],

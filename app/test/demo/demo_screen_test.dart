@@ -93,7 +93,9 @@ void main() {
 
     // Blocked state: the scripted transcript is already non-empty, so chat
     // content must be on screen alongside the permission prompt.
-    expect(find.text('Conversation history'), findsOneWidget);
+    // Uppercased by the label ramp: transcript section headers sit on it, and
+    // this test runs in English. Under `ja` it would render uncased.
+    expect(find.text('CONVERSATION HISTORY'), findsOneWidget);
     expect(
       find.textContaining(demoContentEn.userSetup, findRichText: true),
       findsOneWidget,
@@ -178,11 +180,12 @@ void main() {
       expect(find.text(demoContentEn.docsTitle), findsOneWidget);
 
       // The status row teaches the vocabulary only if it carries real counts
-      // (these are the en labels from app_en.arb, verbatim).
-      expect(find.text('waiting for you 1'), findsOneWidget);
-      expect(find.text('working 1'), findsOneWidget);
-      expect(find.text('resting 1'), findsOneWidget);
-      expect(find.text('all done 0'), findsOneWidget);
+      // (these are the en labels from app_en.arb, on the label ramp, which
+      // uppercases outside Japanese).
+      expect(find.text('WAITING FOR YOU 1'), findsOneWidget);
+      expect(find.text('WORKING 1'), findsOneWidget);
+      expect(find.text('RESTING 1'), findsOneWidget);
+      expect(find.text('ALL DONE 0'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
     },

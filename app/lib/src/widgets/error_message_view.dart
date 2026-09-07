@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../app_theme.dart';
 import '../herdr/herdr_version.dart';
 import '../infra/app_error.dart';
 
@@ -96,7 +97,10 @@ class _ErrorMessageViewState extends State<ErrorMessageView> {
           if (_showDetails)
             SelectableText(
               detail,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              style: const TextStyle(
+                fontFamily: droverMonoFamily,
+                fontSize: 12,
+              ),
             ),
         ],
       ],

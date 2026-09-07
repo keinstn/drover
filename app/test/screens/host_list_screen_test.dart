@@ -1,4 +1,5 @@
 import 'package:drover/l10n/app_localizations.dart';
+import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/models/host_config.dart';
 import 'package:drover/src/screens/host_list_screen.dart';
 import 'package:flutter/material.dart';
@@ -29,6 +30,8 @@ Widget _app({
   Future<void> Function(HostConfig)? onDelete,
 }) {
   return MaterialApp(
+    // The screen reads DroverColors, so the harness needs the real theme.
+    theme: droverDarkTheme,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     home: HostListScreen(

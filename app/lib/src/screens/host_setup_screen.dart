@@ -343,6 +343,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.hostSetupTitle)),
       body: Form(
@@ -352,6 +353,12 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
           children: [
             if (widget.onEnterDemo != null) ...[
               Card(
+                // The flat ink surfaces need the hairline to separate the
+                // card from the page behind it.
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(droverRadiusPanel),
+                  side: BorderSide(color: scheme.outlineVariant),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -361,6 +368,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                       const SizedBox(height: 12),
                       OutlinedButton(
                         key: const ValueKey('enter_demo_button'),
+                        style: droverNeutralButtonStyle(scheme),
                         onPressed: widget.onEnterDemo,
                         child: Text(l10n.hostSetupDemoButton),
                       ),
@@ -417,7 +425,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
               decoration: InputDecoration(
                 labelText: l10n.hostSetupPrivateKeyLabel,
               ),
-              style: const TextStyle(fontFamily: 'monospace'),
+              style: const TextStyle(fontFamily: droverMonoFamily),
               maxLines: 6,
               contextMenuBuilder: noScanTextContextMenuBuilder,
               validator: (v) {
@@ -455,6 +463,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
             const SizedBox(height: 20),
             if (widget.onCreatePairingCode != null) ...[
               OutlinedButton(
+                style: droverNeutralButtonStyle(scheme),
                 onPressed: _busy ? null : _createPairingCode,
                 child: Text(l10n.hostPairNotifications),
               ),
@@ -478,6 +487,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 if (widget.onTest != null)
                   Expanded(
                     child: OutlinedButton(
+                      style: droverNeutralButtonStyle(scheme),
                       onPressed: _busy ? null : _handleTest,
                       child: _busy
                           ? const SizedBox(
@@ -491,8 +501,22 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 if (widget.onTest != null) const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          droverRadiusControl,
+                        ),
+                      ),
+                    ),
                     onPressed: _busy ? null : _handleSave,
-                    child: Text(l10n.hostSetupSave),
+                    child: Text(
+                      droverLabelText(context, l10n.hostSetupSave),
+                      style: droverLabelStyle(
+                        context,
+                        fontSize: 11.5,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -534,14 +558,17 @@ class _CopyableValue extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        Text(
+          droverLabelText(context, label),
+          style: droverLabelStyle(context, fontSize: 10.5),
+        ),
         const SizedBox(height: 4),
         Row(
           children: [
             Expanded(
               child: SelectableText(
                 value,
-                style: const TextStyle(fontFamily: 'monospace'),
+                style: const TextStyle(fontFamily: droverMonoFamily),
               ),
             ),
             IconButton(

@@ -547,6 +547,10 @@ class _HerdScreenState extends State<HerdScreen> {
     final launched = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      // LaunchAgentSheet paints its own panel; without this the route's
+      // 28-radius shell peeks around its 6-radius corners, and shows as a
+      // band below the sheet once the keyboard pushes it up.
+      backgroundColor: Colors.transparent,
       builder: (_) => Padding(
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -790,8 +794,8 @@ class _HerdScreenState extends State<HerdScreen> {
           ),
         ],
       ),
-      // The spec's pill FAB is 48px tall; the tight SizedBox overrides the
-      // M3 extended-FAB default (56px).
+      // 48px tall: the tight SizedBox overrides the M3 extended-FAB default
+      // (56px) while staying above the 44px tap-target floor.
       floatingActionButton: SizedBox(
         height: 48,
         child: FloatingActionButton.extended(
@@ -800,8 +804,20 @@ class _HerdScreenState extends State<HerdScreen> {
           onPressed: _onLaunchPressed,
           backgroundColor: Theme.of(context).colorScheme.primary,
           foregroundColor: Theme.of(context).colorScheme.onPrimary,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(
+              Radius.circular(droverRadiusControl),
+            ),
+          ),
           icon: const Icon(Icons.add),
-          label: Text(l10n.commonLaunchAgent),
+          label: Text(
+            droverLabelText(context, l10n.commonLaunchAgent),
+            style: droverLabelStyle(
+              context,
+              fontSize: 11.5,
+              weight: FontWeight.w700,
+            ),
+          ),
         ),
       ),
     );
@@ -831,19 +847,21 @@ class _HerdScreenState extends State<HerdScreen> {
         InkWell(
           key: const ValueKey('host_switcher_chip'),
           onTap: onOpenHostSwitcher,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(droverRadiusPanel),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.arrow_drop_down, size: 16, color: subdued),
               Flexible(
                 child: Text(
+                  // On the label ramp, but not through `droverLabelText`: this
+                  // is a user-chosen host name, not a fixed caption.
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
+                  style: droverLabelStyle(
+                    context,
+                    fontSize: 10.5,
                     color: subdued,
                   ),
                 ),
@@ -1034,8 +1052,13 @@ class _HerdScreenState extends State<HerdScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       decoration: BoxDecoration(
         color: scheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
-        border: isLight ? Border.all(color: scheme.outline) : null,
+        borderRadius: BorderRadius.circular(droverRadiusPanel),
+        // Light keeps the outline it was tuned with; dark gains a hairline it
+        // never had, because the flat ink surfaces alone don't separate a card
+        // from the page.
+        border: Border.all(
+          color: isLight ? scheme.outline : scheme.outlineVariant,
+        ),
         boxShadow: isLight
             ? const [
                 // Cool to match the light theme's axis; this was a warm brown
@@ -1057,11 +1080,12 @@ class _HerdScreenState extends State<HerdScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
               child: Text(
+                // Not through `droverLabelText`: a workspace label is
+                // user-chosen and renameable, and the rename dialog pre-fills
+                // the original casing.
                 _workspaceLabel(bucket, entry.key),
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
+                style: droverLabelStyle(
+                  context,
                   color: DroverColors.of(context).tertiaryText,
                 ),
               ),
@@ -1134,26 +1158,28 @@ class _StatusChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: colors.statusPillBg(status),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(droverRadiusChip),
+        // Same treatment as the tile's StatusPill: the chip's own hue at low
+        // alpha, so the fill and the edge come from one colour.
+        border: Border.all(
+          color: colors.statusDot(status).withValues(alpha: 0.34),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: colors.statusDot(status),
-              shape: BoxShape.circle,
-            ),
-          ),
+          // Square, not round: an LED rather than a bullet, matching
+          // StatusPill's.
+          Container(width: 5, height: 5, color: colors.statusDot(status)),
           const SizedBox(width: 5),
           Text(
-            '${agentStatusLabel(l10n, status)} $count',
-            style: TextStyle(
+            droverLabelText(
+              context,
+              '${agentStatusLabel(l10n, status)} $count',
+            ),
+            style: droverLabelStyle(
+              context,
               color: colors.statusPillFg(status),
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -1206,6 +1232,11 @@ class _AgentTile extends StatelessWidget {
                     ),
                   ),
                   Text(
+                    // Deliberately off the label ramp: `_snippetFor` returns
+                    // transcript-derived prose whenever the pane has been
+                    // opened, and the `agentType · cwd` metadata only as the
+                    // fallback. Prose at `maxLines: 1` loses characters to
+                    // mono tracking for nothing.
                     snippet,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1226,7 +1257,11 @@ class _AgentTile extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   elapsed,
-                  style: TextStyle(fontSize: 10, color: colors.tertiaryText),
+                  style: droverLabelStyle(
+                    context,
+                    fontSize: 9,
+                    color: colors.tertiaryText,
+                  ),
                 ),
               ],
             ),

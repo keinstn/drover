@@ -24,26 +24,35 @@ void main() {
       expect(droverLightTheme.extension<DroverColors>(), isNotNull);
     });
 
-    test('both themes use the rounded-gothic fallback font', () {
+    test('neither theme pins a font family of its own', () {
+      // The themes use the platform face — SF Pro on iOS/macOS, Hiragino Sans
+      // for Japanese — instead of the rounded gothic they used to set, which
+      // was the largest single contributor to the old friendly read.
+      //
+      // Asserted against a bare ThemeData rather than `null`, because
+      // Typography fills the family in per target platform ('Roboto' under
+      // the test binding), so `null` would only pass by accident of platform.
       expect(
         droverDarkTheme.textTheme.bodyMedium?.fontFamily,
-        'Hiragino Maru Gothic ProN',
+        ThemeData(brightness: Brightness.dark).textTheme.bodyMedium?.fontFamily,
       );
       expect(
         droverLightTheme.textTheme.bodyMedium?.fontFamily,
-        'Hiragino Maru Gothic ProN',
+        ThemeData(
+          brightness: Brightness.light,
+        ).textTheme.bodyMedium?.fontFamily,
       );
     });
 
     test('dark tokens match the spec', () {
       final scheme = droverDarkTheme.colorScheme;
-      expect(scheme.primary, const Color(0xFFE0956B));
-      expect(scheme.surface, const Color(0xFF191511));
+      expect(scheme.primary, const Color(0xFF3E63DD));
+      expect(scheme.surface, const Color(0xFF17171A));
       expect(droverDarkTheme.scaffoldBackgroundColor, scheme.surface);
 
       final colors = droverDarkTheme.extension<DroverColors>()!;
-      expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFE86A55));
-      expect(colors.userBubble, const Color(0xFF3A2E22));
+      expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFE5695E));
+      expect(colors.userBubble, const Color(0xFF262A38));
       expect(colors.brandColor('claude'), const Color(0xFFD9825F));
       expect(colors.brandColor('pi'), const Color(0xFFB98AC9));
       expect(colors.brandColor('omp'), const Color(0xFF55AAB9));
@@ -57,12 +66,12 @@ void main() {
 
     test('light tokens match the spec', () {
       final scheme = droverLightTheme.colorScheme;
-      expect(scheme.primary, const Color(0xFFC2704E));
+      expect(scheme.primary, const Color(0xFF3451B2));
       expect(scheme.surface, const Color(0xFFFFFFFF));
 
       final colors = droverLightTheme.extension<DroverColors>()!;
-      expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFC75B44));
-      expect(colors.userBubble, const Color(0xFFF3E2DC));
+      expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFC73E3E));
+      expect(colors.userBubble, const Color(0xFFE3E7F7));
       // Brand colors are identical across themes.
       expect(colors.brandColor('codex'), const Color(0xFF6FA287));
       expect(colors.brandColor('pi'), const Color(0xFFB98AC9));
@@ -205,11 +214,30 @@ void main() {
       }
     });
 
+    test('the accent splits into a fill role and a text role', () {
+      final dark = droverDarkTheme.extension<DroverColors>()!;
+      final light = droverLightTheme.extension<DroverColors>()!;
+      expect(dark.accentText, const Color(0xFFA8B1FF));
+      expect(light.accentText, const Color(0xFF3451B2));
+
+      // Why the split exists at all: dark's text accent is periwinkle, and as
+      // a *fill* at avatar size it would be taken for copilot's brand color.
+      // Keep them apart — if they ever converge, `accentText` has silently
+      // become unusable for anything sitting next to an avatar.
+      expect(dark.accentText, isNot(dark.brandCopilot));
+      expect(light.accentText, isNot(light.brandCopilot));
+
+      // Light needs no split: #3451B2 is 7.08:1 on the white page, so the
+      // fill colour doubles as the text colour. Dark's fill is too dark to.
+      expect(light.accentText, droverLightTheme.colorScheme.primary);
+      expect(dark.accentText, isNot(droverDarkTheme.colorScheme.primary));
+    });
+
     test('rgba pill backgrounds carry the spec alpha (dark)', () {
       final colors = droverDarkTheme.extension<DroverColors>()!;
       expect(
         colors.statusPillBg(AgentStatus.blocked),
-        const Color.fromRGBO(232, 106, 85, 0.16),
+        const Color.fromRGBO(229, 105, 94, 0.12),
       );
     });
   });
@@ -253,13 +281,239 @@ void main() {
       await pump(tester, null);
       expect(find.text('?'), findsOneWidget);
     });
+
+    testWidgets('rounds its corners at the control radius', (tester) async {
+      await pump(tester, 'claude');
+
+      final decoration =
+          tester
+                  .widget<Container>(
+                    find.descendant(
+                      of: find.byType(AgentAvatar),
+                      matching: find.byType(Container),
+                    ),
+                  )
+                  .decoration!
+              as BoxDecoration;
+      expect(
+        decoration.borderRadius,
+        BorderRadius.circular(droverRadiusControl),
+      );
+    });
+  });
+
+  group('geometry', () {
+    test('the radius vocabulary is 6/4/2 and nothing else', () {
+      // Other units build every corner in the app out of these three, so a
+      // drift here silently restyles the whole surface area.
+      expect(droverRadiusPanel, 6.0);
+      expect(droverRadiusControl, 4.0);
+      expect(droverRadiusChip, 2.0);
+    });
+
+    /// The widest corner [shape] draws, and a failure for anything outside the
+    /// vocabulary. Shape *type* is checked before radius on purpose: a
+    /// [StadiumBorder] or a [CircleBorder] carries no `borderRadius` at all
+    /// and would sail past a radius comparison.
+    double widestCorner(String name, ShapeBorder? shape) {
+      if (shape == null) {
+        fail(
+          '$name pins no shape — that component is back on the Material '
+          'default, which is where the round geometry lives',
+        );
+      }
+      final geometry = switch (shape) {
+        RoundedRectangleBorder(:final borderRadius) => borderRadius,
+        UnderlineInputBorder(:final borderRadius) => borderRadius,
+        _ => null,
+      };
+      if (geometry == null) {
+        fail(
+          '$name resolves to ${shape.runtimeType}, which is not one of the '
+          'ink shapes',
+        );
+      }
+      final radius = geometry.resolve(TextDirection.ltr);
+      return [
+        radius.topLeft,
+        radius.topRight,
+        radius.bottomLeft,
+        radius.bottomRight,
+      ].expand((r) => [r.x, r.y]).reduce((a, b) => a > b ? a : b);
+    }
+
+    /// Every component theme the app pins, by name, with the shapes it
+    /// resolves to. Buttons resolve per widget state, so each is sampled in
+    /// the states a stadium could be reintroduced on.
+    Map<String, List<ShapeBorder?>> pinnedShapes(ThemeData theme) {
+      List<ShapeBorder?> perState(
+        WidgetStateProperty<OutlinedBorder?>? shape,
+      ) => [
+        for (final states in const [
+          <WidgetState>{},
+          {WidgetState.disabled},
+          {WidgetState.pressed},
+          {WidgetState.focused},
+        ])
+          shape?.resolve(states),
+      ];
+      return {
+        'filledButtonTheme': perState(theme.filledButtonTheme.style?.shape),
+        'outlinedButtonTheme': perState(theme.outlinedButtonTheme.style?.shape),
+        'textButtonTheme': perState(theme.textButtonTheme.style?.shape),
+        'elevatedButtonTheme': perState(theme.elevatedButtonTheme.style?.shape),
+        'iconButtonTheme': perState(theme.iconButtonTheme.style?.shape),
+        'floatingActionButtonTheme': [theme.floatingActionButtonTheme.shape],
+        'dialogTheme': [theme.dialogTheme.shape],
+        'cardTheme': [theme.cardTheme.shape],
+        'bottomSheetTheme': [theme.bottomSheetTheme.shape],
+        'chipTheme': [theme.chipTheme.shape],
+        'inputDecorationTheme': [theme.inputDecorationTheme.border],
+      };
+    }
+
+    test('no component theme keeps a round Material default', () {
+      // The point of the component themes: Material 3's own defaults are
+      // stadium buttons and icon buttons, a 28-radius dialog and bottom sheet,
+      // a 12-radius card, an 8-radius chip. A call site nobody enumerated
+      // inherits whatever is set here, so a re-added pill — or a component
+      // theme dropped in a refactor — has to fail here rather than on a device.
+      for (final theme in [droverDarkTheme, droverLightTheme]) {
+        pinnedShapes(theme).forEach((component, shapes) {
+          for (final shape in shapes) {
+            expect(
+              widestCorner('${theme.brightness.name} $component', shape),
+              lessThanOrEqualTo(droverRadiusPanel),
+            );
+          }
+        });
+      }
+    });
+
+    test('the neutral button is one shared style, and is opt-in', () {
+      // It used to be a `_neutralButtonStyle` helper copy-pasted into two
+      // screens. One definition now — but a style rather than
+      // `outlinedButtonTheme`, because a themed fill would reach every
+      // OutlinedButton, including the key caps that §8 keeps unfilled.
+      const enabled = <WidgetState>{};
+      for (final theme in [droverDarkTheme, droverLightTheme]) {
+        final scheme = theme.colorScheme;
+        final neutral = droverNeutralButtonStyle(scheme);
+        expect(
+          neutral.backgroundColor?.resolve(enabled),
+          scheme.surfaceContainerHigh,
+        );
+        expect(neutral.side?.resolve(enabled)?.color, scheme.outline);
+
+        final themed = theme.outlinedButtonTheme.style!;
+        expect(themed.backgroundColor?.resolve(enabled), isNull);
+        expect(themed.side?.resolve(enabled)?.color, scheme.outline);
+      }
+    });
+
+    test('the outline resolves per state, not flat', () {
+      // A flat `BorderSide` beats Material's own `resolveWith` default, so it
+      // would leave a disabled button with a full-contrast border around a
+      // dimmed label, and strip every OutlinedButton's focus ring (iPad,
+      // external keyboard). Alpha rather than channel values: the disabled
+      // edge is `onSurface` at 12%, which isn't orderable against an opaque
+      // `outline` any other way.
+      const enabled = <WidgetState>{};
+      for (final theme in [droverDarkTheme, droverLightTheme]) {
+        final scheme = theme.colorScheme;
+        for (final side in [
+          theme.outlinedButtonTheme.style!.side!,
+          droverNeutralButtonStyle(scheme).side!,
+        ]) {
+          expect(side.resolve(enabled)!.color.a, 1.0);
+          expect(
+            side.resolve({WidgetState.disabled})!.color.a,
+            lessThan(side.resolve(enabled)!.color.a),
+            reason: 'a disabled border must dim with its label',
+          );
+          expect(
+            side.resolve({WidgetState.focused})!.color,
+            scheme.primary,
+            reason: 'the focus ring is the only keyboard affordance here',
+          );
+        }
+      }
+    });
+  });
+
+  group('label ramp', () {
+    /// A context under [locale], for the two helpers that read
+    /// [Localizations.localeOf].
+    Future<BuildContext> contextFor(WidgetTester tester, String locale) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: Locale(locale),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const SizedBox(key: ValueKey('probe')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return tester.element(find.byKey(const ValueKey('probe')));
+    }
+
+    testWidgets('is mono, tracked and uppercased outside Japanese', (
+      tester,
+    ) async {
+      final context = await contextFor(tester, 'en');
+
+      final style = droverLabelStyle(context);
+      expect(style.fontFamily, droverMonoFamily);
+      expect(style.fontSize, 9.5);
+      expect(style.fontWeight, FontWeight.w500);
+      expect(style.letterSpacing, closeTo(9.5 * 0.08, 0.001));
+      expect(droverLabelText(context, 'workspaces'), 'WORKSPACES');
+
+      // Callers that need a louder label (the primary button) pass their own
+      // weight and colour; those must win over the ramp's defaults.
+      final loud = droverLabelStyle(
+        context,
+        fontSize: 11.5,
+        color: const Color(0xFFFFFFFF),
+        weight: FontWeight.w700,
+      );
+      expect(loud.fontWeight, FontWeight.w700);
+      expect(loud.fontSize, 11.5);
+      expect(loud.color, const Color(0xFFFFFFFF));
+      expect(loud.letterSpacing, closeTo(11.5 * 0.08, 0.001));
+    });
+
+    testWidgets('drops mono and gains weight in Japanese', (tester) async {
+      final context = await contextFor(tester, 'ja');
+
+      final style = droverLabelStyle(context);
+      // [droverMonoFamily] has no Japanese coverage, so ja falls through to
+      // the platform gothic, half a point larger and a step heavier because
+      // CJK strokes thin out at the ramp's sizes.
+      expect(style.fontFamily, isNull);
+      expect(style.fontSize, 10.0);
+      expect(style.fontWeight, FontWeight.w600);
+      expect(
+        style.fontWeight!.value,
+        greaterThan(FontWeight.w500.value),
+        reason: 'ja must stay heavier than the Latin ramp, not lighter',
+      );
+      // Tracking is gentler, and computed off the requested size, not the
+      // bumped one.
+      expect(style.letterSpacing, closeTo(9.5 * 0.045, 0.001));
+
+      // No case change: full-width glyphs have none, and uppercasing the
+      // ASCII embedded in a Japanese label would single it out.
+      expect(droverLabelText(context, 'workspaces'), 'workspaces');
+    });
   });
 
   group('StatusPill', () {
-    testWidgets('renders the localized label and pill colors', (tester) async {
+    /// Pumps a chip under [locale], with the delegates the label case needs.
+    Future<void> pump(WidgetTester tester, String locale) async {
       await tester.pumpWidget(
         MaterialApp(
-          locale: const Locale('ja'),
+          locale: Locale(locale),
           theme: droverDarkTheme,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
@@ -269,21 +523,64 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+    }
 
-      // Localized human copy for `blocked` in Japanese.
-      expect(find.text('返事待ち'), findsOneWidget);
+    /// The chip's outer container, then its LED, in tree order.
+    List<Container> containers(WidgetTester tester) => tester
+        .widgetList<Container>(
+          find.descendant(
+            of: find.byType(StatusPill),
+            matching: find.byType(Container),
+          ),
+        )
+        .toList();
+
+    testWidgets('renders the chip colors, radius and border', (tester) async {
+      await pump(tester, 'ja');
 
       final colors = droverDarkTheme.extension<DroverColors>()!;
-      final container = tester.widget<Container>(
-        find
-            .descendant(
-              of: find.byType(StatusPill),
-              matching: find.byType(Container),
-            )
-            .first,
-      );
-      final decoration = container.decoration! as BoxDecoration;
+      final decoration = containers(tester).first.decoration! as BoxDecoration;
       expect(decoration.color, colors.statusPillBg(AgentStatus.blocked));
+      expect(decoration.borderRadius, BorderRadius.circular(droverRadiusChip));
+
+      // The hairline is derived from the dot, not from a neutral outline: it
+      // is what gives the chip an edge over a 12%-alpha fill.
+      final border = decoration.border! as Border;
+      final dot = colors.statusDot(AgentStatus.blocked);
+      expect(border.top.width, 1);
+      expect(_channel(border.top.color.r), _channel(dot.r));
+      expect(_channel(border.top.color.g), _channel(dot.g));
+      expect(_channel(border.top.color.b), _channel(dot.b));
+      expect(border.top.color.a, closeTo(0.34, 0.005));
+    });
+
+    testWidgets('draws the dot as a square LED, not a bullet', (tester) async {
+      await pump(tester, 'ja');
+
+      final dot = containers(tester).last;
+      expect(dot.constraints?.maxWidth, 5);
+      expect(dot.constraints?.maxHeight, 5);
+      // A plain colored box: no BoxDecoration means no BoxShape.circle to
+      // round it back into a bullet.
+      expect(dot.decoration, isNull);
+      expect(
+        dot.color,
+        droverDarkTheme.extension<DroverColors>()!.statusDot(
+          AgentStatus.blocked,
+        ),
+      );
+    });
+
+    testWidgets('uppercases the label in English but not in Japanese', (
+      tester,
+    ) async {
+      await pump(tester, 'en');
+      // Presentational only — the ARB string itself stays lowercase.
+      expect(find.text('WAITING FOR YOU'), findsOneWidget);
+
+      await pump(tester, 'ja');
+      // Full-width glyphs have no case, so the localized copy renders as-is.
+      expect(find.text('返事待ち'), findsOneWidget);
     });
   });
 }

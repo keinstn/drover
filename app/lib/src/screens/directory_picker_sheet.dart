@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../app_theme.dart';
 import '../herdr/herdr_client.dart';
 import '../models/remote_dir_entry.dart';
 import '../widgets/error_message_view.dart';
@@ -137,7 +138,12 @@ class _DirectoryPickerSheetState extends State<DirectoryPickerSheet> {
                       child: Text(
                         path,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium,
+                        // Mono, but at body size: this is the screen's primary
+                        // orientation element, so the label ramp would shrink
+                        // it below reading size.
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontFamily: droverMonoFamily,
+                        ),
                       ),
                     ),
                   ],
@@ -155,8 +161,22 @@ class _DirectoryPickerSheetState extends State<DirectoryPickerSheet> {
                   width: double.infinity,
                   child: FilledButton(
                     key: const ValueKey('dir_picker_select'),
+                    style: FilledButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          droverRadiusControl,
+                        ),
+                      ),
+                    ),
                     onPressed: () => Navigator.pop(context, path),
-                    child: Text(l10n.dirPickerUse),
+                    child: Text(
+                      droverLabelText(context, l10n.dirPickerUse),
+                      style: droverLabelStyle(
+                        context,
+                        fontSize: 11.5,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
               ),

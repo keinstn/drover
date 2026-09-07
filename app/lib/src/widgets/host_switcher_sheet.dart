@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../app_theme.dart';
 import '../models/host_config.dart';
 
 /// Bottom sheet for quickly switching between stored hosts. Tapping a host
@@ -17,6 +18,9 @@ Future<void> showHostSwitcherSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
+    // The sheet paints its own panel; without this the host sheet's
+    // 28-radius shell peeks around its 6-radius corners.
+    backgroundColor: Colors.transparent,
     builder: (_) => _HostSwitcherSheet(
       hosts: hosts,
       activeHostId: activeHostId,
@@ -54,99 +58,107 @@ class _HostSwitcherSheet extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     // Self-decorate: the rounded top + grab handle live here rather than at
     // the call site, same as LaunchAgentSheet.
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      child: Material(
-        color: scheme.surfaceContainer,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+    return Material(
+      color: scheme.surfaceContainer,
+      clipBehavior: Clip.antiAlias,
+      // The flat ink surfaces need the hairline to separate the sheet from
+      // the page behind it.
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(droverRadiusPanel),
+        ),
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(droverRadiusChip),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    l10n.hostSwitcherTitle,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  l10n.hostSwitcherTitle,
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-                const SizedBox(height: 8),
-                // Host rows scroll when they outgrow the sheet; the header
-                // above and the manage row below stay pinned.
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (includeAllHosts)
-                          ListTile(
-                            key: const ValueKey('host_switcher_all'),
-                            leading: Icon(
-                              activeHostId == null
-                                  ? Icons.radio_button_checked
-                                  : Icons.radio_button_unchecked,
-                              color: activeHostId == null
-                                  ? scheme.primary
-                                  : scheme.onSurfaceVariant,
-                            ),
-                            title: Text(l10n.hostAllHosts),
-                            onTap: () {
-                              Navigator.pop(context);
-                              onSelectAll?.call();
-                            },
+              ),
+              const SizedBox(height: 8),
+              // Host rows scroll when they outgrow the sheet; the header
+              // above and the manage row below stay pinned.
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (includeAllHosts)
+                        ListTile(
+                          key: const ValueKey('host_switcher_all'),
+                          leading: Icon(
+                            activeHostId == null
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked,
+                            color: activeHostId == null
+                                ? DroverColors.of(context).accentText
+                                : scheme.onSurfaceVariant,
                           ),
-                        for (final host in hosts)
-                          ListTile(
-                            leading: Icon(
-                              host.hostId != null && host.hostId == activeHostId
-                                  ? Icons.radio_button_checked
-                                  : Icons.radio_button_unchecked,
-                              color:
-                                  host.hostId != null &&
-                                      host.hostId == activeHostId
-                                  ? scheme.primary
-                                  : scheme.onSurfaceVariant,
-                            ),
-                            title: Text(
-                              host.displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            onTap: () {
-                              Navigator.pop(context);
-                              onSelect(host);
-                            },
+                          title: Text(l10n.hostAllHosts),
+                          onTap: () {
+                            Navigator.pop(context);
+                            onSelectAll?.call();
+                          },
+                        ),
+                      for (final host in hosts)
+                        ListTile(
+                          leading: Icon(
+                            host.hostId != null && host.hostId == activeHostId
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked,
+                            color:
+                                host.hostId != null &&
+                                    host.hostId == activeHostId
+                                // Accent as text, not as a fill: a #3E63DD
+                                // mark on the switcher ground is 2.5:1.
+                                ? DroverColors.of(context).accentText
+                                : scheme.onSurfaceVariant,
                           ),
-                      ],
-                    ),
+                          title: Text(
+                            host.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            onSelect(host);
+                          },
+                        ),
+                    ],
                   ),
                 ),
-                const Divider(height: 1),
-                ListTile(
-                  key: const ValueKey('host_switcher_manage'),
-                  leading: const Icon(Icons.settings),
-                  title: Text(l10n.hostSwitcherManage),
-                  onTap: () {
-                    Navigator.pop(context);
-                    onManageHosts();
-                  },
-                ),
-              ],
-            ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                key: const ValueKey('host_switcher_manage'),
+                leading: const Icon(Icons.settings),
+                title: Text(l10n.hostSwitcherManage),
+                onTap: () {
+                  Navigator.pop(context);
+                  onManageHosts();
+                },
+              ),
+            ],
           ),
         ),
       ),

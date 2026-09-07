@@ -2,52 +2,145 @@ import 'package:flutter/material.dart';
 
 import 'models/agent_info.dart';
 
-/// System rounded-gothic fallback for the warm redesign. The spec calls for
-/// M PLUS Rounded 1c; rather than add a `google_fonts` dependency we lean on
-/// the platform's Hiragino Maru Gothic ProN, which the README sanctions as the
-/// fallback. Monospace usages (code/args/PEM) opt out locally and are untouched.
-const _roundedGothic = 'Hiragino Maru Gothic ProN';
+// Geometry. These three are the whole radius vocabulary: nothing keeps a
+// stadium, a circle, or a radius above 6. The sharp corners are most of what
+// separates the ink read from the friendly one they replaced.
+const droverRadiusPanel = 6.0; // card, sheet, panel, code block
+const droverRadiusControl = 4.0; // button, input, avatar, icon button
+const droverRadiusChip = 2.0; // chip, badge, status pill, key cap
 
-/// Warm dark theme. Surfaces/text come from the README's サーフェス token table;
-/// the semantic status/brand colors live in [DroverColors] below.
+/// Monospace family for code, terminal output and the label ramp. One seam on
+/// purpose: bundling a real face (JetBrains Mono) is a follow-up, and when it
+/// lands it changes here rather than at every call site.
+const droverMonoFamily = 'monospace';
+
+/// Uppercases [text] outside Japanese. Uppercase is a Latin device: full-width
+/// glyphs have no case, and the tracking that makes caps legible collides them.
+/// Use this instead of calling `toUpperCase()` on a localized string.
+String droverLabelText(BuildContext context, String text) =>
+    Localizations.localeOf(context).languageCode == 'ja'
+    ? text
+    : text.toUpperCase();
+
+/// The label ramp: mono, uppercase-tracked, small — status chips, section and
+/// workspace headers, host lines, key caps.
+///
+/// In Japanese it becomes the platform gothic instead ([droverMonoFamily] has
+/// no Japanese coverage), half a point larger at a heavier weight because CJK
+/// strokes thin out at these sizes, and with gentler tracking. Sizes in use:
+/// 9.0 status chip / elapsed, 9.5 headers and filter chips, 10.5 host line and
+/// key caps.
+TextStyle droverLabelStyle(
+  BuildContext context, {
+  double fontSize = 9.5,
+  Color? color,
+  FontWeight? weight,
+}) {
+  final ja = Localizations.localeOf(context).languageCode == 'ja';
+  return TextStyle(
+    fontFamily: ja ? null : droverMonoFamily,
+    fontSize: ja ? fontSize + 0.5 : fontSize,
+    fontWeight: weight ?? (ja ? FontWeight.w600 : FontWeight.w500),
+    // Proportional to the requested size, so the ramp tracks consistently.
+    letterSpacing: fontSize * (ja ? 0.045 : 0.08),
+    color: color,
+  );
+}
+
+// The three radii as ready-made shapes, for the component themes in
+// [_buildTheme] and nothing else: call sites keep using the constants.
+const _panelShape = RoundedRectangleBorder(
+  borderRadius: BorderRadius.all(Radius.circular(droverRadiusPanel)),
+);
+const _controlShape = RoundedRectangleBorder(
+  borderRadius: BorderRadius.all(Radius.circular(droverRadiusControl)),
+);
+const _chipShape = RoundedRectangleBorder(
+  borderRadius: BorderRadius.all(Radius.circular(droverRadiusChip)),
+);
+
+/// The outline for [outlinedButtonTheme] and [droverNeutralButtonStyle],
+/// resolved per widget state.
+///
+/// `OutlinedButton.styleFrom(side: …)` wraps a plain [BorderSide] in a
+/// state-independent property, and a non-null theme value beats Material's
+/// default — so a flat side would drop M3's dimmed disabled edge and its
+/// focus ring app-wide, leaving a disabled button with a full-contrast border
+/// around a dimmed label. Same three states M3 defines, with [ColorScheme
+/// .outline] resting.
+WidgetStateProperty<BorderSide> _droverOutlineSide(ColorScheme scheme) =>
+    WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.disabled)) {
+        return BorderSide(color: scheme.onSurface.withValues(alpha: 0.12));
+      }
+      if (states.contains(WidgetState.focused)) {
+        return BorderSide(color: scheme.primary);
+      }
+      return BorderSide(color: scheme.outline);
+    });
+
+/// The neutral button: a filled-but-quiet alternative to the accent primary —
+/// a `surfaceContainerHigh` fill plus a 1px `outline`, so it carries weight
+/// without borrowing the accent.
+///
+/// Deliberately a shared style rather than `outlinedButtonTheme`, which would
+/// fill *every* OutlinedButton: an OutlinedButton is a medium-emphasis
+/// *unfilled* button, and agent_screen's key caps and tool chips depend on
+/// staying unfilled.
+ButtonStyle droverNeutralButtonStyle(ColorScheme scheme) =>
+    OutlinedButton.styleFrom(
+      backgroundColor: scheme.surfaceContainerHigh,
+      shape: _controlShape,
+    ).copyWith(side: _droverOutlineSide(scheme));
+
+/// Ink dark theme: near-achromatic surfaces, with the accent carrying the only
+/// colour on screen. The semantic status/brand colors live in [DroverColors].
 final ThemeData droverDarkTheme = _buildTheme(
   brightness: Brightness.dark,
   scheme:
       ColorScheme.fromSeed(
-        seedColor: const Color(0xFFE0956B),
+        seedColor: const Color(0xFF3E63DD),
         brightness: Brightness.dark,
       ).copyWith(
-        surface: const Color(0xFF191511),
-        surfaceContainerLowest: const Color(0xFF15120E),
-        surfaceContainerLow: const Color(0xFF1D1812),
-        surfaceContainer: const Color(0xFF221D17),
-        surfaceContainerHigh: const Color(0xFF241E17),
-        onSurface: const Color(0xFFF0E9DF),
-        onSurfaceVariant: const Color(0xFFA69B8C),
-        outline: const Color(0xFF3B332A),
-        outlineVariant: const Color(0xFF2A241C),
-        primary: const Color(0xFFE0956B),
-        onPrimary: const Color(0xFF241409),
-        surfaceTint: const Color(0xFFE0956B),
-        error: const Color(0xFFE86A55),
+        surface: const Color(0xFF17171A),
+        surfaceContainerLowest: const Color(0xFF131316),
+        surfaceContainerLow: const Color(0xFF1B1B1F),
+        surfaceContainer: const Color(0xFF1E1E22),
+        surfaceContainerHigh: const Color(0xFF26262B),
+        // Pinned rather than left to the seed, which brings the indigo back in
+        // as a tint on the deepest step.
+        surfaceContainerHighest: const Color(0xFF2E2E33),
+        onSurface: const Color(0xFFEAE8EE),
+        onSurfaceVariant: const Color(0xFFB0AFB6),
+        outline: const Color(0xFF35353D),
+        // Deliberately equal to surfaceContainerHigh: dark had no panel
+        // hairlines at all before, and on flat ink surfaces the line that
+        // separates a panel is just the next step of the ladder.
+        outlineVariant: const Color(0xFF26262B),
+        // top_toast: the page inverted, rather than the seed's tinted pair.
+        inverseSurface: const Color(0xFFEAE8EE),
+        onInverseSurface: const Color(0xFF17171A),
+        primary: const Color(0xFF3E63DD),
+        onPrimary: const Color(0xFFFFFFFF),
+        surfaceTint: const Color(0xFF3E63DD),
+        error: const Color(0xFFE5695E),
       ),
   colors: DroverColors.dark,
 );
 
-/// Light theme. Unlike [droverDarkTheme] its neutrals sit on a faintly *cool*
-/// axis (R−B around −4), not the warm one.
+/// Light theme. Its neutrals sit on a faintly *cool* axis (R−B around −4)
+/// rather than a strictly achromatic one.
 ///
-/// That looks like a break from the dark theme, and it is a deliberate one. The
-/// warm surfaces predate the app icon — they arrived with the redesign, and the
-/// monochrome icon came afterwards. Three passes of pulling chroma out of the
-/// light grounds (#130, #133) still read as cream on device, because on iOS
-/// "neutral" is normed cool: every system surface around drover is
+/// That reads as arbitrary and is not. Three passes of pulling chroma out of
+/// the light grounds (#130, #133) still came back as cream on device, because
+/// on iOS "neutral" is normed cool: every system surface around drover is
 /// `systemGroupedBackground` `#F2F2F7`. Against that, even a fully achromatic
 /// ground reads slightly warm. So the light theme joins the platform's axis and
-/// [primary] carries all of drover's warmth on its own.
+/// [primary] carries all of drover's colour on its own.
 ///
-/// The dark theme deliberately stays warm — at L≈8 the cast is imperceptible,
-/// and the two are never on screen together.
+/// These values predate the ink dark theme and are unchanged by it — they were
+/// tuned against iOS on device, not chosen to contrast with the warm dark
+/// surfaces that used to sit opposite them.
 ///
 /// Note the inverted elevation: [ColorScheme.surface] is the *brightest* light
 /// token and the `surfaceContainer*` ladder descends from it. See the comment
@@ -56,7 +149,7 @@ final ThemeData droverLightTheme = _buildTheme(
   brightness: Brightness.light,
   scheme:
       ColorScheme.fromSeed(
-        seedColor: const Color(0xFFC2704E),
+        seedColor: const Color(0xFF3451B2),
         brightness: Brightness.light,
       ).copyWith(
         // The elevation ladder runs *downwards*: the page is the icon's own
@@ -78,7 +171,7 @@ final ThemeData droverLightTheme = _buildTheme(
         surfaceContainerHigh: const Color(0xFFF9F9FC),
         // The deepest step, and the only one that was already recessed before
         // the ladder flipped: the tonal button in agent_screen, which has to
-        // read as filled. Left to the seed it came out pink (`#F1DFD9`).
+        // read as filled. Left to the seed it comes out tinted.
         surfaceContainerHighest: const Color(0xFFE8E8EC),
         surfaceDim: const Color(0xFFE4E4E9),
         // Same lightness as the icon's black (`#1F1F1F`).
@@ -88,14 +181,16 @@ final ThemeData droverLightTheme = _buildTheme(
         outlineVariant: const Color(0xFFDEDEE3),
         // top_toast's background and text. Previously left to the seed, which
         // made them warm brown/cream — the only warm dark surface in an app
-        // whose two other fixed-dark panels (`_transcriptBg` #1B1B1F and
-        // `_codeSurface` #26262B in agent_screen) are both cool.
+        // whose two other fixed-dark panels (the transcript and code panels in
+        // agent_screen) are both cool.
         inverseSurface: const Color(0xFF2C2C31),
         onInverseSurface: const Color(0xFFF2F2F5),
-        primary: const Color(0xFFC2704E),
-        onPrimary: const Color(0xFFFFF6EE),
-        surfaceTint: const Color(0xFFC2704E),
-        error: const Color(0xFFC75B44),
+        // Light does not need the accent's text/fill split that dark does:
+        // #3451B2 is 7.08:1 on white, so it serves as both.
+        primary: const Color(0xFF3451B2),
+        onPrimary: const Color(0xFFFFFFFF),
+        surfaceTint: const Color(0xFF3451B2),
+        error: const Color(0xFFC73E3E),
       ),
   colors: DroverColors.light,
 );
@@ -109,7 +204,67 @@ ThemeData _buildTheme({
   brightness: brightness,
   colorScheme: scheme,
   scaffoldBackgroundColor: scheme.surface,
-  fontFamily: _roundedGothic,
+  // No `fontFamily`: the platform face (SF Pro, Hiragino Sans for Japanese) is
+  // the professional read. The rounded gothic that used to be set here was the
+  // single largest contributor to the friendly one.
+  //
+  // Material 3's own component defaults are the geometry this redesign
+  // replaces: stadium buttons and icon buttons, a 28-radius dialog and bottom
+  // sheet, a 16-radius extended FAB, a 12-radius card, an 8-radius chip.
+  // Pinning them here rather than at call sites is what keeps a widget nobody
+  // enumerated from staying round — and `bottomSheetTheme` is the fix for the
+  // sheets that paint their own panel, whose 28-radius shell used to peek out
+  // around them as a second, mismatched corner.
+  //
+  // Shape only: none of these set padding, density or a minimum size, so every
+  // control keeps the tap target Material gives it.
+  filledButtonTheme: const FilledButtonThemeData(
+    style: ButtonStyle(shape: WidgetStatePropertyAll(_controlShape)),
+  ),
+  textButtonTheme: const TextButtonThemeData(
+    style: ButtonStyle(shape: WidgetStatePropertyAll(_controlShape)),
+  ),
+  elevatedButtonTheme: const ElevatedButtonThemeData(
+    style: ButtonStyle(shape: WidgetStatePropertyAll(_controlShape)),
+  ),
+  // Shape and hairline only — no fill. An OutlinedButton is Material's
+  // medium-emphasis *unfilled* button, and the key caps and tool chips in
+  // agent_screen are built on that. The filled neutral treatment is opt-in via
+  // [droverNeutralButtonStyle].
+  outlinedButtonTheme: OutlinedButtonThemeData(
+    style: ButtonStyle(
+      side: _droverOutlineSide(scheme),
+      shape: const WidgetStatePropertyAll(_controlShape),
+    ),
+  ),
+  iconButtonTheme: const IconButtonThemeData(
+    style: ButtonStyle(shape: WidgetStatePropertyAll(_controlShape)),
+  ),
+  floatingActionButtonTheme: const FloatingActionButtonThemeData(
+    shape: _controlShape,
+  ),
+  dialogTheme: const DialogThemeData(shape: _panelShape),
+  cardTheme: const CardThemeData(shape: _panelShape),
+  bottomSheetTheme: const BottomSheetThemeData(
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(droverRadiusPanel),
+      ),
+    ),
+  ),
+  chipTheme: const ChipThemeData(shape: _chipShape),
+  // Already Material's own value — an underline rounded 4 at the top corners —
+  // but pinned to the constant so inputs follow the vocabulary if that default
+  // moves. Radius only: `InputDecorator` still `copyWith`s its per-state
+  // border colors onto whatever border it is handed, so this stays inert for
+  // everything but geometry.
+  inputDecorationTheme: const InputDecorationThemeData(
+    border: UnderlineInputBorder(
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(droverRadiusControl),
+      ),
+    ),
+  ),
   extensions: [colors],
 );
 
@@ -133,8 +288,8 @@ const modePlan = Color(0xFF5FAF82);
 const modeAuto = Color(0xFFFFC107);
 const modeBypass = Color(0xFFE5695E);
 
-/// Warm-redesign color tokens that don't map onto Material's [ColorScheme]:
-/// per-status pill colors, agent brand colors, and a few bespoke surfaces.
+/// Ink color tokens that don't map onto Material's [ColorScheme]: per-status
+/// pill colors, agent brand colors, and a few bespoke surfaces.
 /// Registered on both themes; read via [DroverColors.of].
 @immutable
 class DroverColors extends ThemeExtension<DroverColors> {
@@ -161,6 +316,7 @@ class DroverColors extends ThemeExtension<DroverColors> {
     required this.userBubble,
     required this.toolSurface,
     required this.tertiaryText,
+    required this.accentText,
   });
 
   // Status colors: dot / pill background / pill foreground per state.
@@ -190,6 +346,14 @@ class DroverColors extends ThemeExtension<DroverColors> {
   final Color userBubble;
   final Color toolSurface;
   final Color tertiaryText;
+
+  /// Accent-coloured **text and icons** — inline links, the demo-exit action, a
+  /// selected switcher label, accent text in the transcript.
+  ///
+  /// Never a fill. Dark's `#A8B1FF` is periwinkle: at avatar size it would be
+  /// mistaken for [brandCopilot] `#8B9DC9`. Fills always use
+  /// [ColorScheme.primary], which is the darker half of the same accent.
+  final Color accentText;
 
   /// Dot color for [status]; `unknown` reuses the idle triple.
   Color statusDot(AgentStatus status) => switch (status) {
@@ -231,44 +395,63 @@ class DroverColors extends ThemeExtension<DroverColors> {
       Theme.of(context).extension<DroverColors>()!;
 
   static const DroverColors dark = DroverColors(
-    blockedDot: Color(0xFFE86A55),
-    blockedPillBg: Color.fromRGBO(232, 106, 85, 0.16),
-    blockedPillFg: Color(0xFFF09480),
-    workingDot: Color(0xFFE0A93F),
-    workingPillBg: Color.fromRGBO(224, 169, 63, 0.14),
-    workingPillFg: Color(0xFFE6B863),
-    doneDot: Color(0xFF7CBE8C),
-    donePillBg: Color.fromRGBO(124, 190, 140, 0.14),
-    donePillFg: Color(0xFF95CFA4),
-    idleDot: Color(0xFF8D8478),
-    idlePillBg: Color.fromRGBO(160, 150, 136, 0.12),
-    idlePillFg: Color(0xFFA69B8C),
+    // Dot and pill text now share one hue per status. The label used to be a
+    // lighter tint of the dot so it would lift off the warm ground; on ink it
+    // no longer needs the lift, so it settles onto the dot's own value. idle
+    // is the one pair that stays split — see its comment below.
+    blockedDot: Color(0xFFE5695E),
+    blockedPillBg: Color.fromRGBO(229, 105, 94, 0.12),
+    blockedPillFg: Color(0xFFE5695E),
+    workingDot: Color(0xFFD3A027),
+    workingPillBg: Color.fromRGBO(211, 160, 39, 0.12),
+    workingPillFg: Color(0xFFD3A027),
+    doneDot: Color(0xFF5FAE74),
+    // Green reads brighter than it measures, so its wash sits a step lighter.
+    donePillBg: Color.fromRGBO(95, 174, 116, 0.10),
+    donePillFg: Color(0xFF5FAE74),
+    // idle (and the `unknown` status that reuses it) means "no particular
+    // state", so unlike blocked/working/done it carries no hue of its own.
+    // Its label stays lighter than its dot because it has no hue to lean on.
+    idleDot: Color(0xFF7C7C84),
+    idlePillBg: Color.fromRGBO(124, 124, 132, 0.12),
+    idlePillFg: Color(0xFF908F96),
     brandClaude: Color(0xFFD9825F),
     brandCodex: Color(0xFF6FA287),
     brandCopilot: Color(0xFF8B9DC9),
     brandPi: Color(0xFFB98AC9),
     brandOmp: Color(0xFF55AAB9),
-    brandFallback: Color(0xFFA69B8C),
-    avatarFg: Color(0xFF1D150E),
-    userBubble: Color(0xFF3A2E22),
-    toolSurface: Color(0xFF221D17),
-    tertiaryText: Color(0xFF8C8172),
+    // Same reasoning as idle: the fallback avatar for an unrecognised agent
+    // type is the absence of a brand color.
+    brandFallback: Color(0xFF908F96),
+    // Sits on `brandColor(type)`, all of which are light enough to need the
+    // page's own near-black rather than white.
+    avatarFg: Color(0xFF17171A),
+    // The accent's hue at surface lightness. Sharing a hue with the avatar
+    // directly above it is what makes it legible as "your own message"; a
+    // neutral grey bubble collides with the tool chips and inline code, which
+    // are already grey lozenges — hence the distance from [toolSurface].
+    userBubble: Color(0xFF262A38),
+    toolSurface: Color(0xFF26262B),
+    tertiaryText: Color(0xFF908F96),
+    // 8.86:1 on `surface`, 8.50:1 on `surfaceContainerLow`.
+    accentText: Color(0xFFA8B1FF),
   );
 
   static const DroverColors light = DroverColors(
-    // The status dots and pill text are untouched — at chroma 70–137 (dots)
-    // and 62–115 (text) they already carry the whole signal. Only the pill
-    // *backgrounds* move: they were washes tuned for a warm ground, and on the
-    // cool one they read as loose yellow and pink cards. Each is pulled toward
-    // the neutral axis at its own lightness, so the hue survives and the
-    // text/background contrast is unchanged to two decimals.
-    blockedDot: Color(0xFFC75B44),
+    // The pill text is untouched — at chroma 62–115 it already carries the
+    // whole signal. The pill *backgrounds* are washes pulled toward the neutral
+    // axis at their own lightness, so the hue survives and the text/background
+    // contrast is unchanged to two decimals; on the warm ground they used to
+    // sit on they read as loose yellow and pink cards. The dots are the ink
+    // pass's one change here: saturated further so a 5×5 square LED still
+    // registers as a colour at that size.
+    blockedDot: Color(0xFFC73E3E),
     blockedPillBg: Color(0xFFF1E6E4),
     blockedPillFg: Color(0xFFA94B36),
-    workingDot: Color(0xFFB8862F),
+    workingDot: Color(0xFFB8860B),
     workingPillBg: Color(0xFFF0EBE2),
     workingPillFg: Color(0xFF8F6A1D),
-    doneDot: Color(0xFF4E9465),
+    doneDot: Color(0xFF2D9F52),
     donePillBg: Color(0xFFE5EEE7),
     donePillFg: Color(0xFF3E7C51),
     // idle (and the `unknown` status that reuses it) means "no particular
@@ -284,21 +467,23 @@ class DroverColors extends ThemeExtension<DroverColors> {
     // Same reasoning: the fallback avatar for an unrecognised agent type is
     // the absence of a brand color.
     brandFallback: Color(0xFF7E7E83),
-    // Unlike [ColorScheme.onPrimary] this one cannot stay warm: it sits on
-    // `brandColor(type)`, and for an unrecognised type that is now the cool
-    // grey [brandFallback] rather than an accent.
+    // Sits on `brandColor(type)`, and for an unrecognised type that is the
+    // cool grey [brandFallback] rather than an accent — so it is pinned to
+    // white here rather than tracking any one of the brand hues.
     avatarFg: Color(0xFFFFFFFF),
-    // Retinted from the old sandy `#F0E2D0` into the accent's own hue. Seen
-    // against the cool ground it read as a leftover rather than a member of
-    // the palette; sharing a hue with the avatar directly above it is what
-    // makes it legible as "your own message". A neutral grey bubble was the
-    // other candidate and was rejected on rendering: it collided with the
-    // tool chips and inline code, which are already grey lozenges.
-    userBubble: Color(0xFFF3E2DC),
+    // The accent's own hue, near the top of the ladder. Sharing a hue with the
+    // avatar directly above it is what makes it legible as "your own message";
+    // a neutral grey bubble was the other candidate and was rejected on
+    // rendering — it collided with the tool chips and inline code, which are
+    // already grey lozenges.
+    userBubble: Color(0xFFE3E7F7),
     toolSurface: Color(0xFFEDEDF1),
     // A shade darker than the axis shift alone would give, to make up the
     // contrast the deeper ground (247 → 243) would otherwise have cost it.
     tertiaryText: Color(0xFF86868B),
+    // 7.08:1 on the white page — light needs no separate fill/text split, so
+    // this is [ColorScheme.primary] over again.
+    accentText: Color(0xFF3451B2),
   );
 
   @override
@@ -325,6 +510,7 @@ class DroverColors extends ThemeExtension<DroverColors> {
     Color? userBubble,
     Color? toolSurface,
     Color? tertiaryText,
+    Color? accentText,
   }) => DroverColors(
     blockedDot: blockedDot ?? this.blockedDot,
     blockedPillBg: blockedPillBg ?? this.blockedPillBg,
@@ -348,6 +534,7 @@ class DroverColors extends ThemeExtension<DroverColors> {
     userBubble: userBubble ?? this.userBubble,
     toolSurface: toolSurface ?? this.toolSurface,
     tertiaryText: tertiaryText ?? this.tertiaryText,
+    accentText: accentText ?? this.accentText,
   );
 
   @override
@@ -376,6 +563,7 @@ class DroverColors extends ThemeExtension<DroverColors> {
       userBubble: Color.lerp(userBubble, other.userBubble, t)!,
       toolSurface: Color.lerp(toolSurface, other.toolSurface, t)!,
       tertiaryText: Color.lerp(tertiaryText, other.tertiaryText, t)!,
+      accentText: Color.lerp(accentText, other.accentText, t)!,
     );
   }
 }

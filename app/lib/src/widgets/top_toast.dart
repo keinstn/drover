@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../app_theme.dart';
+
 /// Shows a transient notification that slides in from the top of the screen.
 ///
 /// The app's bottom edge is occupied by the agent composer and action bar, so
@@ -163,10 +165,12 @@ class _ToastCardState extends State<_ToastCard>
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
           child: Material(
             elevation: 4,
-            borderRadius: BorderRadius.circular(8),
+            // No hairline here, unlike the other panels: the card sits on
+            // `inverseSurface`, which separates from the page on its own.
+            borderRadius: BorderRadius.circular(droverRadiusPanel),
             color: scheme.inverseSurface,
             child: InkWell(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(droverRadiusPanel),
               onTap: _dismiss,
               child: Padding(
                 padding: const EdgeInsets.symmetric(

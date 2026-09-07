@@ -1,4 +1,5 @@
 import 'package:drover/l10n/app_localizations.dart';
+import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/screens/structured_prompt_sheet.dart';
 import 'package:drover/src/transcript/native_transcript.dart';
 import 'package:flutter/material.dart';
@@ -85,6 +86,8 @@ Future<void> _openSheet(
 ) async {
   await tester.pumpWidget(
     MaterialApp(
+      // The sheet reads DroverColors, so the harness needs the real theme.
+      theme: droverDarkTheme,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(
@@ -122,6 +125,8 @@ void main() {
     (tester) async {
       await _openSheet(tester, _singleOnly, _Recorder());
 
+      // The eyebrow keeps the agent's own casing — it is agent-supplied
+      // prose, not a fixed caption on the label ramp.
       expect(find.text('Environment'), findsOneWidget);
       expect(find.text('Which environment?'), findsOneWidget);
       expect(find.text('Staging'), findsOneWidget);
