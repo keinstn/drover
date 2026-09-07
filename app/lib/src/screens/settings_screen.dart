@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../app_theme.dart';
 
 /// App-level settings: theme, language, and a shortcut into host management.
 /// Takes plain [ThemeMode]/[Locale] values rather than reading a settings
@@ -58,10 +59,13 @@ class SettingsScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
-              l10n.settingsAppearance,
-              style: Theme.of(
+              droverLabelText(context, l10n.settingsAppearance),
+              // Accent as *text*: `primary` is a fill colour and only reaches
+              // 2.5:1 on the dark page.
+              style: droverLabelStyle(
                 context,
-              ).textTheme.titleSmall?.copyWith(color: scheme.primary),
+                color: DroverColors.of(context).accentText,
+              ),
             ),
           ),
           ListTile(
@@ -134,6 +138,9 @@ Future<void> _showThemeSheet(
   final l10n = AppLocalizations.of(context)!;
   return showModalBottomSheet<void>(
     context: context,
+    // _OptionSheet paints its own panel; without this the host sheet's
+    // 28-radius shell peeks around its 6-radius corners.
+    backgroundColor: Colors.transparent,
     builder: (context) => _OptionSheet(
       title: l10n.settingsTheme,
       options: [
@@ -180,6 +187,7 @@ Future<void> _showLanguageSheet(
   final l10n = AppLocalizations.of(context)!;
   return showModalBottomSheet<void>(
     context: context,
+    backgroundColor: Colors.transparent,
     builder: (context) => _OptionSheet(
       title: l10n.settingsLanguage,
       options: [
@@ -231,39 +239,45 @@ class _OptionSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      child: Material(
-        color: scheme.surfaceContainer,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+    return Material(
+      color: scheme.surfaceContainer,
+      clipBehavior: Clip.antiAlias,
+      // The flat ink surfaces need the hairline to separate the sheet from
+      // the page behind it.
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(droverRadiusPanel),
+        ),
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(droverRadiusChip),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-                const SizedBox(height: 8),
-                ...options,
-              ],
-            ),
+              ),
+              const SizedBox(height: 8),
+              ...options,
+            ],
           ),
         ),
       ),
@@ -284,7 +298,10 @@ Widget _option(
     key: key,
     leading: Icon(
       selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-      color: selected ? scheme.primary : scheme.onSurfaceVariant,
+      // Selection marks use the accent as text, not as a fill.
+      color: selected
+          ? DroverColors.of(context).accentText
+          : scheme.onSurfaceVariant,
     ),
     title: Text(label),
     onTap: onTap,

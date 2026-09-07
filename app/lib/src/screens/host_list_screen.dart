@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../app_theme.dart';
 import '../models/host_config.dart';
 
 enum _HostMenuAction { edit, delete }
@@ -56,6 +57,11 @@ class _HostListScreenState extends State<HostListScreen> {
               child: Text(l10n.commonCancel),
             ),
             FilledButton(
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(droverRadiusControl),
+                ),
+              ),
               onPressed: () => Navigator.of(context).pop(true),
               child: Text(l10n.commonDelete),
             ),
@@ -100,7 +106,10 @@ class _HostListScreenState extends State<HostListScreen> {
       key: ValueKey('host_tile_${host.hostId}'),
       leading: Icon(
         isActive ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-        color: isActive ? scheme.primary : scheme.onSurfaceVariant,
+        // Selection marks use the accent as text, not as a fill.
+        color: isActive
+            ? DroverColors.of(context).accentText
+            : scheme.onSurfaceVariant,
       ),
       title: Text(
         host.displayName,
@@ -111,6 +120,9 @@ class _HostListScreenState extends State<HostListScreen> {
         '${host.user}@${host.host}:${host.port}',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
+        // The label ramp, but no uppercasing: a user name and a host address
+        // are case-sensitive.
+        style: droverLabelStyle(context, fontSize: 10.5),
       ),
       trailing: PopupMenuButton<_HostMenuAction>(
         onSelected: (action) {

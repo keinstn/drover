@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../app_theme.dart';
 import '../herdr/herdr_client.dart';
 import '../models/agent_preset.dart';
 import '../models/workspace_info.dart';
@@ -187,83 +188,96 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
     final scheme = Theme.of(context).colorScheme;
     // Self-decorate: the caller opens us via a plain showModalBottomSheet, so
     // the rounded top + grab handle live here rather than at the call site.
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      child: Material(
-        color: scheme.surfaceContainer,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 36,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+    return Material(
+      color: scheme.surfaceContainer,
+      clipBehavior: Clip.antiAlias,
+      // The flat ink surfaces need the hairline to separate the sheet from
+      // the page behind it.
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(droverRadiusPanel),
+        ),
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(droverRadiusChip),
                       ),
                     ),
-                    Text(
-                      l10n.commonLaunchAgent,
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildPresetSection(),
-                    const SizedBox(height: 16),
-                    _buildCwdSection(),
-                    const SizedBox(height: 16),
-                    _buildNameSection(),
-                    const SizedBox(height: 16),
-                    _buildWorkspaceSection(),
-                    if (_launchError != null) ...[
-                      const SizedBox(height: 12),
-                      ErrorMessageView(_launchError!),
-                    ],
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        key: const ValueKey('launch_button'),
-                        style: FilledButton.styleFrom(
-                          shape: const StadiumBorder(),
-                        ),
-                        onPressed: _canLaunch ? _launch : null,
-                        child: _busy
-                            ? const SizedBox(
-                                height: 16,
-                                width: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(l10n.launchButton),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        key: const ValueKey('launch_cancel_button'),
-                        style: OutlinedButton.styleFrom(
-                          shape: const StadiumBorder(),
-                        ),
-                        onPressed: _busy
-                            ? null
-                            : () => Navigator.pop(context, false),
-                        child: Text(l10n.commonCancel),
-                      ),
-                    ),
+                  ),
+                  Text(
+                    l10n.commonLaunchAgent,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildPresetSection(),
+                  const SizedBox(height: 16),
+                  _buildCwdSection(),
+                  const SizedBox(height: 16),
+                  _buildNameSection(),
+                  const SizedBox(height: 16),
+                  _buildWorkspaceSection(),
+                  if (_launchError != null) ...[
+                    const SizedBox(height: 12),
+                    ErrorMessageView(_launchError!),
                   ],
-                ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      key: const ValueKey('launch_button'),
+                      style: FilledButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            droverRadiusControl,
+                          ),
+                        ),
+                      ),
+                      onPressed: _canLaunch ? _launch : null,
+                      child: _busy
+                          ? const SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(
+                              droverLabelText(context, l10n.launchButton),
+                              style: droverLabelStyle(
+                                context,
+                                fontSize: 11.5,
+                                weight: FontWeight.w700,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      key: const ValueKey('launch_cancel_button'),
+                      style: droverNeutralButtonStyle(scheme),
+                      onPressed: _busy
+                          ? null
+                          : () => Navigator.pop(context, false),
+                      child: Text(l10n.commonCancel),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -353,6 +367,15 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
             children: [
               for (final cwd in widget.existingCwds)
                 ActionChip(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(droverRadiusChip),
+                  ),
+                  // The label ramp, but no uppercasing: a directory segment
+                  // is case-sensitive.
+                  labelStyle: droverLabelStyle(
+                    context,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                   label: Text(lastPathSegment(cwd)),
                   onPressed: _busy
                       ? null
@@ -382,6 +405,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         const SizedBox(height: 8),
         OutlinedButton.icon(
           key: const ValueKey('cwd_browse_button'),
+          style: droverNeutralButtonStyle(Theme.of(context).colorScheme),
           onPressed: _busy ? null : _browseCwd,
           icon: const Icon(Icons.folder_open),
           label: Text(l10n.launchBrowseDir),

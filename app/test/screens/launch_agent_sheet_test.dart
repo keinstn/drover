@@ -1,4 +1,5 @@
 import 'package:drover/l10n/app_localizations.dart';
+import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
@@ -496,5 +497,39 @@ void main() {
       find.byKey(const ValueKey('cwd_field')),
     );
     expect(cwdField.controller!.text, '/home/dev/proj');
+  });
+
+  testWidgets('the launch CTA is a rounded rectangle, not a stadium', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_response);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: LaunchAgentSheet(
+            client: client,
+            existingCwds: const ['/home/dev/proj'],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The cwd chips take the 9.5 label ramp, so pin their tap target: it is
+    // the one tappable element this pass shrinks.
+    final chipSize = tester.getSize(find.byType(ActionChip).first);
+    expect(chipSize.height, greaterThanOrEqualTo(44));
+
+    final launch = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('launch_button')),
+    );
+    final shape =
+        launch.style!.shape!.resolve(const <WidgetState>{})
+            as RoundedRectangleBorder;
+    expect(shape.borderRadius, BorderRadius.circular(droverRadiusControl));
   });
 }

@@ -1,4 +1,5 @@
 import 'package:drover/l10n/app_localizations.dart';
+import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/models/host_config.dart';
 import 'package:drover/src/widgets/host_switcher_sheet.dart';
 import 'package:flutter/material.dart';
@@ -27,6 +28,8 @@ Widget _app({
   VoidCallback? onSelectAll,
 }) {
   return MaterialApp(
+    // The screen reads DroverColors, so the harness needs the real theme.
+    theme: droverDarkTheme,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     home: Builder(
@@ -167,6 +170,34 @@ void main() {
 
     expect(manageCalls, 1);
     expect(find.text('Switch host'), findsNothing, reason: 'the sheet popped');
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the sheet panel is a 6-radius top with a hairline', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app(onSelect: (_) {}, onManageHosts: () {}));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    // Exactly one Material paints the panel: the sheet's own, since the host
+    // sheet's 28-radius shell is transparent.
+    final panels = tester
+        .widgetList<Material>(find.byType(Material))
+        .map((m) => m.shape)
+        .whereType<RoundedRectangleBorder>()
+        .where(
+          (s) => s.side.color == droverDarkTheme.colorScheme.outlineVariant,
+        )
+        .toList();
+    expect(panels, hasLength(1));
+    expect(panels.single.side.width, 1);
+    expect(
+      panels.single.borderRadius,
+      const BorderRadius.vertical(top: Radius.circular(droverRadiusPanel)),
+    );
 
     await tester.pumpWidget(const SizedBox());
   });

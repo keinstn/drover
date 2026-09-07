@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../app_theme.dart';
 import '../transcript/native_transcript.dart';
 import '../widgets/text_context_menu.dart';
 
@@ -150,7 +151,7 @@ class _StructuredPromptSheetState extends State<StructuredPromptSheet> {
               margin: const EdgeInsets.only(top: 12, bottom: 4),
               decoration: BoxDecoration(
                 color: scheme.outline,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(droverRadiusChip),
               ),
             ),
             Flexible(
@@ -181,6 +182,13 @@ class _StructuredPromptSheetState extends State<StructuredPromptSheet> {
                   const Spacer(),
                   FilledButton(
                     key: const ValueKey('structured_prompt_send_button'),
+                    style: FilledButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          droverRadiusControl,
+                        ),
+                      ),
+                    ),
                     onPressed: (_canSend && !_submitting) ? _submit : null,
                     child: _submitting
                         ? const SizedBox(
@@ -188,7 +196,14 @@ class _StructuredPromptSheetState extends State<StructuredPromptSheet> {
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : Text(l10n.agentAskUserSend),
+                        : Text(
+                            droverLabelText(context, l10n.agentAskUserSend),
+                            style: droverLabelStyle(
+                              context,
+                              fontSize: 11.5,
+                              weight: FontWeight.w700,
+                            ),
+                          ),
                   ),
                 ],
               ),
@@ -217,11 +232,11 @@ class _StructuredPromptSheetState extends State<StructuredPromptSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
+          // On the label ramp, but not through `droverLabelText`: an
+          // AskUserQuestion header is agent-supplied prose, not a fixed
+          // caption, so its casing is the agent's to choose.
           eyebrow,
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-          ),
+          style: droverLabelStyle(context, color: scheme.onSurfaceVariant),
         ),
         const SizedBox(height: 4),
         Text(question.question, style: theme.textTheme.titleSmall),
@@ -284,7 +299,7 @@ class _StructuredPromptSheetState extends State<StructuredPromptSheet> {
                 child: Text(
                   l10n.agentAskUserCustomHint,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: scheme.primary,
+                    color: DroverColors.of(context).accentText,
                   ),
                 ),
               ),

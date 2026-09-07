@@ -11,7 +11,7 @@ class AgentAvatar extends StatelessWidget {
     super.key,
     required this.agent,
     this.size = 40,
-    this.radius = 14,
+    this.radius = droverRadiusControl,
   });
 
   /// Agent type (e.g. `claude`, `codex`, `copilot`, `pi`); null when unknown.

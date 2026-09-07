@@ -780,21 +780,21 @@ void main() {
 
     expect(runner.commands, isNotEmpty);
     expect(runner.readOffsets, [0]);
-    expect(find.text('Conversation history'), findsOneWidget);
+    expect(find.text('CONVERSATION HISTORY'), findsOneWidget);
     expect(find.text('Native question'), findsOneWidget);
     // The assistant reply is Markdown-rendered (a RichText, not a Text widget).
     expect(
       find.textContaining('Native reply', findRichText: true),
       findsOneWidget,
     );
-    expect(find.text('Live terminal'), findsOneWidget);
+    expect(find.text('LIVE TERMINAL'), findsOneWidget);
     expect(find.text('working…'), findsOneWidget);
     expect(
-      tester.getTopLeft(find.text('Conversation history')).dy,
-      lessThan(tester.getTopLeft(find.text('Live terminal')).dy),
+      tester.getTopLeft(find.text('CONVERSATION HISTORY')).dy,
+      lessThan(tester.getTopLeft(find.text('LIVE TERMINAL')).dy),
     );
     expect(
-      tester.getTopLeft(find.text('Live terminal')).dy,
+      tester.getTopLeft(find.text('LIVE TERMINAL')).dy,
       lessThan(tester.getTopLeft(find.text('working…')).dy),
     );
 
@@ -1072,7 +1072,7 @@ void main() {
 
     // An empty-but-present native history is treated as absent: no header, and
     // the pane fallback still renders.
-    expect(find.text('Conversation history'), findsNothing);
+    expect(find.text('CONVERSATION HISTORY'), findsNothing);
     expect(find.text('working…'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
@@ -1087,7 +1087,7 @@ void main() {
     );
 
     // A history with no chat messages, only a tool_use, still counts.
-    expect(find.text('Conversation history'), findsOneWidget);
+    expect(find.text('CONVERSATION HISTORY'), findsOneWidget);
     expect(find.text('Read'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
@@ -1104,7 +1104,7 @@ void main() {
       }),
     );
 
-    expect(find.text('Conversation history'), findsOneWidget);
+    expect(find.text('CONVERSATION HISTORY'), findsOneWidget);
     expect(
       find.text('All requested changes are now complete.'),
       findsOneWidget,
@@ -1123,7 +1123,7 @@ void main() {
       _toolUseJsonl('task_complete', {'summary': '   '}),
     );
 
-    expect(find.text('Conversation history'), findsOneWidget);
+    expect(find.text('CONVERSATION HISTORY'), findsOneWidget);
     expect(find.text('task_complete'), findsOneWidget);
     expect(find.byIcon(Icons.build), findsOneWidget);
 
@@ -1528,9 +1528,9 @@ void main() {
 
       // The native section shows, but the pane (all lines already present in the
       // native conversation) is suppressed — no live-terminal section at all.
-      expect(find.text('Conversation history'), findsOneWidget);
+      expect(find.text('CONVERSATION HISTORY'), findsOneWidget);
       expect(find.text('Native question'), findsOneWidget);
-      expect(find.text('Live terminal'), findsNothing);
+      expect(find.text('LIVE TERMINAL'), findsNothing);
 
       await tester.pumpWidget(const SizedBox());
     },
@@ -1605,7 +1605,7 @@ void main() {
       // but it's pushed out of the bounded comparison window by the recent
       // filler history — the Live terminal section must stay visible rather
       // than being hidden as "duplicate".
-      expect(find.text('Live terminal'), findsOneWidget);
+      expect(find.text('LIVE TERMINAL'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
     },
@@ -1632,7 +1632,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('working…'), findsOneWidget);
-    expect(find.text('Conversation history'), findsNothing);
+    expect(find.text('CONVERSATION HISTORY'), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -1935,7 +1935,8 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Yes'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'No'), findsOneWidget);
     expect(find.text('claude · Project B'), findsOneWidget);
-    expect(find.text('waiting for you'), findsOneWidget);
+    // The status pill rides the label ramp too, so English uppercases it.
+    expect(find.text('WAITING FOR YOU'), findsOneWidget);
     expect(find.textContaining('p1'), findsNothing);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Yes'));
@@ -2077,9 +2078,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('sends Esc from the escape button when idle', (
-    tester,
-  ) async {
+  testWidgets('sends Esc from the escape button when idle', (tester) async {
     final runner = StubCommandRunner(blockedPromptResponse);
     final client = HerdrClient(runner);
 
@@ -2122,9 +2121,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('sends Enter from the enter button when idle', (
-    tester,
-  ) async {
+  testWidgets('sends Enter from the enter button when idle', (tester) async {
     final runner = StubCommandRunner(blockedPromptResponse);
     final client = HerdrClient(runner);
 
@@ -3624,7 +3621,7 @@ void main() {
       return (container.foregroundDecoration as BoxDecoration).border as Border;
     }
 
-    expect(ringOf('wB:p1').top.color, droverDarkTheme.colorScheme.primary);
+    expect(ringOf('wB:p1').top.color, DroverColors.dark.accentText);
     expect(ringOf('wA:p1').top.color, Colors.transparent);
 
     await tester.pumpWidget(const SizedBox());
@@ -3702,8 +3699,17 @@ void main() {
     await tester.pumpAndSettle();
 
     // "Database" is 8 chars (> 7): first 6 + '…'. "Alpha" (5) stays whole.
+    // Bar labels keep their own casing — they are user-chosen session titles,
+    // so the current agent's cell now matches its header title verbatim and
+    // has to be scoped to the cell.
     expect(find.text('Databa…'), findsOneWidget);
-    expect(find.text('Alpha'), findsWidgets);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('switcher_agent_wB:p1')),
+        matching: find.text('Alpha'),
+      ),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -4006,13 +4012,13 @@ void main() {
 
       // Every pane line is already in the native conversation, so the section
       // is suppressed as redundant.
-      expect(find.text('Live terminal'), findsNothing);
+      expect(find.text('LIVE TERMINAL'), findsNothing);
 
       // Merely opening the row is not enough: the flag behind it is
       // process-global, so a screen the user never drove keeps its dedup.
       await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
       await tester.pumpAndSettle();
-      expect(find.text('Live terminal'), findsNothing);
+      expect(find.text('LIVE TERMINAL'), findsNothing);
 
       // Actually pressing an arrow means a TUI overlay is being driven from
       // here and the raw pane has to be watchable, so the dedup is bypassed.
@@ -4020,7 +4026,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
 
-      expect(find.text('Live terminal'), findsOneWidget);
+      expect(find.text('LIVE TERMINAL'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
     },
@@ -4120,6 +4126,199 @@ void main() {
     }
 
     expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets(
+    'the two fixed-dark machine surfaces each carry their spec hairline',
+    (tester) async {
+      final runner = NativeHistoryRunner();
+      // An assistant turn with a fenced block, so the code panel renders in
+      // the same frame as the live terminal.
+      runner.contents =
+          '{"type":"user","message":{"role":"user","content":"q"}}\n'
+          '{"type":"assistant","message":{"role":"assistant","content":['
+          '{"type":"text","text":"reply\\n\\n```\\nplain code\\n```"}]}}\n';
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      BoxDecoration panelFilled(Color fill) => tester
+          .widgetList<Container>(find.byType(Container))
+          .map((c) => c.decoration)
+          .whereType<BoxDecoration>()
+          .firstWhere(
+            (d) => d.color == fill,
+            orElse: () => throw TestFailure('no panel filled $fill'),
+          );
+
+      // Both panels stay fixed-dark in either theme, so against the ink page
+      // the hairline is the only thing separating them from their ground —
+      // losing it makes them disappear rather than merely look flatter.
+      final terminal = panelFilled(const Color(0xFF1A1D22)).border! as Border;
+      expect(terminal.top.color, const Color(0xFF2B3038));
+      expect(terminal.top.width, 1);
+      expect(terminal.isUniform, isTrue);
+
+      final code = panelFilled(const Color(0xFF26262B)).border! as Border;
+      expect(code.top.color, const Color(0xFF35353D));
+      expect(code.top.width, 1);
+      expect(code.isUniform, isTrue);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('no circle or stadium shape survives in the built tree', (
+    tester,
+  ) async {
+    // Every button paints through a Material whose `shape` is the *resolved*
+    // one, so this also catches a shape inherited from Material's own M3
+    // defaults (a stadium) rather than declared in this file.
+    Future<void> expectNoRoundShapes(
+      CommandResult Function(String) response,
+    ) async {
+      final client = HerdrClient(StubCommandRunner(response));
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+            draftStore: AgentDraftStore()..keysRowOpen = true,
+            imagePicker: FakeImagePicker(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final shapes = tester
+          .widgetList<Material>(find.byType(Material))
+          .map((m) => m.shape)
+          .whereType<ShapeBorder>()
+          .toList();
+      expect(shapes, isNotEmpty);
+      for (final shape in shapes) {
+        expect(shape, isNot(isA<CircleBorder>()));
+        expect(shape, isNot(isA<StadiumBorder>()));
+      }
+
+      await tester.pumpWidget(const SizedBox());
+    }
+
+    // The composer at its fullest (attach + mode chip + the open key row),
+    // then the blocked state that adds the prompt card's answer buttons.
+    await expectNoRoundShapes(acceptEditsModeResponse);
+    await expectNoRoundShapes(blockedPromptResponse);
+  });
+
+  testWidgets('the mode chip carries its colour as a left border, not a fill', (
+    tester,
+  ) async {
+    final client = HerdrClient(StubCommandRunner(acceptEditsModeResponse));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final decoration = tester
+        .widgetList<DecoratedBox>(
+          find.ancestor(
+            of: find.byKey(const ValueKey('cycle_mode_button')),
+            matching: find.byType(DecoratedBox),
+          ),
+        )
+        .map((d) => d.decoration)
+        .whereType<BoxDecoration>()
+        .firstWhere((d) => d.border != null);
+    final border = decoration.border! as Border;
+
+    // A chip *filled* in a mode colour reads as a status; the colour has to
+    // stay on the edge for the two to remain distinguishable.
+    expect(border.left.color, modeAcceptEdit);
+    expect(border.left.width, 2);
+    expect(border.top, BorderSide.none);
+    expect(border.right, BorderSide.none);
+    expect(decoration.color, droverDarkTheme.colorScheme.surfaceContainerHigh);
+    expect(decoration.color, isNot(modeAcceptEdit));
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the label ramp does not uppercase under a Japanese locale', (
+    tester,
+  ) async {
+    final runner = StubCommandRunner(workingResponse);
+    final adapter = _PagedNativeAdapter(
+      NativeTranscript(const [
+        TranscriptMessage(
+          speaker: TranscriptSpeaker.assistant,
+          text: 'A native turn',
+        ),
+      ]),
+    );
+
+    Future<void> pumpIn(String locale) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: Locale(locale),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: HerdrClient(runner),
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+            nativeTranscriptHistory: NativeTranscriptHistory(
+              runner,
+              resolveAdapter: (agent) => _FixedNativeHistoryAdapter(adapter),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    // The transcript section captions are fixed localized strings — the ramp
+    // is for those, not for the user-chosen names (workspace label, agent
+    // name) that are deliberately off it.
+    await pumpIn('en');
+    expect(find.text('CONVERSATION HISTORY'), findsOneWidget);
+    expect(find.text('Conversation history'), findsNothing);
+    expect(find.text('LIVE TERMINAL'), findsOneWidget);
+
+    // Uppercase is a Latin device: full-width glyphs have no case, and the
+    // tracking that makes caps legible collides them.
+    await pumpIn('ja');
+    expect(find.text('会話履歴'), findsOneWidget);
+    expect(find.text('ライブターミナル'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

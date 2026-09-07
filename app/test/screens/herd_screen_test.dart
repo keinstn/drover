@@ -4,6 +4,7 @@ import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
+import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/screens/herd_screen.dart';
 import 'package:drover/src/screens/launch_agent_sheet.dart';
@@ -139,6 +140,13 @@ const _hostRefEverConnected = HerdHostRef(
   hostEverConnected: true,
 );
 
+/// Any `Container` carrying a [BoxDecoration] — used with `find.ancestor` to
+/// reach the nearest decorated box around a piece of text (a workspace card,
+/// a status chip) and assert its geometry.
+final _decoratedContainer = find.byWidgetPredicate(
+  (widget) => widget is Container && widget.decoration is BoxDecoration,
+);
+
 /// The screen under test wrapped in an app shell. Single-client tests pass
 /// [client]; multi-host tests pass [hosts] plus a [clientFor] resolver.
 Widget _herdApp({
@@ -148,9 +156,11 @@ Widget _herdApp({
   String? filterHostId,
   Duration pollInterval = const Duration(hours: 1),
   VoidCallback? onOpenHostSwitcher,
+  Locale? locale,
 }) {
   return MaterialApp(
     theme: droverDarkTheme,
+    locale: locale,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     home: HerdScreen(
@@ -326,10 +336,10 @@ void main() {
 
     // The chip row shows every status with its count (0 included), using the
     // renewed human labels.
-    expect(find.text('waiting for you 1'), findsOneWidget);
-    expect(find.text('working 1'), findsOneWidget);
-    expect(find.text('all done 0'), findsOneWidget);
-    expect(find.text('resting 1'), findsOneWidget);
+    expect(find.text('WAITING FOR YOU 1'), findsOneWidget);
+    expect(find.text('WORKING 1'), findsOneWidget);
+    expect(find.text('ALL DONE 0'), findsOneWidget);
+    expect(find.text('RESTING 1'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -547,6 +557,103 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey('launch_agent_fab')), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('workspace card uses the panel radius and an outlineVariant '
+      'hairline', (tester) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(_herdApp(client: client));
+    await tester.pump();
+    await tester.pump();
+
+    final decoration =
+        tester
+                .widget<Container>(
+                  find
+                      .ancestor(
+                        of: find.text('Project A'),
+                        matching: _decoratedContainer,
+                      )
+                      .first,
+                )
+                .decoration!
+            as BoxDecoration;
+    expect(decoration.borderRadius, BorderRadius.circular(droverRadiusPanel));
+    // Dark had no card hairline at all before the ink redesign.
+    expect(
+      decoration.border,
+      Border.all(color: droverDarkTheme.colorScheme.outlineVariant),
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('status filter chip uses the chip radius', (tester) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(_herdApp(client: client));
+    await tester.pump();
+    await tester.pump();
+
+    final decoration =
+        tester
+                .widget<Container>(
+                  find
+                      .ancestor(
+                        of: find.text('WAITING FOR YOU 1'),
+                        matching: _decoratedContainer,
+                      )
+                      .first,
+                )
+                .decoration!
+            as BoxDecoration;
+    expect(decoration.borderRadius, BorderRadius.circular(droverRadiusChip));
+    // Pins identity too, so the assertion fails rather than drifts if
+    // `find.ancestor` ever resolves to some other decorated box.
+    expect(
+      decoration.color,
+      DroverColors.dark.statusPillBg(AgentStatus.blocked),
+    );
+    expect(
+      decoration.border,
+      Border.all(
+        color: DroverColors.dark
+            .statusDot(AgentStatus.blocked)
+            .withValues(alpha: 0.34),
+      ),
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('label ramp leaves Japanese uncased', (tester) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+
+    // The launch FAB's caption is a fixed localized string, which is what
+    // the ramp is for — a workspace label is user-chosen and stays off it.
+    // Asserting both directions keeps this from passing trivially if the
+    // ramp's case treatment were dropped altogether.
+    await tester.pumpWidget(
+      _herdApp(client: client, locale: const Locale('en')),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('LAUNCH AGENT'), findsOneWidget);
+    expect(find.text('Launch agent'), findsNothing);
+
+    await tester.pumpWidget(
+      _herdApp(client: client, locale: const Locale('ja')),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('エージェントを起動'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -922,8 +1029,8 @@ void main() {
 
       // Host B is unaffected, and the global counts reflect it alone.
       expect(find.textContaining('Agent Bee'), findsOneWidget);
-      expect(find.text('waiting for you 1'), findsOneWidget);
-      expect(find.text('working 0'), findsOneWidget);
+      expect(find.text('WAITING FOR YOU 1'), findsOneWidget);
+      expect(find.text('WORKING 0'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
     },
@@ -1042,7 +1149,7 @@ void main() {
 
     // One blocked agent on each host.
     expect(find.textContaining('2 agents', findRichText: true), findsOneWidget);
-    expect(find.text('waiting for you 2'), findsOneWidget);
+    expect(find.text('WAITING FOR YOU 2'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

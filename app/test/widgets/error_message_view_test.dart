@@ -1,4 +1,5 @@
 import 'package:drover/l10n/app_localizations.dart';
+import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/infra/ssh_command_runner.dart';
 import 'package:drover/src/widgets/error_message_view.dart';
@@ -52,6 +53,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('SHA256:expected-fp'), findsOneWidget);
       expect(find.textContaining('SHA256:observed-fp'), findsOneWidget);
+      // The raw detail is machine text: it rides the one mono seam.
+      final detail = tester.widget<SelectableText>(find.byType(SelectableText));
+      expect(detail.style?.fontFamily, droverMonoFamily);
     });
 
     testWidgets('unknown herdr failure passes through the cleaned detail', (

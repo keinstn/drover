@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../app_theme.dart';
 import '../screens/herd_screen.dart';
 import 'demo_backend.dart';
 
@@ -116,6 +117,12 @@ class _DemoBanner extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Material(
       color: scheme.surfaceContainerHigh,
+      // A hairline along the top edge: the banner's fill delta against the
+      // herd screen above it is small on the flat ink surfaces. `outline`,
+      // not `outlineVariant`: dark pins the latter equal to
+      // `surfaceContainerHigh`, so the line would be drawn in the banner's
+      // own fill colour.
+      shape: Border(top: BorderSide(color: scheme.outline)),
       child: SafeArea(
         top: false,
         child: Padding(
@@ -133,6 +140,10 @@ class _DemoBanner extends StatelessWidget {
                 const Spacer(),
               TextButton(
                 key: const ValueKey('demo_exit_button'),
+                // Accent as text, not as a fill.
+                style: TextButton.styleFrom(
+                  foregroundColor: DroverColors.of(context).accentText,
+                ),
                 onPressed: onExit,
                 child: Text(
                   showEnding
