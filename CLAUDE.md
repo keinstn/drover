@@ -14,7 +14,7 @@ notes (`claude-notes.md`, `copilot-notes.md`, `codex-notes.md`,
 
 ## One-time host setup
 
-- [Flutter](https://flutter.dev), pinned via [fvm](https://fvm.app) to 3.44.5 (see
+- [Flutter](https://flutter.dev), pinned via [fvm](https://fvm.app) to 3.47.2 (see
   `app/.fvmrc`): `dart pub global activate fvm`
 - [marionette_mcp](https://pub.dev/packages/marionette_mcp) (lets Claude Code
   inspect/tap/screenshot the running app via the Dart VM service): `dart pub global
