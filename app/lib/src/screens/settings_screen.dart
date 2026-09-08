@@ -60,11 +60,12 @@ class SettingsScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
               droverLabelText(context, l10n.settingsAppearance),
-              // Accent as *text*: `primary` is a fill colour and only reaches
-              // 2.5:1 on the dark page.
+              // Not the accent: under ink that is body-text colour, and a
+              // section header has to read quieter than what it labels. Same
+              // treatment as the herd screen's workspace headers.
               style: droverLabelStyle(
                 context,
-                color: DroverColors.of(context).accentText,
+                color: DroverColors.of(context).tertiaryText,
               ),
             ),
           ),

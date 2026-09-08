@@ -129,8 +129,8 @@ class _HostSwitcherSheet extends StatelessWidget {
                             color:
                                 host.hostId != null &&
                                     host.hostId == activeHostId
-                                // Accent as text, not as a fill: a #3E63DD
-                                // mark on the switcher ground is 2.5:1.
+                                // accentText: full-strength ink is the
+                                // clearest "current" mark available.
                                 ? DroverColors.of(context).accentText
                                 : scheme.onSurfaceVariant,
                           ),

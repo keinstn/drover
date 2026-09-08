@@ -298,8 +298,13 @@ class _StructuredPromptSheetState extends State<StructuredPromptSheet> {
                 ),
                 child: Text(
                   l10n.agentAskUserCustomHint,
+                  // Weight rather than colour: the ink accent is the same
+                  // value as the option text this has to stand out from. The
+                  // colour is deliberately NOT set here — hardcoding it defeats
+                  // the button's disabled foreground, which left this reading as
+                  // the most actionable text in the sheet while inert.
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: DroverColors.of(context).accentText,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),

@@ -140,7 +140,11 @@ class _DemoBanner extends StatelessWidget {
                 const Spacer(),
               TextButton(
                 key: const ValueKey('demo_exit_button'),
-                // Accent as text, not as a fill.
+                // The ink accent equals body-text colour, so hue cannot mark
+                // this as an action. The underline does — set on the child,
+                // because a `textStyle:` here would replace `labelLarge`
+                // outright rather than merge with it, silently dropping the
+                // button's weight and letter spacing.
                 style: TextButton.styleFrom(
                   foregroundColor: DroverColors.of(context).accentText,
                 ),
