@@ -195,7 +195,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
       // the page behind it.
       shape: RoundedRectangleBorder(
         borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(droverRadiusPanel),
+          top: Radius.circular(droverRadiusLarge),
         ),
         side: BorderSide(color: scheme.outlineVariant),
       ),
@@ -214,9 +214,9 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                       width: 36,
                       height: 4,
                       margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
+                      decoration: ShapeDecoration(
                         color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
-                        borderRadius: BorderRadius.circular(droverRadiusChip),
+                        shape: const StadiumBorder(),
                       ),
                     ),
                   ),
@@ -241,13 +241,6 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                     width: double.infinity,
                     child: FilledButton(
                       key: const ValueKey('launch_button'),
-                      style: FilledButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            droverRadiusControl,
-                          ),
-                        ),
-                      ),
                       onPressed: _canLaunch ? _launch : null,
                       child: _busy
                           ? const SizedBox(
@@ -367,9 +360,6 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
             children: [
               for (final cwd in widget.existingCwds)
                 ActionChip(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(droverRadiusChip),
-                  ),
                   // The label ramp, but no uppercasing: a directory segment
                   // is case-sensitive.
                   labelStyle: droverLabelStyle(

@@ -49,12 +49,6 @@ const _codeSurface = Color(0xFF26262B);
 // stronger fill, to separate from the ink surfaces.
 const _codeBorder = Color(0xFF35353D);
 
-// The one control shape on this screen. Material's own defaults are circles
-// and stadiums, which the ink geometry has none of, so every button — the
-// composer's icon buttons included — pins this explicitly.
-const _controlShape = RoundedRectangleBorder(
-  borderRadius: BorderRadius.all(Radius.circular(droverRadiusControl)),
-);
 // Muted diff tints painted over _codeSurface: low-chroma red/green (~20% alpha)
 // that stay calm on the dark Ink surface.
 const _diffRemoveBg = Color(0x33F85149);
@@ -576,14 +570,6 @@ class _AgentScreenState extends State<AgentScreen> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      // As with the attach sheet: M3's 28pt top radius, pinned to the panel
-      // radius. Only the route can set a modal sheet's shape, so it lives at
-      // the call site rather than in StructuredPromptSheet itself.
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(droverRadiusPanel),
-        ),
-      ),
       builder: (sheetContext) {
         _structuredPromptSheetRoute = ModalRoute.of(sheetContext);
         return StructuredPromptSheet(
@@ -1201,14 +1187,14 @@ class _AgentHeader extends StatelessWidget {
             color: scheme.onSurfaceVariant,
             iconSize: 22,
             visualDensity: VisualDensity.compact,
-            style: IconButton.styleFrom(shape: _controlShape),
+            style: IconButton.styleFrom(shape: const CircleBorder()),
             onPressed: () => Navigator.maybePop(context),
           ),
           const SizedBox(width: 4),
           AgentAvatar(
             agent: agentTypeForAvatar,
             size: 34,
-            radius: droverRadiusControl,
+            radius: droverRadiusMedium,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -1268,7 +1254,7 @@ class _Transcript extends StatelessWidget {
       width: double.infinity,
       decoration: BoxDecoration(
         color: _transcriptBg,
-        borderRadius: BorderRadius.circular(droverRadiusPanel),
+        borderRadius: BorderRadius.circular(droverRadiusMedium),
         border: Border.all(color: _transcriptBorder),
       ),
       clipBehavior: Clip.antiAlias,
@@ -1436,10 +1422,10 @@ class _ToolUseChipState extends State<_ToolUseChip> {
           color: Colors.transparent,
           shape: RoundedRectangleBorder(
             side: BorderSide(color: scheme.outline),
-            borderRadius: BorderRadius.circular(droverRadiusChip),
+            borderRadius: BorderRadius.circular(droverRadiusSmall),
           ),
           child: InkWell(
-            borderRadius: BorderRadius.circular(droverRadiusChip),
+            borderRadius: BorderRadius.circular(droverRadiusSmall),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1549,7 +1535,7 @@ class _JsonDetailState extends State<_JsonDetail> {
       constraints: const BoxConstraints(maxHeight: 240),
       decoration: BoxDecoration(
         color: _codeSurface,
-        borderRadius: BorderRadius.circular(droverRadiusPanel),
+        borderRadius: BorderRadius.circular(droverRadiusSmall),
         border: Border.all(color: _codeBorder),
       ),
       child: SingleChildScrollView(
@@ -1650,7 +1636,7 @@ class _DiffCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: _codeSurface,
-        borderRadius: BorderRadius.circular(droverRadiusPanel),
+        borderRadius: BorderRadius.circular(droverRadiusSmall),
         border: Border.all(color: _codeBorder),
       ),
       child: SingleChildScrollView(
@@ -1740,10 +1726,10 @@ class _UserBubble extends StatelessWidget {
             // The clipped bottom-right corner is the bubble's "tail"; it stays
             // one step tighter than the other three.
             borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(droverRadiusPanel),
-              topRight: Radius.circular(droverRadiusPanel),
-              bottomLeft: Radius.circular(droverRadiusPanel),
-              bottomRight: Radius.circular(droverRadiusChip),
+              topLeft: Radius.circular(droverRadiusLarge),
+              topRight: Radius.circular(droverRadiusLarge),
+              bottomLeft: Radius.circular(droverRadiusLarge),
+              bottomRight: Radius.circular(droverRadiusSmall),
             ),
           ),
           child: SelectableText(
@@ -1845,7 +1831,7 @@ class _AssistantMessageState extends State<_AssistantMessage> {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: BoxDecoration(
               color: colors.toolSurface,
-              borderRadius: BorderRadius.circular(droverRadiusPanel),
+              borderRadius: BorderRadius.circular(droverRadiusSmall),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -1873,7 +1859,7 @@ class _AssistantMessageState extends State<_AssistantMessage> {
             codeStyle: codeStyle.copyWith(
               backgroundColor: colors.toolSurface,
               borderColor: scheme.outline,
-              borderRadius: const Radius.circular(droverRadiusChip),
+              borderRadius: const Radius.circular(droverRadiusSmall),
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
             ),
             style: style.copyWith(
@@ -2027,7 +2013,7 @@ class _FencedCodeState extends State<_FencedCode> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: _codeSurface,
-        borderRadius: BorderRadius.circular(droverRadiusPanel),
+        borderRadius: BorderRadius.circular(droverRadiusSmall),
         border: Border.all(color: _codeBorder),
       ),
       child: SingleChildScrollView(
@@ -2080,6 +2066,11 @@ class _PromptCard extends StatelessWidget {
     );
     // Full-width rows rather than a wrapped run of pills: the answers are a
     // list to pick from, and a row is easier to hit than a pill on a phone.
+    // These are the one control here that is not a pill: M3's stadium on a
+    // full-width 44px row reads wrong, so the row radius is pinned instead.
+    const rowShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.all(Radius.circular(droverRadiusMedium)),
+    );
     if (option.selected) {
       return FilledButton(
         onPressed: press,
@@ -2089,6 +2080,7 @@ class _PromptCard extends StatelessWidget {
           minimumSize: const Size.fromHeight(44),
           padding: const EdgeInsets.symmetric(horizontal: 14),
           alignment: Alignment.centerLeft,
+          shape: rowShape,
           textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
         ),
         child: label,
@@ -2103,6 +2095,7 @@ class _PromptCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14),
         alignment: Alignment.centerLeft,
         side: BorderSide(color: scheme.outline),
+        shape: rowShape,
         textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
       ),
       child: label,
@@ -2118,7 +2111,7 @@ class _PromptCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: isDark ? scheme.surfaceContainerHigh : scheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(droverRadiusPanel),
+        borderRadius: BorderRadius.circular(droverRadiusMedium),
         border: Border.all(color: scheme.outline),
         boxShadow: isDark
             ? null
@@ -2271,7 +2264,7 @@ class _Composer extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: scheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(droverRadiusPanel),
+          borderRadius: BorderRadius.circular(droverRadiusLarge),
           border: Border.all(color: scheme.outlineVariant),
           boxShadow: isDark
               ? null
@@ -2456,7 +2449,7 @@ class _PendingImagePreview extends StatelessWidget {
             left: 4,
             top: 8,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(droverRadiusControl),
+              borderRadius: BorderRadius.circular(droverRadiusSmall),
               child: Image.memory(
                 image.bytes,
                 width: 44,
@@ -2473,9 +2466,7 @@ class _PendingImagePreview extends StatelessWidget {
               key: ValueKey('remove_image_button_$index'),
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
-              // IconButton's M3 default shape is a stadium — pinned, as on the
-              // header's back button.
-              style: IconButton.styleFrom(shape: _controlShape),
+              style: IconButton.styleFrom(shape: const CircleBorder()),
               constraints: const BoxConstraints.tightFor(width: 22, height: 22),
               tooltip: l10n.agentRemoveImage,
               icon: const Icon(Icons.cancel, size: 18),
@@ -2506,6 +2497,7 @@ class _AttachButton extends StatelessWidget {
           key: const ValueKey('attach_image_button'),
           onPressed: sending ? null : () => _handleTap(context),
           style: OutlinedButton.styleFrom(
+            shape: const CircleBorder(),
             padding: EdgeInsets.zero,
             foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
@@ -2530,13 +2522,6 @@ class _AttachButton extends StatelessWidget {
     final l10n = AppLocalizations.of(context)!;
     return showModalBottomSheet<ImageAttachSource>(
       context: context,
-      // M3's sheet default is a 28pt top radius, which the ink geometry has no
-      // room for; pinned here rather than inherited.
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(droverRadiusPanel),
-        ),
-      ),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2575,16 +2560,24 @@ class _ModeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
-    // The chip itself stays neutral and the mode's colour becomes a 2px left
-    // edge: a chip *filled* or *lettered* in a status hue reads as a status,
-    // which a mode is not. Non-uniform borders can't carry a borderRadius, so
-    // the rounding is a clip around the decoration.
+    // The chip stays neutral and the mode's colour becomes a 2px left edge.
+    // Lettering the label in the hue over a wash of the same hue is
+    // unreadable — on the light composer ground `auto` (#FFC107) lands at
+    // 1.42:1 against AA's 4.5:1 — and a chip *filled* in a status hue reads as
+    // a status, which a mode is not. Non-uniform borders can't carry a
+    // borderRadius, so the rounding is a clip around the decoration.
+    //
+    // A rounded rect rather than a pill, deliberately: a 2px left rule on a
+    // stadium degenerates into a crescent, and the softer rectangle beside the
+    // pill-shaped status chips makes mode-vs-status visual rather than resting
+    // only on the dot rule (a status pill always carries a dot; a mode chip
+    // never does).
     return SizedBox(
       height: 40,
       child: Tooltip(
         message: l10n.agentCycleModeTooltip,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(droverRadiusChip),
+          borderRadius: BorderRadius.circular(droverRadiusSmall),
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: scheme.surfaceContainerHigh,
@@ -2596,8 +2589,14 @@ class _ModeButton extends StatelessWidget {
               key: const ValueKey('cycle_mode_button'),
               onPressed: sending ? null : onPressed,
               style: OutlinedButton.styleFrom(
-                shape: const RoundedRectangleBorder(),
-                padding: const EdgeInsets.symmetric(horizontal: 11),
+                // Matched to the clip rather than left at M3's stadium, so the
+                // ink ripple follows the corners the clip actually paints.
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(
+                    Radius.circular(droverRadiusSmall),
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 13),
                 backgroundColor: Colors.transparent,
                 foregroundColor: scheme.onSurface,
                 side: BorderSide.none,
@@ -2645,6 +2644,7 @@ class _EnterButton extends StatelessWidget {
           key: const ValueKey('send_enter_button'),
           onPressed: sending ? null : onPressed,
           style: OutlinedButton.styleFrom(
+            shape: const CircleBorder(),
             padding: EdgeInsets.zero,
             foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
@@ -2679,6 +2679,7 @@ class _EscapeButton extends StatelessWidget {
           key: const ValueKey('send_escape_button'),
           onPressed: sending ? null : onPressed,
           style: OutlinedButton.styleFrom(
+            shape: const CircleBorder(),
             padding: EdgeInsets.zero,
             foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
@@ -2715,6 +2716,7 @@ class _ArrowKeysToggleButton extends StatelessWidget {
           key: const ValueKey('toggle_arrow_keys_button'),
           onPressed: onPressed,
           style: OutlinedButton.styleFrom(
+            shape: const CircleBorder(),
             padding: EdgeInsets.zero,
             backgroundColor: open ? scheme.surfaceContainerHigh : null,
             foregroundColor: open ? scheme.onSurface : scheme.onSurfaceVariant,
@@ -2760,6 +2762,7 @@ class _ArrowKeyButton extends StatelessWidget {
           key: ValueKey('send_key_$keyName'),
           onPressed: onPressed,
           style: OutlinedButton.styleFrom(
+            shape: const CircleBorder(),
             padding: EdgeInsets.zero,
             foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
@@ -2794,6 +2797,7 @@ class _MicrophoneButton extends StatelessWidget {
           key: const ValueKey('dictate_button'),
           onPressed: enabled ? onPressed : null,
           style: OutlinedButton.styleFrom(
+            shape: const CircleBorder(),
             padding: EdgeInsets.zero,
             foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
@@ -2847,7 +2851,7 @@ class _SendButton extends StatelessWidget {
             key: const ValueKey('send_message_button'),
             onPressed: busy ? null : (showStop ? onStop : onSend),
             style: FilledButton.styleFrom(
-              shape: _controlShape,
+              shape: const CircleBorder(),
               padding: EdgeInsets.zero,
             ),
             child: busy
@@ -3016,7 +3020,7 @@ class _AgentSwitcherBarState extends State<_AgentSwitcherBar>
         height: 44,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(droverRadiusControl),
+          borderRadius: BorderRadius.circular(droverRadiusMedium),
           border: Border.all(color: scheme.outline, width: 1.5),
         ),
         child: Icon(Icons.grid_view, size: 20, color: scheme.onSurfaceVariant),
@@ -3045,7 +3049,7 @@ class _AgentSwitcherBarState extends State<_AgentSwitcherBar>
               // The ring paints over the avatar's edge, so current/other keep
               // the same 44px footprint (only the border colour differs).
               foregroundDecoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(droverRadiusControl),
+                borderRadius: BorderRadius.circular(droverRadiusMedium),
                 border: Border.all(
                   // accentText: under ink this is full-strength onSurface,
                   // which is the clearest "current" mark the palette has —
@@ -3058,7 +3062,7 @@ class _AgentSwitcherBarState extends State<_AgentSwitcherBar>
               child: AgentAvatar(
                 agent: agent.agent,
                 size: 44,
-                radius: droverRadiusControl,
+                radius: droverRadiusMedium,
               ),
             ),
             Positioned(
@@ -3067,10 +3071,11 @@ class _AgentSwitcherBarState extends State<_AgentSwitcherBar>
               child: Container(
                 width: 12,
                 height: 12,
-                // Square, not round: an LED rather than a bullet, matching
-                // StatusPill's.
+                // Round, matching StatusPill's dot: a bullet rather than an
+                // LED.
                 decoration: BoxDecoration(
                   color: colors.statusDot(agent.status),
+                  shape: BoxShape.circle,
                   border: Border.all(
                     color: scheme.surfaceContainerLow,
                     width: 2.5,

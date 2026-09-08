@@ -423,7 +423,7 @@ void main() {
       expect(find.text('?'), findsOneWidget);
     });
 
-    testWidgets('rounds its corners at the control radius', (tester) async {
+    testWidgets('rounds its corners at the medium radius', (tester) async {
       await pump(tester, 'claude');
 
       final decoration =
@@ -438,54 +438,76 @@ void main() {
               as BoxDecoration;
       expect(
         decoration.borderRadius,
-        BorderRadius.circular(droverRadiusControl),
+        BorderRadius.circular(droverRadiusMedium),
       );
     });
   });
 
   group('geometry', () {
-    test('the radius vocabulary is 6/4/2 and nothing else', () {
+    test('the radius vocabulary is 22/14/8 and nothing else', () {
       // Other units build every corner in the app out of these three, so a
       // drift here silently restyles the whole surface area.
-      expect(droverRadiusPanel, 6.0);
-      expect(droverRadiusControl, 4.0);
-      expect(droverRadiusChip, 2.0);
+      expect(droverRadiusLarge, 22.0);
+      expect(droverRadiusMedium, 14.0);
+      expect(droverRadiusSmall, 8.0);
     });
 
-    /// The widest corner [shape] draws, and a failure for anything outside the
-    /// vocabulary. Shape *type* is checked before radius on purpose: a
-    /// [StadiumBorder] or a [CircleBorder] carries no `borderRadius` at all
-    /// and would sail past a radius comparison.
-    double widestCorner(String name, ShapeBorder? shape) {
-      if (shape == null) {
-        fail(
-          '$name pins no shape — that component is back on the Material '
-          'default, which is where the round geometry lives',
-        );
+    test('no step in the vocabulary drops below 8', () {
+      // The angular 6/4/2 scale this replaced is one "tighten it up" away, and
+      // at that size a corner stops reading as a corner at arm's length. Going
+      // back has to mean editing this test on purpose.
+      for (final radius in [
+        droverRadiusLarge,
+        droverRadiusMedium,
+        droverRadiusSmall,
+      ]) {
+        expect(radius, greaterThanOrEqualTo(8.0));
       }
-      final geometry = switch (shape) {
-        RoundedRectangleBorder(:final borderRadius) => borderRadius,
-        UnderlineInputBorder(:final borderRadius) => borderRadius,
-        _ => null,
-      };
-      if (geometry == null) {
-        fail(
-          '$name resolves to ${shape.runtimeType}, which is not one of the '
-          'ink shapes',
-        );
+    });
+
+    /// Fails unless [shape] is inside the rounded vocabulary: a stadium, a
+    /// circle, or a rounded rect whose widest corner is at least
+    /// [droverRadiusSmall]. `null` passes — that is a component sitting on
+    /// Material 3's own default, which *is* the vocabulary and is the state
+    /// most of them are meant to be in.
+    ///
+    /// Shape *type* is matched before radius on purpose: a [StadiumBorder] or
+    /// a [CircleBorder] carries no `borderRadius` at all and would sail past a
+    /// radius comparison. Widest corner rather than every corner because
+    /// `bottomSheetTheme` rounds only its top — its bottom pair is 0 by
+    /// design.
+    void expectRounded(String name, ShapeBorder? shape) {
+      switch (shape) {
+        case null:
+        case StadiumBorder():
+        case CircleBorder():
+          return;
+        case RoundedRectangleBorder(:final borderRadius):
+          final radius = borderRadius.resolve(TextDirection.ltr);
+          final widest = [
+            radius.topLeft,
+            radius.topRight,
+            radius.bottomLeft,
+            radius.bottomRight,
+          ].expand((r) => [r.x, r.y]).reduce((a, b) => a > b ? a : b);
+          expect(
+            widest,
+            greaterThanOrEqualTo(droverRadiusSmall),
+            reason:
+                '$name rounds at $widest, under the vocabulary\'s smallest '
+                'step — that is where the angular geometry used to live',
+          );
+        default:
+          fail(
+            '$name resolves to ${shape.runtimeType}, which is not one of the '
+            'rounded shapes',
+          );
       }
-      final radius = geometry.resolve(TextDirection.ltr);
-      return [
-        radius.topLeft,
-        radius.topRight,
-        radius.bottomLeft,
-        radius.bottomRight,
-      ].expand((r) => [r.x, r.y]).reduce((a, b) => a > b ? a : b);
     }
 
-    /// Every component theme the app pins, by name, with the shapes it
+    /// Every component theme geometry can reach, by name, with the shapes it
     /// resolves to. Buttons resolve per widget state, so each is sampled in
-    /// the states a stadium could be reintroduced on.
+    /// the states an angular shape could be slipped back in on.
     Map<String, List<ShapeBorder?>> pinnedShapes(ThemeData theme) {
       List<ShapeBorder?> perState(
         WidgetStateProperty<OutlinedBorder?>? shape,
@@ -509,25 +531,54 @@ void main() {
         'cardTheme': [theme.cardTheme.shape],
         'bottomSheetTheme': [theme.bottomSheetTheme.shape],
         'chipTheme': [theme.chipTheme.shape],
-        'inputDecorationTheme': [theme.inputDecorationTheme.border],
       };
     }
 
-    test('no component theme keeps a round Material default', () {
-      // The point of the component themes: Material 3's own defaults are
-      // stadium buttons and icon buttons, a 28-radius dialog and bottom sheet,
-      // a 12-radius card, an 8-radius chip. A call site nobody enumerated
-      // inherits whatever is set here, so a re-added pill — or a component
-      // theme dropped in a refactor — has to fail here rather than on a device.
+    test('the rounded vocabulary holds across every component theme', () {
+      // Material 3's own defaults *are* this vocabulary — stadium buttons,
+      // circular icon buttons, a 28-radius dialog, a 12-radius card — so most
+      // of these pin nothing, and a call site nobody enumerated inherits the
+      // right geometry for free. The guard is therefore the reverse of the one
+      // it replaced: anything pinned here has to stay inside the vocabulary,
+      // and a re-added angular override has to fail here rather than on a
+      // device.
       for (final theme in [droverDarkTheme, droverLightTheme]) {
         pinnedShapes(theme).forEach((component, shapes) {
           for (final shape in shapes) {
-            expect(
-              widestCorner('${theme.brightness.name} $component', shape),
-              lessThanOrEqualTo(droverRadiusPanel),
-            );
+            expectRounded('${theme.brightness.name} $component', shape);
           }
         });
+
+        // Explicitly *unpinned*: M3's stadium buttons and circular icon
+        // buttons already are the vocabulary, so an override here could only
+        // take them back out of it.
+        expect(theme.filledButtonTheme.style?.shape, isNull);
+        expect(theme.textButtonTheme.style?.shape, isNull);
+        expect(theme.elevatedButtonTheme.style?.shape, isNull);
+        expect(theme.iconButtonTheme.style?.shape, isNull);
+        // outlinedButtonTheme survives for its hairline only — see the
+        // per-state outline test below.
+        expect(theme.outlinedButtonTheme.style?.shape, isNull);
+        // Same for the containers and the input underline: M3's 28-radius
+        // dialog and 12-radius card are standard, so those themes are gone
+        // entirely rather than retuned.
+        expect(theme.dialogTheme.shape, isNull);
+        expect(theme.cardTheme.shape, isNull);
+        expect(theme.inputDecorationTheme.border, isNull);
+
+        // The three that stay pinned, because M3's default is *not* what
+        // drover wants: a pill where M3 gives a rounded rect (FAB 16, chip 8),
+        // and a sheet top that matches the panels the sheets paint themselves.
+        expect(theme.floatingActionButtonTheme.shape, isA<StadiumBorder>());
+        expect(theme.chipTheme.shape, isA<StadiumBorder>());
+        expect(
+          theme.bottomSheetTheme.shape,
+          const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(droverRadiusLarge),
+            ),
+          ),
+        );
       }
     });
 
@@ -703,13 +754,30 @@ void main() {
         )
         .toList();
 
-    testWidgets('renders the chip colors, radius and border', (tester) async {
+    testWidgets('renders the chip colors, pill shape and border', (
+      tester,
+    ) async {
       await pump(tester, 'ja');
 
       final colors = droverDarkTheme.extension<DroverColors>()!;
       final decoration = containers(tester).first.decoration! as BoxDecoration;
       expect(decoration.color, colors.statusPillBg(AgentStatus.blocked));
-      expect(decoration.borderRadius, BorderRadius.circular(droverRadiusChip));
+
+      // A pill, not a rounded rect: the radius has to reach at least half the
+      // chip's own height for the ends to close into semicircles. Measured
+      // against the rendered height rather than pinned to a number, because
+      // the padding and the label ramp are what set that height.
+      final height = tester.getSize(find.byType(StatusPill)).height;
+      final radius = decoration.borderRadius!.resolve(TextDirection.ltr);
+      for (final corner in [
+        radius.topLeft,
+        radius.topRight,
+        radius.bottomLeft,
+        radius.bottomRight,
+      ]) {
+        expect(corner.x, greaterThanOrEqualTo(height / 2));
+        expect(corner.y, greaterThanOrEqualTo(height / 2));
+      }
 
       // The hairline is derived from the dot, not from a neutral outline: it
       // is what gives the chip an edge over a 12%-alpha fill.
@@ -722,17 +790,18 @@ void main() {
       expect(border.top.color.a, closeTo(0.34, 0.005));
     });
 
-    testWidgets('draws the dot as a square LED, not a bullet', (tester) async {
+    testWidgets('draws the dot as a 6px circle, not a square LED', (
+      tester,
+    ) async {
       await pump(tester, 'ja');
 
       final dot = containers(tester).last;
-      expect(dot.constraints?.maxWidth, 5);
-      expect(dot.constraints?.maxHeight, 5);
-      // A plain colored box: no BoxDecoration means no BoxShape.circle to
-      // round it back into a bullet.
-      expect(dot.decoration, isNull);
+      expect(dot.constraints?.maxWidth, 6);
+      expect(dot.constraints?.maxHeight, 6);
+      final decoration = dot.decoration! as BoxDecoration;
+      expect(decoration.shape, BoxShape.circle);
       expect(
-        dot.color,
+        decoration.color,
         droverDarkTheme.extension<DroverColors>()!.statusDot(
           AgentStatus.blocked,
         ),

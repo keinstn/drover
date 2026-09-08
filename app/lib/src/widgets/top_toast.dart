@@ -167,10 +167,10 @@ class _ToastCardState extends State<_ToastCard>
             elevation: 4,
             // No hairline here, unlike the other panels: the card sits on
             // `inverseSurface`, which separates from the page on its own.
-            borderRadius: BorderRadius.circular(droverRadiusPanel),
+            borderRadius: BorderRadius.circular(droverRadiusSmall),
             color: scheme.inverseSurface,
             child: InkWell(
-              borderRadius: BorderRadius.circular(droverRadiusPanel),
+              borderRadius: BorderRadius.circular(droverRadiusSmall),
               onTap: _dismiss,
               child: Padding(
                 padding: const EdgeInsets.symmetric(

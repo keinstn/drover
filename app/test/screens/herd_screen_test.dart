@@ -561,7 +561,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('workspace card uses the panel radius and an outlineVariant '
+  testWidgets('workspace card uses the large radius and an outlineVariant '
       'hairline', (tester) async {
     final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);
@@ -582,7 +582,7 @@ void main() {
                 )
                 .decoration!
             as BoxDecoration;
-    expect(decoration.borderRadius, BorderRadius.circular(droverRadiusPanel));
+    expect(decoration.borderRadius, BorderRadius.circular(droverRadiusLarge));
     // Dark had no card hairline at all before the ink redesign.
     expect(
       decoration.border,
@@ -592,7 +592,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('status filter chip uses the chip radius', (tester) async {
+  testWidgets('status filter chip is a pill', (tester) async {
     final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);
 
@@ -612,7 +612,7 @@ void main() {
                 )
                 .decoration!
             as BoxDecoration;
-    expect(decoration.borderRadius, BorderRadius.circular(droverRadiusChip));
+    expect(decoration.borderRadius, BorderRadius.circular(999));
     // Pins identity too, so the assertion fails rather than drifts if
     // `find.ancestor` ever resolves to some other decorated box.
     expect(

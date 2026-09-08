@@ -94,10 +94,10 @@ void main() {
   testWidgets('the demo button renders the themed neutral treatment', (
     tester,
   ) async {
-    // The screen's buttons carry no `style:` of their own any more — the
-    // neutral fill, hairline and control radius come from
-    // `outlinedButtonTheme`. Asserted on what is painted, not on the theme,
-    // so a call site that overrode it would fail here.
+    // The neutral fill and hairline come from `droverNeutralButtonStyle`,
+    // and the stadium from Material's own outlined-button default — no
+    // local shape. Asserted on what is painted, not on the theme, so a
+    // call site that overrode it would fail here.
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -122,10 +122,7 @@ void main() {
     expect(material.color, scheme.surfaceContainerHigh);
     expect(
       material.shape,
-      RoundedRectangleBorder(
-        side: BorderSide(color: scheme.outline),
-        borderRadius: BorderRadius.circular(droverRadiusControl),
-      ),
+      StadiumBorder(side: BorderSide(color: scheme.outline)),
     );
 
     await tester.pumpWidget(const SizedBox());

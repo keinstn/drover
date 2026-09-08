@@ -149,9 +149,9 @@ class _StructuredPromptSheetState extends State<StructuredPromptSheet> {
               width: 32,
               height: 4,
               margin: const EdgeInsets.only(top: 12, bottom: 4),
-              decoration: BoxDecoration(
+              decoration: ShapeDecoration(
                 color: scheme.outline,
-                borderRadius: BorderRadius.circular(droverRadiusChip),
+                shape: const StadiumBorder(),
               ),
             ),
             Flexible(
@@ -182,13 +182,6 @@ class _StructuredPromptSheetState extends State<StructuredPromptSheet> {
                   const Spacer(),
                   FilledButton(
                     key: const ValueKey('structured_prompt_send_button'),
-                    style: FilledButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          droverRadiusControl,
-                        ),
-                      ),
-                    ),
                     onPressed: (_canSend && !_submitting) ? _submit : null,
                     child: _submitting
                         ? const SizedBox(

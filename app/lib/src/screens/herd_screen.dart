@@ -547,9 +547,9 @@ class _HerdScreenState extends State<HerdScreen> {
     final launched = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      // LaunchAgentSheet paints its own panel; without this the route's
-      // 28-radius shell peeks around its 6-radius corners, and shows as a
-      // band below the sheet once the keyboard pushes it up.
+      // LaunchAgentSheet paints its own panel; without this the route's own
+      // shell peeks around the sheet's corners, and shows as a band below the
+      // sheet once the keyboard pushes it up.
       backgroundColor: Colors.transparent,
       builder: (_) => Padding(
         padding: EdgeInsets.only(
@@ -804,11 +804,6 @@ class _HerdScreenState extends State<HerdScreen> {
           onPressed: _onLaunchPressed,
           backgroundColor: Theme.of(context).colorScheme.primary,
           foregroundColor: Theme.of(context).colorScheme.onPrimary,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(
-              Radius.circular(droverRadiusControl),
-            ),
-          ),
           icon: const Icon(Icons.add),
           label: Text(
             droverLabelText(context, l10n.commonLaunchAgent),
@@ -847,7 +842,7 @@ class _HerdScreenState extends State<HerdScreen> {
         InkWell(
           key: const ValueKey('host_switcher_chip'),
           onTap: onOpenHostSwitcher,
-          borderRadius: BorderRadius.circular(droverRadiusPanel),
+          borderRadius: BorderRadius.circular(droverRadiusMedium),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1052,7 +1047,7 @@ class _HerdScreenState extends State<HerdScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       decoration: BoxDecoration(
         color: scheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(droverRadiusPanel),
+        borderRadius: BorderRadius.circular(droverRadiusLarge),
         // Light keeps the outline it was tuned with; dark gains a hairline it
         // never had, because the flat ink surfaces alone don't separate a card
         // from the page.
@@ -1158,7 +1153,7 @@ class _StatusChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: colors.statusPillBg(status),
-        borderRadius: BorderRadius.circular(droverRadiusChip),
+        borderRadius: BorderRadius.circular(999),
         // Same treatment as the tile's StatusPill: the chip's own hue at low
         // alpha, so the fill and the edge come from one colour.
         border: Border.all(
@@ -1168,9 +1163,15 @@ class _StatusChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Square, not round: an LED rather than a bullet, matching
-          // StatusPill's.
-          Container(width: 5, height: 5, color: colors.statusDot(status)),
+          // Round, matching StatusPill's: a bullet rather than an LED.
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: colors.statusDot(status),
+              shape: BoxShape.circle,
+            ),
+          ),
           const SizedBox(width: 5),
           Text(
             droverLabelText(
