@@ -2,12 +2,28 @@ import 'package:flutter/material.dart';
 
 import 'models/agent_info.dart';
 
-// Geometry. These three are the whole radius vocabulary: nothing keeps a
-// stadium, a circle, or a radius above 6. The sharp corners are most of what
-// separates the ink read from the friendly one they replaced.
-const droverRadiusPanel = 6.0; // card, sheet, panel, code block
-const droverRadiusControl = 4.0; // button, input, avatar, icon button
-const droverRadiusChip = 2.0; // chip, badge, status pill, key cap
+// Geometry. These three steps, plus [StadiumBorder] for pills and buttons and
+// [CircleBorder] for icon buttons, are the whole radius vocabulary.
+//
+// They are Material 3's own shape scale collapsed onto three names, and that is
+// the point: the platform's scale is the mobile standard, and rounded corners
+// are what every other app on the phone reads as tappable. An earlier pass
+// pinned an angular 6/4/2 vocabulary here to signal kinship with herdr, the
+// multiplexer drover drives. That kinship was never load-bearing and it cost a
+// theme-wide fight with the platform, so the rounded scale is back.
+//
+// Nothing here is below 8: a corner that small stops reading as a corner at
+// arm's length, which is how the angular vocabulary happened in the first
+// place.
+
+/// Composer, herd card, bottom-sheet top.
+const droverRadiusLarge = 22.0;
+
+/// Prompt card, transcript panel, avatar, full-width answer rows.
+const droverRadiusMedium = 14.0;
+
+/// Code and diff blocks, tool chips, inline code.
+const droverRadiusSmall = 8.0;
 
 /// Monospace family for code, terminal output and the label ramp.
 ///
@@ -71,18 +87,6 @@ TextStyle droverLabelStyle(
   );
 }
 
-// The three radii as ready-made shapes, for the component themes in
-// [_buildTheme] and nothing else: call sites keep using the constants.
-const _panelShape = RoundedRectangleBorder(
-  borderRadius: BorderRadius.all(Radius.circular(droverRadiusPanel)),
-);
-const _controlShape = RoundedRectangleBorder(
-  borderRadius: BorderRadius.all(Radius.circular(droverRadiusControl)),
-);
-const _chipShape = RoundedRectangleBorder(
-  borderRadius: BorderRadius.all(Radius.circular(droverRadiusChip)),
-);
-
 /// The outline for [outlinedButtonTheme] and [droverNeutralButtonStyle],
 /// resolved per widget state.
 ///
@@ -114,7 +118,6 @@ WidgetStateProperty<BorderSide> _droverOutlineSide(ColorScheme scheme) =>
 ButtonStyle droverNeutralButtonStyle(ColorScheme scheme) =>
     OutlinedButton.styleFrom(
       backgroundColor: scheme.surfaceContainerHigh,
-      shape: _controlShape,
     ).copyWith(side: _droverOutlineSide(scheme));
 
 /// Ink dark theme. The accent carries no hue at all: it is the page's own ink,
@@ -261,63 +264,41 @@ ThemeData _buildTheme({
   // the professional read. The rounded gothic that used to be set here was the
   // single largest contributor to the friendly one.
   //
-  // Material 3's own component defaults are the geometry this redesign
-  // replaces: stadium buttons and icon buttons, a 28-radius dialog and bottom
-  // sheet, a 16-radius extended FAB, a 12-radius card, an 8-radius chip.
-  // Pinning them here rather than at call sites is what keeps a widget nobody
-  // enumerated from staying round — and `bottomSheetTheme` is the fix for the
-  // sheets that paint their own panel, whose 28-radius shell used to peek out
-  // around them as a second, mismatched corner.
+  // Note how little shape is pinned below. Material 3's own component defaults
+  // already *are* drover's vocabulary — stadium buttons, circular icon buttons,
+  // a 28-radius dialog, a 12-radius card, an 8-radius input — so the overrides
+  // that used to force an angular scale on all of them are deleted rather than
+  // retuned. The platform's shape scale is the mobile standard; the angular
+  // look was signalling kinship with herdr, and that was never worth
+  // overriding the platform for. A widget nobody enumerated now inherits the
+  // right geometry by default, which is the opposite of the old bet.
   //
-  // Shape only: none of these set padding, density or a minimum size, so every
-  // control keeps the tap target Material gives it.
-  filledButtonTheme: const FilledButtonThemeData(
-    style: ButtonStyle(shape: WidgetStatePropertyAll(_controlShape)),
-  ),
-  textButtonTheme: const TextButtonThemeData(
-    style: ButtonStyle(shape: WidgetStatePropertyAll(_controlShape)),
-  ),
-  elevatedButtonTheme: const ElevatedButtonThemeData(
-    style: ButtonStyle(shape: WidgetStatePropertyAll(_controlShape)),
-  ),
-  // Shape and hairline only — no fill. An OutlinedButton is Material's
+  // Only the three places the default is *not* what drover wants stay.
+  // `chipTheme` and `floatingActionButtonTheme` because M3 gives those a
+  // rounded rect (8 and 16) where drover wants a pill, and `bottomSheetTheme`
+  // because the sheets that paint their own panel must match the shell — a
+  // mismatch shows up as a second, offset corner around the sheet. Shape
+  // only: no padding, density or minimum size here either, so every control
+  // keeps the tap target Material gives it.
+  //
+  // Hairline only — no fill and no shape. An OutlinedButton is Material's
   // medium-emphasis *unfilled* button, and the key caps and tool chips in
   // agent_screen are built on that. The filled neutral treatment is opt-in via
   // [droverNeutralButtonStyle].
   outlinedButtonTheme: OutlinedButtonThemeData(
-    style: ButtonStyle(
-      side: _droverOutlineSide(scheme),
-      shape: const WidgetStatePropertyAll(_controlShape),
-    ),
-  ),
-  iconButtonTheme: const IconButtonThemeData(
-    style: ButtonStyle(shape: WidgetStatePropertyAll(_controlShape)),
+    style: ButtonStyle(side: _droverOutlineSide(scheme)),
   ),
   floatingActionButtonTheme: const FloatingActionButtonThemeData(
-    shape: _controlShape,
+    shape: StadiumBorder(),
   ),
-  dialogTheme: const DialogThemeData(shape: _panelShape),
-  cardTheme: const CardThemeData(shape: _panelShape),
   bottomSheetTheme: const BottomSheetThemeData(
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(
-        top: Radius.circular(droverRadiusPanel),
+        top: Radius.circular(droverRadiusLarge),
       ),
     ),
   ),
-  chipTheme: const ChipThemeData(shape: _chipShape),
-  // Already Material's own value — an underline rounded 4 at the top corners —
-  // but pinned to the constant so inputs follow the vocabulary if that default
-  // moves. Radius only: `InputDecorator` still `copyWith`s its per-state
-  // border colors onto whatever border it is handed, so this stays inert for
-  // everything but geometry.
-  inputDecorationTheme: const InputDecorationThemeData(
-    border: UnderlineInputBorder(
-      borderRadius: BorderRadius.vertical(
-        top: Radius.circular(droverRadiusControl),
-      ),
-    ),
-  ),
+  chipTheme: const ChipThemeData(shape: StadiumBorder()),
   extensions: [colors],
 );
 
@@ -499,8 +480,8 @@ class DroverColors extends ThemeExtension<DroverColors> {
     // axis at their own lightness, so the hue survives and the text/background
     // contrast is unchanged to two decimals; on the warm ground they used to
     // sit on they read as loose yellow and pink cards. The dots are the ink
-    // pass's one change here: saturated further so a 5×5 square LED still
-    // registers as a colour at that size.
+    // pass's one change here: saturated further so a dot a few pixels across
+    // still registers as a colour at that size.
     blockedDot: Color(0xFFC73E3E),
     blockedPillBg: Color(0xFFF1E6E4),
     blockedPillFg: Color(0xFFA94B36),

@@ -162,13 +162,6 @@ class _DirectoryPickerSheetState extends State<DirectoryPickerSheet> {
                   width: double.infinity,
                   child: FilledButton(
                     key: const ValueKey('dir_picker_select'),
-                    style: FilledButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          droverRadiusControl,
-                        ),
-                      ),
-                    ),
                     onPressed: () => Navigator.pop(context, path),
                     child: Text(
                       droverLabelText(context, l10n.dirPickerUse),

@@ -65,7 +65,7 @@ class _HostSwitcherSheet extends StatelessWidget {
       // the page behind it.
       shape: RoundedRectangleBorder(
         borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(droverRadiusPanel),
+          top: Radius.circular(droverRadiusLarge),
         ),
         side: BorderSide(color: scheme.outlineVariant),
       ),
@@ -81,9 +81,9 @@ class _HostSwitcherSheet extends StatelessWidget {
                   width: 36,
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
+                  decoration: ShapeDecoration(
                     color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(droverRadiusChip),
+                    shape: const StadiumBorder(),
                   ),
                 ),
               ),

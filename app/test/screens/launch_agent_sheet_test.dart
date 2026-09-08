@@ -1,5 +1,4 @@
 import 'package:drover/l10n/app_localizations.dart';
-import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
@@ -499,7 +498,7 @@ void main() {
     expect(cwdField.controller!.text, '/home/dev/proj');
   });
 
-  testWidgets('the launch CTA is a rounded rectangle, not a stadium', (
+  testWidgets('the launch CTA is a stadium', (
     tester,
   ) async {
     final runner = FakeCommandRunner(_response);
@@ -524,12 +523,14 @@ void main() {
     final chipSize = tester.getSize(find.byType(ActionChip).first);
     expect(chipSize.height, greaterThanOrEqualTo(44));
 
-    final launch = tester.widget<FilledButton>(
-      find.byKey(const ValueKey('launch_button')),
+    // The button carries no local shape any more: assert what is painted,
+    // so a call site that re-added one would fail here.
+    final material = tester.widget<Material>(
+      find.descendant(
+        of: find.byKey(const ValueKey('launch_button')),
+        matching: find.byType(Material),
+      ),
     );
-    final shape =
-        launch.style!.shape!.resolve(const <WidgetState>{})
-            as RoundedRectangleBorder;
-    expect(shape.borderRadius, BorderRadius.circular(droverRadiusControl));
+    expect(material.shape, const StadiumBorder());
   });
 }

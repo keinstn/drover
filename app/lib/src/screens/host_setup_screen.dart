@@ -356,7 +356,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 // The flat ink surfaces need the hairline to separate the
                 // card from the page behind it.
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(droverRadiusPanel),
+                  borderRadius: BorderRadius.circular(droverRadiusLarge),
                   side: BorderSide(color: scheme.outlineVariant),
                 ),
                 child: Padding(
@@ -504,13 +504,6 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 if (widget.onTest != null) const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          droverRadiusControl,
-                        ),
-                      ),
-                    ),
                     onPressed: _busy ? null : _handleSave,
                     child: Text(
                       droverLabelText(context, l10n.hostSetupSave),

@@ -5,7 +5,7 @@ import '../app_theme.dart';
 import '../i18n/status_label.dart';
 import '../models/agent_info.dart';
 
-/// A chip badge for an [AgentStatus]: a square LED plus the localized status
+/// A pill badge for an [AgentStatus]: a round dot plus the localized status
 /// label, using the per-status chip colors from [DroverColors].
 class StatusPill extends StatelessWidget {
   const StatusPill({super.key, required this.status, this.compact = false});
@@ -24,7 +24,7 @@ class StatusPill extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: horizontal, vertical: 4),
       decoration: BoxDecoration(
         color: colors.statusPillBg(status),
-        borderRadius: BorderRadius.circular(droverRadiusChip),
+        borderRadius: BorderRadius.circular(999),
         // The fill alone is a 10-12% wash over the page; the hairline is what
         // gives the chip an edge against a flat ink surface.
         border: Border.all(
@@ -34,8 +34,14 @@ class StatusPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Square, not round: an LED rather than a bullet.
-          Container(width: 5, height: 5, color: colors.statusDot(status)),
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: colors.statusDot(status),
+              shape: BoxShape.circle,
+            ),
+          ),
           const SizedBox(width: 6),
           Text(
             droverLabelText(context, label),

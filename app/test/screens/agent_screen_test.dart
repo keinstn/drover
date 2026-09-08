@@ -4181,15 +4181,76 @@ void main() {
     },
   );
 
-  testWidgets('no circle or stadium shape survives in the built tree', (
+  testWidgets('the rounded shape vocabulary holds in the built tree', (
     tester,
   ) async {
     // Every button paints through a Material whose `shape` is the *resolved*
-    // one, so this also catches a shape inherited from Material's own M3
-    // defaults (a stadium) rather than declared in this file.
-    Future<void> expectNoRoundShapes(
-      CommandResult Function(String) response,
-    ) async {
+    // one, so reading it here covers both the shapes agent_screen declares and
+    // the ones it now inherits from Material's own M3 defaults.
+    OutlinedBorder resolvedShape(Finder control, String reason) {
+      final shapes = tester
+          .widgetList<Material>(
+            find.descendant(of: control, matching: find.byType(Material)),
+          )
+          .map((m) => m.shape)
+          .whereType<OutlinedBorder>()
+          .toList();
+      expect(shapes, isNotEmpty, reason: reason);
+      return shapes.first;
+    }
+
+    // Circles and stadiums are the vocabulary now, so the guard is the other
+    // way round: nothing may paint a corner tighter than the smallest step.
+    // That is what an angular scale creeping back in would look like.
+    //
+    // Buttons carry their radius on `Material.shape`, but every panel on this
+    // screen — composer, transcript, prompt card, the code and diff blocks,
+    // the user bubble — paints it through a `BoxDecoration` instead, so
+    // reading only the Materials would leave all of them unguarded.
+    void expectNoTightCorners() {
+      final radii = <BorderRadius>[];
+      for (final material in tester.widgetList<Material>(
+        find.byType(Material),
+      )) {
+        final shape = material.shape;
+        if (shape is RoundedRectangleBorder) {
+          radii.add(shape.borderRadius.resolve(TextDirection.ltr));
+        }
+      }
+      // Container builds a DecoratedBox for `decoration` and another for
+      // `foregroundDecoration`, so this covers both.
+      for (final box in tester.widgetList<DecoratedBox>(
+        find.byType(DecoratedBox),
+      )) {
+        final decoration = box.decoration;
+        if (decoration is BoxDecoration) {
+          final radius = decoration.borderRadius;
+          if (radius != null) radii.add(radius.resolve(TextDirection.ltr));
+        } else if (decoration is ShapeDecoration) {
+          final shape = decoration.shape;
+          if (shape is RoundedRectangleBorder) {
+            radii.add(shape.borderRadius.resolve(TextDirection.ltr));
+          }
+        }
+      }
+      expect(radii, isNotEmpty, reason: 'the sweep inspected nothing');
+      for (final r in radii) {
+        for (final corner in [
+          r.topLeft,
+          r.topRight,
+          r.bottomLeft,
+          r.bottomRight,
+        ]) {
+          expect(
+            corner.x,
+            greaterThanOrEqualTo(droverRadiusSmall),
+            reason: 'corner $corner is tighter than droverRadiusSmall',
+          );
+        }
+      }
+    }
+
+    Future<void> pump(CommandResult Function(String) response) async {
       final client = HerdrClient(StubCommandRunner(response));
       await tester.pumpWidget(
         MaterialApp(
@@ -4207,69 +4268,163 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
+    }
 
-      final shapes = tester
-          .widgetList<Material>(find.byType(Material))
-          .map((m) => m.shape)
-          .whereType<ShapeBorder>()
-          .toList();
-      expect(shapes, isNotEmpty);
-      for (final shape in shapes) {
-        expect(shape, isNot(isA<CircleBorder>()));
-        expect(shape, isNot(isA<StadiumBorder>()));
-      }
+    // The composer at its fullest: attach + mode chip + the open key row.
+    await pump(acceptEditsModeResponse);
+    expectNoTightCorners();
+
+    // Every icon button on this screen is a circle. None of these can be left
+    // to the theme: M3's default for IconButton, OutlinedButton and
+    // FilledButton alike is a stadium, which only *looks* circular because
+    // these all sit in square footprints.
+    for (final key in [
+      'agent_back_button',
+      'attach_image_button',
+      'dictate_button',
+      'send_message_button',
+      'toggle_arrow_keys_button',
+      'send_key_left',
+      'send_key_up',
+      'send_key_down',
+      'send_key_right',
+      'send_escape_button',
+      'send_enter_button',
+    ]) {
+      expect(
+        resolvedShape(find.byKey(ValueKey(key)), key),
+        isA<CircleBorder>(),
+        reason: key,
+      );
+    }
+
+    // The mode chip is the rounded rect in the pair — deliberately not a
+    // pill, so it cannot be mistaken for a status chip.
+    final modeShape = resolvedShape(
+      find.byKey(const ValueKey('cycle_mode_button')),
+      'mode',
+    );
+    expect(modeShape, isNot(isA<StadiumBorder>()));
+    expect(modeShape, isA<RoundedRectangleBorder>());
+
+    await tester.pumpWidget(const SizedBox());
+
+    // The blocked state adds the prompt card's answer rows.
+    await pump(blockedPromptResponse);
+    expectNoTightCorners();
+
+    // The answer rows are the one control here that is deliberately not a
+    // pill: they stay full-width at 44px, where M3's stadium reads wrong. That
+    // shape has to be pinned, so a dropped `shape:` would silently restore it.
+    final rows = find.byWidgetPredicate(
+      (w) =>
+          w is FilledButton && w.key != const ValueKey('send_message_button'),
+    );
+    expect(rows, findsWidgets);
+    for (var i = 0; i < rows.evaluate().length; i++) {
+      final shape = resolvedShape(rows.at(i), 'answer row $i');
+      expect(shape, isNot(isA<StadiumBorder>()), reason: 'answer row $i');
+      expect(shape, isA<RoundedRectangleBorder>(), reason: 'answer row $i');
+      expect(
+        (shape as RoundedRectangleBorder).borderRadius
+            .resolve(TextDirection.ltr)
+            .topLeft
+            .x,
+        droverRadiusMedium,
+        reason: 'answer row $i',
+      );
+      expect(tester.getSize(rows.at(i)).height, greaterThanOrEqualTo(44.0));
+    }
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the mode chip carries its colour as a left rule, not a fill', (
+    tester,
+  ) async {
+    // Both themes: the bug this guards against was invisible in dark and only
+    // bit on the light composer ground.
+    Future<void> checkIn(ThemeData theme, String label) async {
+      final client = HerdrClient(StubCommandRunner(acceptEditsModeResponse));
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: theme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final chip = find.byKey(const ValueKey('cycle_mode_button'));
+      final decoration = tester
+          .widgetList<DecoratedBox>(
+            find.ancestor(of: chip, matching: find.byType(DecoratedBox)),
+          )
+          .map((d) => d.decoration)
+          .whereType<BoxDecoration>()
+          .firstWhere((d) => d.border != null);
+      final border = decoration.border! as Border;
+
+      // A chip *filled* in a mode colour reads as a status, and one *lettered*
+      // in it is unreadable on a wash of itself. The colour stays on the edge
+      // and the label stays neutral.
+      expect(border.left.color, modeAcceptEdit, reason: label);
+      expect(border.left.width, 2, reason: label);
+      expect(border.top, BorderSide.none, reason: label);
+      expect(border.right, BorderSide.none, reason: label);
+      final fill = decoration.color;
+      expect(fill, theme.colorScheme.surfaceContainerHigh, reason: label);
+      expect(fill, isNot(modeAcceptEdit), reason: label);
+
+      // The assertion that would have caught the regression: whatever colour
+      // the label ends up in has to be legible on the fill behind it. 12.5px
+      // w700 is normal-size text, so AA is 4.5:1.
+      final labelColor = tester
+          .widget<OutlinedButton>(chip)
+          .style!
+          .foregroundColor!
+          .resolve({})!;
+      // computeLuminance() ignores alpha, so a translucent fill would be
+      // scored as its full-strength hue — a colour that never reaches the
+      // screen. The tint this test guards against is exactly that, so the
+      // ratio is only meaningful once the fill is known opaque.
+      expect(
+        fill!.a,
+        1.0,
+        reason: '$label: contrast is only meaningful on an opaque fill',
+      );
+      expect(
+        _contrastRatio(labelColor, fill),
+        greaterThanOrEqualTo(4.5),
+        reason: '$label: mode label on its own fill',
+      );
+      expect(labelColor, theme.colorScheme.onSurface, reason: label);
+
+      // What keeps a mode chip apart from a status pill on top of the shape:
+      // a status pill always carries a dot, a mode chip never does.
+      expect(
+        tester
+            .widgetList<Container>(
+              find.descendant(of: chip, matching: find.byType(Container)),
+            )
+            .map((c) => c.decoration)
+            .whereType<BoxDecoration>()
+            .where((d) => d.shape == BoxShape.circle),
+        isEmpty,
+        reason: label,
+      );
 
       await tester.pumpWidget(const SizedBox());
     }
 
-    // The composer at its fullest (attach + mode chip + the open key row),
-    // then the blocked state that adds the prompt card's answer buttons.
-    await expectNoRoundShapes(acceptEditsModeResponse);
-    await expectNoRoundShapes(blockedPromptResponse);
-  });
-
-  testWidgets('the mode chip carries its colour as a left border, not a fill', (
-    tester,
-  ) async {
-    final client = HerdrClient(StubCommandRunner(acceptEditsModeResponse));
-
-    await tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
-        home: AgentScreen(
-          client: client,
-          paneId: 'wB:p1',
-          pollInterval: const Duration(hours: 1),
-        ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump();
-
-    final decoration = tester
-        .widgetList<DecoratedBox>(
-          find.ancestor(
-            of: find.byKey(const ValueKey('cycle_mode_button')),
-            matching: find.byType(DecoratedBox),
-          ),
-        )
-        .map((d) => d.decoration)
-        .whereType<BoxDecoration>()
-        .firstWhere((d) => d.border != null);
-    final border = decoration.border! as Border;
-
-    // A chip *filled* in a mode colour reads as a status; the colour has to
-    // stay on the edge for the two to remain distinguishable.
-    expect(border.left.color, modeAcceptEdit);
-    expect(border.left.width, 2);
-    expect(border.top, BorderSide.none);
-    expect(border.right, BorderSide.none);
-    expect(decoration.color, droverDarkTheme.colorScheme.surfaceContainerHigh);
-    expect(decoration.color, isNot(modeAcceptEdit));
-
-    await tester.pumpWidget(const SizedBox());
+    await checkIn(droverDarkTheme, 'dark');
+    await checkIn(droverLightTheme, 'light');
   });
 
   testWidgets('the label ramp does not uppercase under a Japanese locale', (
@@ -4322,4 +4477,14 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+}
+
+/// WCAG 2.1 relative-contrast ratio. Both colours must be opaque:
+/// `computeLuminance()` ignores alpha, so callers assert that themselves.
+double _contrastRatio(Color fg, Color bg) {
+  final a = fg.computeLuminance();
+  final b = bg.computeLuminance();
+  final lighter = a > b ? a : b;
+  final darker = a > b ? b : a;
+  return (lighter + 0.05) / (darker + 0.05);
 }

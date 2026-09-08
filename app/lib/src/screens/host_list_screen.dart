@@ -57,11 +57,6 @@ class _HostListScreenState extends State<HostListScreen> {
               child: Text(l10n.commonCancel),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(droverRadiusControl),
-                ),
-              ),
               onPressed: () => Navigator.of(context).pop(true),
               child: Text(l10n.commonDelete),
             ),

@@ -174,7 +174,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('the sheet panel is a 6-radius top with a hairline', (
+  testWidgets('the sheet panel is a large-radius top with a hairline', (
     tester,
   ) async {
     await tester.pumpWidget(_app(onSelect: (_) {}, onManageHosts: () {}));
@@ -182,8 +182,8 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    // Exactly one Material paints the panel: the sheet's own, since the host
-    // sheet's 28-radius shell is transparent.
+    // Exactly one Material paints the panel: the sheet's own, since the
+    // modal shell it is shown in is transparent.
     final panels = tester
         .widgetList<Material>(find.byType(Material))
         .map((m) => m.shape)
@@ -196,7 +196,7 @@ void main() {
     expect(panels.single.side.width, 1);
     expect(
       panels.single.borderRadius,
-      const BorderRadius.vertical(top: Radius.circular(droverRadiusPanel)),
+      const BorderRadius.vertical(top: Radius.circular(droverRadiusLarge)),
     );
 
     await tester.pumpWidget(const SizedBox());
