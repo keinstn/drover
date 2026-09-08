@@ -143,6 +143,7 @@ class _DirectoryPickerSheetState extends State<DirectoryPickerSheet> {
                         // it below reading size.
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontFamily: droverMonoFamily,
+                          fontFeatures: droverMonoFeatures,
                         ),
                       ),
                     ),

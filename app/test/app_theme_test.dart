@@ -244,8 +244,18 @@ void main() {
       // `textSelectionTheme` instead. Assert the readable result, not the
       // recipe, so any future accent change has to keep copy legible.
       for (final (name, theme, ground, ink) in [
-        ('dark', droverDarkTheme, const Color(0xFF33333A), const Color(0xFFEAE8EE)),
-        ('light', droverLightTheme, const Color(0xFFD8D8DE), const Color(0xFF1F1F22)),
+        (
+          'dark',
+          droverDarkTheme,
+          const Color(0xFF33333A),
+          const Color(0xFFEAE8EE),
+        ),
+        (
+          'light',
+          droverLightTheme,
+          const Color(0xFFD8D8DE),
+          const Color(0xFF1F1F22),
+        ),
       ]) {
         final selection = theme.textSelectionTheme.selectionColor;
         expect(selection, isNotNull, reason: '$name pins no selection colour');
@@ -280,7 +290,8 @@ void main() {
         expect(
           _contrast(colors.userBubble, colors.toolSurface),
           greaterThan(1.15),
-          reason: '$name user bubble is too close to the code lozenge to read '
+          reason:
+              '$name user bubble is too close to the code lozenge to read '
               'as a different kind of thing',
         );
       }
@@ -316,7 +327,8 @@ void main() {
           expect(
             _chroma(color),
             lessThanOrEqualTo(2),
-            reason: '$name $role carries a hue; the ink palette has none to give',
+            reason:
+                '$name $role carries a hue; the ink palette has none to give',
           );
         });
         // The counterweight: `error` stays a real red, or the app loses the
@@ -339,7 +351,8 @@ void main() {
         expect(
           _chroma(scheme.primary),
           lessThanOrEqualTo(6),
-          reason: '$name primary picked up a hue; the accent is meant to be ink',
+          reason:
+              '$name primary picked up a hue; the accent is meant to be ink',
         );
         expect(colors.accentText, scheme.onSurface, reason: name);
         expect(colors.accentText, scheme.primary, reason: name);
@@ -570,6 +583,33 @@ void main() {
   });
 
   group('label ramp', () {
+    test('the mono family names a face that actually exists', () {
+      // Regression guard for a silent failure: `'monospace'` is an *Android*
+      // family alias, so on iOS/macOS Flutter found nothing and fell through
+      // to the platform face. Every label, key cap, PEM field and live
+      // terminal line rendered proportional, and no test noticed, because a
+      // family string is whatever it is set to — only rendering can tell you
+      // it resolved. A bundled package asset resolves by construction; a bare
+      // generic name does not.
+      // Assert the actual property rather than a package-asset path:
+      // vendoring our own copy of the face is the documented remedy if
+      // `gpt_markdown` ever drops it, and that would name a bare
+      // `JetBrainsMono` — this test must not fail for doing the right thing.
+      for (final generic in ['monospace', 'mono', 'sans-serif', 'serif']) {
+        expect(
+          droverMonoFamily,
+          isNot(generic),
+          reason: '$generic is a generic alias that iOS ignores silently',
+        );
+      }
+
+      // Ligatures stay off wherever the face is used: JetBrains Mono ships
+      // `calt`, which composites `==` and `>=` into single glyphs. drover
+      // shows what the agent printed, so `=` and `==` must stay tellable
+      // apart — in the diff view a `>= → ==` edit rendered as `≥ → =`.
+      expect(droverMonoFeatures, contains(const FontFeature.disable('calt')));
+    });
+
     /// A context under [locale], for the two helpers that read
     /// [Localizations.localeOf].
     Future<BuildContext> contextFor(WidgetTester tester, String locale) async {

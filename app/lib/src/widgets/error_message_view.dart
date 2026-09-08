@@ -99,6 +99,7 @@ class _ErrorMessageViewState extends State<ErrorMessageView> {
               detail,
               style: const TextStyle(
                 fontFamily: droverMonoFamily,
+                fontFeatures: droverMonoFeatures,
                 fontSize: 12,
               ),
             ),

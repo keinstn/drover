@@ -64,6 +64,7 @@ const _diffAddBg = Color(0x333FB950);
 // highlighted and unhighlighted blocks read identically apart from colour.
 const _codeTextStyle = TextStyle(
   fontFamily: droverMonoFamily,
+  fontFeatures: droverMonoFeatures,
   fontSize: 13,
   height: 1.4,
   color: _transcriptFg,
@@ -1278,6 +1279,7 @@ class _Transcript extends StatelessWidget {
           TextSpan(
             style: const TextStyle(
               fontFamily: droverMonoFamily,
+              fontFeatures: droverMonoFeatures,
               fontSize: 13.5,
               height: 1.4,
               color: _transcriptFg,
@@ -1461,6 +1463,7 @@ class _ToolUseChipState extends State<_ToolUseChip> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontFamily: droverMonoFamily,
+                        fontFeatures: droverMonoFeatures,
                         fontSize: 11.5,
                         color: colors.tertiaryText,
                       ),
@@ -1557,6 +1560,7 @@ class _JsonDetailState extends State<_JsonDetail> {
             _pretty,
             style: const TextStyle(
               fontFamily: droverMonoFamily,
+              fontFeatures: droverMonoFeatures,
               fontSize: 12,
               height: 1.4,
               color: _transcriptFg,
@@ -1597,6 +1601,7 @@ class _DiffCard extends StatelessWidget {
         softWrap: false,
         style: const TextStyle(
           fontFamily: droverMonoFamily,
+          fontFeatures: droverMonoFeatures,
           fontSize: 12,
           height: 1.4,
           color: _transcriptFg,
@@ -1631,6 +1636,7 @@ class _DiffCard extends StatelessWidget {
             '… +${total - _maxLines} lines',
             style: const TextStyle(
               fontFamily: droverMonoFamily,
+              fontFeatures: droverMonoFeatures,
               fontSize: 12,
               color: _transcriptFgDim,
             ),
@@ -1851,6 +1857,7 @@ class _AssistantMessageState extends State<_AssistantMessage> {
                     imageUrl,
                     style: TextStyle(
                       fontFamily: droverMonoFamily,
+                      fontFeatures: droverMonoFeatures,
                       fontSize: 13,
                       color: scheme.onSurface,
                     ),
@@ -1871,6 +1878,7 @@ class _AssistantMessageState extends State<_AssistantMessage> {
             ),
             style: style.copyWith(
               fontFamily: droverMonoFamily,
+              fontFeatures: droverMonoFeatures,
               fontSize: 12.5,
               color: scheme.onSurface,
             ),

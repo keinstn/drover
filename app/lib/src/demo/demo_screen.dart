@@ -153,6 +153,7 @@ class _DemoBanner extends StatelessWidget {
                   showEnding
                       ? l10n.demoBannerSetupConnection
                       : l10n.demoBannerExit,
+                  style: const TextStyle(decoration: TextDecoration.underline),
                 ),
               ),
             ],
