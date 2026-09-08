@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/models/agent_info.dart';
@@ -8,6 +10,23 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// One 0-255 channel from a [Color]'s 0.0-1.0 component.
 int _channel(double component) => (component * 255).round();
+
+/// WCAG relative luminance of [color], from its 0.0-1.0 components.
+double _luminance(Color color) {
+  double channel(double c) =>
+      c <= 0.03928 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
+  return 0.2126 * channel(color.r) +
+      0.7152 * channel(color.g) +
+      0.0722 * channel(color.b);
+}
+
+/// WCAG contrast ratio between [a] and [b], lighter over darker.
+double _contrast(Color a, Color b) {
+  final x = _luminance(a);
+  final y = _luminance(b);
+  final (hi, lo) = x > y ? (x, y) : (y, x);
+  return (hi + 0.05) / (lo + 0.05);
+}
 
 /// Rough chroma proxy: the spread between a color's widest channels, in
 /// 0-255 units. 0 is fully achromatic.
@@ -46,13 +65,13 @@ void main() {
 
     test('dark tokens match the spec', () {
       final scheme = droverDarkTheme.colorScheme;
-      expect(scheme.primary, const Color(0xFF3E63DD));
+      expect(scheme.primary, const Color(0xFFEAE8EE));
       expect(scheme.surface, const Color(0xFF17171A));
       expect(droverDarkTheme.scaffoldBackgroundColor, scheme.surface);
 
       final colors = droverDarkTheme.extension<DroverColors>()!;
       expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFE5695E));
-      expect(colors.userBubble, const Color(0xFF262A38));
+      expect(colors.userBubble, const Color(0xFF33333A));
       expect(colors.brandColor('claude'), const Color(0xFFD9825F));
       expect(colors.brandColor('pi'), const Color(0xFFB98AC9));
       expect(colors.brandColor('omp'), const Color(0xFF55AAB9));
@@ -66,12 +85,12 @@ void main() {
 
     test('light tokens match the spec', () {
       final scheme = droverLightTheme.colorScheme;
-      expect(scheme.primary, const Color(0xFF3451B2));
+      expect(scheme.primary, const Color(0xFF1F1F22));
       expect(scheme.surface, const Color(0xFFFFFFFF));
 
       final colors = droverLightTheme.extension<DroverColors>()!;
       expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFC73E3E));
-      expect(colors.userBubble, const Color(0xFFE3E7F7));
+      expect(colors.userBubble, const Color(0xFFD8D8DE));
       // Brand colors are identical across themes.
       expect(colors.brandColor('codex'), const Color(0xFF6FA287));
       expect(colors.brandColor('pi'), const Color(0xFFB98AC9));
@@ -91,6 +110,9 @@ void main() {
       // exhaustive so a token nobody uses today can't reintroduce the cast
       // the day someone reaches for it.
       final neutrals = <String, Color>{
+        // Under the ink accent `primary` belongs in this list rather than
+        // being the exception to it: the accent has no hue of its own.
+        'primary': scheme.primary,
         'surface': scheme.surface,
         'surfaceBright': scheme.surfaceBright,
         'surfaceDim': scheme.surfaceDim,
@@ -138,10 +160,11 @@ void main() {
         );
       });
 
-      // Guard against neutralising the whole palette: primary is the one
-      // deliberately chromatic token on the light ground, and the statuses
-      // that do carry meaning have to stay readable as color.
-      expect(_chroma(scheme.primary), greaterThan(100));
+      // Guard against neutralising the whole palette. `primary` used to be
+      // the one deliberately chromatic token here; under the ink accent it is
+      // deliberately achromatic (asserted above), so the semantic colours are
+      // now the *only* thing standing between this theme and a grey app. They
+      // have to stay readable as colour.
       for (final status in [
         AgentStatus.blocked,
         AgentStatus.working,
@@ -214,23 +237,128 @@ void main() {
       }
     });
 
-    test('the accent splits into a fill role and a text role', () {
-      final dark = droverDarkTheme.extension<DroverColors>()!;
-      final light = droverLightTheme.extension<DroverColors>()!;
-      expect(dark.accentText, const Color(0xFFA8B1FF));
-      expect(light.accentText, const Color(0xFF3451B2));
+    test('text selection stays readable under the ink accent', () {
+      // On iOS the selection colour comes from `CupertinoTheme.primaryColor`,
+      // i.e. `colorScheme.primary` — near-white under ink, which dropped
+      // selected text in the dark transcript to 3.43:1. Both themes pin
+      // `textSelectionTheme` instead. Assert the readable result, not the
+      // recipe, so any future accent change has to keep copy legible.
+      for (final (name, theme, ground, ink) in [
+        ('dark', droverDarkTheme, const Color(0xFF33333A), const Color(0xFFEAE8EE)),
+        ('light', droverLightTheme, const Color(0xFFD8D8DE), const Color(0xFF1F1F22)),
+      ]) {
+        final selection = theme.textSelectionTheme.selectionColor;
+        expect(selection, isNotNull, reason: '$name pins no selection colour');
+        final highlighted = Color.alphaBlend(selection!, ground);
+        expect(
+          _contrast(ink, highlighted),
+          greaterThanOrEqualTo(4.5),
+          reason: '$name selected text in the user bubble is unreadable',
+        );
+        // …and the highlight has to be visible as a highlight.
+        expect(
+          _contrast(highlighted, ground),
+          greaterThan(1.2),
+          reason: '$name selection does not read as a highlight',
+        );
+      }
+    });
 
-      // Why the split exists at all: dark's text accent is periwinkle, and as
-      // a *fill* at avatar size it would be taken for copilot's brand color.
-      // Keep them apart — if they ever converge, `accentText` has silently
-      // become unusable for anything sitting next to an avatar.
-      expect(dark.accentText, isNot(dark.brandCopilot));
-      expect(light.accentText, isNot(light.brandCopilot));
+    test('the user bubble stays distinct from the grey lozenges', () {
+      // A regression guard, NOT a sufficiency proof. 1.20:1 is well under the
+      // 3:1 usually wanted between adjacent non-text fills; what actually
+      // identifies the bubble is its right alignment and its clipped-corner
+      // tail, and the fill is a supporting cue. The old design carried this on
+      // hue, which is why it needed no help. The threshold sits above the
+      // 1.08:1 first tried for light — a genuine grey-on-grey collision — so
+      // this catches that mistake coming back and nothing subtler.
+      for (final (name, theme) in [
+        ('dark', droverDarkTheme),
+        ('light', droverLightTheme),
+      ]) {
+        final colors = theme.extension<DroverColors>()!;
+        expect(
+          _contrast(colors.userBubble, colors.toolSurface),
+          greaterThan(1.15),
+          reason: '$name user bubble is too close to the code lozenge to read '
+              'as a different kind of thing',
+        );
+      }
+    });
 
-      // Light needs no split: #3451B2 is 7.08:1 on the white page, so the
-      // fill colour doubles as the text colour. Dark's fill is too dark to.
-      expect(light.accentText, droverLightTheme.colorScheme.primary);
-      expect(dark.accentText, isNot(droverDarkTheme.colorScheme.primary));
+    test('no unpinned scheme role smuggles a hue back in', () {
+      // `fromSeed` defaults to `tonalSpot`, which takes the seed's hue and
+      // forces its own chroma — so a near-achromatic seed alone left
+      // `secondary`/`tertiary` at chroma 27-41. Both themes ask for
+      // `DynamicSchemeVariant.monochrome` instead. Nothing reads these roles
+      // today, which is exactly why it needs a test: the next widget that
+      // reaches for one should not be the thing that reintroduces a brand
+      // colour. The error family is excluded — it is semantic and must stay
+      // chromatic.
+      for (final (name, theme) in [
+        ('dark', droverDarkTheme),
+        ('light', droverLightTheme),
+      ]) {
+        final scheme = theme.colorScheme;
+        final unpinned = <String, Color>{
+          'secondary': scheme.secondary,
+          'onSecondary': scheme.onSecondary,
+          'secondaryContainer': scheme.secondaryContainer,
+          'onSecondaryContainer': scheme.onSecondaryContainer,
+          'tertiary': scheme.tertiary,
+          'onTertiary': scheme.onTertiary,
+          'tertiaryContainer': scheme.tertiaryContainer,
+          'onTertiaryContainer': scheme.onTertiaryContainer,
+          'primaryContainer': scheme.primaryContainer,
+          'onPrimaryContainer': scheme.onPrimaryContainer,
+        };
+        unpinned.forEach((role, color) {
+          expect(
+            _chroma(color),
+            lessThanOrEqualTo(2),
+            reason: '$name $role carries a hue; the ink palette has none to give',
+          );
+        });
+        // The counterweight: `error` stays a real red, or the app loses the
+        // one colour that says a destructive action is destructive.
+        expect(_chroma(scheme.error), greaterThan(100), reason: name);
+      }
+    });
+
+    test('the accent carries no hue of its own', () {
+      for (final (name, theme) in [
+        ('dark', droverDarkTheme),
+        ('light', droverLightTheme),
+      ]) {
+        final scheme = theme.colorScheme;
+        final colors = theme.extension<DroverColors>()!;
+
+        // The point of the ink accent: it is the page's own ink, so the fill
+        // role, the text role and body copy are all one value. A hue
+        // reappearing here means someone reintroduced a brand colour.
+        expect(
+          _chroma(scheme.primary),
+          lessThanOrEqualTo(6),
+          reason: '$name primary picked up a hue; the accent is meant to be ink',
+        );
+        expect(colors.accentText, scheme.onSurface, reason: name);
+        expect(colors.accentText, scheme.primary, reason: name);
+
+        // Which is why no *text* action may rely on the accent to look
+        // tappable — see the underline in demo_screen and the weight in
+        // structured_prompt_sheet. Selection marks are the legitimate use.
+        expect(colors.accentText, isNot(colors.tertiaryText), reason: name);
+
+        // The one thing the accent must still clear: it sits beside five agent
+        // brand colours and must not be mistaken for any of them.
+        for (final agent in ['claude', 'codex', 'copilot', 'pi', 'omp']) {
+          expect(
+            colors.brandColor(agent),
+            isNot(scheme.primary),
+            reason: '$name accent collides with $agent',
+          );
+        }
+      }
     });
 
     test('rgba pill backgrounds carry the spec alpha (dark)', () {

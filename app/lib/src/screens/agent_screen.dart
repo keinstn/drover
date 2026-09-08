@@ -1195,7 +1195,9 @@ class _AgentHeader extends StatelessWidget {
           IconButton(
             key: const ValueKey('agent_back_button'),
             icon: const Icon(Icons.arrow_back_ios_new),
-            color: scheme.primary,
+            // Chrome, so onSurfaceVariant: `primary` is now the ink itself,
+            // which is too loud for a back chevron.
+            color: scheme.onSurfaceVariant,
             iconSize: 22,
             visualDensity: VisualDensity.compact,
             style: IconButton.styleFrom(shape: _controlShape),
@@ -3037,8 +3039,10 @@ class _AgentSwitcherBarState extends State<_AgentSwitcherBar>
               foregroundDecoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(droverRadiusControl),
                 border: Border.all(
-                  // accentText, not primary: #3E63DD on this switcher ground
-                  // is only 2.5:1 and doesn't read as a selection at all.
+                  // accentText: under ink this is full-strength onSurface,
+                  // which is the clearest "current" mark the palette has —
+                  // 14.12:1 on this switcher ground. Selection is the one role
+                  // the hueless accent is better at than a coloured one.
                   color: isCurrent ? colors.accentText : Colors.transparent,
                   width: 2.5,
                 ),

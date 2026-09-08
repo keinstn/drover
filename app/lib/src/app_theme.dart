@@ -79,7 +79,7 @@ WidgetStateProperty<BorderSide> _droverOutlineSide(ColorScheme scheme) =>
       return BorderSide(color: scheme.outline);
     });
 
-/// The neutral button: a filled-but-quiet alternative to the accent primary —
+/// The neutral button: a filled-but-quiet alternative to the ink primary —
 /// a `surfaceContainerHigh` fill plus a 1px `outline`, so it carries weight
 /// without borrowing the accent.
 ///
@@ -93,22 +93,32 @@ ButtonStyle droverNeutralButtonStyle(ColorScheme scheme) =>
       shape: _controlShape,
     ).copyWith(side: _droverOutlineSide(scheme));
 
-/// Ink dark theme: near-achromatic surfaces, with the accent carrying the only
-/// colour on screen. The semantic status/brand colors live in [DroverColors].
+/// Ink dark theme. The accent carries no hue at all: it is the page's own ink,
+/// inverted into a fill. That is the rule the app icon already follows — drover
+/// is black and white — and it means every colour on screen means something,
+/// either which agent ([DroverColors.brandColor]) or what state
+/// ([DroverColors.statusDot]). Nothing is coloured for decoration.
 final ThemeData droverDarkTheme = _buildTheme(
   brightness: Brightness.dark,
   scheme:
       ColorScheme.fromSeed(
-        seedColor: const Color(0xFF3E63DD),
+        seedColor: const Color(0xFFEAE8EE),
         brightness: Brightness.dark,
+        // A near-achromatic *seed* is not enough: `fromSeed` defaults to
+        // `tonalSpot`, which takes the seed's hue and forces its own chroma,
+        // so `secondary`/`tertiary` came back at chroma 27-41 no matter what
+        // was passed here. `monochrome` is what actually makes the roles this
+        // theme does not pin come back grey. Nothing reads them today; this
+        // keeps the next widget that does from reintroducing a hue.
+        dynamicSchemeVariant: DynamicSchemeVariant.monochrome,
       ).copyWith(
         surface: const Color(0xFF17171A),
         surfaceContainerLowest: const Color(0xFF131316),
         surfaceContainerLow: const Color(0xFF1B1B1F),
         surfaceContainer: const Color(0xFF1E1E22),
         surfaceContainerHigh: const Color(0xFF26262B),
-        // Pinned rather than left to the seed, which brings the indigo back in
-        // as a tint on the deepest step.
+        // Pinned rather than left to the seed, whose deepest step lands a
+        // shade off the ladder the rest of these values describe.
         surfaceContainerHighest: const Color(0xFF2E2E33),
         onSurface: const Color(0xFFEAE8EE),
         onSurfaceVariant: const Color(0xFFB0AFB6),
@@ -120,9 +130,13 @@ final ThemeData droverDarkTheme = _buildTheme(
         // top_toast: the page inverted, rather than the seed's tinted pair.
         inverseSurface: const Color(0xFFEAE8EE),
         onInverseSurface: const Color(0xFF17171A),
-        primary: const Color(0xFF3E63DD),
-        onPrimary: const Color(0xFFFFFFFF),
-        surfaceTint: const Color(0xFF3E63DD),
+        // [onSurface] over again: the accent is the ink. A filled primary is
+        // therefore the highest-contrast control the palette can produce
+        // (14.72:1 on `surface`), which is deliberate — it is also the only
+        // thing on screen allowed to outrank the status colours.
+        primary: const Color(0xFFEAE8EE),
+        onPrimary: const Color(0xFF17171A),
+        surfaceTint: const Color(0xFFEAE8EE),
         error: const Color(0xFFE5695E),
       ),
   colors: DroverColors.dark,
@@ -135,8 +149,9 @@ final ThemeData droverDarkTheme = _buildTheme(
 /// the light grounds (#130, #133) still came back as cream on device, because
 /// on iOS "neutral" is normed cool: every system surface around drover is
 /// `systemGroupedBackground` `#F2F2F7`. Against that, even a fully achromatic
-/// ground reads slightly warm. So the light theme joins the platform's axis and
-/// [primary] carries all of drover's colour on its own.
+/// ground reads slightly warm. So the light theme joins the platform's axis —
+/// and since the ink accent has no hue either, the semantic status colours are
+/// the only chroma left on this ground.
 ///
 /// These values predate the ink dark theme and are unchanged by it — they were
 /// tuned against iOS on device, not chosen to contrast with the warm dark
@@ -149,8 +164,11 @@ final ThemeData droverLightTheme = _buildTheme(
   brightness: Brightness.light,
   scheme:
       ColorScheme.fromSeed(
-        seedColor: const Color(0xFF3451B2),
+        seedColor: const Color(0xFF1F1F22),
         brightness: Brightness.light,
+        // As in the dark theme: the variant, not the seed, is what keeps the
+        // unpinned roles grey.
+        dynamicSchemeVariant: DynamicSchemeVariant.monochrome,
       ).copyWith(
         // The elevation ladder runs *downwards*: the page is the icon's own
         // white and every container step recedes from it, rather than the
@@ -185,11 +203,12 @@ final ThemeData droverLightTheme = _buildTheme(
         // agent_screen) are both cool.
         inverseSurface: const Color(0xFF2C2C31),
         onInverseSurface: const Color(0xFFF2F2F5),
-        // Light does not need the accent's text/fill split that dark does:
-        // #3451B2 is 7.08:1 on white, so it serves as both.
-        primary: const Color(0xFF3451B2),
+        // The ink accent inverted: on the white page it is the icon's own
+        // near-black. Same lightness as [onSurface], so like dark it needs no
+        // separate text/fill split.
+        primary: const Color(0xFF1F1F22),
         onPrimary: const Color(0xFFFFFFFF),
-        surfaceTint: const Color(0xFF3451B2),
+        surfaceTint: const Color(0xFF1F1F22),
         error: const Color(0xFFC73E3E),
       ),
   colors: DroverColors.light,
@@ -204,6 +223,16 @@ ThemeData _buildTheme({
   brightness: brightness,
   colorScheme: scheme,
   scaffoldBackgroundColor: scheme.surface,
+  // Pinned because the ink accent cannot serve here. On iOS the selection
+  // colour comes from `CupertinoTheme.primaryColor`, which resolves to
+  // `colorScheme.primary` — near-white under ink, which dropped selected text
+  // in the dark transcript to 3.43:1. Long-pressing to copy an agent's reply
+  // is a first-class drover action, so this is a visible break rather than a
+  // theoretical one. `onSurfaceVariant` at 30% keeps selected text at 5.8:1 or
+  // better on every ground while still reading as a highlight.
+  textSelectionTheme: TextSelectionThemeData(
+    selectionColor: scheme.onSurfaceVariant.withValues(alpha: 0.30),
+  ),
   // No `fontFamily`: the platform face (SF Pro, Hiragino Sans for Japanese) is
   // the professional read. The rounded gothic that used to be set here was the
   // single largest contributor to the friendly one.
@@ -347,12 +376,17 @@ class DroverColors extends ThemeExtension<DroverColors> {
   final Color toolSurface;
   final Color tertiaryText;
 
-  /// Accent-coloured **text and icons** — inline links, the demo-exit action, a
-  /// selected switcher label, accent text in the transcript.
+  /// Accent-coloured **text and icons** — a selected switcher label, the
+  /// selection marks in the settings/host lists and the host switcher.
   ///
-  /// Never a fill. Dark's `#A8B1FF` is periwinkle: at avatar size it would be
-  /// mistaken for [brandCopilot] `#8B9DC9`. Fills always use
-  /// [ColorScheme.primary], which is the darker half of the same accent.
+  /// Under the ink accent this equals [ColorScheme.onSurface], which is exactly
+  /// right for a selection mark (nothing reads as "current" more clearly than
+  /// full-strength ink) and useless for a text *action*, which has no hue left
+  /// to distinguish it from body copy. The three text actions that used to lean
+  /// on the hue carry an underline or a weight instead — see `demo_screen`,
+  /// `settings_screen` and `structured_prompt_sheet`. The token is kept as its
+  /// own name rather than folded into [ColorScheme.onSurface] so that the
+  /// call sites still say *why* they are that colour.
   final Color accentText;
 
   /// Dot color for [status]; `unknown` reuses the idle triple.
@@ -426,15 +460,13 @@ class DroverColors extends ThemeExtension<DroverColors> {
     // Sits on `brandColor(type)`, all of which are light enough to need the
     // page's own near-black rather than white.
     avatarFg: Color(0xFF17171A),
-    // The accent's hue at surface lightness. Sharing a hue with the avatar
-    // directly above it is what makes it legible as "your own message"; a
-    // neutral grey bubble collides with the tool chips and inline code, which
-    // are already grey lozenges — hence the distance from [toolSurface].
-    userBubble: Color(0xFF262A38),
+    // The ink accent has no hue to lend, so the bubble is separated from the
+    // grey lozenges around it (tool chips, inline code, both [toolSurface]) by
+    // lightness instead: a clear step above them rather than a different tint.
+    userBubble: Color(0xFF33333A),
     toolSurface: Color(0xFF26262B),
     tertiaryText: Color(0xFF908F96),
-    // 8.86:1 on `surface`, 8.50:1 on `surfaceContainerLow`.
-    accentText: Color(0xFFA8B1FF),
+    accentText: Color(0xFFEAE8EE),
   );
 
   static const DroverColors light = DroverColors(
@@ -471,19 +503,18 @@ class DroverColors extends ThemeExtension<DroverColors> {
     // cool grey [brandFallback] rather than an accent — so it is pinned to
     // white here rather than tracking any one of the brand hues.
     avatarFg: Color(0xFFFFFFFF),
-    // The accent's own hue, near the top of the ladder. Sharing a hue with the
-    // avatar directly above it is what makes it legible as "your own message";
-    // a neutral grey bubble was the other candidate and was rejected on
-    // rendering — it collided with the tool chips and inline code, which are
-    // already grey lozenges.
-    userBubble: Color(0xFFE3E7F7),
+    // As in dark: no accent hue to borrow, so the bubble is set apart from
+    // [toolSurface] and the inline-code lozenges by lightness, sitting a step
+    // below them on the descending ladder. 1.22:1 against `toolSurface` —
+    // matching the 1.20:1 the dark bubble keeps — because the first value
+    // tried here (#E4E4EA) came out at 1.08:1 and reproduced exactly the
+    // grey-on-grey collision this token has always been written to avoid.
+    userBubble: Color(0xFFD8D8DE),
     toolSurface: Color(0xFFEDEDF1),
     // A shade darker than the axis shift alone would give, to make up the
     // contrast the deeper ground (247 → 243) would otherwise have cost it.
     tertiaryText: Color(0xFF86868B),
-    // 7.08:1 on the white page — light needs no separate fill/text split, so
-    // this is [ColorScheme.primary] over again.
-    accentText: Color(0xFF3451B2),
+    accentText: Color(0xFF1F1F22),
   );
 
   @override
