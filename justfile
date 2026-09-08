@@ -242,7 +242,14 @@ tag-release semver: (_check-semver-format semver) _check-on-main
 # See `.claude/skills/screenshots/SKILL.md` for what to shoot and how to get
 # there. Override the device with e.g. `just sim=... sim-prep en`.
 
-sim := "iPhone 16 Pro Max"
+# The 6.9" class App Store Connect wants (1320 x 2868). Bumped from the
+# iPhone 16 Pro Max, which newer Xcode installs no longer ship; `sim-shot`
+# prints the pixel size on every capture, so a device that is not 6.9" shows
+# up immediately. `just sim="…" sim-prep en` works, but only because both
+# recipes forward `sim` into the nested `just _sim-udid` that resolves the
+# UDID — without that, the nested process re-read this default and silently
+# prepared a different device than the recipe echoed.
+sim := "iPhone 17 Pro Max"
 
 # Resolve `sim` to a UDID. A device name is friendlier to type and to read in a
 # recipe than a raw UDID, which differs per machine; the first match wins,
@@ -273,7 +280,7 @@ sim-prep locale:
         ja) region=ja_JP ;;
         *) echo "unsupported locale '{{locale}}' (expected en or ja)" >&2; exit 1 ;;
     esac
-    udid=$(just _sim-udid)
+    udid=$(just sim="{{sim}}" _sim-udid)
     xcrun simctl bootstatus "$udid" -b >/dev/null
     xcrun simctl spawn "$udid" defaults write -g AppleLanguages -array "{{locale}}"
     xcrun simctl spawn "$udid" defaults write -g AppleLocale -string "$region"
@@ -302,7 +309,7 @@ sim-shot locale name:
         echo "invalid name '{{name}}' (letters, digits, '.', '_', '-')" >&2
         exit 1
     fi
-    udid=$(just _sim-udid)
+    udid=$(just sim="{{sim}}" _sim-udid)
     out="site/public/screenshots/{{locale}}/{{name}}.png"
     mkdir -p "$(dirname "$out")"
     xcrun simctl io "$udid" screenshot "$out"

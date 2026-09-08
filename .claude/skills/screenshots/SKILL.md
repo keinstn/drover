@@ -15,10 +15,17 @@ device language, reboot, re-apply the status bar override) and
 `just sim-shot <locale> <name>` (capture into
 `site/public/screenshots/<locale>/<name>.png` and print its pixel size).
 
-**Run them from the branch that owns the captures** — `feat/store-screenshots`,
-worktree `../drover-screenshots`. `site/` does not exist on `main`, where
-`sim-shot` would silently create it as an untracked tree that a `git clean`
-throws away.
+Run them from a worktree off `main`. `site/` and all eight captures are
+tracked there now, so `sim-shot` overwrites versioned files and the diff shows
+what changed. (This used to say to work on a `feat/store-screenshots` branch
+because `site/` lived only there — that branch is gone and the instruction sent
+the next run to a branch that does not exist.)
+
+The device is `sim` in the `justfile`, currently `iPhone 17 Pro Max`. It goes
+stale: Xcode drops older simulators, and `sim-prep` then fails outright with
+"no available simulator named …". Check `xcrun simctl list devices available`
+and edit `sim`, keeping the 6.9" class — `sim-shot` prints the pixel size on
+every capture, so a wrong device is visible immediately rather than at upload.
 
 ## The four shots, and why each earns its slot
 

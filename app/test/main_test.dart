@@ -124,6 +124,21 @@ void main() {
       // and nothing was persisted to open it.
       expect(find.byType(HostSetupScreen), findsNothing);
       expect(find.byKey(const ValueKey('demo_exit_button')), findsOneWidget);
+      // Underlined, because the ink accent is body-text colour and hue cannot
+      // mark this as an action. Pinned because the claim once lived only in a
+      // comment: the decoration was dropped in review and shipped without it.
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byKey(const ValueKey('demo_exit_button')),
+                matching: find.byType(Text),
+              ),
+            )
+            .style
+            ?.decoration,
+        TextDecoration.underline,
+      );
       expect(hostStore.saveCalls, 0);
 
       await tester.tap(find.byKey(const ValueKey('demo_exit_button')));

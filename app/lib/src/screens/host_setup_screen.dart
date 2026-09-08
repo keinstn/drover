@@ -425,7 +425,10 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
               decoration: InputDecoration(
                 labelText: l10n.hostSetupPrivateKeyLabel,
               ),
-              style: const TextStyle(fontFamily: droverMonoFamily),
+              style: const TextStyle(
+                fontFamily: droverMonoFamily,
+                fontFeatures: droverMonoFeatures,
+              ),
               maxLines: 6,
               contextMenuBuilder: noScanTextContextMenuBuilder,
               validator: (v) {
@@ -568,7 +571,10 @@ class _CopyableValue extends StatelessWidget {
             Expanded(
               child: SelectableText(
                 value,
-                style: const TextStyle(fontFamily: droverMonoFamily),
+                style: const TextStyle(
+                  fontFamily: droverMonoFamily,
+                  fontFeatures: droverMonoFeatures,
+                ),
               ),
             ),
             IconButton(

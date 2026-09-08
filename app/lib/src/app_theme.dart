@@ -9,10 +9,33 @@ const droverRadiusPanel = 6.0; // card, sheet, panel, code block
 const droverRadiusControl = 4.0; // button, input, avatar, icon button
 const droverRadiusChip = 2.0; // chip, badge, status pill, key cap
 
-/// Monospace family for code, terminal output and the label ramp. One seam on
-/// purpose: bundling a real face (JetBrains Mono) is a follow-up, and when it
-/// lands it changes here rather than at every call site.
-const droverMonoFamily = 'monospace';
+/// Monospace family for code, terminal output and the label ramp.
+///
+/// This was `'monospace'` until a simulator capture showed the label ramp
+/// rendering in SF Pro: `monospace` is an *Android* family alias, there is no
+/// such family on iOS or macOS, and Flutter resolves the miss silently by
+/// falling through to the platform face. Every label, key cap, PEM field and
+/// live-terminal line was proportional — the code fences only looked right
+/// because `gpt_markdown` styles those itself.
+///
+/// The face named here is the real JetBrains Mono, already in the bundle:
+/// `gpt_markdown` is a direct dependency and ships it as a package asset, so
+/// this costs no download and no `pubspec.yaml` entry. The tradeoff is that it
+/// is another package's asset — if a future `gpt_markdown` drops the font,
+/// text silently returns to the platform face, i.e. exactly the bug this
+/// replaced rather than something worse. Vendoring our own copy is the fix if
+/// that ever happens.
+const droverMonoFamily = 'packages/gpt_markdown/JetBrainsMono';
+
+/// Always pass this alongside [droverMonoFamily].
+///
+/// JetBrains Mono ships its coding ligatures in `calt`, which Flutter enables
+/// by default, so `==` composited into one double-bar glyph and `>=` into `≥`
+/// the moment the real face landed. Pretty in an editor, wrong here: drover
+/// shows *what the agent printed*, and a reader of a terminal pane cannot tell
+/// `=` from `==` once they are one glyph — in the diff view the change
+/// `>= → ==` rendered as `≥ → =`, hiding the edit being reviewed.
+const droverMonoFeatures = <FontFeature>[FontFeature.disable('calt')];
 
 /// Uppercases [text] outside Japanese. Uppercase is a Latin device: full-width
 /// glyphs have no case, and the tracking that makes caps legible collides them.
@@ -39,6 +62,7 @@ TextStyle droverLabelStyle(
   final ja = Localizations.localeOf(context).languageCode == 'ja';
   return TextStyle(
     fontFamily: ja ? null : droverMonoFamily,
+    fontFeatures: ja ? null : droverMonoFeatures,
     fontSize: ja ? fontSize + 0.5 : fontSize,
     fontWeight: weight ?? (ja ? FontWeight.w600 : FontWeight.w500),
     // Proportional to the requested size, so the ramp tracks consistently.
