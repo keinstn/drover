@@ -276,3 +276,48 @@
   font-size: 13px;
   color: var(--vp-c-text-2);
 }
+
+/* ---------- Japanese typography ----------
+ * The micro-label ramp above is Latin typography — `text-transform: uppercase`,
+ * `letter-spacing: 0.1em`, on the mono stack — and all three are wrong for
+ * Japanese: there is no letter case to raise, 0.1em reads as broken spacing at
+ * label size, and the mono stack carries no CJK glyphs, so the text falls back
+ * glyph by glyph with mismatched metrics. The app draws the same distinction
+ * (`droverLabelText` uppercases only outside Japanese). The size is nudged up
+ * because CJK glyphs read smaller at the same px.
+ *
+ * `:lang(ja)` matches because the theme puts `lang="ja"` on <html> for that
+ * locale, and it is also the specificity step (0,4,0 / 0,2,0) that wins over the
+ * doubled-class rules above. Colour is inherited from them on purpose. */
+
+:lang(ja) .VPFeature .icon.icon,
+:lang(ja) .drover-eyebrow {
+  font-family: var(--vp-font-family-base);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+/* The default base stack ends in `system-ui`, which resolves to Hiragino on
+ * macOS and Yu Gothic UI on Windows — the same page at two different metrics.
+ * Pin the CJK faces instead, keeping `Inter` first so Latin runs inside
+ * Japanese text (`Drover`, `SSH`) still use the default theme's face.
+ * Deliberately no webfont: Noto Sans JP is a large download and this costs no
+ * network request at all. `:root:lang(ja)` so the property is declared once,
+ * not re-declared on every descendant. */
+:root:lang(ja) {
+  --vp-font-family-base: 'Inter', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN',
+    'Yu Gothic Medium', 'Yu Gothic', 'Meiryo', system-ui, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+/* Japanese line breaking. The browser default (`line-break: auto`) permits a
+ * break before small kana, so a heading like AI コーディングエージェント can
+ * put a lone ェ at the start of a line — a kinsoku violation that reads as
+ * machine typesetting. `strict` applies the full prohibited-line-start set
+ * (small kana, sokuon, long vowel mark, closing brackets, and so on).
+ * Inherited, so declaring it once on the root of a Japanese page is enough. */
+:root:lang(ja) {
+  line-break: strict;
+}
