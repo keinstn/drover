@@ -211,5 +211,7 @@
   "settingsLanguage": "Language",
   "settingsLanguageSystem": "System",
   "settingsDemo": "Try the demo",
-  "settingsDemoSubtitle": "A scripted session — no host required"
+  "settingsDemoSubtitle": "A scripted session — no host required",
+  "settingsVersion": "Version",
+  "settingsVersionCopied": "Version copied"
 }

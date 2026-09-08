@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
+import '../widgets/top_toast.dart';
 
 /// App-level settings: theme, language, and a shortcut into host management.
 /// Takes plain [ThemeMode]/[Locale] values rather than reading a settings
@@ -16,6 +18,7 @@ class SettingsScreen extends StatelessWidget {
     required this.onLocaleChanged,
     required this.onManageHosts,
     this.onEnterDemo,
+    this.appVersion,
   });
 
   final ThemeMode themeMode;
@@ -32,10 +35,17 @@ class SettingsScreen extends StatelessWidget {
   /// hides the row, e.g. when settings was opened from inside the demo.
   final VoidCallback? onEnterDemo;
 
+  /// `"<marketing version> (<build number>)"`, read from the bundle at
+  /// startup by the caller. Null *or blank* hides the row — e.g. when the
+  /// platform lookup failed; an empty value would be worse than none.
+  final String? appVersion;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
+    // Bound once so the checked value and the rendered value can't diverge.
+    final version = appVersion?.trim();
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: ListView(
@@ -109,6 +119,26 @@ class SettingsScreen extends StatelessWidget {
               onSelect: onLocaleChanged,
             ),
           ),
+          if (version != null && version.isNotEmpty) ...[
+            // Detaches the row from the `settingsAppearance` section above,
+            // so a footer doesn't read as an Appearance setting.
+            const Divider(height: 32),
+            ListTile(
+              key: const ValueKey('settings_version_tile'),
+              leading: const Icon(Icons.info_outline),
+              title: Text(l10n.settingsVersion),
+              // No chevron: this row copies rather than navigates, and the
+              // missing chevron is what says so.
+              trailing: Text(
+                version,
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: version));
+                showTopToast(context, l10n.settingsVersionCopied);
+              },
+            ),
+          ],
         ],
       ),
     );

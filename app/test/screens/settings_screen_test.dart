@@ -2,6 +2,7 @@ import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Widget _app({
@@ -11,6 +12,7 @@ Widget _app({
   ValueChanged<Locale?>? onLocaleChanged,
   VoidCallback? onManageHosts,
   VoidCallback? onEnterDemo,
+  String? appVersion,
 }) {
   return MaterialApp(
     // The screen reads DroverColors, so the harness needs the real theme.
@@ -24,6 +26,7 @@ Widget _app({
       onLocaleChanged: onLocaleChanged ?? (_) {},
       onManageHosts: onManageHosts ?? () {},
       onEnterDemo: onEnterDemo,
+      appVersion: appVersion,
     ),
   );
 }
@@ -172,6 +175,96 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(manageCalls, 1);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the version row renders the string it was given', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app(appVersion: '9.9.9 (42)'));
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_version_tile')),
+        matching: find.text('9.9.9 (42)'),
+      ),
+      findsOneWidget,
+    );
+    // Paired with the null case below, which asserts findsNothing — without
+    // this the negative assertion could pass vacuously.
+    expect(find.byType(Divider), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the version row is absent without a version — an empty value '
+      'would be worse than none', (tester) async {
+    await tester.pumpWidget(_app());
+
+    expect(find.byKey(const ValueKey('settings_version_tile')), findsNothing);
+    expect(find.text('Version'), findsNothing);
+    // The divider lives inside the same guard, so it must not linger alone.
+    expect(find.byType(Divider), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a blank version hides the row too — the guard is not null-only, '
+      'because the plugin coerces a missing Info.plist key to an empty '
+      'string instead of throwing', (tester) async {
+    await tester.pumpWidget(_app(appVersion: ''));
+
+    expect(find.byKey(const ValueKey('settings_version_tile')), findsNothing);
+    expect(find.byType(Divider), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('tapping the version row puts the version on the clipboard', (
+    tester,
+  ) async {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    String? copied;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copied = (call.arguments as Map)['text'] as String?;
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    await tester.pumpWidget(_app(appVersion: '9.9.9 (42)'));
+    await tester.tap(find.byKey(const ValueKey('settings_version_tile')));
+    await tester.pumpAndSettle();
+
+    expect(copied, '9.9.9 (42)');
+    expect(find.text('Version copied'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the version row carries no chevron, unlike the rows that '
+      'navigate', (tester) async {
+    await tester.pumpWidget(_app(appVersion: '9.9.9 (42)'));
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_version_tile')),
+        matching: find.byIcon(Icons.chevron_right),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_hosts_tile')),
+        matching: find.byIcon(Icons.chevron_right),
+      ),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(const SizedBox());
   });

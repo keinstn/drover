@@ -468,4 +468,10 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get settingsDemoSubtitle => 'host なしで試せる台本付きのセッション';
+
+  @override
+  String get settingsVersion => 'バージョン';
+
+  @override
+  String get settingsVersionCopied => 'バージョンをコピーしました';
 }

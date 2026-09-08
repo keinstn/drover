@@ -403,6 +403,7 @@ class _SettingsPreviewState extends State<_SettingsPreview> {
       onThemeModeChanged: (mode) => setState(() => _themeMode = mode),
       onLocaleChanged: (locale) => setState(() => _locale = locale),
       onManageHosts: () {},
+      appVersion: '0.0.0-preview (0)',
     );
   }
 }

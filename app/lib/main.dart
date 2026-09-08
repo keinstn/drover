@@ -7,6 +7,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:uuid/uuid.dart';
 
 import 'l10n/app_localizations.dart';
@@ -73,6 +74,26 @@ Future<void> main() async {
     // Unreadable prefs fall back to the defaults (system theme, device
     // locale) rather than blocking startup.
   }
+  // Read from the bundle, never baked from pubspec: Xcode Cloud assigns the
+  // shipped build number from its own counter, so a pubspec-derived string
+  // can name a build the user doesn't actually have.
+  String? appVersion;
+  try {
+    final info = await PackageInfo.fromPlatform();
+    // The emptiness checks are not redundant with the catch: the plugin
+    // coerces a missing Info.plist key to '' rather than throwing (see
+    // package_info_plus_platform_interface's method_channel_package_info),
+    // so a build without CFBundleShortVersionString would otherwise render
+    // a blank " (66)" in the row the support pages tell people to copy.
+    if (info.version.isNotEmpty) {
+      appVersion = info.buildNumber.isEmpty
+          ? info.version
+          : '${info.version} (${info.buildNumber})';
+    }
+  } catch (_) {
+    // Version is only used for a support row; failing to read it must not
+    // block startup, and the row hides itself when it is null.
+  }
   runApp(
     DroverApp(
       hostStore: store,
@@ -80,6 +101,7 @@ Future<void> main() async {
       initialHosts: hostsState.hosts,
       initialActiveHostId: hostsState.activeHostId,
       initialSettings: settings,
+      appVersion: appVersion,
     ),
   );
 }
@@ -95,6 +117,7 @@ class DroverApp extends StatefulWidget {
     this.speechInput,
     this.notificationRegistration,
     this.hostPairingGateway,
+    this.appVersion,
   });
 
   final HostStore hostStore;
@@ -105,6 +128,10 @@ class DroverApp extends StatefulWidget {
   final SpeechInput? speechInput;
   final NotificationRegistration? notificationRegistration;
   final HostPairingGateway? hostPairingGateway;
+
+  /// `"<marketing version> (<build number>)"` read from the bundle in
+  /// [main]; null when the lookup failed, which hides the settings row.
+  final String? appVersion;
 
   @override
   State<DroverApp> createState() => _DroverAppState();
@@ -625,6 +652,7 @@ class _DroverAppState extends State<DroverApp> {
           builder: (_, rebuildRoute) => SettingsScreen(
             themeMode: _themeMode,
             locale: _locale,
+            appVersion: widget.appVersion,
             onThemeModeChanged: (mode) {
               setState(() => _themeMode = mode);
               rebuildRoute(() {});

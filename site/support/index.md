@@ -10,8 +10,8 @@ computer, from your phone.
 **Contact:** kei.sj.nstn@gmail.com — this is the fastest way to reach the developer.
 You can also open an issue at https://github.com/keinstn/drover/issues.
 
-Please include your Drover version, your iOS version, and
-what you were doing when the problem happened.
+Please include your Drover version (Settings → Version, tap it to copy), your
+iOS version, and what you were doing when the problem happened.
 
 ## What you need to use Drover
 
