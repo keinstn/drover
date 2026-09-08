@@ -1,0 +1,278 @@
+/* Drover site overrides: neutrals, radii, and the screenshot band.
+ *
+ * The accent is deliberately NOT touched. `--vp-c-brand-*` stays at
+ * VitePress's default indigo, which is where the app borrowed its blue from,
+ * and nothing here ever *applies* it — links, the brand CTA, the active nav
+ * item and the hero name inherit it from the default theme. The screenshots
+ * are meant to be the loudest thing on the page.
+ *
+ * Default-theme components use <style scoped>, so their rules compile to
+ * `.VPFeature[data-v-hash]` (0,2,0). Class names are doubled below purely to
+ * win that specificity fight — not decoration.
+ */
+
+/* ---------- Neutrals: drover's light ink ladder ---------- */
+
+:root {
+  --vp-c-bg: #ffffff;
+  --vp-c-bg-alt: #fafafc;
+  --vp-c-bg-soft: #f9f9fc;
+  --vp-c-text-1: #1f1f22;
+  --vp-c-text-2: #78787d;
+  --vp-c-text-3: #86868b;
+  --vp-c-divider: #e0e0e5;
+  --vp-c-border: #e0e0e5;
+  --vp-c-gutter: #e0e0e5;
+
+  /* Pinned, not inherited: VitePress resolves
+   * `--vp-code-block-bg: var(--vp-c-bg-alt)`, and our `--vp-c-bg-alt` is only a
+   * 2/255 step off `--vp-c-bg`, which erases the code block's container on
+   * /support/. This is drover's own `toolSurface` (1.168 step ratio vs 1.042). */
+  --vp-code-block-bg: #ededf1;
+
+  /* The feature card's `features[].icon` slot is repurposed as the card's only
+   * label ("PRIVATE", "READABLE", …), so it is load-bearing text at 10px/600,
+   * not de-emphasised meta. `--vp-c-text-3` is 3.48:1 on the band — under the
+   * 4.5:1 AA floor — hence its own token (5.30:1 white / 5.08:1 band). */
+  --drover-c-label: #6b6b70;
+}
+
+/* ---------- Neutrals: the dark ladder, which ascends ---------- */
+
+.dark {
+  --vp-c-bg: #17171a;
+  --vp-c-bg-alt: #1b1b1f;
+  --vp-c-bg-soft: #1e1e22;
+  --vp-c-text-1: #eae8ee;
+  --vp-c-text-2: #b0afb6;
+  --vp-c-text-3: #908f96;
+  --vp-c-divider: #35353d;
+  --vp-c-border: #35353d;
+  --vp-c-gutter: #35353d;
+
+  /* Same reason as light: pinned so the code block keeps a container of its own
+   * rather than inheriting our near-flat `--vp-c-bg-alt`. */
+  --vp-code-block-bg: #26262b;
+
+  /* Same value `--vp-c-text-3` carries in dark — it already passes AA
+   * (5.58:1 / 5.36:1) — but named separately so the label never drifts with it. */
+  --drover-c-label: #908f96;
+}
+
+/* ---------- Geometry: 22 / 14 / 8 plus stadium buttons ---------- */
+
+/* Defensive, not currently required: the only size in use (`medium`) is already
+ * an exact stadium (20px radius on a 40px-tall button). Kept so the shape is
+ * pinned if a `small`/`big` action ever appears — the radius lives on the size
+ * modifier (`.VPButton.medium`), hence the doubled class. */
+.VPButton.VPButton {
+  border-radius: 999px;
+}
+
+/* `border` and `border-radius` are ours; the `background` merely restates the
+ * default theme's own `background-color` today. Kept belt-and-braces so the
+ * card surface stays on our ladder if that default changes. */
+.VPFeature.VPFeature {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 14px;
+  background: var(--vp-c-bg-soft);
+}
+
+/* ---------- Feature card micro-label ----------
+ * A plain-string `features[].icon` renders as <div class="icon">, so the
+ * default 48px icon box has to be undone before it reads as a label. */
+
+.VPFeature .icon.icon {
+  display: block;
+  width: auto;
+  height: auto;
+  margin-bottom: 12px;
+  background: transparent;
+  font-family: var(--vp-font-family-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--drover-c-label);
+}
+
+/* ---------- Hero device frame ---------- */
+
+/* Defensive, not currently required: the blob paints nothing today because
+ * `--vp-home-hero-image-background-image` is never set. Kept so the glow can
+ * never appear from behind the phone if that var is ever configured. */
+.VPHero .image-bg {
+  display: none;
+}
+
+/* The default hero image is a small square blob absolutely centred in a fixed
+ * 320px box. A 1320x2868 phone screenshot is ~2.2x taller than it is wide, so
+ * the box, the offset transform and the negative margins all have to go for
+ * the frame to sit in the flow at a real device width. */
+.VPHero .image.image {
+  margin: 0;
+}
+
+.VPHero .image-container.image-container {
+  width: auto;
+  height: auto;
+  padding: 0;
+  transform: none;
+}
+
+.VPHero .image-src.image-src {
+  position: static;
+  max-width: 306px;
+  max-height: none;
+  width: 100%;
+  transform: none;
+}
+
+/* The bezel is a real device bezel: dark in both themes, because the phone is
+ * an object on the page, not one of its surfaces. */
+.VPHero .image-src.image-src,
+.drover-shot img {
+  border: 7px solid #1f1f22;
+  border-radius: 30px;
+  box-shadow: 0 22px 48px -18px rgb(31 31 34 / 32%);
+}
+
+.dark .VPHero .image-src.image-src,
+.dark .drover-shot img {
+  border-color: #2e2e33;
+  box-shadow: 0 24px 56px -18px rgb(0 0 0 / 62%);
+}
+
+/* Below 960px the default theme stacks the hero and puts the image FIRST
+ * (`.image { order: 1 }`, `.main { order: 2 }`) — which worked while the image
+ * was a 320px box with a negative top margin, but not now that it is a
+ * 306x648 phone at its true aspect ratio: the whole first screen becomes nav +
+ * screenshot, with the name, tagline and App Store button pushed below the
+ * fold. The hero's job is the download path, so the copy and its CTA have to be
+ * reachable without scrolling; the device follows. Doubled classes because the
+ * default's scoped rules are (0,2,0). */
+@media (max-width: 959px) {
+  .VPHero .main.main {
+    order: 1;
+  }
+
+  .VPHero .image.image {
+    order: 2;
+  }
+}
+
+/* On a phone-sized viewport a 306px device is nearly the full width, so it
+ * still dominates even when it comes second. */
+@media (max-width: 640px) {
+  .VPHero .image-src.image-src {
+    max-width: 260px;
+  }
+}
+
+/* ---------- Screenshot band ----------
+ * The band lives inside `.vp-doc .container`, so it breaks out to full width
+ * and pads its own content back to the 1152px column. */
+
+/* `--vp-offset` is set inline on `.vp-doc.container` by VPHomeContent from
+ * `useWindowSize({ includeScrollbar: false })`, so this reaches the content edge
+ * without counting the scrollbar. Bare `calc(50% - 50vw)` overhangs by the
+ * scrollbar width and adds horizontal body scroll; this is the same idiom the
+ * default theme uses for `.VPHomeSponsors`. The calc stays as the
+ * pre-hydration fallback. */
+.drover-band {
+  margin: 64px var(--vp-offset, calc(50% - 50vw)) 0;
+  padding: 76px 24px;
+  border-top: 1px solid var(--vp-c-divider);
+  border-bottom: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg-alt);
+}
+
+.drover-band > * {
+  max-width: 1152px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.drover-eyebrow {
+  font-family: var(--vp-font-family-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--drover-c-label);
+}
+
+/* Centred in the band header only — the same class is reused, left-aligned,
+ * as the caption title line. */
+.drover-band > .drover-eyebrow {
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+/* `.vp-doc h2` carries a border-top and heavy margins; neither belongs here. */
+.vp-doc .drover-band h2 {
+  margin: 0 auto;
+  padding-top: 0;
+  border-top: none;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  font-size: 28px;
+  text-align: center;
+}
+
+/* `.drover-band > *` gives the h2 a 1152px box and `text-align: center` moves
+ * only the text, so the anchor (positioned `left: 0`) fades in on hover ~400px
+ * away, attached to nothing. This is a marketing section heading, not a
+ * navigable doc heading. */
+.vp-doc .drover-band h2 .header-anchor {
+  display: none;
+}
+
+.vp-doc .drover-band > p {
+  max-width: 640px;
+  margin: 14px auto 0;
+  line-height: 1.7;
+  font-size: 15px;
+  color: var(--vp-c-text-2);
+  text-align: center;
+}
+
+.drover-shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  justify-content: center;
+  align-items: flex-start;
+  margin-top: 48px;
+}
+
+/* `max-width` because the band pads content by 24px each side, so at a 320px
+ * viewport the content box is 272px and a fixed 280px item forces horizontal
+ * document scroll. */
+.drover-shot {
+  width: 280px;
+  max-width: 100%;
+}
+
+.drover-shot img {
+  display: block;
+  width: 100%;
+}
+
+/* Markdown image syntax (required so `base` is applied) wraps each image in a
+ * paragraph, which `.vp-doc p` would then space out. */
+.vp-doc .drover-shot p {
+  margin: 0;
+}
+
+.drover-cap {
+  margin-top: 16px;
+  text-align: left;
+}
+
+.vp-doc .drover-cap p {
+  margin: 6px 0 0;
+  line-height: 1.6;
+  font-size: 13px;
+  color: var(--vp-c-text-2);
+}

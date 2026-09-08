@@ -19,6 +19,12 @@ export default defineConfig({
       lang: 'en',
     },
   },
+  // Markdown images only — the three band screenshots are below the fold and
+  // were ~739 KB of the landing page's ~1.02 MB. The frontmatter `hero.image`
+  // is rendered by the theme component, not markdown, so it stays eager.
+  markdown: {
+    image: { lazyLoading: true },
+  },
   themeConfig: {
     nav: [
       { text: 'Support', link: '/support/' },
