@@ -83,10 +83,12 @@ class _NoopSpeechInput implements SpeechInput {
 Widget _app({
   required HostStore hostStore,
   AppSettings settings = const AppSettings(),
+  String? appVersion,
 }) => DroverApp(
   hostStore: hostStore,
   settingsStore: SettingsStore(),
   initialSettings: settings,
+  appVersion: appVersion,
   notificationRegistration: NotificationRegistration(
     messaging: _FakePushMessaging(),
     gateway: _FakeDeviceRegistrationGateway(),
@@ -191,7 +193,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(_app(hostStore: _SpyHostStore()));
+    await tester.pumpWidget(
+      _app(hostStore: _SpyHostStore(), appVersion: '9.9.9 (42)'),
+    );
     await tester.pump();
     await tester.pump();
 
@@ -213,6 +217,16 @@ void main() {
     );
     // ...but the demo is already showing, so it is not offered again.
     expect(find.byKey(const ValueKey('settings_demo_tile')), findsNothing);
+    // The version read in main() has to actually reach the pushed route.
+    // Asserting the text, not just the key, so a dropped pass-through
+    // (which renders no row at all) can't satisfy this.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_version_tile')),
+        matching: find.text('9.9.9 (42)'),
+      ),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(const SizedBox());
   });

@@ -486,4 +486,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDemoSubtitle => 'A scripted session — no host required';
+
+  @override
+  String get settingsVersion => 'Version';
+
+  @override
+  String get settingsVersionCopied => 'Version copied';
 }

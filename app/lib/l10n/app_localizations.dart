@@ -955,6 +955,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'A scripted session — no host required'**
   String get settingsDemoSubtitle;
+
+  /// No description provided for @settingsVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get settingsVersion;
+
+  /// No description provided for @settingsVersionCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Version copied'**
+  String get settingsVersionCopied;
 }
 
 class _AppLocalizationsDelegate

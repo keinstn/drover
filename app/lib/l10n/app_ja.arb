@@ -153,5 +153,7 @@
   "settingsLanguage": "言語",
   "settingsLanguageSystem": "システム",
   "settingsDemo": "デモを試す",
-  "settingsDemoSubtitle": "host なしで試せる台本付きのセッション"
+  "settingsDemoSubtitle": "host なしで試せる台本付きのセッション",
+  "settingsVersion": "バージョン",
+  "settingsVersionCopied": "バージョンをコピーしました"
 }

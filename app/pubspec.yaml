@@ -51,6 +51,7 @@ dependencies:
   uuid: ^4.6.0
   firebase_app_check: ^0.4.7
   shared_preferences: ^2.5.5
+  package_info_plus: ^10.2.1
 
 dev_dependencies:
   flutter_test:
