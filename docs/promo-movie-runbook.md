@@ -5,10 +5,9 @@ from Drover and watching it work). On a macOS host, the Herdr terminal
 (background) and Drover in the iOS Simulator (foreground) share one screen,
 captured with `screencapture`.
 
-pi does not report an agent session to Herdr, so Drover renders its pane-text
-fallback: the shot shows the live-terminal view, not chat bubbles. The
-`claude` preset is what renders chat, so the preset choice decides which UI
-the promo shows.
+The shot shows Drover's live-terminal view, not chat bubbles. That is how
+Drover renders this screen, not a property of the pi preset, so choosing a
+different agent does not change it.
 
 ## Prerequisites
 
