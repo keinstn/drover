@@ -21,6 +21,13 @@ terminal can't offer.
 Drover connects to a Herdr host over SSH and drives the `herdr` CLI. There is no
 server to run — your phone talks directly to the machine your agents live on.
 
+![A phone in front of the Mac it drives: an agent is launched from the phone,
+starts in a pane on the host, and answers back on the
+phone](docs/media/drover-demo.gif)
+
+*The Mac runs Herdr; the phone launches an agent there and reads its answer
+back.*
+
 - **See your herds and agents** with live status (idle / blocked / done).
 - **Read the transcript as chat** — turn-split and colorized from the agent's
   raw output, with TUI chrome stripped.
