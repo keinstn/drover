@@ -1,3 +1,21 @@
+## [1.0.4] - 2026-09-09
+
+### 🚀 Features
+
+- *(app)* Redesign the UI onto herdr-family ink tokens (#205)
+- *(app)* Drop the accent hue for ink (#206)
+- *(app)* Restore the rounded geometry (#208)
+- *(site)* Show the app's screenshots on the home page (#209)
+- *(site)* Add a Japanese locale (#210)
+- *(app)* Show the app version in settings, copyable (#211)
+
+### 🐛 Bug Fixes
+
+- *(app)* Give the mono seam a real face, and refresh the screenshots (#207)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(app)* Upgrade flutter sdk to 3.47.2 (#204)
 ## [1.0.3] - 2026-09-07
 
 ### 🚀 Features
