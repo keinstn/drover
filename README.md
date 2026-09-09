@@ -26,7 +26,7 @@ starts in a pane on the host, and answers back on the
 phone](docs/media/drover-demo.gif)
 
 *The Mac runs Herdr; the phone launches an agent there and reads its answer
-back. Recorded against a real host, sped up 2x.*
+back.*
 
 - **See your herds and agents** with live status (idle / blocked / done).
 - **Read the transcript as chat** — turn-split and colorized from the agent's
