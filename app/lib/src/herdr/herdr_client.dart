@@ -33,19 +33,21 @@ class CreatedWorkspace {
 /// JSON envelope responses.
 class HerdrClient {
   /// [platform] assembles OS-specific command lines for the SSH target. The
-  /// host OS is a runtime property of that target, so production passes
-  /// [HostPlatform.detect] (a [Future] is accepted so construction can stay
-  /// synchronous); the Unix default preserves behavior for tests and
-  /// previews. The `..ignore()` prevents an unhandled-async-error crash if
-  /// detection fails before any command runs — later awaits still receive
-  /// the error.
+  /// host OS is a runtime property of that target, discovered by running a
+  /// command over SSH ([HostPlatform.detect]), so it is a *factory* rather
+  /// than an already-started value: a rejected [Future] can never be
+  /// re-awaited into a fresh attempt, but a factory can simply be called
+  /// again. Production passes `() => HostPlatform.detect(runner)`; the Unix
+  /// default preserves behavior for tests and previews that never detect.
   HerdrClient(
     this._runner, {
     this.herdrBin = kDefaultHerdrBin,
     Future<void> Function(Duration duration)? sleep,
-    FutureOr<HostPlatform> platform = const UnixHostPlatform(),
+    FutureOr<HostPlatform> Function() platform = _defaultPlatform,
   }) : _sleep = sleep ?? Future<void>.delayed,
-       _platform = Future<HostPlatform>.value(platform)..ignore();
+       _platformFactory = platform;
+
+  static HostPlatform _defaultPlatform() => const UnixHostPlatform();
 
   static const _startAgentPaneBusyBackoffs = [
     Duration(milliseconds: 250),
@@ -60,7 +62,21 @@ class HerdrClient {
   /// Injectable delay used by retry paths so tests do not wait on wall clock.
   final Future<void> Function(Duration duration) _sleep;
   final String herdrBin;
-  final Future<HostPlatform> _platform;
+  final FutureOr<HostPlatform> Function() _platformFactory;
+
+  /// Cached result of the most recent [_platformFactory] attempt, or null if
+  /// none is currently cached — either none has run yet, or the last one
+  /// failed. A *successful* detection is a stable property of the host (its
+  /// OS doesn't change mid-session), so it is cached forever and never
+  /// re-run. A *failed* detection is deliberately NOT cached: it is usually
+  /// a transient transport hiccup (host briefly unreachable, Tailscale not
+  /// yet reconnected at launch), and caching it would permanently poison
+  /// this client — every later command would fail instantly with no chance
+  /// to recover short of rebuilding the client. Leaving this null after a
+  /// failure means the next caller that needs the platform simply retries
+  /// [_platformFactory] from scratch, so an ordinary poll recovers on its
+  /// own once the host is reachable again.
+  Future<HostPlatform>? _platformFuture;
 
   /// Transport exposed for native, non-herdr data sources such as transcript
   /// files. Herdr commands themselves remain encapsulated by this client.
@@ -73,10 +89,36 @@ class HerdrClient {
   /// Resolves the host platform, surfacing a detection failure as a
   /// transport [HerdrException] so the existing error-screen localization
   /// path handles it like any transport failure.
+  ///
+  /// Concurrent callers share one in-flight attempt (rather than each
+  /// calling [_platformFactory], and thus each running `uname -s`) because
+  /// they all read and await the same [_platformFuture] before any of them
+  /// awaits anything else — `SshCommandRunner` serializes commands on a
+  /// mutex, so parallel detects would only queue up behind each other and
+  /// multiply latency for no benefit.
+  ///
+  /// `_platformFuture` is always created and awaited within the same
+  /// synchronous stretch of code below (no `await` in between), so it
+  /// always has a listener before control returns to the event loop. This
+  /// is what protects against the unhandled-async-error crash the old
+  /// `..ignore()` used to guard against — do not restructure this so the
+  /// future can be stored across an `await` boundary before anyone awaits
+  /// it, or a detection failure nobody has looked at yet can crash the app.
   Future<HostPlatform> _resolvePlatform() async {
+    // Future.sync captures both a synchronous throw and an async failure
+    // from `_platformFactory` into this Future, so both shapes land in the
+    // catch below the same way.
+    final future = _platformFuture ??= Future.sync(_platformFactory);
     try {
-      return await _platform;
+      return await future;
     } catch (e) {
+      // Uncache so the next call retries — but only if nothing has already
+      // replaced this attempt. Without this guard, a caller of a stale,
+      // already-superseded failed attempt could wipe out a fresh retry that
+      // another caller kicked off in the meantime.
+      if (identical(_platformFuture, future)) {
+        _platformFuture = null;
+      }
       throw HerdrException('transport', e.toString(), cause: e);
     }
   }

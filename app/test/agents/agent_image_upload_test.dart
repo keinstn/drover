@@ -73,7 +73,10 @@ void main() {
 
     test('uses PowerShell commands on a Windows host', () async {
       final runner = FakeCommandRunner((_) => ok('{"id":"1","result":{}}'));
-      final client = HerdrClient(runner, platform: const WindowsHostPlatform());
+      final client = HerdrClient(
+        runner,
+        platform: () => const WindowsHostPlatform(),
+      );
 
       await uploadAgentImages(client, agent, [
         PickedImage(bytes: Uint8List.fromList([1, 2, 3]), extension: 'png'),

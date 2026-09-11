@@ -217,7 +217,7 @@ class _DroverAppState extends State<DroverApp> {
       client: HerdrClient(
         runner,
         herdrBin: host.herdrBin,
-        platform: HostPlatform.detect(runner),
+        platform: () => HostPlatform.detect(runner),
       ),
     );
   }
@@ -411,7 +411,7 @@ class _DroverAppState extends State<DroverApp> {
       final client = HerdrClient(
         runner,
         herdrBin: config.herdrBin,
-        platform: HostPlatform.detect(runner),
+        platform: () => HostPlatform.detect(runner),
       );
       return await PluginAutoPairer(client).detectPlugin();
     } finally {
@@ -429,7 +429,7 @@ class _DroverAppState extends State<DroverApp> {
       final client = HerdrClient(
         runner,
         herdrBin: config.herdrBin,
-        platform: HostPlatform.detect(runner),
+        platform: () => HostPlatform.detect(runner),
       );
       await PluginAutoPairer(client).pair(plugin: plugin, pairing: pairing);
     } finally {
@@ -556,7 +556,7 @@ class _DroverAppState extends State<DroverApp> {
       final client = HerdrClient(
         runner,
         herdrBin: c.herdrBin,
-        platform: HostPlatform.detect(runner),
+        platform: () => HostPlatform.detect(runner),
       );
       final agents = await client.listAgents();
       final l10n = AppLocalizations.of(_navKey.currentContext!)!;
