@@ -213,7 +213,11 @@ class _AgentScreenState extends State<AgentScreen> {
   // and to drive the bottom switcher bar.
   late List<AgentInfo> _agents = widget.initialAgents;
   String _text = '';
-  bool _loading = false;
+  // Non-null while a `_load` is in flight, and completed when that load
+  // releases the guard, so a debounced key refresh can wait its turn instead
+  // of being dropped. Same shape as `_nativeHistoryLoad` below; see
+  // `_refreshAfterKeys`.
+  Completer<void>? _loadInFlight;
   bool _firstLoad = true;
   bool _sending = false;
   bool _workspaceLabelLoading = false;
@@ -249,6 +253,12 @@ class _AgentScreenState extends State<AgentScreen> {
   // refresh — see `_sendKey`.
   Future<void> _keyQueue = Future.value();
   Timer? _keyRefreshTimer;
+  // Taps whose send hasn't finished yet, so only the *last* queued send arms
+  // the refresh timer. `_load` runs `listAgents()` + `readAgent()` over the
+  // same mutex-serialized SSH transport as `sendKeys`, so a timer firing
+  // *between* queued keys would push the later taps back — the exact latency
+  // the key row exists to avoid.
+  int _keyPending = 0;
   // Whether an arrow key has been sent from *this* screen. The row's open
   // state is process-global (it lives on the draft store), but the
   // live-terminal dedup bypass it enables must not be: leaving it lifted for
@@ -422,13 +432,16 @@ class _AgentScreenState extends State<AgentScreen> {
   }
 
   Future<void> _load({bool loadMore = false}) async {
-    if (_loading) return;
-    _loading = true;
+    if (_loadInFlight != null) return;
+    // Read the scroll position before taking the guard: nothing between the
+    // guard and its `finally` may throw, or the completer would never complete
+    // and a waiting `_refreshAfterKeys` would hang on it forever.
     final stickToBottom = !loadMore && (_firstLoad || _wasAtBottom);
     final anchorFromBottom = loadMore && _scrollController.hasClients
         ? _scrollController.position.maxScrollExtent -
               _scrollController.position.pixels
         : null;
+    final load = _loadInFlight = Completer<void>();
     try {
       // Fetch and publish the fast pane path first: agent metadata and the
       // pane's own tail. Native transcript history (a locate/stat/read/parse
@@ -473,8 +486,39 @@ class _AgentScreenState extends State<AgentScreen> {
       if (!mounted) return;
       setState(() => _loadError = e);
     } finally {
-      _loading = false;
+      _loadInFlight = null;
+      load.complete();
     }
+  }
+
+  /// Runs the debounced post-key refresh armed by [_sendKey], waiting out an
+  /// in-flight `_load` rather than letting its guard drop this refresh: that
+  /// read started before these keys landed, so it cannot show them, and the
+  /// next poll is up to two seconds out.
+  ///
+  /// A `while` loop, not a single `await`: a second `_refreshAfterKeys` parked
+  /// on the same completer wakes from it too, and whichever continuation runs
+  /// first takes the guard — so the other must re-check rather than assume it
+  /// is free, or its refresh is re-dropped. Unlike `_loadOlderNativeHistory`
+  /// the wait is unbounded, and deliberately so — nothing is held open waiting
+  /// on it (a `RefreshIndicator` gesture is what bounds that one), each round
+  /// just awaits a completer, and giving up after N rounds would leave exactly
+  /// the dropped refresh this exists to prevent.
+  Future<void> _refreshAfterKeys() async {
+    while (true) {
+      final inFlight = _loadInFlight;
+      if (inFlight == null) break;
+      await inFlight.future;
+      if (!mounted) return;
+    }
+    // Once the timer has fired this refresh is past `_sendKey`'s cancel, so
+    // keys tapped while it was parked are only visible here. Yield to them:
+    // loading now would put two SSH round-trips in front of the queued send,
+    // the mid-burst contention [_keyPending] exists to prevent. Nothing is
+    // dropped — that send's `finally` re-arms the refresh, and the last send
+    // of the burst is the one whose refresh survives.
+    if (_keyPending > 0) return;
+    await _load();
   }
 
   /// Loads native transcript history for [agent] and publishes it
@@ -729,29 +773,60 @@ class _AgentScreenState extends State<AgentScreen> {
   ///
   /// Taps are chained on a single queue so two fast presses can't arrive out
   /// of order, and a failure is reported without poisoning that queue. The
-  /// refresh is debounced into one `_load()` per burst; the 2s poll covers
-  /// anything that lands after it.
+  /// refresh is debounced into one `_load()` per burst, armed from *inside*
+  /// the queue by the last send to land rather than at tap time: a timer
+  /// anchored to the finger would fire while the rest of the burst was still
+  /// queued, reading pane state that predates most of the taps, with nothing
+  /// left to reschedule it (see [_keyPending]). The refresh also waits out a
+  /// concurrent `_load` instead of being dropped by its guard (see
+  /// [_refreshAfterKeys]).
   void _sendKey(String key) {
     HapticFeedback.selectionClick();
     _keySentHere = true;
+    _keyPending++;
+    // Cancel at tap time, arm at land time. A pending refresh is invalidated
+    // the moment another key is tapped — it could only read pre-tap state
+    // anyway, and letting it fire would contend with the send still in flight
+    // — while the send that lands last always re-arms it, so nothing is lost.
+    _keyRefreshTimer?.cancel();
     _keyQueue = _keyQueue
         .then((_) async {
           try {
             await widget.client.sendKeys(widget.paneId, key);
           } catch (e) {
-            if (!mounted) return;
-            showTopToast(
-              context,
-              errorHeadline(AppLocalizations.of(context)!, e),
-            );
+            if (mounted) {
+              showTopToast(
+                context,
+                errorHeadline(AppLocalizations.of(context)!, e),
+              );
+            }
+          } finally {
+            // Reached however the send ends — including a throwing toast, the
+            // case `.catchError` below covers — so a rejected key can't
+            // strand the counter and mute every later refresh.
+            _armKeyRefresh();
           }
         })
         // The catch above covers the send; this covers everything else in the
         // callback (a toast with no Overlay mounted, say), which would
         // otherwise leave every later tap chaining off an errored future.
         .catchError((_) {});
+  }
+
+  /// Arms the debounced post-key refresh once the *last* queued send of a
+  /// burst has finished — see [_keyPending] for why only the last one.
+  ///
+  /// The `mounted` check matters: without it a callback completing after
+  /// dispose leaves a pending timer behind, which is both a widget-test
+  /// failure and a real leak.
+  void _armKeyRefresh() {
+    if (--_keyPending > 0) return;
+    if (!mounted) return;
     _keyRefreshTimer?.cancel();
-    _keyRefreshTimer = Timer(const Duration(milliseconds: 250), _load);
+    _keyRefreshTimer = Timer(
+      const Duration(milliseconds: 250),
+      _refreshAfterKeys,
+    );
   }
 
   /// Shows or hides the arrow-key row, remembering the choice in the draft
