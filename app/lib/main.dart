@@ -21,6 +21,7 @@ import 'src/herdr/host_platform.dart';
 import 'src/infra/best_effort.dart';
 import 'src/infra/host_connections.dart';
 import 'src/infra/host_store.dart';
+import 'src/infra/network_change_signal.dart';
 import 'src/infra/settings_store.dart';
 import 'src/infra/ssh_command_runner.dart';
 import 'src/models/agent_info.dart';
@@ -117,6 +118,8 @@ class DroverApp extends StatefulWidget {
     this.speechInput,
     this.notificationRegistration,
     this.hostPairingGateway,
+    this.networkChangeSignal,
+    this.hostConnectionRegistry,
     this.appVersion,
   });
 
@@ -128,6 +131,16 @@ class DroverApp extends StatefulWidget {
   final SpeechInput? speechInput;
   final NotificationRegistration? notificationRegistration;
   final HostPairingGateway? hostPairingGateway;
+
+  /// Injected so tests can hold the exact instance `_DroverAppState`
+  /// subscribes to in `initState` and drive its `changes` stream directly,
+  /// without needing a real platform channel.
+  final NetworkChangeSignal? networkChangeSignal;
+
+  /// Injected so a test can hold the exact instance `_DroverAppState` calls
+  /// `invalidateAll()` on (via [_networkChangeSignal]'s subscription) and
+  /// count those calls directly, without needing a real SSH connection.
+  final HostConnectionRegistry? hostConnectionRegistry;
 
   /// `"<marketing version> (<build number>)"` read from the bundle in
   /// [main]; null when the lookup failed, which hides the settings row.
@@ -168,19 +181,33 @@ class _DroverAppState extends State<DroverApp> {
   late final SpeechInput _speechInput;
   late final NotificationRegistration _notificationRegistration;
   late final HostPairingGateway _hostPairingGateway;
+  late final NetworkChangeSignal _networkChangeSignal;
   StreamSubscription<Object>? _notificationFailures;
   StreamSubscription<RemoteMessage>? _notificationOpens;
+  StreamSubscription<void>? _networkChangesSub;
   final _handledNotificationEvents = <String>{};
 
   @override
   void initState() {
     super.initState();
-    _registry = HostConnectionRegistry(_buildConnection);
+    _registry =
+        widget.hostConnectionRegistry ??
+        HostConnectionRegistry(_buildConnection);
     _speechInput = widget.speechInput ?? SpeechInputController();
     _notificationRegistration =
         widget.notificationRegistration ?? NotificationRegistration();
     _hostPairingGateway =
         widget.hostPairingGateway ?? FirebaseHostPairingGateway();
+    _networkChangeSignal =
+        widget.networkChangeSignal ?? ConnectivityChangeSignal();
+    _networkChangesSub = _networkChangeSignal.changes.listen(
+      (_) => unawaited(
+        runBestEffort(
+          _registry.invalidateAll,
+          context: 'invalidate connections on network change',
+        ),
+      ),
+    );
     _notificationFailures = _notificationRegistration.failures.listen(
       (_) => _showNotificationRegistrationFailure(),
     );
@@ -240,6 +267,8 @@ class _DroverAppState extends State<DroverApp> {
 
   @override
   void dispose() {
+    _networkChangesSub?.cancel();
+    unawaited(_networkChangeSignal.dispose());
     _notificationOpens?.cancel();
     _notificationFailures?.cancel();
     _notificationRegistration.dispose();
@@ -735,6 +764,7 @@ class _DroverAppState extends State<DroverApp> {
               speechInput: _speechInput,
               onOpenHostSwitcher: _openHostSwitcher,
               onOpenSettings: _openSettings,
+              networkChanges: _networkChangeSignal.changes,
             ),
     );
   }

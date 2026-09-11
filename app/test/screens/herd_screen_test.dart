@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:drover/l10n/app_localizations.dart';
@@ -157,6 +158,7 @@ Widget _herdApp({
   Duration pollInterval = const Duration(hours: 1),
   VoidCallback? onOpenHostSwitcher,
   Locale? locale,
+  Stream<void>? networkChanges,
 }) {
   return MaterialApp(
     theme: droverDarkTheme,
@@ -170,6 +172,7 @@ Widget _herdApp({
       onOpenHostSwitcher: onOpenHostSwitcher ?? () {},
       onOpenSettings: () {},
       pollInterval: pollInterval,
+      networkChanges: networkChanges,
     ),
   );
 }
@@ -1263,6 +1266,136 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'a network-change event clears a host\'s backoff so the next poll tick '
+    'reloads it for real, without the event itself triggering a load',
+    (tester) async {
+      final runner = FakeCommandRunner((_) => throw Exception('boom'));
+      final client = HerdrClient(runner);
+      final networkChanges = StreamController<void>.broadcast();
+      addTearDown(networkChanges.close);
+      // 30s: the failStreak-1 backoff cap, matching the real "up to 30s"
+      // window the issue complains about — a wide margin against the real
+      // wall clock the "still armed" check below depends on (see the
+      // linked doc comment on herdPollBackoff).
+      const pollInterval = Duration(seconds: 30);
+      const retryButton = ValueKey('host_retry_host-1');
+
+      await tester.pumpWidget(
+        _herdApp(
+          client: client,
+          pollInterval: pollInterval,
+          networkChanges: networkChanges.stream,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      int listCalls() =>
+          runner.commands.where((c) => c.contains("'agent' 'list'")).length;
+      expect(listCalls(), 1, reason: 'the initial load ran (and failed)');
+      expect(find.byKey(retryButton), findsOneWidget);
+
+      // One pollInterval later, the tick is still inside the failure
+      // backoff window (2 x pollInterval on the first failure; nextPollAt
+      // is compared against the real clock, which has barely moved), so the
+      // host is skipped — proving the backoff is genuinely armed before the
+      // signal is exercised at all.
+      await tester.pump(pollInterval);
+      await tester.pump();
+      expect(listCalls(), 1);
+
+      // Firing the signal alone must not itself issue a load — but it must
+      // have run: the error (and its retry button) disappears immediately,
+      // proving the handler executed within this pump rather than the
+      // assertion below passing vacuously because it hadn't yet.
+      networkChanges.add(null);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(retryButton), findsNothing);
+      expect(listCalls(), 1, reason: 'but issued no load of its own');
+
+      // With the backoff cleared, the next ordinary tick polls for real.
+      await tester.pump(pollInterval);
+      await tester.pump();
+      expect(listCalls(), 2);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'rebuilding with a different networkChanges stream resubscribes: the '
+    'new controller is heard and the old one no longer acts',
+    (tester) async {
+      final runner = FakeCommandRunner((_) => throw Exception('boom'));
+      final client = HerdrClient(runner);
+      final oldController = StreamController<void>.broadcast();
+      addTearDown(oldController.close);
+      final newController = StreamController<void>.broadcast();
+      addTearDown(newController.close);
+      const pollInterval = Duration(seconds: 30);
+      const retryButton = ValueKey('host_retry_host-1');
+
+      await tester.pumpWidget(
+        _herdApp(
+          client: client,
+          pollInterval: pollInterval,
+          networkChanges: oldController.stream,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      int listCalls() =>
+          runner.commands.where((c) => c.contains("'agent' 'list'")).length;
+      expect(listCalls(), 1, reason: 'the initial load ran (and failed)');
+      expect(find.byKey(retryButton), findsOneWidget);
+
+      // Rebuild with a genuinely different controller's stream — the shape
+      // main.dart's own rebuild takes if the underlying signal were ever
+      // swapped, and the only shape that can actually discriminate whether
+      // didUpdateWidget's cancel-and-relisten ran: with the SAME controller,
+      // an old subscription left listening would still hear a later event
+      // fired on it (same source), passing either way.
+      await tester.pumpWidget(
+        _herdApp(
+          client: client,
+          pollInterval: pollInterval,
+          networkChanges: newController.stream,
+        ),
+      );
+      await tester.pump();
+
+      // The discriminating half: an event on the OLD controller must no
+      // longer be acted on — if the resubscribe branch were deleted (or a
+      // no-op), the original subscription would still be listening to it and
+      // would clear the backoff here.
+      oldController.add(null);
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.byKey(retryButton),
+        findsOneWidget,
+        reason: 'the old controller must have been unsubscribed',
+      );
+      expect(listCalls(), 1);
+
+      // An event on the NEW controller must be heard.
+      newController.add(null);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(retryButton), findsNothing);
+      expect(listCalls(), 1, reason: 'the signal itself issues no load');
+
+      await tester.pump(pollInterval);
+      await tester.pump();
+      expect(listCalls(), 2);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   group('HerdHostRef', () {
     test('equality and hashCode account for hostEverConnected', () {

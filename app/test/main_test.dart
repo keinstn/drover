@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:drover/main.dart';
 import 'package:drover/src/demo/demo_backend.dart';
 import 'package:drover/src/demo/demo_content_en.dart';
 import 'package:drover/src/demo/demo_content_ja.dart';
+import 'package:drover/src/infra/host_connections.dart';
 import 'package:drover/src/infra/host_store.dart';
+import 'package:drover/src/infra/network_change_signal.dart';
 import 'package:drover/src/infra/settings_store.dart';
 import 'package:drover/src/notifications/host_pairing.dart';
 import 'package:drover/src/notifications/notification_registration.dart';
@@ -63,6 +67,38 @@ class _NoopHostPairingGateway implements HostPairingGateway {
   Future<void> revokeHost(String hostId) async {}
 }
 
+/// A controllable [NetworkChangeSignal] so a test can fire `changes` events
+/// directly, without a real platform channel.
+class _FakeNetworkChangeSignal implements NetworkChangeSignal {
+  final _controller = StreamController<void>.broadcast();
+
+  @override
+  Stream<void> get changes => _controller.stream;
+
+  void emit() => _controller.add(null);
+
+  @override
+  Future<void> dispose() async {
+    await _controller.close();
+  }
+}
+
+/// Counts [invalidateAll] calls instead of touching real SSH connections, so
+/// a test can prove `_DroverAppState`'s
+/// `_networkChangeSignal.changes.listen(...)` subscription in `initState`
+/// actually reaches the registry. The build function is never invoked (this
+/// test never obtains a host connection).
+class _CountingRegistry extends HostConnectionRegistry {
+  _CountingRegistry() : super((_) => throw UnimplementedError('not used'));
+
+  int invalidateAllCalls = 0;
+
+  @override
+  Future<void> invalidateAll() async {
+    invalidateAllCalls++;
+  }
+}
+
 class _NoopSpeechInput implements SpeechInput {
   @override
   Future<SpeechInputStartResult> start({
@@ -84,6 +120,8 @@ Widget _app({
   required HostStore hostStore,
   AppSettings settings = const AppSettings(),
   String? appVersion,
+  NetworkChangeSignal? networkChangeSignal,
+  HostConnectionRegistry? hostConnectionRegistry,
 }) => DroverApp(
   hostStore: hostStore,
   settingsStore: SettingsStore(),
@@ -97,6 +135,8 @@ Widget _app({
   ),
   hostPairingGateway: _NoopHostPairingGateway(),
   speechInput: _NoopSpeechInput(),
+  networkChangeSignal: networkChangeSignal,
+  hostConnectionRegistry: hostConnectionRegistry,
 );
 
 void main() {
@@ -259,4 +299,39 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    "a network-change event reaches the injected registry's invalidateAll()",
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final registry = _CountingRegistry();
+      final signal = _FakeNetworkChangeSignal();
+
+      await tester.pumpWidget(
+        _app(
+          hostStore: _SpyHostStore(),
+          networkChangeSignal: signal,
+          hostConnectionRegistry: registry,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(registry.invalidateAllCalls, 0);
+
+      signal.emit();
+      // Proves initState's `_networkChangeSignal.changes.listen(...
+      // _registry.invalidateAll ...)` subscription actually reached the
+      // injected registry, not just that the signal itself fired.
+      await tester.pump();
+
+      expect(registry.invalidateAllCalls, 1);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }

@@ -145,6 +145,7 @@ class HerdScreen extends StatefulWidget {
     this.speechInput,
     this.showComposerFor,
     this.pollInterval = const Duration(seconds: 2),
+    this.networkChanges,
   });
 
   /// Every stored host, in display order.
@@ -174,6 +175,18 @@ class HerdScreen extends StatefulWidget {
   final bool Function(String paneId)? showComposerFor;
   final Duration pollInterval;
 
+  /// Fires once per settled network-interface change (see
+  /// `NetworkChangeSignal`). On each event this screen clears every host's
+  /// failure backoff — [_HostHerd.error], [_HostHerd.failStreak], and
+  /// [_HostHerd.nextPollAt] — so the next ordinary poll tick issues a real
+  /// request instead of sitting out a stale backoff window. This screen does
+  /// NOT reconnect or retry anything itself in response: no load is
+  /// triggered here, only the backoff reset — the existing periodic poll is
+  /// what actually re-fetches, at its own pace. Null (the default) leaves
+  /// this disabled, so the demo/preview harness and existing call sites are
+  /// unaffected.
+  final Stream<void>? networkChanges;
+
   @override
   State<HerdScreen> createState() => _HerdScreenState();
 }
@@ -181,6 +194,7 @@ class HerdScreen extends StatefulWidget {
 class _HerdScreenState extends State<HerdScreen> {
   final _byHost = <String, _HostHerd>{};
   Timer? _timer;
+  StreamSubscription<void>? _networkChangesSub;
 
   /// The hosts the screen currently polls and renders: all of them, or just
   /// the [HerdScreen.filterHostId] match.
@@ -207,11 +221,24 @@ class _HerdScreenState extends State<HerdScreen> {
       unawaited(_loadHerdrVersion(host));
     }
     _startPolling();
+    _networkChangesSub = widget.networkChanges?.listen(
+      (_) => _onNetworkChange(),
+    );
   }
 
   @override
   void didUpdateWidget(covariant HerdScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.networkChanges != oldWidget.networkChanges) {
+      // main.dart rebuilds this widget on every host-list/state change, so
+      // the stream instance is not guaranteed stable — resubscribe rather
+      // than assuming the old subscription is still listening to the right
+      // source.
+      unawaited(_networkChangesSub?.cancel());
+      _networkChangesSub = widget.networkChanges?.listen(
+        (_) => _onNetworkChange(),
+      );
+    }
     final ids = {for (final host in widget.hosts) host.hostId};
     _byHost.removeWhere((hostId, _) => !ids.contains(hostId));
     for (final host in widget.hosts) {
@@ -242,6 +269,7 @@ class _HerdScreenState extends State<HerdScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _networkChangesSub?.cancel();
     super.dispose();
   }
 
@@ -379,16 +407,33 @@ class _HerdScreenState extends State<HerdScreen> {
     }
   }
 
+  /// Resets [bucket]'s failure state — [_HostHerd.error], [failStreak], and
+  /// [nextPollAt] — without triggering a reload. Shared by [_retryHost] (which
+  /// reloads immediately after) and [_onNetworkChange] (which does not).
+  void _clearFailure(_HostHerd bucket) {
+    bucket.error = null;
+    bucket.failStreak = 0;
+    bucket.nextPollAt = null;
+  }
+
   /// Clears [host]'s error state (including the poll backoff) and reloads it
   /// right away.
   void _retryHost(HerdHostRef host) {
     final bucket = _bucketFor(host.hostId);
-    setState(() {
-      bucket.error = null;
-      bucket.failStreak = 0;
-      bucket.nextPollAt = null;
-    });
+    setState(() => _clearFailure(bucket));
     unawaited(_loadHost(host));
+  }
+
+  /// Handles a [HerdScreen.networkChanges] event: clears every held host's
+  /// failure backoff so the next periodic poll tick issues a real request
+  /// instead of skipping it. Deliberately does NOT reload anything itself —
+  /// see the parameter's doc comment for why.
+  void _onNetworkChange() {
+    setState(() {
+      for (final bucket in _byHost.values) {
+        _clearFailure(bucket);
+      }
+    });
   }
 
   void _retryWorkspaceLabels(HerdHostRef host) {
