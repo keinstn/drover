@@ -367,18 +367,21 @@ class DuplicatePaneRunner extends NativeHistoryRunner {
 }
 
 /// Holds the Esc `send-keys` call open on [escGate] so a test can keep a
-/// `_send` in flight (which disables the composer's Esc/Enter buttons) while
-/// asserting the arrow-key row still works. Arrow keys resolve out of order
-/// unless they're queued — 'down' is slow, every other arrow is instant — and
-/// [arrowsCompleted] records them as they *finish*, so the order it ends up
-/// with distinguishes a serialized queue from parallel sends.
+/// `_send` in flight (e.g. via the send/stop button, which disables the
+/// composer) while asserting the key row still works. Arrow keys and Enter
+/// resolve out of order unless they're queued — 'down' is slow, every other
+/// key is instant — and [keysCompleted] records them as they *finish*, so the
+/// order it ends up with distinguishes a serialized queue from parallel
+/// sends. A raw Esc always routes through [escGate] regardless of which
+/// button sent it, since the underlying `send-keys ... 'esc'` command is
+/// identical either way.
 class ArrowKeyRunner extends StubCommandRunner {
   ArrowKeyRunner() : super(workingResponse);
 
   final escGate = Completer<void>();
-  final arrowsCompleted = <String>[];
+  final keysCompleted = <String>[];
 
-  static const _arrows = ['left', 'up', 'down', 'right'];
+  static const _keys = ['left', 'up', 'down', 'right', 'enter'];
 
   @override
   Future<CommandResult> run(String command) async {
@@ -388,16 +391,16 @@ class ArrowKeyRunner extends StubCommandRunner {
         await escGate.future;
         return ok('{"id":"1","result":{}}');
       }
-      final arrow = _arrows.firstWhere(
-        (a) => command.contains("'$a'"),
+      final key = _keys.firstWhere(
+        (k) => command.contains("'$k'"),
         orElse: () => '',
       );
-      if (arrow.isNotEmpty) {
+      if (key.isNotEmpty) {
         // 'left' always fails, so a test can check the queue survives one.
         // Shaped the way HerdrClient actually detects a failure: an error
         // envelope on stderr (exit 0 with an envelope under `result` is not
         // an error to the client at all).
-        if (arrow == 'left') {
+        if (key == 'left') {
           return const CommandResult(
             exitCode: 0,
             stdout: '',
@@ -406,10 +409,10 @@ class ArrowKeyRunner extends StubCommandRunner {
                 '"message":"arrow key rejected"}}',
           );
         }
-        if (arrow == 'down') {
+        if (key == 'down') {
           await Future<void>.delayed(const Duration(milliseconds: 200));
         }
-        arrowsCompleted.add(arrow);
+        keysCompleted.add(key);
         return ok('{"id":"1","result":{}}');
       }
     }
@@ -2107,6 +2110,10 @@ void main() {
     // The dedicated escape button is present regardless and sends Esc.
     expect(find.byKey(const ValueKey('send_escape_button')), findsOneWidget);
 
+    final readCallsBefore = runner.commands
+        .where((c) => c.contains("'agent' 'read'"))
+        .length;
+
     await tester.tap(find.byKey(const ValueKey('send_escape_button')));
     await tester.pump();
     await tester.pump();
@@ -2116,6 +2123,14 @@ void main() {
         (c) => c.contains('send-keys') && c.contains("'esc'"),
       ),
       isTrue,
+    );
+
+    // The debounced refresh fires ~250ms after the send and reloads the
+    // transcript, same as an arrow key would.
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      runner.commands.where((c) => c.contains("'agent' 'read'")).length,
+      greaterThan(readCallsBefore),
     );
 
     await tester.pumpWidget(const SizedBox());
@@ -2149,6 +2164,10 @@ void main() {
     // the pane's own input line.
     expect(find.byKey(const ValueKey('send_enter_button')), findsOneWidget);
 
+    final readCallsBefore = runner.commands
+        .where((c) => c.contains("'agent' 'read'"))
+        .length;
+
     await tester.tap(find.byKey(const ValueKey('send_enter_button')));
     await tester.pump();
     await tester.pump();
@@ -2158,6 +2177,14 @@ void main() {
         (c) => c.contains('send-keys') && c.contains("'enter'"),
       ),
       isTrue,
+    );
+
+    // The debounced refresh fires ~250ms after the send and reloads the
+    // transcript, same as an arrow key would.
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      runner.commands.where((c) => c.contains("'agent' 'read'")).length,
+      greaterThan(readCallsBefore),
     );
 
     await tester.pumpWidget(const SizedBox());
@@ -3945,20 +3972,22 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
       await tester.pumpAndSettle();
 
-      // Start a send that never completes: Esc goes through `_send`, so the
-      // composer's own buttons go dead for its whole round-trip.
-      await tester.tap(find.byKey(const ValueKey('send_escape_button')));
+      // Start a send that never completes: the send/stop button's Esc still
+      // goes through `_send`, so the composer's own controls go dead for its
+      // whole round-trip — but the key row must not.
+      await tester.tap(find.byKey(const ValueKey('send_message_button')));
       await tester.pump();
       expect(
         tester
-            .widget<OutlinedButton>(
-              find.byKey(const ValueKey('send_escape_button')),
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('send_message_button')),
             )
             .onPressed,
         isNull,
       );
 
-      // The arrows are unaffected: three rapid taps all land.
+      // Enter and the arrows are unaffected: rapid taps all land.
+      await tester.tap(find.byKey(const ValueKey('send_enter_button')));
       await tester.tap(find.byKey(const ValueKey('send_key_down')));
       await tester.tap(find.byKey(const ValueKey('send_key_down')));
       await tester.tap(find.byKey(const ValueKey('send_key_right')));
@@ -3969,7 +3998,7 @@ void main() {
 
       // 'down' is the slow one, so this order is only reachable if the sends
       // are queued rather than fired off in parallel.
-      expect(runner.arrowsCompleted, ['down', 'down', 'right']);
+      expect(runner.keysCompleted, ['enter', 'down', 'down', 'right']);
 
       // A failing key must surface, and must not poison the queue for the
       // ones behind it.
@@ -3978,15 +4007,84 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await tester.pump();
       expect(find.textContaining('arrow key rejected'), findsOneWidget);
-      expect(runner.arrowsCompleted.last, 'up');
+      expect(runner.keysCompleted.last, 'up');
+
+      // The key row's own Escape button stays enabled too, even though a
+      // different Esc send (the stop button's) is in flight on `_send` — and
+      // tapping it is accepted rather than swallowed by a disabled button.
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.byKey(const ValueKey('send_escape_button')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      await tester.tap(find.byKey(const ValueKey('send_escape_button')));
+      await tester.pump();
+
+      // The tap actually dispatched, not just accepted a click that went
+      // nowhere: a second raw Esc reached the transport, alongside the
+      // stop button's.
+      expect(
+        runner.commands
+            .where((c) => c.contains('send-keys') && c.contains("'esc'"))
+            .length,
+        2,
+      );
 
       runner.escGate.complete();
+      await tester.pump();
       await tester.pump();
       await tester.pump();
 
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('sends Down, Down, Enter from the key row in tap order without '
+      'disabling the composer', (tester) async {
+    final runner = ArrowKeyRunner();
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(hours: 1),
+          draftStore: AgentDraftStore(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+    await tester.pumpAndSettle();
+
+    // Stepping through a picker: ↓ ↓ ⏎ tapped as fast as a user would.
+    // 'down' is the slow one, so the completion order only matches tap
+    // order if the sends are actually queued rather than fired in parallel.
+    await tester.tap(find.byKey(const ValueKey('send_key_down')));
+    await tester.tap(find.byKey(const ValueKey('send_key_down')));
+    await tester.tap(find.byKey(const ValueKey('send_enter_button')));
+
+    // The composer never disables for any of this: the text field stays
+    // enabled and the send/stop button never shows its busy spinner.
+    expect(tester.widget<TextField>(find.byType(TextField)).enabled, isTrue);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+
+    expect(runner.keysCompleted, ['down', 'down', 'enter']);
+
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets(
     'shows the live terminal once an arrow key is sent from this screen, '

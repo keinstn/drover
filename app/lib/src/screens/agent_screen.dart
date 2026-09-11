@@ -723,9 +723,9 @@ class _AgentScreenState extends State<AgentScreen> {
   }
 
   /// Sends a raw key to the pane outside the [_send] path, for the composer's
-  /// arrow-key row: navigating a TUI dialog means several taps in a row, and
-  /// [_send] would disable the whole composer for an SSH round-trip plus a
-  /// full `_load()` after every one of them.
+  /// key row (arrows, Esc, Enter): navigating a TUI dialog means several taps
+  /// in a row, and [_send] would disable the whole composer for an SSH
+  /// round-trip plus a full `_load()` after every one of them.
   ///
   /// Taps are chained on a single queue so two fast presses can't arrive out
   /// of order, and a failure is reported without poisoning that queue. The
@@ -2234,8 +2234,8 @@ class _Composer extends StatelessWidget {
   /// this is available.
   final AgentModeCapability? modeCapability;
 
-  /// Wraps client actions (mode cycling, Enter, Esc) so the caller can track
-  /// in-flight sends.
+  /// Wraps client actions (mode cycling, and the send/stop button's Esc
+  /// interrupt) so the caller can track in-flight sends.
   ///
   /// The mode chip is tappable: tapping it cycles the agent's mode via
   /// [modeCapability]. This can only cycle through modes, not jump to a
@@ -2246,9 +2246,10 @@ class _Composer extends StatelessWidget {
   final bool keysRowOpen;
   final VoidCallback onToggleKeysRow;
 
-  /// Sends one raw arrow key. Deliberately not routed through [onAction]: the
-  /// arrows stay live while a send is in flight, so a burst of taps isn't
-  /// swallowed by a disabled button.
+  /// Sends one raw key from the key row (an arrow, Esc, or Enter).
+  /// Deliberately not routed through [onAction]: the row stays live while a
+  /// send is in flight, so a burst of taps isn't swallowed by a disabled
+  /// button.
   final void Function(String key) onSendKey;
   final HerdrClient client;
   final String paneId;
@@ -2343,17 +2344,9 @@ class _Composer extends StatelessWidget {
                   // A wider gap so the arrows and the Esc/Enter pair read as
                   // two groups rather than one run of six keys.
                   const SizedBox(width: 16),
-                  _EscapeButton(
-                    sending: sending,
-                    onPressed: () =>
-                        onAction(() => client.sendKeys(paneId, 'esc')),
-                  ),
+                  _EscapeButton(onPressed: () => onSendKey('esc')),
                   const SizedBox(width: 8),
-                  _EnterButton(
-                    sending: sending,
-                    onPressed: () =>
-                        onAction(() => client.sendKeys(paneId, 'enter')),
-                  ),
+                  _EnterButton(onPressed: () => onSendKey('enter')),
                 ],
               ),
             ],
@@ -2621,15 +2614,15 @@ class _ModeButton extends StatelessWidget {
   }
 }
 
-/// A key-row button that sends a raw Enter key to the agent, without
-/// typing anything in the composer. Useful for executing a prompt the agent
-/// has already staged in the pane's own input line (e.g. a suggested
-/// command), which a normal composer send can't reach. Disabled only while a
-/// send is in flight ([sending]).
+/// A key-row button that sends a raw Enter key to the agent, without typing
+/// anything in the composer. Useful for executing a prompt the agent has
+/// already staged in the pane's own input line (e.g. a suggested command),
+/// which a normal composer send can't reach. Always enabled, like the arrow
+/// keys beside it: the send is queued rather than disabling this button for
+/// the round-trip.
 class _EnterButton extends StatelessWidget {
-  const _EnterButton({required this.sending, required this.onPressed});
+  const _EnterButton({required this.onPressed});
 
-  final bool sending;
   final VoidCallback onPressed;
 
   @override
@@ -2642,7 +2635,7 @@ class _EnterButton extends StatelessWidget {
         message: l10n.agentSendEnter,
         child: OutlinedButton(
           key: const ValueKey('send_enter_button'),
-          onPressed: sending ? null : onPressed,
+          onPressed: onPressed,
           style: OutlinedButton.styleFrom(
             shape: const CircleBorder(),
             padding: EdgeInsets.zero,
@@ -2657,14 +2650,14 @@ class _EnterButton extends StatelessWidget {
 
 /// A key-row escape hatch that sends a raw Esc key to the agent.
 /// Unlike the send/stop button (which only offers Esc while the agent is
-/// working), this stays enabled whatever the agent's status, so the user can
-/// dismiss a full-screen interactive TUI (e.g. a `/usage` slash-command
-/// screen) even when the agent is idle or blocked. Disabled only while a send
-/// is in flight ([sending]).
+/// working and goes through `_send`), this stays enabled whatever the
+/// agent's status and however many key-row sends are in flight, so the user
+/// can dismiss a full-screen interactive TUI (e.g. a `/usage` slash-command
+/// screen) even when the agent is idle or blocked, and can tap it
+/// repeatedly without one tap disabling the next.
 class _EscapeButton extends StatelessWidget {
-  const _EscapeButton({required this.sending, required this.onPressed});
+  const _EscapeButton({required this.onPressed});
 
-  final bool sending;
   final VoidCallback onPressed;
 
   @override
@@ -2677,7 +2670,7 @@ class _EscapeButton extends StatelessWidget {
         message: l10n.agentSendEscape,
         child: OutlinedButton(
           key: const ValueKey('send_escape_button'),
-          onPressed: sending ? null : onPressed,
+          onPressed: onPressed,
           style: OutlinedButton.styleFrom(
             shape: const CircleBorder(),
             padding: EdgeInsets.zero,
@@ -2693,10 +2686,11 @@ class _EscapeButton extends StatelessWidget {
   }
 }
 
-/// Shows or hides the composer's arrow-key row. Emphasised like the mode chip
+/// Shows or hides the composer's key row. Emphasised like the mode chip
 /// while the row is open, so the composer's extra row has a visible source.
-/// Unlike Esc/Enter it stays enabled while a send is in flight — the arrows it
-/// reveals do too.
+/// Unlike the composer's other controls (text field, attach, mode chip, send
+/// button), it stays enabled while a send is in flight — as do the arrows,
+/// Esc, and Enter it reveals.
 class _ArrowKeysToggleButton extends StatelessWidget {
   const _ArrowKeysToggleButton({required this.open, required this.onPressed});
 
