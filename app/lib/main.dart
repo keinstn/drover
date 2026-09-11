@@ -24,7 +24,6 @@ import 'src/infra/host_store.dart';
 import 'src/infra/network_change_signal.dart';
 import 'src/infra/settings_store.dart';
 import 'src/infra/ssh_command_runner.dart';
-import 'src/infra/stale_transport_signal.dart';
 import 'src/models/agent_info.dart';
 import 'src/models/host_config.dart';
 import 'src/models/plugin_info.dart';
@@ -119,10 +118,9 @@ class DroverApp extends StatefulWidget {
     this.speechInput,
     this.notificationRegistration,
     this.hostPairingGateway,
-    this.staleTransportSignal,
+    this.networkChangeSignal,
     this.hostConnectionRegistry,
     this.appVersion,
-    this.clock,
   });
 
   final HostStore hostStore;
@@ -134,15 +132,13 @@ class DroverApp extends StatefulWidget {
   final NotificationRegistration? notificationRegistration;
   final HostPairingGateway? hostPairingGateway;
 
-  /// Injected at the [StaleTransportSignal] level (not the underlying
-  /// [NetworkChangeSignal]) so tests can hold the exact instance
-  /// `_DroverAppState` calls `markStale()` on and observe its `changes`
-  /// stream directly, without needing a configured host or a live connection
-  /// registry to make the effect visible.
-  final StaleTransportSignal? staleTransportSignal;
+  /// Injected so tests can hold the exact instance `_DroverAppState`
+  /// subscribes to in `initState` and drive its `changes` stream directly,
+  /// without needing a real platform channel.
+  final NetworkChangeSignal? networkChangeSignal;
 
   /// Injected so a test can hold the exact instance `_DroverAppState` calls
-  /// `invalidateAll()` on (via [_staleTransportSignal]'s subscription) and
+  /// `invalidateAll()` on (via [_networkChangeSignal]'s subscription) and
   /// count those calls directly, without needing a real SSH connection.
   final HostConnectionRegistry? hostConnectionRegistry;
 
@@ -150,17 +146,11 @@ class DroverApp extends StatefulWidget {
   /// [main]; null when the lookup failed, which hides the settings row.
   final String? appVersion;
 
-  /// Wall clock used to measure how long the app was backgrounded (see
-  /// [_DroverAppState.didChangeAppLifecycleState]). Injectable so a test can
-  /// control the elapsed duration without sleeping the threshold out on the
-  /// real clock; production always uses [DateTime.now].
-  final DateTime Function()? clock;
-
   @override
   State<DroverApp> createState() => _DroverAppState();
 }
 
-class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
+class _DroverAppState extends State<DroverApp> {
   final _navKey = GlobalKey<NavigatorState>();
   List<HostConfig> _hosts = [];
 
@@ -191,26 +181,11 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
   late final SpeechInput _speechInput;
   late final NotificationRegistration _notificationRegistration;
   late final HostPairingGateway _hostPairingGateway;
-  late final StaleTransportSignal _staleTransportSignal;
-  late final DateTime Function() _now;
+  late final NetworkChangeSignal _networkChangeSignal;
   StreamSubscription<Object>? _notificationFailures;
   StreamSubscription<RemoteMessage>? _notificationOpens;
-  StreamSubscription<void>? _staleTransportSub;
+  StreamSubscription<void>? _networkChangesSub;
   final _handledNotificationEvents = <String>{};
-
-  /// When the app last left the foreground (set on [AppLifecycleState.paused]
-  /// only — see [didChangeAppLifecycleState]); null until the first time that
-  /// happens, and cleared again on every `resumed`.
-  DateTime? _backgroundedAt;
-
-  /// How long the app must have been backgrounded before a resume is treated
-  /// as "the cached SSH transport might be stale" (see
-  /// [didChangeAppLifecycleState]). A tuning knob, not a measured bound:
-  /// there is no OS signal that says "your socket was actually torn down",
-  /// so this is a heuristic guess at how long a real iOS suspension takes —
-  /// short enough to catch one, long enough that an app-switcher flick or a
-  /// Control Centre glance doesn't churn a reconnect.
-  static const _backgroundStaleThreshold = Duration(seconds: 10);
 
   @override
   void initState() {
@@ -218,17 +193,14 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     _registry =
         widget.hostConnectionRegistry ??
         HostConnectionRegistry(_buildConnection);
-    _now = widget.clock ?? DateTime.now;
     _speechInput = widget.speechInput ?? SpeechInputController();
     _notificationRegistration =
         widget.notificationRegistration ?? NotificationRegistration();
     _hostPairingGateway =
         widget.hostPairingGateway ?? FirebaseHostPairingGateway();
-    _staleTransportSignal =
-        widget.staleTransportSignal ??
-        StaleTransportSignal(ConnectivityChangeSignal());
-    WidgetsBinding.instance.addObserver(this);
-    _staleTransportSub = _staleTransportSignal.changes.listen(
+    _networkChangeSignal =
+        widget.networkChangeSignal ?? ConnectivityChangeSignal();
+    _networkChangesSub = _networkChangeSignal.changes.listen(
       (_) => unawaited(
         runBestEffort(
           _registry.invalidateAll,
@@ -293,45 +265,10 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     setState(() => _hosts = hosts);
   }
 
-  /// iOS tears down a suspended app's sockets, so the cached SSH client can
-  /// be dead by the time the app is foregrounded again even though nothing
-  /// about the network changed — this is the trigger that matches the
-  /// user-reported "reopen the app, host shows disconnected" symptom. But
-  /// iOS does NOT tear sockets down for a brief background (an app-switcher
-  /// flick, Control Centre, a notification banner), and reconnecting pays a
-  /// full SSH handshake including the **synchronous** `SSHKeyPair.fromPem`
-  /// KDF on the UI isolate — for a passphrase-protected key that is a visible
-  /// frame hitch (see `ssh_command_runner.dart`'s `_defaultAuthTimeout` doc
-  /// comment). So only `paused` records when the app left the foreground
-  /// (not `inactive`/`hidden`, which also fire on the way back IN — see the
-  /// transition sequence this class's tests drive — recording there would
-  /// overwrite the real backgrounding time moments before `resumed` and make
-  /// the elapsed check always ~0), and `resumed` only marks the transport
-  /// stale if that background lasted at least [_backgroundStaleThreshold].
-  /// If the app has never been backgrounded (the first `resumed` after
-  /// launch), [_backgroundedAt] is still null, so nothing is marked stale —
-  /// there is nothing stale yet, and the cold-start connect must not be
-  /// disturbed.
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      _backgroundedAt = _now();
-      return;
-    }
-    if (state != AppLifecycleState.resumed) return;
-    final backgroundedAt = _backgroundedAt;
-    _backgroundedAt = null;
-    if (backgroundedAt == null) return;
-    if (_now().difference(backgroundedAt) >= _backgroundStaleThreshold) {
-      _staleTransportSignal.markStale();
-    }
-  }
-
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _staleTransportSub?.cancel();
-    unawaited(_staleTransportSignal.dispose());
+    _networkChangesSub?.cancel();
+    unawaited(_networkChangeSignal.dispose());
     _notificationOpens?.cancel();
     _notificationFailures?.cancel();
     _notificationRegistration.dispose();
@@ -827,7 +764,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
               speechInput: _speechInput,
               onOpenHostSwitcher: _openHostSwitcher,
               onOpenSettings: _openSettings,
-              networkChanges: _staleTransportSignal.changes,
+              networkChanges: _networkChangeSignal.changes,
             ),
     );
   }
