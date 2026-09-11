@@ -203,7 +203,7 @@ void main() {
         return ok('');
       });
       final pairer = PluginAutoPairer(
-        HerdrClient(runner, platform: const WindowsHostPlatform()),
+        HerdrClient(runner, platform: () => const WindowsHostPlatform()),
       );
 
       await pairer.pair(plugin: windowsPlugin, pairing: _pairing);
@@ -251,7 +251,7 @@ void main() {
         return ok('');
       });
       final pairer = PluginAutoPairer(
-        HerdrClient(runner, platform: const WindowsHostPlatform()),
+        HerdrClient(runner, platform: () => const WindowsHostPlatform()),
       );
 
       await pairer.pair(plugin: extendedPlugin, pairing: _pairing);

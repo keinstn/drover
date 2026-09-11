@@ -330,7 +330,10 @@ void main() {
 
     test('WindowsHostPlatform wraps herdr commands in powershell', () async {
       final runner = FakeCommandRunner((_) => ok(agentsEnvelope));
-      final client = HerdrClient(runner, platform: const WindowsHostPlatform());
+      final client = HerdrClient(
+        runner,
+        platform: () => const WindowsHostPlatform(),
+      );
 
       final agents = await client.listAgents();
 
@@ -341,27 +344,50 @@ void main() {
       expect(script, contains("& 'herdr' 'agent' 'list'"));
     });
 
-    test('accepts an async platform (the production detect path)', () async {
+    test(
+      'accepts an async platform factory (the production detect path)',
+      () async {
+        final runner = FakeCommandRunner((_) => ok(agentsEnvelope));
+        final client = HerdrClient(
+          runner,
+          platform: () async => const WindowsHostPlatform(),
+        );
+
+        final agents = await client.listAgents();
+
+        expect(agents, hasLength(1));
+        final script = decodeScript(runner.commands.single);
+        expect(script, contains("& 'herdr' 'agent' 'list'"));
+      },
+    );
+
+    test(
+      'surfaces a synchronous detection failure as a transport error',
+      () async {
+        final runner = FakeCommandRunner((_) => ok(agentsEnvelope));
+        final client = HerdrClient(
+          runner,
+          platform: () => throw HostPlatformDetectionException('nope'),
+        );
+
+        await expectLater(
+          client.listAgents(),
+          throwsA(
+            isA<HerdrException>()
+                .having((e) => e.code, 'code', 'transport')
+                .having((e) => e.message, 'message', contains('nope')),
+          ),
+        );
+        expect(runner.commands, isEmpty);
+      },
+    );
+
+    test('surfaces an async detection failure as a transport error', () async {
       final runner = FakeCommandRunner((_) => ok(agentsEnvelope));
       final client = HerdrClient(
         runner,
-        platform: Future<HostPlatform>.value(const WindowsHostPlatform()),
-      );
-
-      final agents = await client.listAgents();
-
-      expect(agents, hasLength(1));
-      final script = decodeScript(runner.commands.single);
-      expect(script, contains("& 'herdr' 'agent' 'list'"));
-    });
-
-    test('surfaces a detection failure as a transport error', () async {
-      final runner = FakeCommandRunner((_) => ok(agentsEnvelope));
-      final client = HerdrClient(
-        runner,
-        platform: Future<HostPlatform>.error(
-          HostPlatformDetectionException('nope'),
-        )..ignore(),
+        platform: () =>
+            Future<HostPlatform>.error(HostPlatformDetectionException('nope')),
       );
 
       await expectLater(
@@ -378,7 +404,10 @@ void main() {
     test('detectAgents probes via the platform command', () async {
       // Windows output has \r\n line endings; the shared parse must cope.
       final runner = FakeCommandRunner((_) => ok('claude\r\ncopilot\r\n'));
-      final client = HerdrClient(runner, platform: const WindowsHostPlatform());
+      final client = HerdrClient(
+        runner,
+        platform: () => const WindowsHostPlatform(),
+      );
 
       final found = await client.detectAgents(kAgentPresets);
 
@@ -389,6 +418,89 @@ void main() {
             .toList(),
       );
       expect(runner.commands.single, startsWith(encodedPrefix));
+    });
+
+    test('caches a successful detection: the factory runs exactly once '
+        'across many commands', () async {
+      final runner = FakeCommandRunner((_) => ok(agentsEnvelope));
+      var factoryCalls = 0;
+      final client = HerdrClient(
+        runner,
+        platform: () {
+          factoryCalls++;
+          return const UnixHostPlatform();
+        },
+      );
+
+      await client.listAgents();
+      await client.listAgents();
+      await client.listAgents();
+
+      expect(factoryCalls, 1);
+    });
+
+    test('regression: a failed detection does not poison the client — a later '
+        'command retries detection and actually reaches the runner', () async {
+      final runner = FakeCommandRunner((_) => ok(agentsEnvelope));
+      var factoryCalls = 0;
+      final client = HerdrClient(
+        runner,
+        platform: () {
+          factoryCalls++;
+          if (factoryCalls == 1) {
+            throw HostPlatformDetectionException('host unreachable');
+          }
+          return const UnixHostPlatform();
+        },
+      );
+
+      // First command: detection fails, surfaces as a transport error, and
+      // never reaches the runner.
+      await expectLater(
+        client.listAgents(),
+        throwsA(
+          isA<HerdrException>()
+              .having((e) => e.code, 'code', 'transport')
+              .having((e) => e.message, 'message', contains('unreachable')),
+        ),
+      );
+      expect(runner.commands, isEmpty);
+
+      // Second command: the client is not permanently poisoned — it
+      // retries detection, which now succeeds, and the command actually
+      // issues its real herdr command against the runner.
+      final agents = await client.listAgents();
+
+      expect(agents, hasLength(1));
+      expect(factoryCalls, 2);
+      expect(runner.commands.single, "~/.local/bin/herdr 'agent' 'list'");
+    });
+
+    test('concurrent callers share one in-flight detection instead of each '
+        'starting their own', () async {
+      final runner = FakeCommandRunner((_) => ok(agentsEnvelope));
+      var factoryCalls = 0;
+      final detected = Completer<HostPlatform>();
+      final client = HerdrClient(
+        runner,
+        platform: () {
+          factoryCalls++;
+          return detected.future;
+        },
+      );
+
+      final first = client.listAgents();
+      final second = client.listAgents();
+      // Both callers are in flight, awaiting the same detection — the
+      // factory must not have been invoked more than once yet.
+      expect(factoryCalls, 1);
+
+      detected.complete(const UnixHostPlatform());
+      final results = await Future.wait([first, second]);
+
+      expect(results[0], hasLength(1));
+      expect(results[1], hasLength(1));
+      expect(factoryCalls, 1);
     });
   });
 
