@@ -98,6 +98,41 @@ Future<T> runDroppingWedgedClient<T>(
   }
 }
 
+/// Awaits [connecting], and if the runner's generation has moved on since it
+/// started (captured in [startedAt], read live via [generation]) — meaning
+/// [SshCommandRunner.invalidateConnection] ran while this connect was still
+/// in flight — closes the resolved client via [close] and throws instead of
+/// returning it.
+///
+/// This is the fix for the race a network-triggered invalidation opens up:
+/// invalidation runs outside [SshCommandRunner._mutex] (it must, to interrupt
+/// a stuck exec rather than wait behind it), so it can land after a connect
+/// has already started over the dead network path but before it resolves.
+/// Without this check, [SshCommandRunner._ensureClient] would install that
+/// stale-network client right after invalidation cleared the old one,
+/// silently undoing it. The [StateError] is deliberately bare (like
+/// [TimeoutException] elsewhere in this file) rather than an
+/// [SshAuthException]: `HerdrClient` wraps it into a cause-bearing
+/// `HerdrException`, which `classifyError` reads as `AppErrorKind.hostConnection`
+/// for any non-null, non-auth cause — the right message, since nothing about
+/// this is an auth problem.
+Future<T> installIfCurrent<T>(
+  Future<T> connecting, {
+  required int startedAt,
+  required int Function() generation,
+  required void Function(T client) close,
+}) async {
+  final client = await connecting;
+  if (generation() != startedAt) {
+    close(client);
+    throw StateError(
+      'SSH connection was invalidated while connecting (network change); '
+      'the next attempt will reconnect',
+    );
+  }
+  return client;
+}
+
 /// Runs [body] bounded by [timeout], and if it does not finish in time calls
 /// [closeClient] before rethrowing the [TimeoutException]: a wait that
 /// outlived its bound leaves the connection in an indeterminate state — for
@@ -158,6 +193,11 @@ class SshCommandRunner implements CommandRunner {
   Future<SSHClient>? _connecting;
   final _authNotices = <String>[];
   final _mutex = Mutex();
+
+  /// Bumped by [invalidateConnection]; a connect started before a bump whose
+  /// result resolves after it must be discarded rather than installed — see
+  /// [installIfCurrent].
+  int _generation = 0;
 
   late String? _pinnedFingerprint = _config.hostKeyFingerprint;
   String? _learnedThisConnect;
@@ -255,17 +295,30 @@ class SshCommandRunner implements CommandRunner {
   Future<SSHClient> _ensureClient() async {
     final cached = _client;
     if (cached != null && cached.isClosed) {
-      await dispose();
+      await invalidateConnection();
     }
     if (_client != null) return _client!;
     if (_connecting != null) return _connecting!;
 
-    _connecting = _connect();
+    final startedAt = _generation;
+    final connecting = _connect();
+    _connecting = connecting;
     try {
-      _client = await _connecting;
+      _client = await installIfCurrent<SSHClient>(
+        connecting,
+        startedAt: startedAt,
+        generation: () => _generation,
+        close: (client) => client.close(),
+      );
       return _client!;
     } finally {
-      _connecting = null;
+      // A concurrent invalidateConnection() may already have nulled (or a
+      // newer _ensureClient call already replaced) _connecting; only clear
+      // it here if it still points at THIS attempt, so a discarded connect
+      // can never null out a newer one's in-flight state.
+      if (identical(_connecting, connecting)) {
+        _connecting = null;
+      }
     }
   }
 
@@ -308,7 +361,11 @@ class SshCommandRunner implements CommandRunner {
   Future<T> _withClient<T>(Future<T> Function(SSHClient client) body) {
     return _mutex.run(() async {
       final client = await _ensureClient();
-      return runDroppingWedgedClient(() => body(client), dispose);
+      // invalidateConnection(), not dispose(): this runner is not being
+      // discarded — it stays cached in the registry and the next call
+      // reuses it — so a wedged/timed-out client must be dropped, not have
+      // the whole runner torn down as though nothing will use it again.
+      return runDroppingWedgedClient(() => body(client), invalidateConnection);
     });
   }
 
@@ -408,8 +465,58 @@ class SshCommandRunner implements CommandRunner {
     });
   }
 
+  /// Drops the cached client (if any) so the next call reconnects fresh —
+  /// without rebuilding this runner instance, which keeps right on being
+  /// used afterwards (this runner is RECOVERABLE: something will call [run]
+  /// on it again). Bumps [_generation] first so a connect already in flight
+  /// cannot install its result afterwards (see [installIfCurrent]) — but
+  /// only when there IS a cached client to drop.
+  ///
+  /// A no-op when there is no cached client: this exists to drop a *cached,
+  /// probably-dead* client, and with [_client] null there is nothing stale to
+  /// drop. Because this runner is recoverable, bumping the generation anyway
+  /// would discard a connect that is merely in flight — not stale —
+  /// converting one that was about to succeed into a [StateError] and a
+  /// visible failure (`main.dart`'s `_buildConnection` calls
+  /// `HostPlatform.detect(runner)` eagerly, so the very first connect for a
+  /// host starts at construction; a resume or connectivity event landing in
+  /// that window would otherwise kill it). If that in-flight connect's path
+  /// really is dead, it fails on its own bounded 10s socket/auth timeouts
+  /// regardless. Contrast [dispose], which is terminal and therefore
+  /// unconditional — the two must not be re-merged into one implementation.
+  ///
+  /// Safe to call from outside [_mutex]: this is also the entry point
+  /// [HostConnectionRegistry.invalidateAll] calls on a network change, which
+  /// must be able to interrupt a stuck exec rather than wait behind it —
+  /// hence the generation guard above.
+  Future<void> invalidateConnection() async {
+    final client = _client;
+    if (client == null) return;
+    _generation++;
+    client.close();
+    _client = null;
+    _connecting = null;
+  }
+
+  /// Tears this runner down for good: the caller is discarding it entirely —
+  /// [HostConnectionRegistry.evict] (host deleted, or edited in a way that
+  /// changes the connection) or [HostConnectionRegistry.disposeAll] (app
+  /// teardown) — and nothing will call [run] or [invalidateConnection] on it
+  /// again. Contrast [invalidateConnection], which is recoverable.
+  ///
+  /// Unlike [invalidateConnection], this is UNCONDITIONAL: it always bumps
+  /// [_generation], always closes any cached client, and always clears both
+  /// [_client] and [_connecting] — even with no cached client and a connect
+  /// still in flight. That in-flight connect must still be discarded here:
+  /// nothing will be left holding the [SSHClient] it would otherwise
+  /// install, so letting it through would leak a live SSH connection to the
+  /// host for the rest of the process's life (and, on a config edit,
+  /// potentially a second live connection to the same host). Bumping the
+  /// generation is what makes [installIfCurrent] close that client itself
+  /// once the connect resolves, instead of installing it.
   @override
   Future<void> dispose() async {
+    _generation++;
     _client?.close();
     _client = null;
     _connecting = null;

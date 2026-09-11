@@ -25,12 +25,20 @@ class _FakeRunner extends SshCommandRunner {
 
   int disposeCalls = 0;
   Completer<void>? disposeGate;
+  int invalidateCalls = 0;
+  bool throwOnInvalidate = false;
 
   @override
   Future<void> dispose() async {
     disposeCalls++;
     final gate = disposeGate;
     if (gate != null) await gate.future;
+  }
+
+  @override
+  Future<void> invalidateConnection() async {
+    invalidateCalls++;
+    if (throwOnInvalidate) throw StateError('boom');
   }
 }
 
@@ -132,6 +140,49 @@ void main() {
       // The fresh connection survives the old one's dispose.
       expect(registry.get('h1'), same(second));
       expect(builtRunners[1].disposeCalls, 0);
+    });
+
+    test('invalidateAll invalidates every cached runner without rebuilding or '
+        'removing any entry', () async {
+      final first = registry.obtain(_config(hostId: 'h1'));
+      final second = registry.obtain(_config(hostId: 'h2'));
+
+      await registry.invalidateAll();
+
+      for (final runner in builtRunners) {
+        expect(runner.invalidateCalls, 1);
+        expect(runner.disposeCalls, 0);
+      }
+      expect(builtRunners, hasLength(2));
+      expect(registry.get('h1'), same(first));
+      expect(registry.get('h2'), same(second));
+      // obtain() must also still return the same (not rebuilt) instance.
+      expect(registry.obtain(_config(hostId: 'h1')), same(first));
+      expect(registry.obtain(_config(hostId: 'h2')), same(second));
+    });
+
+    test(
+      'invalidateAll on an empty registry completes without error',
+      () async {
+        await registry.invalidateAll();
+        expect(builtRunners, isEmpty);
+      },
+    );
+
+    test('invalidateAll isolates a throwing runner so later hosts are still '
+        'invalidated', () async {
+      registry.obtain(_config(hostId: 'h1'));
+      registry.obtain(_config(hostId: 'h2'));
+      builtRunners.first.throwOnInvalidate = true;
+
+      await registry.invalidateAll();
+
+      expect(builtRunners[0].invalidateCalls, 1);
+      expect(
+        builtRunners[1].invalidateCalls,
+        1,
+        reason: 'h1 throwing must not stop h2 from being invalidated',
+      );
     });
   });
 }

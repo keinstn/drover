@@ -242,6 +242,220 @@ void main() {
     });
   });
 
+  group('installIfCurrent', () {
+    test('returns the client when the generation has not moved', () async {
+      var closed = false;
+      final client = await installIfCurrent<String>(
+        Future.value('client'),
+        startedAt: 0,
+        generation: () => 0,
+        close: (_) => closed = true,
+      );
+      expect(client, 'client');
+      expect(closed, isFalse);
+    });
+
+    test('closes the client and throws when invalidation raced the connect '
+        '(generation moved before the connect resolved)', () async {
+      var closed = false;
+      var generation = 0;
+      final completer = Completer<String>();
+
+      final result = installIfCurrent<String>(
+        completer.future,
+        startedAt: 0,
+        generation: () => generation,
+        close: (_) => closed = true,
+      );
+
+      // Invalidation happens while the connect is still in flight...
+      generation = 1;
+      // ...and only then does the connect resolve (with a client built
+      // over the now-stale network path).
+      completer.complete('client');
+
+      await expectLater(result, throwsA(isA<StateError>()));
+      expect(closed, isTrue);
+    });
+  });
+
+  // Regression coverage for invalidateConnection() called mid-connect: this
+  // does NOT exercise installIfCurrent's generation-mismatch branch itself
+  // (here the in-flight connect ends in the pre-existing authTimeout
+  // TimeoutException, not a successful-but-stale resolve — see the
+  // `installIfCurrent` group above for that exact race). What this proves is
+  // the runner-level bookkeeping around it: invalidating mid-connect leaves
+  // the runner cleanly reconnectable rather than wedged.
+  group(
+    'SshCommandRunner: invalidateConnection during an in-flight connect',
+    () {
+      test('fails that call; the next call reconnects rather than reusing '
+          'stale state', () async {
+        var acceptCount = 0;
+        final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(server.close);
+        server.listen((socket) {
+          acceptCount++;
+          socket.listen((_) {}, cancelOnError: true); // swallow, never answer
+        });
+
+        final runner = SshCommandRunner(
+          HostConfig(
+            host: server.address.address,
+            port: server.port,
+            user: 'tester',
+            privateKeyPem: _testPrivateKeyPem,
+          ),
+          authTimeout: const Duration(milliseconds: 150),
+        );
+        addTearDown(runner.dispose);
+
+        final firstRun = runner.run('herdr --version');
+        // Let _connect() open the TCP socket and start awaiting the (never
+        // arriving) handshake before invalidating mid-flight.
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await runner.invalidateConnection();
+
+        await expectLater(firstRun, throwsA(anything));
+        expect(acceptCount, 1);
+
+        final secondRun = runner.run('herdr --version');
+        await expectLater(secondRun, throwsA(anything));
+        expect(
+          acceptCount,
+          2,
+          reason:
+              'the second call must open a fresh connection, not reuse '
+              'or wedge on the invalidated one',
+        );
+      });
+    },
+  );
+
+  group('SshCommandRunner: invalidateConnection with no cached client', () {
+    // This does NOT (and cannot, in this suite) exercise the harmful old
+    // behaviour directly: that only manifests when a connect invalidated
+    // mid-flight goes on to actually SUCCEED (installIfCurrent's generation
+    // check only runs after `connecting` resolves — a failing connect
+    // rethrows before that check, so old and new invalidateConnection()
+    // behaviour are externally identical on every failure path). Simulating
+    // a successful handshake needs a real SSH server, which this file's own
+    // auth-handshake-bound tests above deliberately avoid building (see the
+    // "fake SSH server issue #118 ruled out" comment). The generation
+    // mismatch mechanics themselves are covered directly by the
+    // `installIfCurrent` group. This test instead covers what IS observable
+    // here: the no-op guard doesn't corrupt anything on the failure path
+    // this suite can produce.
+    test('is a no-op with no cached client, and does not disturb a normal '
+        'reconnect afterward', () async {
+      var acceptCount = 0;
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(server.close);
+      server.listen((socket) {
+        acceptCount++;
+        socket.listen((_) {}, cancelOnError: true); // swallow, never answer
+      });
+
+      final runner = SshCommandRunner(
+        HostConfig(
+          host: server.address.address,
+          port: server.port,
+          user: 'tester',
+          privateKeyPem: _testPrivateKeyPem,
+        ),
+        authTimeout: const Duration(milliseconds: 100),
+      );
+      addTearDown(runner.dispose);
+
+      // Nothing has ever connected, so _client and _connecting are both
+      // null: this must complete without error.
+      await runner.invalidateConnection();
+
+      // A following run() still dials exactly once and fails the normal
+      // way (auth-handshake timeout) — the no-op guard hasn't left the
+      // runner in some broken state.
+      await expectLater(
+        runner.run('herdr --version'),
+        throwsA(isA<TimeoutException>()),
+      );
+      expect(acceptCount, 1);
+
+      // Calling it again afterward (still no cached client — the run()
+      // above already failed and cleared it) is likewise inert.
+      await runner.invalidateConnection();
+
+      await expectLater(
+        runner.run('herdr --version'),
+        throwsA(isA<TimeoutException>()),
+      );
+      expect(acceptCount, 2, reason: 'the second call reconnects fresh');
+    });
+  });
+
+  group('SshCommandRunner: dispose() is unconditional, unlike '
+      'invalidateConnection()', () {
+    // As with the invalidateConnection group above, the property this exists
+    // to guard — that dispose() discards an in-flight connect that goes on to
+    // SUCCEED, so it can't install an [SSHClient] into a runner nothing holds
+    // a reference to any more (a leaked SSH connection) — is NOT verified
+    // here: `installIfCurrent`'s generation check only runs once `connecting`
+    // resolves, and a failing connect (all this suite can produce without a
+    // real SSH server) rethrows before that check, making dispose()'s old
+    // (shared-with-invalidateConnection) and new (independent) behaviour
+    // externally identical on that path. These tests instead cover what IS
+    // observable: dispose() completes cleanly with no cached client, both at
+    // rest and mid-connect, and doesn't corrupt the runner's ability to
+    // reconnect — regression coverage for the two implementations no longer
+    // sharing code, not a discriminator for the leak this guards against.
+    test('completes without error when there is no cached client and '
+        'nothing in flight', () async {
+      final runner = SshCommandRunner(
+        HostConfig(
+          host: '127.0.0.1',
+          port: 1,
+          user: 'tester',
+          privateKeyPem: _testPrivateKeyPem,
+        ),
+      );
+      await runner.dispose();
+    });
+
+    test('during an in-flight connect (no cached client yet) still tears down '
+        'cleanly', () async {
+      var acceptCount = 0;
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(server.close);
+      server.listen((socket) {
+        acceptCount++;
+        socket.listen((_) {}, cancelOnError: true); // swallow, never answer
+      });
+
+      final runner = SshCommandRunner(
+        HostConfig(
+          host: server.address.address,
+          port: server.port,
+          user: 'tester',
+          privateKeyPem: _testPrivateKeyPem,
+        ),
+        authTimeout: const Duration(milliseconds: 150),
+      );
+
+      final firstRun = runner.run('herdr --version');
+      // Let _connect() open the TCP socket and start awaiting the (never
+      // arriving) handshake before disposing mid-flight.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await runner.dispose();
+
+      await expectLater(firstRun, throwsA(anything));
+      expect(acceptCount, 1);
+
+      // The runner is not meant to be reused after dispose() in
+      // production, but proving it isn't left half-torn-down (e.g. a
+      // second dispose() hanging or throwing) is cheap and worthwhile.
+      await runner.dispose();
+    });
+  });
+
   group('SshHostKeyMismatchException', () {
     test('toString names both the expected and observed fingerprints', () {
       final ex = SshHostKeyMismatchException(
