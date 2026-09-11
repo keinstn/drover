@@ -420,6 +420,26 @@ class ArrowKeyRunner extends StubCommandRunner {
   }
 }
 
+/// An [ArrowKeyRunner] that can park one `'agent' 'read'` on [readGate], so a
+/// test can hold a `_load` inside its in-flight guard while it taps a key and
+/// waits out the post-key refresh debounce. One-shot: [gateReads] is cleared
+/// by the read it catches, so the refresh's own read isn't gated too.
+class GatedReadRunner extends ArrowKeyRunner {
+  final readGate = Completer<void>();
+  bool gateReads = false;
+
+  @override
+  Future<CommandResult> run(String command) async {
+    if (gateReads && command.contains("'agent' 'read'")) {
+      gateReads = false;
+      final result = await super.run(command);
+      await readGate.future;
+      return result;
+    }
+    return super.run(command);
+  }
+}
+
 /// The question text of [_singleAskUserJsonl], reused by the read override so
 /// the submitter's initial-screen and dialog-closed confirmations both pass.
 const _askUserQuestionText = 'Which environment should I deploy to?';
@@ -4037,6 +4057,254 @@ void main() {
       await tester.pump();
       await tester.pump();
       await tester.pump();
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'refreshes once after the last queued key send lands, not at tap time',
+    (tester) async {
+      final runner = ArrowKeyRunner();
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+            draftStore: AgentDraftStore(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+      await tester.pumpAndSettle();
+
+      final baseline = runner.commands.length;
+
+      // A burst a user can produce in well under the 250ms debounce. 'down'
+      // sleeps 200ms in the runner and 'left' fails outright, so the last
+      // send doesn't land until ~400ms after the last tap — long after a
+      // tap-time timer would have fired and been consumed.
+      await tester.tap(find.byKey(const ValueKey('send_key_down')));
+      await tester.tap(find.byKey(const ValueKey('send_key_left')));
+      await tester.tap(find.byKey(const ValueKey('send_key_down')));
+      await tester.tap(find.byKey(const ValueKey('send_key_right')));
+      // Plain pumps: the failing key raises a toast, which never settles.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      final burst = runner.commands.sublist(baseline);
+      final lastSend = burst.lastIndexWhere((c) => c.contains('send-keys'));
+      final reads = [
+        for (var i = 0; i < burst.length; i++)
+          if (burst[i].contains("'agent' 'read'")) i,
+      ];
+      // Exactly one refresh for the whole burst...
+      expect(reads, hasLength(1));
+      // ...and it was issued after the last send completed, so it can see
+      // every key. A failed key must not strand the pending counter either,
+      // or there would be no refresh at all.
+      expect(lastSend, lessThan(reads.single));
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'a new tap invalidates a refresh already armed by an earlier send',
+    (tester) async {
+      final runner = ArrowKeyRunner();
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+            draftStore: AgentDraftStore(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+      await tester.pumpAndSettle();
+
+      final baseline = runner.commands.length;
+
+      // Taps spaced wider than the sends are fast: 'right' is instant, so its
+      // refresh is armed almost immediately and is pending — but not yet
+      // fired — when the second key is tapped 100ms later, inside the same
+      // 250ms debounce window. 'down' then sleeps 200ms, so an un-cancelled
+      // first timer would fire while that second send is still in flight,
+      // contending with it on the same transport and refreshing twice.
+      await tester.tap(find.byKey(const ValueKey('send_key_right')));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.byKey(const ValueKey('send_key_down')));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      final burst = runner.commands.sublist(baseline);
+      final lastSend = burst.lastIndexWhere((c) => c.contains('send-keys'));
+      final reads = [
+        for (var i = 0; i < burst.length; i++)
+          if (burst[i].contains("'agent' 'read'")) i,
+      ];
+      // One refresh for the burst, issued after the last send.
+      expect(reads, hasLength(1));
+      expect(lastSend, lessThan(reads.single));
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'waits out an in-flight load instead of dropping the post-key refresh',
+    (tester) async {
+      final runner = GatedReadRunner();
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+            draftStore: AgentDraftStore(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+      await tester.pumpAndSettle();
+
+      // Park the `_load` that follows a message send on its pane read, so it
+      // holds the in-flight guard for the rest of the test. (Text in the
+      // composer is what makes the button send rather than stop.)
+      await tester.enterText(find.byType(TextField), 'hello');
+      await tester.pump();
+      runner.gateReads = true;
+      await tester.tap(find.byKey(const ValueKey('send_message_button')));
+      // Plain pumps from here: the in-flight send spins a progress indicator.
+      await tester.pump();
+      await tester.pump();
+      expect(runner.gateReads, isFalse, reason: 'the load took the guard');
+
+      // Tap a key while that load is in flight and let the debounce fire.
+      final baseline = runner.commands.length;
+      await tester.tap(find.byKey(const ValueKey('send_key_right')));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+      // The refresh can't read anything yet — the guard is still held.
+      expect(
+        runner.commands.sublist(baseline).where((c) => c.contains("'read'")),
+        isEmpty,
+      );
+
+      runner.readGate.complete();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      // The refresh waited its turn rather than being dropped by the guard.
+      expect(
+        runner.commands
+            .sublist(baseline)
+            .where((c) => c.contains("'agent' 'read'")),
+        hasLength(1),
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'a refresh parked on the load guard yields to keys tapped while it waited',
+    (tester) async {
+      final runner = GatedReadRunner();
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+            draftStore: AgentDraftStore(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+      await tester.pumpAndSettle();
+
+      // Park the message send's `_load` on its pane read so it holds the
+      // in-flight guard. (Text in the composer is what makes the button send
+      // rather than stop.)
+      await tester.enterText(find.byType(TextField), 'hello');
+      await tester.pump();
+      runner.gateReads = true;
+      await tester.tap(find.byKey(const ValueKey('send_message_button')));
+      // Plain pumps from here: the in-flight send spins a progress indicator.
+      await tester.pump();
+      await tester.pump();
+      expect(runner.gateReads, isFalse, reason: 'the load took the guard');
+
+      final baseline = runner.commands.length;
+
+      // 'right' is instant, so its refresh is armed at once and fires 250ms
+      // later — but the guard is held, so it parks instead of loading.
+      await tester.tap(find.byKey(const ValueKey('send_key_right')));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // A second key is tapped while that refresh sits parked. The timer has
+      // already fired, so `_sendKey`'s cancel cannot reach it: waking it must
+      // not load ahead of this send, which needs 200ms to complete.
+      await tester.tap(find.byKey(const ValueKey('send_key_down')));
+      runner.readGate.complete();
+      await tester.pump();
+      await tester.pump();
+
+      // Let the second send land and its own refresh run.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      final burst = runner.commands.sublist(baseline);
+      final lastSend = burst.lastIndexWhere((c) => c.contains('send-keys'));
+      final reads = [
+        for (var i = 0; i < burst.length; i++)
+          if (burst[i].contains("'agent' 'read'")) i,
+      ];
+      // The woken refresh yielded, so the burst still refreshes exactly once,
+      // after its last send rather than in front of it.
+      expect(reads, hasLength(1));
+      expect(lastSend, lessThan(reads.single));
 
       await tester.pumpWidget(const SizedBox());
     },
