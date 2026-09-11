@@ -8,6 +8,7 @@ import 'package:drover/src/infra/host_connections.dart';
 import 'package:drover/src/infra/host_store.dart';
 import 'package:drover/src/infra/network_change_signal.dart';
 import 'package:drover/src/infra/settings_store.dart';
+import 'package:drover/src/infra/stale_transport_signal.dart';
 import 'package:drover/src/notifications/host_pairing.dart';
 import 'package:drover/src/notifications/notification_registration.dart';
 import 'package:drover/src/screens/host_setup_screen.dart';
@@ -67,25 +68,40 @@ class _NoopHostPairingGateway implements HostPairingGateway {
   Future<void> revokeHost(String hostId) async {}
 }
 
-/// A controllable [NetworkChangeSignal] so a test can fire `changes` events
-/// directly, without a real platform channel.
-class _FakeNetworkChangeSignal implements NetworkChangeSignal {
-  final _controller = StreamController<void>.broadcast();
+/// Never emits — used where a [NetworkChangeSignal] is required by the
+/// constructor but the test drives staleness through [markStale] instead, so
+/// no platform channel is exercised.
+class _NeverNetworkChangeSignal implements NetworkChangeSignal {
+  @override
+  Stream<void> get changes => const Stream.empty();
 
   @override
-  Stream<void> get changes => _controller.stream;
+  Future<void> dispose() async {}
+}
 
-  void emit() => _controller.add(null);
+/// Counts [markStale] calls, on top of the real [StaleTransportSignal]
+/// coalescing/emission behavior — so a test can assert both that the
+/// lifecycle callback actually invoked it, and that doing so genuinely
+/// produces an event on [changes].
+class _SpyStaleTransportSignal extends StaleTransportSignal {
+  _SpyStaleTransportSignal()
+    : super(
+        _NeverNetworkChangeSignal(),
+        debounce: const Duration(milliseconds: 10),
+      );
+
+  int markStaleCalls = 0;
 
   @override
-  Future<void> dispose() async {
-    await _controller.close();
+  void markStale() {
+    markStaleCalls++;
+    super.markStale();
   }
 }
 
 /// Counts [invalidateAll] calls instead of touching real SSH connections, so
 /// a test can prove `_DroverAppState`'s
-/// `_networkChangeSignal.changes.listen(...)` subscription in `initState`
+/// `_staleTransportSignal.changes.listen(...)` subscription in `initState`
 /// actually reaches the registry. The build function is never invoked (this
 /// test never obtains a host connection).
 class _CountingRegistry extends HostConnectionRegistry {
@@ -120,8 +136,9 @@ Widget _app({
   required HostStore hostStore,
   AppSettings settings = const AppSettings(),
   String? appVersion,
-  NetworkChangeSignal? networkChangeSignal,
+  StaleTransportSignal? staleTransportSignal,
   HostConnectionRegistry? hostConnectionRegistry,
+  DateTime Function()? clock,
 }) => DroverApp(
   hostStore: hostStore,
   settingsStore: SettingsStore(),
@@ -135,9 +152,17 @@ Widget _app({
   ),
   hostPairingGateway: _NoopHostPairingGateway(),
   speechInput: _NoopSpeechInput(),
-  networkChangeSignal: networkChangeSignal,
+  staleTransportSignal: staleTransportSignal,
   hostConnectionRegistry: hostConnectionRegistry,
+  clock: clock,
 );
+
+/// A mutable fake wall clock: tests advance [now] directly between lifecycle
+/// transitions instead of sleeping the real background-stale threshold out.
+class _FakeClock {
+  DateTime now = DateTime(2026);
+  DateTime call() => now;
+}
 
 void main() {
   testWidgets(
@@ -301,7 +326,7 @@ void main() {
   });
 
   testWidgets(
-    "a network-change event reaches the injected registry's invalidateAll()",
+    "a stale-transport event reaches the injected registry's invalidateAll()",
     (tester) async {
       tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1.0;
@@ -309,12 +334,15 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
 
       final registry = _CountingRegistry();
-      final signal = _FakeNetworkChangeSignal();
+      final signal = StaleTransportSignal(
+        _NeverNetworkChangeSignal(),
+        debounce: const Duration(milliseconds: 10),
+      );
 
       await tester.pumpWidget(
         _app(
           hostStore: _SpyHostStore(),
-          networkChangeSignal: signal,
+          staleTransportSignal: signal,
           hostConnectionRegistry: registry,
         ),
       );
@@ -323,13 +351,120 @@ void main() {
 
       expect(registry.invalidateAllCalls, 0);
 
-      signal.emit();
-      // Proves initState's `_networkChangeSignal.changes.listen(...
-      // _registry.invalidateAll ...)` subscription actually reached the
+      signal.markStale();
+      // Past the signal's debounce, so `_staleTransportSignal.changes` has
+      // emitted — proving initState's `_staleTransportSignal.changes.listen(
+      // ... _registry.invalidateAll ...)` subscription actually reached the
       // injected registry, not just that the signal itself fired.
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
 
       expect(registry.invalidateAllCalls, 1);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'resuming the app after a long background reaches the stale-transport '
+    'signal, which then emits',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final signal = _SpyStaleTransportSignal();
+      final events = <void>[];
+      signal.changes.listen(events.add);
+      final clock = _FakeClock();
+
+      await tester.pumpWidget(
+        _app(
+          hostStore: _SpyHostStore(),
+          staleTransportSignal: signal,
+          clock: clock.call,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(signal.markStaleCalls, 0);
+      expect(events, isEmpty);
+
+      // Transitions other than "resumed" must not mark the transport stale
+      // (closing a live socket on background buys nothing — herdr runs a
+      // persistent server). Drives the real state machine end to end
+      // (resumed -> inactive -> hidden -> paused, then back) rather than an
+      // arbitrary pair, since `AppLifecycleListener` asserts on invalid
+      // transitions.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      expect(signal.markStaleCalls, 0);
+
+      // The background outlives the staleness threshold (a real iOS
+      // suspension), so this resume must mark the transport stale.
+      clock.now = clock.now.add(const Duration(seconds: 15));
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      // This proves the wiring, not just the method's existence: it only
+      // passes if `_DroverAppState` actually registered itself as a
+      // `WidgetsBindingObserver` in `initState` (`addObserver(this)`) — with
+      // that call deleted, `didChangeAppLifecycleState` never runs and
+      // `markStaleCalls` stays 0.
+      expect(signal.markStaleCalls, 1);
+
+      // `markStale()` alone isn't the whole path either: the signal debounces
+      // before it emits on `changes`. Waiting past that debounce and
+      // asserting the emission rules out a stub `markStale()` override that
+      // swallows the call instead of routing it through the real coalescing
+      // logic.
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(events, hasLength(1));
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'resuming after a brief background does not mark the transport stale',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final signal = _SpyStaleTransportSignal();
+      final clock = _FakeClock();
+
+      await tester.pumpWidget(
+        _app(
+          hostStore: _SpyHostStore(),
+          staleTransportSignal: signal,
+          clock: clock.call,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // The very first resume after launch: the app has never been
+      // backgrounded, so there is nothing stale — this must not mark it.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      expect(signal.markStaleCalls, 0);
+
+      // A brief background — an app-switcher flick, well under the
+      // staleness threshold — must likewise not mark it.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      clock.now = clock.now.add(const Duration(seconds: 2));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      expect(signal.markStaleCalls, 0);
 
       await tester.pumpWidget(const SizedBox());
     },
