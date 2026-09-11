@@ -237,38 +237,42 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                     ErrorMessageView(_launchError!),
                   ],
                   const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      key: const ValueKey('launch_button'),
-                      onPressed: _canLaunch ? _launch : null,
-                      child: _busy
-                          ? const SizedBox(
-                              height: 16,
-                              width: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(
-                              droverLabelText(context, l10n.launchButton),
-                              style: droverLabelStyle(
-                                context,
-                                fontSize: 11.5,
-                                weight: FontWeight.w700,
-                              ),
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      key: const ValueKey('launch_cancel_button'),
-                      style: droverNeutralButtonStyle(scheme),
-                      onPressed: _busy
-                          ? null
-                          : () => Navigator.pop(context, false),
-                      child: Text(l10n.commonCancel),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          key: const ValueKey('launch_cancel_button'),
+                          style: droverNeutralButtonStyle(scheme),
+                          onPressed: _busy
+                              ? null
+                              : () => Navigator.pop(context, false),
+                          child: Text(l10n.commonCancel),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          key: const ValueKey('launch_button'),
+                          onPressed: _canLaunch ? _launch : null,
+                          child: _busy
+                              ? const SizedBox(
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Text(
+                                  droverLabelText(context, l10n.launchButton),
+                                  style: droverLabelStyle(
+                                    context,
+                                    fontSize: 11.5,
+                                    weight: FontWeight.w700,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -285,7 +289,12 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
       future: _presetsFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
+          // 36: CircularProgressIndicator's natural size, so it isn't
+          // squashed into an oval while reserving space for the chip row.
+          return const SizedBox(
+            height: 36,
+            child: Center(child: CircularProgressIndicator()),
+          );
         }
         if (snapshot.hasError) {
           return Column(
@@ -303,28 +312,24 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         if (presets.isEmpty) {
           return Text(l10n.launchNoAgents);
         }
-        return RadioGroup<AgentPreset>(
-          groupValue: _selectedPreset,
-          onChanged: (value) {
-            if (_busy) return;
-            setState(() {
-              _selectedPreset = value;
-              _syncDefaultName();
-            });
-          },
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final preset in presets)
-                RadioListTile<AgentPreset>(
-                  key: ValueKey('preset_${preset.bin}'),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(preset.label),
-                  value: preset,
-                ),
-            ],
-          ),
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final preset in presets)
+              ChoiceChip(
+                key: ValueKey('preset_${preset.bin}'),
+                label: Text(preset.label),
+                selected: preset == _selectedPreset,
+                onSelected: (_) {
+                  if (_busy) return;
+                  setState(() {
+                    _selectedPreset = preset;
+                    _syncDefaultName();
+                  });
+                },
+              ),
+          ],
         );
       },
     );
@@ -386,19 +391,17 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
           decoration: InputDecoration(
             labelText: l10n.launchWorkingDir,
             border: const OutlineInputBorder(),
+            suffixIcon: IconButton(
+              key: const ValueKey('cwd_browse_button'),
+              tooltip: l10n.launchBrowseDir,
+              onPressed: _busy ? null : _browseCwd,
+              icon: const Icon(Icons.folder_open),
+            ),
           ),
           validator: (v) => (v == null || v.trim().isEmpty)
               ? l10n.launchWorkingDirRequired
               : null,
           onChanged: (_) => setState(_syncDefaultNames),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          key: const ValueKey('cwd_browse_button'),
-          style: droverNeutralButtonStyle(Theme.of(context).colorScheme),
-          onPressed: _busy ? null : _browseCwd,
-          icon: const Icon(Icons.folder_open),
-          label: Text(l10n.launchBrowseDir),
         ),
       ],
     );
@@ -434,54 +437,55 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
 
   Widget _buildWorkspaceSection() {
     final l10n = AppLocalizations.of(context)!;
-    return RadioGroup<_WorkspaceMode>(
-      groupValue: _mode,
-      onChanged: (value) {
-        if (value != null) _selectMode(value);
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          RadioListTile<_WorkspaceMode>(
-            key: const ValueKey('ws_mode_new'),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: Text(l10n.launchNewWorkspace),
-            value: _WorkspaceMode.newWorkspace,
-          ),
-          RadioListTile<_WorkspaceMode>(
-            key: const ValueKey('ws_mode_existing'),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: Text(l10n.launchExistingWorkspace),
-            value: _WorkspaceMode.existing,
-          ),
-          if (_mode == _WorkspaceMode.newWorkspace) ...[
-            const SizedBox(height: 12),
-            TextFormField(
-              key: const ValueKey('workspace_name_field'),
-              controller: _workspaceNameController,
-              enabled: !_busy,
-              contextMenuBuilder: noScanTextContextMenuBuilder,
-              decoration: InputDecoration(
-                labelText: l10n.launchWorkspaceName,
-                border: const OutlineInputBorder(),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SegmentedButton<_WorkspaceMode>(
+          showSelectedIcon: false,
+          segments: [
+            ButtonSegment(
+              value: _WorkspaceMode.newWorkspace,
+              label: KeyedSubtree(
+                key: const ValueKey('ws_mode_new'),
+                child: Text(l10n.launchNewWorkspace),
               ),
-              validator: (v) => (v == null || v.trim().isEmpty)
-                  ? l10n.launchWorkspaceNameRequired
-                  : null,
-              onChanged: (_) {
-                _workspaceNameEdited = true;
-                setState(() {});
-              },
+            ),
+            ButtonSegment(
+              value: _WorkspaceMode.existing,
+              label: KeyedSubtree(
+                key: const ValueKey('ws_mode_existing'),
+                child: Text(l10n.launchExistingWorkspace),
+              ),
             ),
           ],
-          if (_mode == _WorkspaceMode.existing) ...[
-            const SizedBox(height: 12),
-            _buildWorkspaceDropdown(),
-          ],
+          selected: {_mode},
+          onSelectionChanged: (values) => _selectMode(values.first),
+        ),
+        if (_mode == _WorkspaceMode.newWorkspace) ...[
+          const SizedBox(height: 12),
+          TextFormField(
+            key: const ValueKey('workspace_name_field'),
+            controller: _workspaceNameController,
+            enabled: !_busy,
+            contextMenuBuilder: noScanTextContextMenuBuilder,
+            decoration: InputDecoration(
+              labelText: l10n.launchWorkspaceName,
+              border: const OutlineInputBorder(),
+            ),
+            validator: (v) => (v == null || v.trim().isEmpty)
+                ? l10n.launchWorkspaceNameRequired
+                : null,
+            onChanged: (_) {
+              _workspaceNameEdited = true;
+              setState(() {});
+            },
+          ),
         ],
-      ),
+        if (_mode == _WorkspaceMode.existing) ...[
+          const SizedBox(height: 12),
+          _buildWorkspaceDropdown(),
+        ],
+      ],
     );
   }
 

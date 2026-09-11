@@ -25,6 +25,7 @@ import '../src/demo/demo_herdr.dart';
 import '../src/herdr/command_runner.dart';
 import '../src/herdr/herdr_client.dart';
 import '../src/herdr/herdr_version.dart';
+import '../src/models/agent_preset.dart';
 import '../src/infra/ssh_command_runner.dart';
 import '../src/models/host_config.dart';
 import '../src/models/plugin_info.dart';
@@ -56,7 +57,9 @@ HerdrClient _client(
 
 CommandResult _launchResponder(String command) {
   if (command.contains('command -v')) {
-    return ok('claude\n');
+    // Report every preset as installed so the chip row shows its full
+    // wrapped-layout width in the preview, not just a single chip.
+    return ok(kAgentPresets.map((p) => p.bin).join('\n'));
   }
   if (command.contains("'workspace' 'list'")) {
     return ok(
