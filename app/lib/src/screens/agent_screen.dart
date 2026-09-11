@@ -722,6 +722,25 @@ class _AgentScreenState extends State<AgentScreen> {
     }
   }
 
+  /// Runs [action] on the key row's [_keyQueue], making a multi-step send
+  /// atomic with respect to raw keys: `SshCommandRunner` locks per call, not
+  /// per logical operation, so an arrow tapped mid-send would otherwise
+  /// acquire the mutex between two of its steps and land a bare cursor key
+  /// in the agent's TUI before the prompt arrives. Both kinds of send are
+  /// multi-step — a staged-image send uploads (mkdir, prune, each file, the
+  /// .gitignore) before the caption, and Copilot's [_deliverPrompt] brackets
+  /// the prompt with focus-gained/focus-lost pane writes.
+  ///
+  /// Keys tapped meanwhile are queued behind [action], not dropped — the row
+  /// stays live. The queue is left holding a value even when [action] throws
+  /// (later taps chain off it), while the error still reaches the caller
+  /// through the returned future.
+  Future<T> _queued<T>(Future<T> Function() action) {
+    final queued = _keyQueue.then((_) => action());
+    _keyQueue = queued.then((_) {}, onError: (_) {});
+    return queued;
+  }
+
   /// Sends a raw key to the pane outside the [_send] path, for the composer's
   /// key row (arrows, Esc, Enter): navigating a TUI dialog means several taps
   /// in a row, and [_send] would disable the whole composer for an SSH
@@ -779,15 +798,17 @@ class _AgentScreenState extends State<AgentScreen> {
       return; // need the agent's cwd and an image-capable adapter first
     }
     final ok = await _send(
-      () => _pendingImages.isEmpty
-          ? _deliverPrompt(text)
-          : images!.send(
-              widget.client,
-              agent!,
-              images: _pendingImages,
-              caption: text,
-              deliver: _deliverPrompt,
-            ),
+      () => _queued(
+        () => _pendingImages.isEmpty
+            ? _deliverPrompt(text)
+            : images!.send(
+                widget.client,
+                agent!,
+                images: _pendingImages,
+                caption: text,
+                deliver: _deliverPrompt,
+              ),
+      ),
     );
     if (ok) {
       _messageController.clear();

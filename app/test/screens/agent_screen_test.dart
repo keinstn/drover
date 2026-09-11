@@ -366,6 +366,73 @@ class DuplicatePaneRunner extends NativeHistoryRunner {
   }
 }
 
+/// Logs every `uploadFile` into the same ordered [StubCommandRunner.commands]
+/// list `run` uses — the base runner keeps uploads in a separate list, so
+/// there is no single log to assert interleaving on — and holds the first
+/// upload open on [firstUploadGate], letting a test tap a key while a
+/// staged-image send is suspended mid-upload.
+class GatedUploadRunner extends StubCommandRunner {
+  GatedUploadRunner() : super(blockedPromptResponse);
+
+  /// Prefix of the marker appended to `commands` for each upload.
+  static const uploadMarker = 'upload:';
+
+  final firstUploadGate = Completer<void>();
+  var _gated = false;
+
+  @override
+  Future<void> uploadFile(String remotePath, List<int> bytes) async {
+    commands.add('$uploadMarker$remotePath');
+    if (!_gated) {
+      _gated = true;
+      await firstUploadGate.future;
+    }
+    return super.uploadFile(remotePath, bytes);
+  }
+}
+
+/// An idle Copilot pane, so `_deliverPrompt` resolves to
+/// [CopilotAgentAdapter]'s focus-gained/prompt/focus-lost bracket.
+CommandResult _copilotIdleResponse(String command) {
+  if (command.contains("'workspace' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"workspaces":['
+      '{"workspace_id":"wB","label":"Project B"}'
+      ']}}',
+    );
+  }
+  if (command.contains("'agent' 'list'")) {
+    return ok(
+      '{"id":"1","result":{"agents":[{"agent":"copilot",'
+      '"agent_status":"idle","cwd":"/tmp/proj","focused":false,'
+      '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+      '"name":"Copilot Agent"}]}}',
+    );
+  }
+  if (command.contains("'agent' 'read'")) return ok('Copilot idle');
+  return ok('{"id":"1","result":{}}');
+}
+
+/// A Copilot pane whose leading focus-gained `pane send-text` is held open on
+/// [focusGainedGate], letting a test tap a key while a plain-text send is
+/// suspended between the bracket's first write and the prompt. Every call
+/// already lands in [StubCommandRunner.commands] via `run`, so the ordering
+/// assertion needs no extra marker.
+class GatedCopilotFocusRunner extends StubCommandRunner {
+  GatedCopilotFocusRunner() : super(_copilotIdleResponse);
+
+  final focusGainedGate = Completer<void>();
+
+  @override
+  Future<CommandResult> run(String command) async {
+    final result = await super.run(command);
+    if (command.contains('send-text') && command.contains('\x1b[I')) {
+      await focusGainedGate.future;
+    }
+    return result;
+  }
+}
+
 /// Holds the Esc `send-keys` call open on [escGate] so a test can keep a
 /// `_send` in flight (e.g. via the send/stop button, which disables the
 /// composer) while asserting the key row still works. Arrow keys and Enter
@@ -2708,6 +2775,171 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'queues an arrow key tapped mid-upload behind the staged-image send',
+    (tester) async {
+      final runner = GatedUploadRunner();
+      final client = HerdrClient(runner);
+      final imagePicker = FakeImagePicker();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            imagePicker: imagePicker,
+            pollInterval: const Duration(hours: 1),
+            draftStore: AgentDraftStore(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), 'look at this');
+      await tester.tap(find.byKey(const ValueKey('attach_image_button')));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+      await tester.pumpAndSettle();
+
+      // Start the send and let it run until it suspends on the first upload.
+      await tester.tap(find.byKey(const ValueKey('send_message_button')));
+      // Plain pumps, not pumpAndSettle: the in-flight send spins the send
+      // button's progress indicator, which never settles.
+      await tester.pump();
+      await tester.pump();
+      expect(
+        runner.commands.any(
+          (c) => c.startsWith(GatedUploadRunner.uploadMarker),
+        ),
+        isTrue,
+        reason: 'the send must be suspended mid-upload before the key tap',
+      );
+
+      // A tap here would previously grab the runner's mutex between two
+      // upload steps and land a bare cursor key in the agent's TUI.
+      await tester.tap(find.byKey(const ValueKey('send_key_right')));
+      await tester.pump();
+
+      runner.firstUploadGate.complete();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+
+      final firstUpload = runner.commands.indexWhere(
+        (c) => c.startsWith(GatedUploadRunner.uploadMarker),
+      );
+      final prompt = runner.commands.indexWhere(
+        (c) => c.contains("'agent' 'prompt'"),
+      );
+      final sendKeys = runner.commands.indexWhere(
+        (c) => c.contains('send-keys') && c.contains("'right'"),
+      );
+      expect(firstUpload, isNonNegative);
+      expect(prompt, isNonNegative, reason: 'the prompt must be delivered');
+      expect(sendKeys, isNonNegative, reason: 'the key must not be dropped');
+      // Nothing raw got in between the upload steps and the prompt, and the
+      // queued key landed after the whole send.
+      expect(
+        runner.commands
+            .sublist(firstUpload, prompt)
+            .where((c) => c.contains('send-keys')),
+        isEmpty,
+      );
+      expect(sendKeys, greaterThan(prompt));
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'queues an arrow key tapped mid-bracket behind a Copilot text-only send',
+    (tester) async {
+      final runner = GatedCopilotFocusRunner();
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: client,
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+            draftStore: AgentDraftStore(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), 'hello copilot');
+      await tester.tap(find.byKey(const ValueKey('toggle_arrow_keys_button')));
+      await tester.pumpAndSettle();
+
+      // No staged image: this is the plain-text arm, which on Copilot is
+      // still three round-trips (focus-gained, prompt, focus-lost). Start it
+      // and let it suspend after the focus-gained write.
+      await tester.tap(find.byKey(const ValueKey('send_message_button')));
+      // Plain pumps, not pumpAndSettle: the in-flight send spins the send
+      // button's progress indicator, which never settles.
+      await tester.pump();
+      await tester.pump();
+      expect(
+        runner.commands.any(
+          (c) => c.contains('send-text') && c.contains('\x1b[I'),
+        ),
+        isTrue,
+        reason: 'the send must be suspended mid-bracket before the key tap',
+      );
+      expect(
+        runner.commands.any((c) => c.contains("'agent' 'prompt'")),
+        isFalse,
+        reason: 'the prompt must not have been delivered yet',
+      );
+
+      // A tap here would previously land a bare cursor key between the
+      // focus-gained write and the prompt.
+      await tester.tap(find.byKey(const ValueKey('send_key_right')));
+      await tester.pump();
+
+      runner.focusGainedGate.complete();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+
+      final focusGained = runner.commands.indexWhere(
+        (c) => c.contains('send-text') && c.contains('\x1b[I'),
+      );
+      final prompt = runner.commands.indexWhere(
+        (c) => c.contains("'agent' 'prompt'"),
+      );
+      final sendKeys = runner.commands.indexWhere(
+        (c) => c.contains('send-keys') && c.contains("'right'"),
+      );
+      expect(focusGained, isNonNegative);
+      expect(prompt, isNonNegative, reason: 'the prompt must be delivered');
+      expect(sendKeys, isNonNegative, reason: 'the key must not be dropped');
+      expect(
+        runner.commands
+            .sublist(focusGained, prompt)
+            .where((c) => c.contains('send-keys')),
+        isEmpty,
+      );
+      expect(sendKeys, greaterThan(prompt));
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('removing one staged image leaves the other and sends nothing', (
     tester,
