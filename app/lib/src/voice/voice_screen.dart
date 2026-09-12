@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
+import '../models/agent_preset.dart';
+import '../utils/path.dart';
 import 'voice_drafts.dart';
 import 'voice_herd.dart';
 import 'voice_session.dart';
@@ -174,6 +176,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
             VoiceSession.announceFailedCode => l10n.voiceEventAnnounceFailed,
             VoiceSession.unsentDraftsCode => l10n.voiceUnsentDrafts,
             VoiceSession.sendFailedCode => l10n.voiceSendFailed,
+            VoiceSession.launchFailedCode => l10n.voiceLaunchFailed,
             _ => entry.text,
           },
           textAlign: TextAlign.center,
@@ -181,9 +184,15 @@ class _VoiceScreenState extends State<VoiceScreen> {
         ),
         VoiceEntryKind.draft => _draftCard(context, l10n, entry.text),
         VoiceEntryKind.sent => Text(
-          l10n.voiceDraftSent(
-            voiceAgentTitle(widget.session.drafts.byId(entry.text)!.agent),
-          ),
+          switch (widget.session.drafts.byId(entry.text)!) {
+            MessageDraft(:final agent) => l10n.voiceDraftSent(
+              voiceAgentTitle(agent),
+            ),
+            LaunchDraft(:final kind, :final cwd) => l10n.voiceLaunchStarted(
+              _kindLabel(kind),
+              lastPathSegment(cwd),
+            ),
+          },
           textAlign: TextAlign.center,
           style: muted,
         ),
@@ -203,17 +212,40 @@ class _VoiceScreenState extends State<VoiceScreen> {
     );
   }
 
-  /// The draft [id] as a card: agent header, message, and a Send button
-  /// while it is still pending. Once sent the button goes and the header
-  /// shows a check; the "sent" statement itself is the [VoiceEntryKind.sent]
-  /// line, so it appears exactly once.
+  /// The draft [id] as a card: a header, the full text, and an action
+  /// button while it is still pending — Send for a message, Launch for a new
+  /// agent. Once acted on the button goes and the header shows a check; the
+  /// "sent" statement itself is the [VoiceEntryKind.sent] line, so it appears
+  /// exactly once.
   Widget _draftCard(BuildContext context, AppLocalizations l10n, String id) {
     final scheme = Theme.of(context).colorScheme;
     final colors = DroverColors.of(context);
     final drafts = widget.session.drafts;
-    final VoiceDraft draft = drafts.byId(id)!;
+    final draft = drafts.byId(id)!;
     final pending = drafts.isPending(draft);
-    final title = voiceAgentTitle(draft.agent);
+    final (
+      String header,
+      String body,
+      String action,
+      VoidCallback onAction,
+    ) = switch (draft) {
+      MessageDraft(:final agent, :final message) => (
+        pending
+            ? l10n.voiceDraftPending(voiceAgentTitle(agent))
+            : voiceAgentTitle(agent),
+        message,
+        l10n.voiceDraftSend,
+        () => widget.session.sendDraft(id),
+      ),
+      LaunchDraft(:final kind, :final cwd, :final brief) => (
+        pending
+            ? l10n.voiceLaunchPending(_kindLabel(kind), lastPathSegment(cwd))
+            : l10n.voiceLaunchHeader(_kindLabel(kind), lastPathSegment(cwd)),
+        brief,
+        l10n.voiceLaunchStart,
+        () => widget.session.launchDraft(id),
+      ),
+    };
     return Align(
       alignment: Alignment.centerLeft,
       child: ConstrainedBox(
@@ -232,14 +264,18 @@ class _VoiceScreenState extends State<VoiceScreen> {
               Row(
                 children: [
                   Icon(
-                    pending ? Icons.schedule_send : Icons.check,
+                    pending
+                        ? (draft is LaunchDraft
+                              ? Icons.rocket_launch
+                              : Icons.schedule_send)
+                        : Icons.check,
                     size: 14,
                     color: colors.tertiaryText,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      pending ? l10n.voiceDraftPending(title) : title,
+                      header,
                       style: droverLabelStyle(
                         context,
                         color: colors.tertiaryText,
@@ -250,7 +286,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                draft.message,
+                body,
                 style: TextStyle(
                   color: scheme.onSurface,
                   fontSize: 13.5,
@@ -262,9 +298,13 @@ class _VoiceScreenState extends State<VoiceScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: FilledButton.tonal(
-                    key: ValueKey('voice_draft_send_$id'),
-                    onPressed: () => widget.session.sendDraft(id),
-                    child: Text(l10n.voiceDraftSend),
+                    key: ValueKey(
+                      draft is LaunchDraft
+                          ? 'voice_launch_$id'
+                          : 'voice_draft_send_$id',
+                    ),
+                    onPressed: drafts.isBusy(draft) ? null : onAction,
+                    child: Text(action),
                   ),
                 ),
               ],
@@ -274,6 +314,11 @@ class _VoiceScreenState extends State<VoiceScreen> {
       ),
     );
   }
+
+  /// The preset label for an agent [kind] (e.g. "Claude Code"), or the kind
+  /// itself when no preset matches.
+  String _kindLabel(String kind) =>
+      kAgentPresets.where((p) => p.kind == kind).firstOrNull?.label ?? kind;
 
   /// Maps an event code (`finished:<title>` / `blocked:<title>`) to copy.
   String _eventLabel(AppLocalizations l10n, String code) {

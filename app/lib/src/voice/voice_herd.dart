@@ -9,7 +9,9 @@ import '../herdr/ansi_text.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/pane_text.dart';
 import '../models/agent_info.dart';
+import '../models/agent_preset.dart';
 import '../transcript/native_transcript.dart';
+import '../utils/path.dart';
 
 enum AgentEventKind { finished, blocked }
 
@@ -62,7 +64,21 @@ abstract interface class VoiceHerd {
     int? option,
     String? text,
   });
+
+  /// Starts a [kind] agent in [cwd] and hands it [brief] as its first
+  /// prompt. Returns the new agent's pane and speakable title, and whether
+  /// the brief was confirmed to have landed in its pane.
+  Future<VoiceLaunch> launch({
+    required String kind,
+    required String cwd,
+    required String brief,
+  });
 }
+
+/// What [VoiceHerd.launch] produced: the started agent, plus whether its
+/// brief was confirmed delivered (false means the agent is up but empty, so
+/// the brief still has to be sent as a message).
+typedef VoiceLaunch = ({String paneId, String title, bool briefDelivered});
 
 /// Unannounced agent events for one host. HerdScreen adds; VoiceSession
 /// drains.
@@ -139,6 +155,44 @@ AgentInfo resolveAgent(List<AgentInfo> agents, String query) {
   return matches.single;
 }
 
+/// The distinct working directories of [agents], keyed by folder name.
+///
+/// `foregroundCwd ?? cwd` — the same directory `list_agents` names the project
+/// after and the launch sheet offers, so a folder the model spoke always
+/// resolves back to the directory the user heard.
+Map<String, Set<String>> _projectCwds(List<AgentInfo> agents) {
+  final byFolder = <String, Set<String>>{};
+  for (final agent in agents) {
+    final cwd = agent.foregroundCwd ?? agent.cwd;
+    byFolder.putIfAbsent(lastPathSegment(cwd).toLowerCase(), () => {}).add(cwd);
+  }
+  return byFolder;
+}
+
+/// Resolves a spoken project [query] to a working directory, case-insensitively
+/// against the folder names of [agents]' working directories.
+///
+/// ponytail: voice can only name a folder that some agent already runs in —
+/// dictating a path is hopeless, and probing the host's filesystem is a
+/// screen feature. New folders stay in the launch sheet.
+String resolveProjectCwd(List<AgentInfo> agents, String query) {
+  final byFolder = _projectCwds(agents);
+  final folders = byFolder.keys.join(', ');
+  final cwds = byFolder[query.trim().toLowerCase()];
+  if (cwds == null) {
+    throw VoiceAgentLookupError(
+      'no project folder matches "$query"; projects: $folders',
+    );
+  }
+  if (cwds.length > 1) {
+    throw VoiceAgentLookupError(
+      'several projects are called "$query"; start it from the app. '
+      'projects: $folders',
+    );
+  }
+  return cwds.single;
+}
+
 const _speakableMax = 600;
 final _fence = RegExp(r'```[\s\S]*?(```|$)');
 final _lineMarkers = RegExp(
@@ -195,6 +249,21 @@ Future<String> announceEvents(List<AgentEvent> events, VoiceHerd herd) async {
   return paragraphs.join('\n\n');
 }
 
+/// Whether [pane] shows [brief], compared without any whitespace: a pane
+/// hard-wraps mid-word and repaints, so neither line breaks nor the terminal
+/// width can be relied on. Only the head of the brief is looked for — enough
+/// to tell "prompt landed" from "pane still empty".
+///
+/// ponytail: the cost of a false negative is one duplicated prompt, which is
+/// why the check is this loose; tighten it if double delivery is ever seen.
+bool _paneHasBrief(String pane, String brief) {
+  String squeeze(String s) => s.replaceAll(RegExp(r'\s+'), '');
+  final fragment = squeeze(brief);
+  if (fragment.isEmpty) return true;
+  final head = fragment.length > 30 ? fragment.substring(0, 30) : fragment;
+  return squeeze(stripAnsi(pane)).contains(head);
+}
+
 /// [VoiceHerd] over a real [HerdrClient] plus HerdScreen's poll snapshot and
 /// per-pane native history.
 class HerdVoiceHerd implements VoiceHerd {
@@ -204,6 +273,7 @@ class HerdVoiceHerd implements VoiceHerd {
     required this._loadTranscript,
     Future<String> Function(String paneId)? readPane,
     this._adapterFor = resolveAgentAdapter,
+    this._sleep = Future.delayed,
   }) : _client = client,
        _readPane = readPane ?? client.readAgent;
 
@@ -212,6 +282,7 @@ class HerdVoiceHerd implements VoiceHerd {
   final Future<NativeTranscript?> Function(AgentInfo) _loadTranscript;
   final Future<String> Function(String paneId) _readPane;
   final AgentAdapter? Function(AgentInfo) _adapterFor;
+  final Future<void> Function(Duration) _sleep;
 
   @override
   List<AgentInfo> get agents => _agents();
@@ -298,5 +369,79 @@ class HerdVoiceHerd implements VoiceHerd {
         ),
       ],
     );
+  }
+
+  /// How many polls a freshly started agent gets to show up as idle (one
+  /// sleep plus one `agent list` round trip each, so at least a minute in
+  /// wall clock), and how long its brief gets to appear in the pane before it
+  /// is checked for.
+  ///
+  /// ponytail: fixed ceilings — a host slower than that to boot an agent gets
+  /// `briefDelivered: false` and the user is told to send the brief as a
+  /// message.
+  static const _idleWaitPolls = 60;
+  static const _idleWaitStep = Duration(seconds: 1);
+  static const _briefCheckDelay = Duration(seconds: 3);
+
+  @override
+  Future<VoiceLaunch> launch({
+    required String kind,
+    required String cwd,
+    required String brief,
+  }) async {
+    final preset = kAgentPresets.where((p) => p.kind == kind).firstOrNull;
+    final name = preset?.bin ?? kind;
+    final folder = lastPathSegment(cwd);
+    final workspace = await _client.createWorkspace(label: folder, cwd: cwd);
+    try {
+      await _client.startAgent(
+        name: name,
+        kind: kind,
+        paneId: workspace.paneId,
+      );
+    } catch (_) {
+      // Same rollback as the launch sheet: never leave an empty workspace
+      // behind for a start that failed.
+      try {
+        await _client.closeWorkspace(workspace.workspaceId);
+      } catch (_) {}
+      rethrow;
+    }
+    final paneId = workspace.paneId;
+    final agent = await _awaitIdle(paneId);
+    final title = agent == null ? name : voiceAgentTitle(agent);
+    // Not idle within the bound: prompting now is exactly the send herdr
+    // drops, so hand the brief back to the caller instead.
+    if (agent == null) {
+      return (paneId: paneId, title: title, briefDelivered: false);
+    }
+    var delivered = await _deliverBrief(paneId, brief);
+    // herdr can silently drop a prompt sent right after `agent start`, even
+    // with the status already reading idle (docs/herdr-notes.md), so the
+    // pane is re-read and the brief sent once more if it is not there.
+    if (!delivered) delivered = await _deliverBrief(paneId, brief);
+    return (paneId: paneId, title: title, briefDelivered: delivered);
+  }
+
+  /// Polls until [paneId] is listed as an idle agent; null once the poll
+  /// budget is spent. Sleeps before the first check: the pane cannot be idle
+  /// the instant `agent start` returns.
+  Future<AgentInfo?> _awaitIdle(String paneId) async {
+    for (var poll = 0; poll < _idleWaitPolls; poll++) {
+      await _sleep(_idleWaitStep);
+      final agent = (await _client.listAgents())
+          .where((a) => a.paneId == paneId)
+          .firstOrNull;
+      if (agent != null && agent.status == AgentStatus.idle) return agent;
+    }
+    return null;
+  }
+
+  /// Prompts [brief] into [paneId] and reports whether it then shows up in
+  /// the pane.
+  Future<bool> _deliverBrief(String paneId, String brief) async {
+    await _client.prompt(paneId, brief);
+    await _sleep(_briefCheckDelay);
+    return _paneHasBrief(await _readPane(paneId), brief);
   }
 }

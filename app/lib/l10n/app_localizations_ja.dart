@@ -563,8 +563,29 @@ class AppLocalizationsJa extends AppLocalizations {
   String get voiceDraftSend => '送信';
 
   @override
-  String get voiceUnsentDrafts => '未送信の下書きがあります。送信ボタンで送れます';
+  String get voiceUnsentDrafts => '未実行の下書きがあります。カードのボタンから実行できます';
 
   @override
   String get voiceSendFailed => 'メッセージを送信できませんでした';
+
+  @override
+  String voiceLaunchPending(String kind, String project) {
+    return '$project で $kind を起動待ち';
+  }
+
+  @override
+  String voiceLaunchHeader(String kind, String project) {
+    return '$project の $kind';
+  }
+
+  @override
+  String voiceLaunchStarted(String kind, String project) {
+    return '$project で $kind を起動しました';
+  }
+
+  @override
+  String get voiceLaunchStart => '起動';
+
+  @override
+  String get voiceLaunchFailed => 'エージェントを起動できませんでした';
 }

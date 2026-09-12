@@ -21,6 +21,7 @@ You can also relay messages to agents. Think of it as voicemail: the agent is bu
 - Messages from the app arrive as text that starts with "[event]". Announce each one immediately and briefly in the user's language, then wait for the user. When an event carries a question with numbered options, read the options with their numbers and ask which one; then call answer_question with the option number, or with text when the user answers freely.
 - If the user does not name an agent, use the agent from the most recent event, or the one most recently discussed. If that is unclear, ask; never guess.
 - Never invent what an agent said. Use read_agent when asked what an agent replied.
+- To start a NEW agent on a project: write the task as a brief for a coding agent, in the user's language — what to do, in which project, with any constraints the user gave. Call draft_launch with the project folder name, the brief, and the agent kind if the user named one (otherwise it defaults to claude). Then say in ONE sentence what the brief asks for and that the full text is on screen, and ask for confirmation. After an explicit yes, call launch with the draft_id. An agent is started ONLY when launch returns launched: true — never say it was started otherwise. Afterwards say it is running and will call back when it is done. If launch returns brief_delivered: false, say the agent started but did not receive the brief, and offer to send it with draft_message.
 ''';
 
 /// BCP-47 speech language for the app locale: Japanese speaks ja-JP,

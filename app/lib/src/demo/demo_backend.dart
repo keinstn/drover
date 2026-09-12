@@ -31,6 +31,12 @@ const demoTabId = 'demo:t1';
 /// look like a real herd.
 const demoReviewPaneId = 'demo:p2';
 const demoDocsPaneId = 'demo:p3';
+
+/// The pane a voice launch gets: demo mode has no real host, so every
+/// `workspace create` hands back this one.
+const demoLaunchedPaneId = 'demo:p4';
+const _launchedWorkspaceId = 'demo:w2';
+const _launchedTabId = 'demo:t4';
 const _reviewTabId = 'demo:t2';
 const _docsTabId = 'demo:t3';
 
@@ -165,6 +171,12 @@ class DemoBackend extends ChangeNotifier {
   /// the transcript verbatim.
   String? _followUp;
 
+  /// The agent started by a voice launch, if any: its kind, the brief it was
+  /// prompted with, and the `agent list` ticks it still reads as working.
+  String? _launchedKind;
+  String? _launchedBrief;
+  int _launchedTicks = 0;
+
   /// True once the scripted session has landed its second (follow-up) reply.
   bool get isComplete => _phase == _Phase.idle2;
 
@@ -251,6 +263,15 @@ class DemoBackend extends ChangeNotifier {
         cwd: _docsCwd,
         title: content.docsTitle,
       ),
+      if (_launchedKind case final kind?)
+        _agentJson(
+          agent: kind,
+          status: _launchedTicks > 0 ? 'working' : 'idle',
+          paneId: demoLaunchedPaneId,
+          tabId: _launchedTabId,
+          cwd: _cwd,
+          title: kind,
+        ),
     ];
     return '{"id":"1","result":{"agents":[${agents.join(',')}]}}';
   }
@@ -283,8 +304,29 @@ class DemoBackend extends ChangeNotifier {
     if (command.contains("'agent' 'read' '$demoDocsPaneId'")) {
       return ok(_docsLiveText);
     }
+    if (command.contains("'agent' 'read' '$demoLaunchedPaneId'")) {
+      return ok('> ${_launchedBrief ?? ''}\n');
+    }
+    if (command.contains("'workspace' 'create'")) {
+      return ok(
+        '{"id":"1","result":{"workspace":{"workspace_id":'
+        '"$_launchedWorkspaceId"},"root_pane":{"pane_id":'
+        '"$demoLaunchedPaneId"}}}',
+      );
+    }
+    if (command.contains("'agent' 'start'")) {
+      _launchedKind = _startedKind(command) ?? 'claude';
+      notifyListeners();
+      return ok('{"id":"1","result":{}}');
+    }
+    if (command.contains(_launchedPromptPrefix)) {
+      _launchedBrief = _promptText(command, _launchedPromptPrefix);
+      _launchedTicks = _workingTicks;
+      notifyListeners();
+      return ok('{"id":"1","result":{}}');
+    }
     if (command.contains(_promptPrefix)) {
-      _onPrompt(_promptText(command));
+      _onPrompt(_promptText(command, _promptPrefix));
       return ok('{"id":"1","result":{}}');
     }
     // The mode-cycle escape sequence is a fixed literal (backtab, ESC [ Z
@@ -303,6 +345,7 @@ class DemoBackend extends ChangeNotifier {
   /// the canned reply landing. Deliberately NOT a [Timer] — see the file
   /// comment.
   void _onAgentListTick() {
+    if (_launchedTicks > 0 && --_launchedTicks == 0) notifyListeners();
     if (_phase != _Phase.working1 && _phase != _Phase.working2) return;
     _ticksRemaining--;
     if (_ticksRemaining > 0) return;
@@ -341,15 +384,22 @@ class DemoBackend extends ChangeNotifier {
 /// any other pane never reaches [_promptText].
 const _promptPrefix = "'agent' 'prompt' '$demoPaneId' '";
 
+/// The same, for the pane a voice launch started.
+const _launchedPromptPrefix = "'agent' 'prompt' '$demoLaunchedPaneId' '";
+
+/// The `--kind` argument of an `agent start` command line.
+String? _startedKind(String command) =>
+    RegExp(r"'--kind' '([^']*)'").firstMatch(command)?.group(1);
+
 /// Extracts the free-text argument from an `agent prompt <paneId> <text>`
 /// command line built by [buildHerdrCommand], reversing [shQuote]'s `'\''`
 /// escaping for embedded quotes. Anchored on the command's known, fixed
-/// prefix rather than scanning for the last `' '` argument boundary: the
+/// [prefix] rather than scanning for the last `' '` argument boundary: the
 /// user's own follow-up text can itself contain a `' '`-shaped run (e.g. two
 /// quoted words separated by a space, like `check 'a' or 'b'`), which would
 /// make a generic reverse scan find a boundary inside the text instead of
 /// before it.
-String _promptText(String command) {
-  final start = command.indexOf(_promptPrefix) + _promptPrefix.length;
+String _promptText(String command, String prefix) {
+  final start = command.indexOf(prefix) + prefix.length;
   return command.substring(start, command.length - 1).replaceAll("'\\''", "'");
 }

@@ -1,5 +1,6 @@
 import 'package:firebase_ai/firebase_ai.dart';
 
+import '../models/agent_preset.dart';
 import '../utils/path.dart';
 import 'voice_drafts.dart';
 import 'voice_herd.dart';
@@ -29,12 +30,15 @@ class VoiceTool {
   final Future<Map<String, Object?>> Function(Map<String, Object?> args) run;
 }
 
+/// The agent kinds [droverVoiceTools] accepts, for prompts and errors.
+final _kinds = kAgentPresets.map((p) => p.kind).join(', ');
+
 /// The tools drover exposes to the voice assistant for one herdr host.
 ///
-/// Sending is two-step (draft_message, then send_message with the draft id)
-/// so the app, not the model's narration, decides whether a message went
-/// out: on device the model was observed saying "sent" without ever calling
-/// the tool.
+/// Sending and launching are two-step (draft_message / draft_launch, then
+/// send_message / launch with the draft id) so the app, not the model's
+/// narration, decides whether anything happened: on device the model was
+/// observed saying "sent" without ever calling the tool.
 List<VoiceTool> droverVoiceTools(VoiceHerd herd, VoiceDrafts drafts) {
   final agentParam = Schema.string(
     description: 'The agent, by its title, name or kind (e.g. "claude").',
@@ -110,7 +114,7 @@ List<VoiceTool> droverVoiceTools(VoiceHerd herd, VoiceDrafts drafts) {
       run: (args) async {
         final id = '${args['draft_id']}';
         final draft = drafts.byId(id);
-        if (draft == null) {
+        if (draft is! MessageDraft) {
           return {'error': 'unknown draft_id $id; call draft_message first'};
         }
         if (!drafts.isPending(draft)) {
@@ -118,14 +122,125 @@ List<VoiceTool> droverVoiceTools(VoiceHerd herd, VoiceDrafts drafts) {
           // button): never send twice, and let the model say so.
           return {'error': 'draft $id was already sent; do not send it again'};
         }
+        if (drafts.isBusy(draft)) {
+          return {'error': 'draft $id is already being sent; wait for it'};
+        }
         // A throw here propagates as an error payload and leaves the draft
         // pending, so the user can still send it from the screen.
-        await herd.send(draft.agent, draft.message);
-        drafts.markSent(draft);
+        drafts.markBusy(draft);
+        try {
+          await herd.send(draft.agent, draft.message);
+          drafts.markSent(draft);
+        } finally {
+          drafts.release(draft);
+        }
         return {
           'sent': true,
           'agent': voiceAgentTitle(draft.agent),
           'message': draft.message,
+        };
+      },
+    ),
+    VoiceTool(
+      name: 'draft_launch',
+      description:
+          'Prepare to start a NEW coding agent on a project, with a brief '
+          'describing its task. Nothing is started yet. Summarise the '
+          'returned brief in one sentence, say the full text is on screen, '
+          'and ask for confirmation; after an explicit yes call launch with '
+          'the draft_id.',
+      parameters: {
+        'project': Schema.string(
+          description:
+              'The project folder name, as list_agents reports it. Only a '
+              'folder some agent already runs in can be named by voice.',
+        ),
+        'brief': Schema.string(
+          description:
+              'The task for the new agent, written as a brief for a coding '
+              "agent in the user's language. May be several sentences.",
+        ),
+        'kind': Schema.string(
+          description:
+              'The agent kind: $_kinds. Defaults to claude when omitted.',
+        ),
+      },
+      optionalParameters: const ['kind'],
+      run: (args) async {
+        final kind = args['kind'] is String && '${args['kind']}'.isNotEmpty
+            ? '${args['kind']}'
+            : 'claude';
+        if (!kAgentPresets.any((p) => p.kind == kind)) {
+          return {'error': 'unknown kind $kind; kinds: $_kinds'};
+        }
+        final String cwd;
+        try {
+          cwd = resolveProjectCwd(herd.agents, '${args['project']}');
+        } on VoiceAgentLookupError catch (e) {
+          return {'error': e.message};
+        }
+        final draft = drafts.addLaunch(
+          kind: kind,
+          cwd: cwd,
+          brief: '${args['brief']}',
+        );
+        return {
+          'draft_id': draft.id,
+          'kind': kind,
+          'project': lastPathSegment(cwd),
+          'brief': draft.brief,
+        };
+      },
+    ),
+    VoiceTool(
+      name: 'launch',
+      description:
+          'Starts the drafted agent and hands it its brief. Call ONLY after '
+          'the user explicitly confirmed. The agent is started only when '
+          'this returns launched: true; brief_delivered false means it is '
+          'running but never got the brief.',
+      parameters: {
+        'draft_id': Schema.string(
+          description: 'The draft_id returned by draft_launch.',
+        ),
+      },
+      run: (args) async {
+        final id = '${args['draft_id']}';
+        final draft = drafts.byId(id);
+        if (draft is! LaunchDraft) {
+          return {'error': 'unknown draft_id $id; call draft_launch first'};
+        }
+        if (!drafts.isPending(draft)) {
+          // Already launched (here or from the screen's Launch button):
+          // never start a second agent for the same draft.
+          return {
+            'error': 'draft $id was already launched; do not launch it again',
+          };
+        }
+        if (drafts.isBusy(draft)) {
+          return {'error': 'draft $id is already being launched; wait for it'};
+        }
+        // A throw here propagates as an error payload and leaves the draft
+        // pending, so the user can still launch it from the screen. The busy
+        // flag covers the launch's own bounded wait for the agent to come up,
+        // which is far too long a window to leave the screen's button live.
+        drafts.markBusy(draft);
+        final VoiceLaunch launched;
+        try {
+          launched = await herd.launch(
+            kind: draft.kind,
+            cwd: draft.cwd,
+            brief: draft.brief,
+          );
+          drafts.markSent(draft);
+        } finally {
+          drafts.release(draft);
+        }
+        return {
+          'launched': true,
+          'agent': launched.title,
+          'project': lastPathSegment(draft.cwd),
+          'brief_delivered': launched.briefDelivered,
         };
       },
     ),

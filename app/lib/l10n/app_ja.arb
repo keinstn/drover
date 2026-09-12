@@ -181,6 +181,11 @@
   "voiceDraftPending": "{agent} への送信待ち",
   "voiceDraftSent": "{agent} に送信しました",
   "voiceDraftSend": "送信",
-  "voiceUnsentDrafts": "未送信の下書きがあります。送信ボタンで送れます",
-  "voiceSendFailed": "メッセージを送信できませんでした"
+  "voiceUnsentDrafts": "未実行の下書きがあります。カードのボタンから実行できます",
+  "voiceSendFailed": "メッセージを送信できませんでした",
+  "voiceLaunchPending": "{project} で {kind} を起動待ち",
+  "voiceLaunchHeader": "{project} の {kind}",
+  "voiceLaunchStarted": "{project} で {kind} を起動しました",
+  "voiceLaunchStart": "起動",
+  "voiceLaunchFailed": "エージェントを起動できませんでした"
 }

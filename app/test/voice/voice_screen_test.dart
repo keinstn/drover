@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/voice/voice_drafts.dart';
@@ -187,6 +189,55 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('a launch draft renders the brief; tapping Launch starts it', (
+    tester,
+  ) async {
+    final herd = FakeVoiceHerd();
+    final drafts = VoiceDrafts();
+    await tester.pumpWidget(app(herd: herd, drafts: drafts));
+    await tester.pump();
+
+    drafts.addLaunch(
+      kind: 'codex',
+      cwd: '/home/me/billing-api',
+      brief: 'Add a retry to the webhook client. Keep it small.',
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Waiting to start Codex in billing-api'), findsOneWidget);
+    expect(
+      find.text('Add a retry to the webhook client. Keep it small.'),
+      findsOneWidget,
+    );
+    final launch = find.byKey(const ValueKey('voice_launch_d1'));
+    expect(launch, findsOneWidget);
+
+    // The launch takes a while; the button must not start a second agent.
+    herd.launchGate = Completer<void>();
+    await tester.tap(launch);
+    await tester.pump();
+    expect(tester.widget<ButtonStyleButton>(launch).onPressed, isNull);
+    await tester.tap(launch, warnIfMissed: false);
+    await tester.pump();
+
+    herd.launchGate!.complete();
+    await tester.pump();
+    await tester.pump();
+
+    expect(herd.launched.single, (
+      'codex',
+      '/home/me/billing-api',
+      'Add a retry to the webhook client. Keep it small.',
+    ));
+    expect(launch, findsNothing);
+    expect(find.text('Started Codex in billing-api'), findsOneWidget);
+    expect(find.text('Codex in billing-api'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
   testWidgets('ending with a pending draft shows the unsent notice', (
     tester,
   ) async {
@@ -194,16 +245,21 @@ void main() {
     await tester.pumpWidget(app(herd: FakeVoiceHerd(), drafts: drafts));
     await tester.pump();
     drafts.add(fakeAgent(kind: 'claude'), 'add tests too');
+    drafts.addLaunch(kind: 'codex', cwd: '/tmp/proj', brief: 'add retries');
     await tester.pump();
 
     await tester.tap(find.byKey(const ValueKey('voice_action_button')));
     await tester.pumpAndSettle();
 
+    // Worded for either card: a launch draft's button says Launch, not Send.
     expect(
-      find.text('There is an unsent draft — tap Send to deliver it'),
+      find.text(
+        'A draft is still pending — the button on its card still works',
+      ),
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('voice_draft_send_d1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('voice_launch_d2')), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();

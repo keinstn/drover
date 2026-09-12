@@ -269,6 +269,29 @@
     }
   },
   "voiceDraftSend": "Send",
-  "voiceUnsentDrafts": "There is an unsent draft — tap Send to deliver it",
-  "voiceSendFailed": "Couldn't send the message"
+  "voiceUnsentDrafts": "A draft is still pending — the button on its card still works",
+  "voiceSendFailed": "Couldn't send the message",
+  "voiceLaunchPending": "Waiting to start {kind} in {project}",
+  "@voiceLaunchPending": {
+    "placeholders": {
+      "kind": { "type": "String" },
+      "project": { "type": "String" }
+    }
+  },
+  "voiceLaunchHeader": "{kind} in {project}",
+  "@voiceLaunchHeader": {
+    "placeholders": {
+      "kind": { "type": "String" },
+      "project": { "type": "String" }
+    }
+  },
+  "voiceLaunchStarted": "Started {kind} in {project}",
+  "@voiceLaunchStarted": {
+    "placeholders": {
+      "kind": { "type": "String" },
+      "project": { "type": "String" }
+    }
+  },
+  "voiceLaunchStart": "Launch",
+  "voiceLaunchFailed": "Couldn't start the agent"
 }
