@@ -5,6 +5,7 @@ const _themeModeKey = 'theme_mode';
 const _localeKey = 'locale';
 const _notifyOnBlockedKey = 'notify_on_blocked';
 const _notifyOnDoneKey = 'notify_on_done';
+const _voiceAssistantKey = 'voice_assistant_enabled';
 
 /// The user's app-level preferences.
 class AppSettings {
@@ -13,6 +14,7 @@ class AppSettings {
     this.locale,
     this.notifyOnBlocked = true,
     this.notifyOnDone = true,
+    this.voiceAssistantEnabled = false,
   });
 
   final ThemeMode themeMode;
@@ -25,6 +27,9 @@ class AppSettings {
   /// device behave the same.
   final bool notifyOnBlocked;
   final bool notifyOnDone;
+
+  /// Opt-in: shows the voice-assistant entry point on the herd screen.
+  final bool voiceAssistantEnabled;
 }
 
 /// Persists [AppSettings] in shared_preferences.
@@ -36,6 +41,7 @@ class SettingsStore {
       locale: _localeFrom(prefs.getString(_localeKey)),
       notifyOnBlocked: prefs.getBool(_notifyOnBlockedKey) ?? true,
       notifyOnDone: prefs.getBool(_notifyOnDoneKey) ?? true,
+      voiceAssistantEnabled: prefs.getBool(_voiceAssistantKey) ?? false,
     );
   }
 
@@ -60,6 +66,11 @@ class SettingsStore {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_notifyOnBlockedKey, onBlocked);
     await prefs.setBool(_notifyOnDoneKey, onDone);
+  }
+
+  Future<void> saveVoiceAssistantEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_voiceAssistantKey, enabled);
   }
 
   // Unrecognised/missing values fall back to the default rather than

@@ -20,6 +20,8 @@ class SettingsScreen extends StatelessWidget {
     required this.onLocaleChanged,
     required this.onNotifyOnBlockedChanged,
     required this.onNotifyOnDoneChanged,
+    required this.voiceAssistantEnabled,
+    required this.onVoiceAssistantChanged,
     required this.onManageHosts,
     this.onEnterDemo,
     this.appVersion,
@@ -37,6 +39,8 @@ class SettingsScreen extends StatelessWidget {
   final ValueChanged<Locale?> onLocaleChanged;
   final ValueChanged<bool> onNotifyOnBlockedChanged;
   final ValueChanged<bool> onNotifyOnDoneChanged;
+  final bool voiceAssistantEnabled;
+  final ValueChanged<bool> onVoiceAssistantChanged;
   final VoidCallback onManageHosts;
 
   /// Enters the scripted demo session. The first-run setup screen offers it
@@ -131,6 +135,15 @@ class SettingsScreen extends StatelessWidget {
             title: Text(l10n.settingsNotifyDone),
             value: notifyOnDone,
             onChanged: onNotifyOnDoneChanged,
+          ),
+          _sectionHeader(context, l10n.settingsAssistant),
+          SwitchListTile(
+            key: const ValueKey('settings_voice_assistant_tile'),
+            secondary: const Icon(Icons.mic),
+            title: Text(l10n.settingsVoiceAssistant),
+            subtitle: Text(l10n.settingsVoiceAssistantSubtitle),
+            value: voiceAssistantEnabled,
+            onChanged: onVoiceAssistantChanged,
           ),
           if (version != null && version.isNotEmpty) ...[
             // Detaches the row from the section above, so a footer doesn't

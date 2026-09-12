@@ -53,6 +53,9 @@ dependencies:
   shared_preferences: ^2.5.5
   package_info_plus: ^10.2.1
   connectivity_plus: ^7.3.1
+  firebase_ai: ^4.0.0
+  record: ^7.1.1
+  flutter_soloud: ^5.0.2
 
 dev_dependencies:
   flutter_test:

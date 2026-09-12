@@ -14,6 +14,8 @@ Widget _app({
   ValueChanged<Locale?>? onLocaleChanged,
   ValueChanged<bool>? onNotifyOnBlockedChanged,
   ValueChanged<bool>? onNotifyOnDoneChanged,
+  bool voiceAssistantEnabled = false,
+  ValueChanged<bool>? onVoiceAssistantChanged,
   VoidCallback? onManageHosts,
   VoidCallback? onEnterDemo,
   String? appVersion,
@@ -32,6 +34,8 @@ Widget _app({
       onLocaleChanged: onLocaleChanged ?? (_) {},
       onNotifyOnBlockedChanged: onNotifyOnBlockedChanged ?? (_) {},
       onNotifyOnDoneChanged: onNotifyOnDoneChanged ?? (_) {},
+      voiceAssistantEnabled: voiceAssistantEnabled,
+      onVoiceAssistantChanged: onVoiceAssistantChanged ?? (_) {},
       onManageHosts: onManageHosts ?? () {},
       onEnterDemo: onEnterDemo,
       appVersion: appVersion,
@@ -53,6 +57,8 @@ class _SettingsHost extends StatefulWidget {
     required this.onLocaleChanged,
     required this.onNotifyOnBlockedChanged,
     required this.onNotifyOnDoneChanged,
+    required this.voiceAssistantEnabled,
+    required this.onVoiceAssistantChanged,
     required this.onManageHosts,
     required this.onEnterDemo,
     required this.appVersion,
@@ -66,6 +72,8 @@ class _SettingsHost extends StatefulWidget {
   final ValueChanged<Locale?> onLocaleChanged;
   final ValueChanged<bool> onNotifyOnBlockedChanged;
   final ValueChanged<bool> onNotifyOnDoneChanged;
+  final bool voiceAssistantEnabled;
+  final ValueChanged<bool> onVoiceAssistantChanged;
   final VoidCallback onManageHosts;
   final VoidCallback? onEnterDemo;
   final String? appVersion;
@@ -77,6 +85,7 @@ class _SettingsHost extends StatefulWidget {
 class _SettingsHostState extends State<_SettingsHost> {
   late bool _notifyOnBlocked = widget.notifyOnBlocked;
   late bool _notifyOnDone = widget.notifyOnDone;
+  late bool _voiceAssistantEnabled = widget.voiceAssistantEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -94,6 +103,11 @@ class _SettingsHostState extends State<_SettingsHost> {
       onNotifyOnDoneChanged: (value) {
         setState(() => _notifyOnDone = value);
         widget.onNotifyOnDoneChanged(value);
+      },
+      voiceAssistantEnabled: _voiceAssistantEnabled,
+      onVoiceAssistantChanged: (value) {
+        setState(() => _voiceAssistantEnabled = value);
+        widget.onVoiceAssistantChanged(value);
       },
       onManageHosts: widget.onManageHosts,
       onEnterDemo: widget.onEnterDemo,
@@ -260,6 +274,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(picked, isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('toggling the voice assistant switch reports the new value', (
+    tester,
+  ) async {
+    bool? reported;
+    await tester.pumpWidget(
+      _app(onVoiceAssistantChanged: (enabled) => reported = enabled),
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('settings_voice_assistant_tile')),
+      200,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('settings_voice_assistant_tile')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(reported, isTrue);
+    // The switch sits under its own section header, not under Appearance.
+    // Rendered through the label ramp, which uppercases outside Japanese.
+    expect(find.text('ASSISTANT'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
