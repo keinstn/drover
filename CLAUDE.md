@@ -39,6 +39,9 @@ notes (`claude-notes.md`, `copilot-notes.md`, `codex-notes.md`,
   sessions started after the install. For Codex specifically, the first
   launch after install may show a Hooks review panel; trust/enable the hook
   there, then start a fresh session.
+- Firebase AI Logic must be enabled on the Firebase project (Gemini Developer
+  API backend) for the voice assistant on the `voice-live` branch — see
+  `docs/voice-live.md`.
 
 ## Marionette MCP
 
@@ -103,6 +106,18 @@ then generates a `CHANGELOG.md` section from the Conventional Commits since
 the previous release tag and commits it separately on top of current `main`,
 so the entry lands after the tagged commit rather than inside it. See
 `cliff.toml` for the commit grouping/skip rules.
+
+## Voice assistant (voice-live branch)
+
+The Gemini Live voice assistant is developed on the long-lived `voice-live`
+branch — feature PRs target it, not `main`. See `docs/voice-live.md` for the
+branch workflow, Firebase prerequisites, and simulator notes. `just
+voice-build` (run from `voice-live`, changes nothing locally) starts the
+"Voice Live" Xcode Cloud workflow, which goes to TestFlight internal testing
+only. That branch carries marketing version `1.1.0` while `main` stays
+`1.0.x`, so the two never share an App Store train. Gotcha: App Check is
+enforced for AI Logic, so every fresh simulator/device install needs its debug
+token registered in the Firebase console before any voice call succeeds.
 
 ## UI previews
 
