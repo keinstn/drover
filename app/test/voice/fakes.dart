@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/voice/voice_audio.dart';
+import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_transport.dart';
 import 'package:firebase_ai/firebase_ai.dart';
 
@@ -104,3 +106,68 @@ LiveServerContent audioChunk({int bytes = 3}) => LiveServerContent(
     InlineDataPart('audio/pcm;rate=24000', Uint8List(bytes)),
   ]),
 );
+
+/// An [AgentInfo] with only the fields the voice layer looks at.
+AgentInfo fakeAgent({
+  String paneId = 'w:p1',
+  String? kind = 'claude',
+  String? name,
+  String? title,
+  AgentStatus status = AgentStatus.idle,
+  String cwd = '/tmp/proj',
+}) => AgentInfo(
+  paneId: paneId,
+  workspaceId: 'w',
+  tabId: 'w:t1',
+  agent: kind,
+  name: name,
+  status: status,
+  cwd: cwd,
+  focused: false,
+  terminalTitle: title,
+);
+
+/// A scripted [VoiceHerd] that records what the tools and announcer ask of
+/// it.
+class FakeVoiceHerd implements VoiceHerd {
+  FakeVoiceHerd({this.agents = const []});
+
+  @override
+  List<AgentInfo> agents;
+
+  /// paneId -> last reply; a missing key answers null.
+  final replies = <String, String>{};
+
+  /// paneId -> pending question; a missing key answers null.
+  final questions = <String, AgentQuestion>{};
+
+  /// When set, [lastReply] and [pendingQuestion] throw it.
+  Object? readError;
+
+  final sent = <(AgentInfo, String)>[];
+  final answered = <(AgentInfo, AgentQuestion, int?, String?)>[];
+
+  @override
+  Future<String?> lastReply(AgentInfo agent) async {
+    if (readError != null) throw readError!;
+    return replies[agent.paneId];
+  }
+
+  @override
+  Future<AgentQuestion?> pendingQuestion(AgentInfo agent) async {
+    if (readError != null) throw readError!;
+    return questions[agent.paneId];
+  }
+
+  @override
+  Future<void> send(AgentInfo agent, String text) async =>
+      sent.add((agent, text));
+
+  @override
+  Future<void> answer(
+    AgentInfo agent,
+    AgentQuestion question, {
+    int? option,
+    String? text,
+  }) async => answered.add((agent, question, option, text));
+}

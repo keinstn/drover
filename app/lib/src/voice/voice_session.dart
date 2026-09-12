@@ -5,18 +5,20 @@ import 'dart:ui' show Locale;
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/foundation.dart';
 
-import '../herdr/herdr_client.dart';
 import 'voice_audio.dart';
+import 'voice_herd.dart';
 import 'voice_tools.dart';
 import 'voice_transport.dart';
 
 enum VoiceSessionStatus { idle, connecting, live, ended, error }
 
-enum VoiceEntryKind { user, assistant, tool, system }
+enum VoiceEntryKind { user, assistant, tool, system, event }
 
 /// One line of the conversation log. [VoiceEntryKind.system] entries carry a
 /// stable code ([VoiceSession.interruptedCode] etc.) that the screen maps to
-/// l10n; the other kinds carry the spoken/called text verbatim.
+/// l10n, and [VoiceEntryKind.event] entries a `finished:<title>` /
+/// `blocked:<title>` code; the other kinds carry the spoken/called text
+/// verbatim.
 class VoiceEntry {
   const VoiceEntry(this.kind, this.text);
 
@@ -32,16 +34,23 @@ class VoiceSession extends ChangeNotifier {
     required this._mic,
     required this._speaker,
     required this._tools,
+    this._herd,
+    this._inbox,
     this.muteMicWhileSpeaking = true,
     this._now = DateTime.now,
+    this._sleep = Future.delayed,
   });
 
   /// Production wiring for one herdr host.
   ///
-  /// The session talks to a single host; multi-host aggregation is a
-  /// follow-up.
-  static VoiceSession forHost(HerdrClient client, Locale? locale) {
-    final tools = droverVoiceTools(client);
+  /// ponytail: the session talks to a single host; multi-host aggregation is
+  /// a follow-up.
+  static VoiceSession forHerd({
+    required VoiceHerd herd,
+    required VoiceInbox inbox,
+    required Locale? locale,
+  }) {
+    final tools = droverVoiceTools(herd);
     return VoiceSession(
       connect: () => FirebaseVoiceTransport.connect(
         tools: tools,
@@ -50,12 +59,17 @@ class VoiceSession extends ChangeNotifier {
       mic: RecordVoiceMic(),
       speaker: SoLoudVoiceSpeaker(),
       tools: tools,
+      herd: herd,
+      inbox: inbox,
     );
   }
 
   static const interruptedCode = 'interrupted';
   static const goingAwayCode = 'going_away';
   static const endedCode = 'ended';
+
+  /// System code logged when an agent event could not be read for announcing.
+  static const announceFailedCode = 'announce_failed';
 
   /// [error] value when the microphone permission is missing.
   static const micPermissionDenied = 'mic_permission_denied';
@@ -73,11 +87,20 @@ class VoiceSession extends ChangeNotifier {
   final VoiceMic _mic;
   final VoiceSpeaker _speaker;
   final List<VoiceTool> _tools;
+  final VoiceHerd? _herd;
+  final VoiceInbox? _inbox;
   final DateTime Function() _now;
+  final Future<void> Function(Duration) _sleep;
 
   VoiceTransport? _transport;
   StreamSubscription<LiveServerResponse>? _rxSub;
   StreamSubscription<Uint8List>? _micSub;
+  StreamSubscription<AgentEvent>? _inboxSub;
+
+  /// Announcements are chained like [_rx] so two events read back in order,
+  /// but on their own chain: reading an agent's state goes over SSH and must
+  /// not hold up audio from the server.
+  Future<void> _announcing = Future.value();
 
   /// Server messages are handled strictly in order: each one is chained
   /// behind the previous handler, so an awaited interrupt can't be overtaken
@@ -158,6 +181,16 @@ class VoiceSession extends ChangeNotifier {
         // A send that races the socket closing is expected; nothing to do.
         unawaited(transport.sendAudio(data).catchError((Object _) {}));
       });
+      final inbox = _inbox;
+      if (inbox != null) {
+        // Events that queued up before the conversation started go out as
+        // one block; later ones are announced as they arrive.
+        _announce(inbox.drain(), transport);
+        _inboxSub = inbox.events.listen((event) {
+          inbox.drain();
+          _announce([event], transport);
+        });
+      }
       _setStatus(VoiceSessionStatus.live);
     } catch (e) {
       if (_stale(gen)) return;
@@ -229,6 +262,59 @@ class VoiceSession extends ChangeNotifier {
     }
   }
 
+  /// Tells the model about [events] as injected text, logging one entry per
+  /// event. A failed read logs [announceFailedCode] and leaves the session
+  /// live; a send after the transport changed is dropped.
+  void _announce(List<AgentEvent> events, VoiceTransport transport) {
+    final herd = _herd;
+    if (events.isEmpty || herd == null) return;
+    _announcing = _announcing.then((_) async {
+      if (_transport != transport) return;
+      try {
+        final text = await announceEvents(events, herd);
+        if (_transport != transport) return;
+        for (final event in events) {
+          _entries.add(
+            VoiceEntry(
+              VoiceEntryKind.event,
+              '${event.kind.name}:${voiceAgentTitle(event.agent)}',
+            ),
+          );
+        }
+        _notify();
+        if (!await _awaitPlaybackEnd(transport)) return;
+        await transport.sendText(text);
+      } catch (_) {
+        if (_transport != transport) return;
+        _entries.add(
+          const VoiceEntry(VoiceEntryKind.system, announceFailedCode),
+        );
+        _notify();
+      }
+    });
+  }
+
+  static const _announceWaitBound = Duration(seconds: 20);
+  static const _announceWaitStep = Duration(milliseconds: 200);
+
+  /// Waits until the model's estimated playback (plus [_muteTail]) is over:
+  /// Gemini Live treats injected text like user speech and barges in, so an
+  /// announcement sent mid-sentence cuts the model off. Returns false when
+  /// [transport] is no longer current. Bounded so a wedged estimate can never
+  /// hold an announcement back forever.
+  ///
+  /// ponytail: estimate-based (queued bytes at 24 kHz), the same guess the
+  /// mic gate uses — the speaker's buffer stream gives no playback position.
+  Future<bool> _awaitPlaybackEnd(VoiceTransport transport) async {
+    final deadline = _now().add(_announceWaitBound);
+    while (_now().isBefore(_playbackEnd.add(_muteTail)) &&
+        _now().isBefore(deadline)) {
+      await _sleep(_announceWaitStep);
+      if (_transport != transport) return false;
+    }
+    return true;
+  }
+
   /// Plays [bytes] and extends the playback estimate the mic gate keys on.
   void _queuePlayback(Uint8List bytes) {
     _speaker.play(bytes);
@@ -286,6 +372,8 @@ class VoiceSession extends ChangeNotifier {
     _micSub = null;
     unawaited(_rxSub?.cancel());
     _rxSub = null;
+    unawaited(_inboxSub?.cancel());
+    _inboxSub = null;
     _playbackEnd = DateTime.fromMillisecondsSinceEpoch(0);
     try {
       await _mic.stop();
