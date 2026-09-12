@@ -40,6 +40,31 @@ void main() {
     drafts.dispose();
   });
 
+  test('launch drafts share the id counter and the events', () async {
+    final drafts = VoiceDrafts();
+    final seen = <(VoiceDraftEventKind, String)>[];
+    drafts.events.listen((e) => seen.add((e.kind, e.draft.id)));
+
+    drafts.add(claude, 'x');
+    final launch = drafts.addLaunch(
+      kind: 'codex',
+      cwd: '/tmp/proj',
+      brief: 'add retries',
+    );
+    drafts.markSent(launch);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(launch.id, 'd2');
+    expect(drafts.byId('d2'), same(launch));
+    expect(drafts.pending.single.id, 'd1');
+    expect(seen, [
+      (VoiceDraftEventKind.drafted, 'd1'),
+      (VoiceDraftEventKind.drafted, 'd2'),
+      (VoiceDraftEventKind.sent, 'd2'),
+    ]);
+    drafts.dispose();
+  });
+
   test('events stream drafted then sent, in order', () async {
     final drafts = VoiceDrafts();
     final seen = <(VoiceDraftEventKind, String)>[];
