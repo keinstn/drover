@@ -52,6 +52,9 @@ spike *args:
 
 bundle_id := "com.keinstn.drover"
 workflow := "Default"
+# TestFlight-only builds of the voice assistant branch (see docs/voice-live.md).
+voice_branch := "voice-live"
+voice_workflow := "Voice Live"
 # `asc versions`/`asc builds` need the numeric App Store Connect app ID —
 # unlike `asc xcode-cloud run --app`, they don't resolve a bundle ID.
 app_id := "6792428012"
@@ -69,12 +72,12 @@ _check-semver-format semver:
     fi
 
 [private]
-_check-on-main:
+_check-on-branch branch:
     #!/usr/bin/env bash
     set -euo pipefail
-    branch=$(git rev-parse --abbrev-ref HEAD)
-    if [ "$branch" != "main" ]; then
-        echo "on '$branch', but this only runs from main" >&2
+    current=$(git rev-parse --abbrev-ref HEAD)
+    if [ "$current" != "{{branch}}" ]; then
+        echo "on '$current', but this only runs from {{branch}}" >&2
         exit 1
     fi
 
@@ -104,7 +107,7 @@ _check-tag-absent semver:
 # Bump the app version, push, and start an Xcode Cloud build.
 #   just release        1.0.0+48 -> 1.0.0+49  (same version, next build)
 #   just release 1.0.1  1.0.0+48 -> 1.0.1+49  (new App Store version)
-release semver='': (_check-semver-format semver) _check-on-main
+release semver='': (_check-semver-format semver) (_check-on-branch "main")
     #!/usr/bin/env bash
     set -euo pipefail
     # Every check runs before the first mutation: a failure after the push would
@@ -140,13 +143,45 @@ release semver='': (_check-semver-format semver) _check-on-main
     asc xcode-cloud run --app {{bundle_id}} --workflow {{workflow}} --branch main --output table
     echo "Bumped to $next and started an Xcode Cloud build."
 
+# Start a "Voice Live" Xcode Cloud build of the voice-live branch — TestFlight
+# internal testing only, never the App Store. Mutates nothing locally: no
+# version bump, no commit, no push, no tag, no CHANGELOG. The build number
+# comes from Xcode Cloud's per-app counter (pubspec's `+N` is not what ships,
+# see `tag-release`), so bumping it here would only create merge conflicts
+# with main. What this checks instead: the local tip is what origin has
+# (Xcode Cloud builds the remote tip), and the marketing version differs from
+# main's, so the build cannot land in main's shipped train
+# (docs/voice-live.md).
+#   just voice-build
+voice-build: (_check-on-branch voice_branch)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git fetch origin --quiet
+    if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/{{voice_branch}})" ]; then
+        echo "local {{voice_branch}} is not at origin/{{voice_branch}} — push or pull first" >&2
+        exit 1
+    fi
+    current=$(grep -E '^version: ' app/pubspec.yaml | head -1 | sed 's/^version: //')
+    name=${current%+*}
+    main_name=$(git show origin/main:app/pubspec.yaml | grep -E '^version: ' | sed 's/^version: //; s/+.*//')
+    if [ "$name" = "$main_name" ]; then
+        echo "app/pubspec.yaml version '$name' equals main's — {{voice_branch}} must carry a different marketing version than main, or its TestFlight builds join main's App Store train. A merge from main probably clobbered 'version:'; restore 1.1.0 and push" >&2
+        exit 1
+    fi
+    if ! command -v asc >/dev/null; then
+        echo "asc not found — brew install asc, then asc auth login" >&2
+        exit 1
+    fi
+    asc xcode-cloud run --app {{bundle_id}} --workflow "{{voice_workflow}}" --branch {{voice_branch}} --output table
+    echo "Started a Voice Live TestFlight build of $name from {{voice_branch}}."
+
 # Record a shipped release in CHANGELOG.md and tag it. Run this only after
 # confirming in App Store Connect that the version is actually live — `just
 # release <semver>` starts a build, but review/rejection/resubmission can
 # take days, during which main keeps moving. Tagging at that point (instead of
 # at release time) keeps the tag and changelog range pinned to the commit that
 # actually shipped rather than to whatever HEAD happened to be later.
-tag-release semver: (_check-semver-format semver) _check-on-main
+tag-release semver: (_check-semver-format semver) (_check-on-branch "main")
     #!/usr/bin/env bash
     set -euo pipefail
     # Every check runs before the first mutation, same as `release`.
