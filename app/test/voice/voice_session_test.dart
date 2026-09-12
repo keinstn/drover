@@ -25,13 +25,13 @@ void main() {
 
   VoiceSession session({
     bool muteMicWhileSpeaking = true,
-    Future<VoiceTransport> Function()? connect,
+    Future<VoiceTransport> Function(String?)? connect,
     FakeVoiceHerd? herd,
     VoiceInbox? inbox,
     VoiceDrafts? drafts,
     Completer<void>? sleepGate,
   }) => VoiceSession(
-    connect: connect ?? () async => transport,
+    connect: connect ?? (_) async => transport,
     now: () => clock,
     sleep: (d) async {
       sleeps.add(d);
@@ -380,7 +380,7 @@ void main() {
 
   test('stop during connecting wins over the pending start', () async {
     final connecting = Completer<VoiceTransport>();
-    final s = session(connect: () => connecting.future);
+    final s = session(connect: (_) => connecting.future);
 
     final starting = s.start();
     await settle();
@@ -588,6 +588,205 @@ void main() {
 
       expect(transport.sentText, isEmpty);
       expect(inbox.pending, hasLength(1), reason: 'kept for the next session');
+    });
+  });
+
+  group('resumption', () {
+    final claude = fakeAgent(paneId: 'p1', title: 'Implement OAuth');
+
+    /// A connect that hands out [transport] first and parks every later one
+    /// on [gate], so a reconnect can be observed mid-flight.
+    Future<VoiceTransport> Function(String?) gatedConnect(
+      Completer<VoiceTransport> gate,
+    ) {
+      var calls = 0;
+      return (_) => ++calls == 1 ? Future.value(transport) : gate.future;
+    }
+
+    Future<void> dropAfterHandle(VoiceSession s, {String handle = 'h1'}) async {
+      transport.pushResumption(handle);
+      await settle();
+      await transport.server.close();
+      await settle();
+    }
+
+    test('a dropped connection is resumed on the stored handle', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await settle();
+
+      await connector.transports.first.server.close();
+      await settle();
+
+      expect(connector.handles, [null, 'h1']);
+      expect(s.status, VoiceSessionStatus.live);
+      expect(s.entries.map((e) => e.text), [VoiceSession.resumedCode]);
+      // The audio path is never torn down across a resume.
+      expect(mic.stopCalls, 0);
+      expect(mic.startCalls, 1);
+      expect(speaker.initCalls, 1);
+      expect(speaker.disposeCalls, 0);
+    });
+
+    test('mic audio goes to the resumed transport', () async {
+      final connector = FakeConnector();
+      final s = session(muteMicWhileSpeaking: false, connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await settle();
+      await connector.transports.first.server.close();
+      await settle();
+
+      await sendMicFrame();
+
+      expect(connector.transports.first.sentAudio, isEmpty);
+      expect(connector.transports.last.sentAudio, hasLength(1));
+    });
+
+    test('an error followed by the close resumes only once', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await settle();
+
+      connector.transports.first.server.addError(StateError('socket'));
+      await connector.transports.first.server.close();
+      await settle();
+
+      expect(connector.handles, [null, 'h1']);
+      expect(s.status, VoiceSessionStatus.live);
+      expect(s.entries.map((e) => e.text), [VoiceSession.resumedCode]);
+    });
+
+    test('a refused handle fails the session and starts fresh next', () async {
+      final connector = FakeConnector()..throwAt.add(1);
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await settle();
+      await connector.transports.first.server.close();
+      await settle();
+
+      expect(s.status, VoiceSessionStatus.error);
+      expect(s.error, contains('handle refused'));
+      expect(mic.stopCalls, 1);
+
+      await s.start();
+
+      expect(connector.handles, [null, 'h1', null]);
+      expect(s.status, VoiceSessionStatus.live);
+    });
+
+    test('an event during the resume is announced on the new wire', () async {
+      final herd = FakeVoiceHerd(agents: [claude])
+        ..replies['p1'] = 'All green.';
+      final inbox = VoiceInbox();
+      addTearDown(inbox.dispose);
+      final gate = Completer<VoiceTransport>();
+      final resumed = FakeTransport();
+      final s = session(herd: herd, inbox: inbox, connect: gatedConnect(gate));
+      await s.start();
+      await dropAfterHandle(s);
+      expect(s.status, VoiceSessionStatus.connecting);
+
+      inbox.add(AgentEvent(AgentEventKind.finished, claude));
+      await settle();
+      expect(
+        inbox.pending,
+        hasLength(1),
+        reason: 'held until the resume lands',
+      );
+
+      gate.complete(resumed);
+      await settle();
+
+      expect(s.status, VoiceSessionStatus.live);
+      expect(inbox.pending, isEmpty);
+      expect(transport.sentText, isEmpty);
+      expect(resumed.sentText, hasLength(1));
+      expect(resumed.sentText.single, contains('Last reply: "All green."'));
+      expect(s.entries.map((e) => e.text), [
+        VoiceSession.resumedCode,
+        'finished:Implement OAuth',
+      ]);
+    });
+
+    test('stop during the resume wins over it', () async {
+      final gate = Completer<VoiceTransport>();
+      final resumed = FakeTransport();
+      final s = session(connect: gatedConnect(gate));
+      await s.start();
+      await dropAfterHandle(s);
+      expect(s.status, VoiceSessionStatus.connecting);
+
+      await s.stop();
+      expect(s.status, VoiceSessionStatus.ended);
+
+      gate.complete(resumed);
+      await settle();
+
+      expect(s.status, VoiceSessionStatus.ended);
+      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode]);
+      expect(resumed.closeCalls, 1);
+      expect(resumed.server.hasListener, isFalse);
+      expect(mic.stopCalls, 1);
+    });
+
+    test('the handle is consumed: a second drop needs a fresh one', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await settle();
+      await connector.transports.first.server.close();
+      await settle();
+      expect(s.status, VoiceSessionStatus.live);
+
+      // The resumed connection drops before offering a handle of its own.
+      await connector.transports.last.server.close();
+      await settle();
+
+      expect(connector.handles, [null, 'h1'], reason: 'no reconnect loop');
+      expect(s.status, VoiceSessionStatus.ended);
+      expect(s.entries.map((e) => e.text), [
+        VoiceSession.resumedCode,
+        VoiceSession.endedCode,
+      ]);
+    });
+
+    test('a fresh handle on the resumed wire resumes again', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await settle();
+      await connector.transports.first.server.close();
+      await settle();
+
+      connector.last.pushResumption('h2');
+      await settle();
+      await connector.transports[1].server.close();
+      await settle();
+
+      expect(connector.handles, [null, 'h1', 'h2']);
+      expect(s.status, VoiceSessionStatus.live);
+    });
+
+    test('a non-resumable update leaves the handle unset', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1', resumable: false);
+      await settle();
+
+      await connector.transports.first.server.close();
+      await settle();
+
+      expect(connector.handles, [null]);
+      expect(s.status, VoiceSessionStatus.ended);
     });
   });
 

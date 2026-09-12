@@ -257,7 +257,8 @@
     }
   },
   "voiceInterrupted": "Interrupted",
-  "voiceGoingAway": "The session is about to end",
+  "voiceGoingAway": "Reconnecting shortly",
+  "voiceResumed": "Reconnected, continuing",
   "voiceEnded": "Session ended",
   "voiceEnd": "End",
   "voiceRestart": "Restart",

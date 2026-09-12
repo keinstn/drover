@@ -169,6 +169,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
           switch (entry.text) {
             VoiceSession.interruptedCode => l10n.voiceInterrupted,
             VoiceSession.goingAwayCode => l10n.voiceGoingAway,
+            VoiceSession.resumedCode => l10n.voiceResumed,
             VoiceSession.endedCode => l10n.voiceEnded,
             VoiceSession.announceFailedCode => l10n.voiceEventAnnounceFailed,
             VoiceSession.unsentDraftsCode => l10n.voiceUnsentDrafts,
