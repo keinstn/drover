@@ -5,6 +5,7 @@ import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_screen.dart';
 import 'package:drover/src/voice/voice_session.dart';
 import 'package:drover/src/voice/voice_tools.dart';
+import 'package:drover/src/voice/voice_transport.dart';
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,30 +23,34 @@ void main() {
     speaker = FakeSpeaker();
   });
 
-  Widget app({FakeVoiceHerd? herd, VoiceInbox? inbox, VoiceDrafts? drafts}) =>
-      MaterialApp(
-        theme: droverDarkTheme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: VoiceScreen(
-          session: VoiceSession(
-            connect: () async => transport,
-            mic: mic,
-            speaker: speaker,
-            herd: herd,
-            inbox: inbox,
-            drafts: drafts,
-            tools: [
-              VoiceTool(
-                name: 'list_agents',
-                description: '',
-                parameters: const {},
-                run: (_) async => {'agents': []},
-              ),
-            ],
+  Widget app({
+    FakeVoiceHerd? herd,
+    VoiceInbox? inbox,
+    VoiceDrafts? drafts,
+    Future<VoiceTransport> Function(String?)? connect,
+  }) => MaterialApp(
+    theme: droverDarkTheme,
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: VoiceScreen(
+      session: VoiceSession(
+        connect: connect ?? (_) async => transport,
+        mic: mic,
+        speaker: speaker,
+        herd: herd,
+        inbox: inbox,
+        drafts: drafts,
+        tools: [
+          VoiceTool(
+            name: 'list_agents',
+            description: '',
+            parameters: const {},
+            run: (_) async => {'agents': []},
           ),
-        ),
-      );
+        ],
+      ),
+    ),
+  );
 
   testWidgets('starts on open and shows the hint until something is said', (
     tester,
@@ -76,6 +81,23 @@ void main() {
 
     expect(find.text('One agent is blocked.'), findsOneWidget);
     expect(find.textContaining('Ask about your agents'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('renders the resumed notice after a reconnect', (tester) async {
+    final connector = FakeConnector();
+    await tester.pumpWidget(app(connect: connector.call));
+    await tester.pump();
+
+    connector.last.pushResumption('h1');
+    await tester.pump();
+    await connector.transports.first.server.close();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reconnected, continuing'), findsOneWidget);
+    expect(find.text('Session ended'), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
