@@ -967,6 +967,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Version copied'**
   String get settingsVersionCopied;
+
+  /// No description provided for @settingsAssistant.
+  ///
+  /// In en, this message translates to:
+  /// **'Assistant'**
+  String get settingsAssistant;
+
+  /// No description provided for @settingsVoiceAssistant.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice assistant'**
+  String get settingsVoiceAssistant;
+
+  /// No description provided for @settingsVoiceAssistantSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk to drover about your agents. Agent status and short summaries of their replies are sent to Google\'s Gemini Live API for the conversation.'**
+  String get settingsVoiceAssistantSubtitle;
+
+  /// No description provided for @herdVoiceButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice assistant'**
+  String get herdVoiceButton;
+
+  /// No description provided for @voiceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice assistant'**
+  String get voiceTitle;
+
+  /// No description provided for @voiceStatusConnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Connecting…'**
+  String get voiceStatusConnecting;
+
+  /// No description provided for @voiceStatusLive.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening'**
+  String get voiceStatusLive;
+
+  /// No description provided for @voiceStatusEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'Ended'**
+  String get voiceStatusEnded;
+
+  /// No description provided for @voiceStatusError.
+  ///
+  /// In en, this message translates to:
+  /// **'Error: {error}'**
+  String voiceStatusError(String error);
+
+  /// No description provided for @voiceMicPermissionDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone access is off. Allow it in Settings to talk to drover.'**
+  String get voiceMicPermissionDenied;
+
+  /// No description provided for @voiceToolCalled.
+  ///
+  /// In en, this message translates to:
+  /// **'Called {name}'**
+  String voiceToolCalled(String name);
+
+  /// No description provided for @voiceInterrupted.
+  ///
+  /// In en, this message translates to:
+  /// **'Interrupted'**
+  String get voiceInterrupted;
+
+  /// No description provided for @voiceGoingAway.
+  ///
+  /// In en, this message translates to:
+  /// **'The session is about to end'**
+  String get voiceGoingAway;
+
+  /// No description provided for @voiceEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'Session ended'**
+  String get voiceEnded;
+
+  /// No description provided for @voiceEnd.
+  ///
+  /// In en, this message translates to:
+  /// **'End'**
+  String get voiceEnd;
+
+  /// No description provided for @voiceRestart.
+  ///
+  /// In en, this message translates to:
+  /// **'Restart'**
+  String get voiceRestart;
+
+  /// No description provided for @voiceHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask about your agents, e.g. “Which agent is waiting for me?”'**
+  String get voiceHint;
 }
 
 class _AppLocalizationsDelegate

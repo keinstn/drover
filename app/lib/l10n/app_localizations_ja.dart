@@ -474,4 +474,61 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get settingsVersionCopied => 'バージョンをコピーしました';
+
+  @override
+  String get settingsAssistant => 'アシスタント';
+
+  @override
+  String get settingsVoiceAssistant => '音声アシスタント';
+
+  @override
+  String get settingsVoiceAssistantSubtitle =>
+      'エージェントについて drover と話せます。会話のため、エージェントの状態と返答の短い要約が Google の Gemini Live API に送信されます。';
+
+  @override
+  String get herdVoiceButton => '音声アシスタント';
+
+  @override
+  String get voiceTitle => '音声アシスタント';
+
+  @override
+  String get voiceStatusConnecting => '接続中…';
+
+  @override
+  String get voiceStatusLive => '聞いています';
+
+  @override
+  String get voiceStatusEnded => '終了しました';
+
+  @override
+  String voiceStatusError(String error) {
+    return 'エラー: $error';
+  }
+
+  @override
+  String get voiceMicPermissionDenied =>
+      'マイクへのアクセスがオフです。設定で許可すると drover と話せます。';
+
+  @override
+  String voiceToolCalled(String name) {
+    return '$name を呼び出しました';
+  }
+
+  @override
+  String get voiceInterrupted => '中断されました';
+
+  @override
+  String get voiceGoingAway => 'セッションはまもなく終了します';
+
+  @override
+  String get voiceEnded => 'セッションが終了しました';
+
+  @override
+  String get voiceEnd => '終了';
+
+  @override
+  String get voiceRestart => '再開';
+
+  @override
+  String get voiceHint => 'エージェントについて聞いてみましょう。例:「どのエージェントが私を待っている？」';
 }

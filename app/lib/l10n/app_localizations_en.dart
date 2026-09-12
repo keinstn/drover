@@ -492,4 +492,62 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsVersionCopied => 'Version copied';
+
+  @override
+  String get settingsAssistant => 'Assistant';
+
+  @override
+  String get settingsVoiceAssistant => 'Voice assistant';
+
+  @override
+  String get settingsVoiceAssistantSubtitle =>
+      'Talk to drover about your agents. Agent status and short summaries of their replies are sent to Google\'s Gemini Live API for the conversation.';
+
+  @override
+  String get herdVoiceButton => 'Voice assistant';
+
+  @override
+  String get voiceTitle => 'Voice assistant';
+
+  @override
+  String get voiceStatusConnecting => 'Connecting…';
+
+  @override
+  String get voiceStatusLive => 'Listening';
+
+  @override
+  String get voiceStatusEnded => 'Ended';
+
+  @override
+  String voiceStatusError(String error) {
+    return 'Error: $error';
+  }
+
+  @override
+  String get voiceMicPermissionDenied =>
+      'Microphone access is off. Allow it in Settings to talk to drover.';
+
+  @override
+  String voiceToolCalled(String name) {
+    return 'Called $name';
+  }
+
+  @override
+  String get voiceInterrupted => 'Interrupted';
+
+  @override
+  String get voiceGoingAway => 'The session is about to end';
+
+  @override
+  String get voiceEnded => 'Session ended';
+
+  @override
+  String get voiceEnd => 'End';
+
+  @override
+  String get voiceRestart => 'Restart';
+
+  @override
+  String get voiceHint =>
+      'Ask about your agents, e.g. “Which agent is waiting for me?”';
 }

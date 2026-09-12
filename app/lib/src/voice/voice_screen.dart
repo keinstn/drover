@@ -1,0 +1,203 @@
+import 'package:flutter/material.dart';
+
+import '../../l10n/app_localizations.dart';
+import '../app_theme.dart';
+import 'voice_session.dart';
+
+/// The voice-assistant conversation: a status line, the transcript log and
+/// an End/Restart button. Owns the [session] lifecycle: starts it on first
+/// frame, disposes it with the screen.
+class VoiceScreen extends StatefulWidget {
+  const VoiceScreen({super.key, required this.session});
+
+  final VoiceSession session;
+
+  @override
+  State<VoiceScreen> createState() => _VoiceScreenState();
+}
+
+class _VoiceScreenState extends State<VoiceScreen> {
+  final _scroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.session.addListener(_onSessionChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => widget.session.start());
+  }
+
+  @override
+  void dispose() {
+    widget.session.removeListener(_onSessionChanged);
+    widget.session.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  bool get _wasAtBottom {
+    if (!_scroll.hasClients) return true;
+    final position = _scroll.position;
+    return position.pixels >= position.maxScrollExtent - 40;
+  }
+
+  void _onSessionChanged() {
+    if (!mounted) return;
+    // Follow new entries only if the user hasn't scrolled up to read.
+    final stick = _wasAtBottom;
+    setState(() {});
+    if (!stick) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final session = widget.session;
+    final scheme = Theme.of(context).colorScheme;
+    final tertiary = DroverColors.of(context).tertiaryText;
+    final rows = <Widget>[
+      for (final entry in session.entries) _entryRow(context, l10n, entry),
+      if (session.partialUser case final text?)
+        _entryRow(context, l10n, VoiceEntry(VoiceEntryKind.user, text)),
+      if (session.partialAssistant case final text?)
+        _entryRow(context, l10n, VoiceEntry(VoiceEntryKind.assistant, text)),
+    ];
+    final active =
+        session.status == VoiceSessionStatus.connecting ||
+        session.status == VoiceSessionStatus.live;
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.voiceTitle)),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text(
+              _statusLabel(l10n, session),
+              key: const ValueKey('voice_status'),
+              style: droverLabelStyle(context, color: tertiary),
+            ),
+          ),
+          Expanded(
+            child: rows.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        l10n.voiceHint,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: scheme.onSurfaceVariant),
+                      ),
+                    ),
+                  )
+                : ListView(
+                    controller: _scroll,
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    children: rows,
+                  ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: FilledButton.icon(
+                key: const ValueKey('voice_action_button'),
+                onPressed: active ? session.stop : session.start,
+                icon: Icon(active ? Icons.stop : Icons.refresh),
+                label: Text(active ? l10n.voiceEnd : l10n.voiceRestart),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _statusLabel(AppLocalizations l10n, VoiceSession session) =>
+      switch (session.status) {
+        VoiceSessionStatus.idle ||
+        VoiceSessionStatus.connecting => l10n.voiceStatusConnecting,
+        VoiceSessionStatus.live => l10n.voiceStatusLive,
+        VoiceSessionStatus.ended => l10n.voiceStatusEnded,
+        VoiceSessionStatus.error => l10n.voiceStatusError(
+          session.error == VoiceSession.micPermissionDenied
+              ? l10n.voiceMicPermissionDenied
+              : session.error ?? '',
+        ),
+      };
+
+  Widget _entryRow(
+    BuildContext context,
+    AppLocalizations l10n,
+    VoiceEntry entry,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final colors = DroverColors.of(context);
+    final muted = TextStyle(color: colors.tertiaryText, fontSize: 12.5);
+    final maxWidth = MediaQuery.sizeOf(context).width * 0.8;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: switch (entry.kind) {
+        VoiceEntryKind.user => _bubble(
+          entry.text,
+          alignment: Alignment.centerRight,
+          color: colors.userBubble,
+          textColor: scheme.onSurface,
+          maxWidth: maxWidth,
+        ),
+        VoiceEntryKind.assistant => _bubble(
+          entry.text,
+          alignment: Alignment.centerLeft,
+          color: scheme.surfaceContainer,
+          textColor: scheme.onSurface,
+          maxWidth: maxWidth,
+        ),
+        VoiceEntryKind.tool => Row(
+          children: [
+            Icon(Icons.build, size: 14, color: colors.tertiaryText),
+            const SizedBox(width: 6),
+            Text(l10n.voiceToolCalled(entry.text), style: muted),
+          ],
+        ),
+        VoiceEntryKind.system => Text(
+          switch (entry.text) {
+            VoiceSession.interruptedCode => l10n.voiceInterrupted,
+            VoiceSession.goingAwayCode => l10n.voiceGoingAway,
+            VoiceSession.endedCode => l10n.voiceEnded,
+            _ => entry.text,
+          },
+          textAlign: TextAlign.center,
+          style: muted,
+        ),
+      },
+    );
+  }
+
+  Widget _bubble(
+    String text, {
+    required Alignment alignment,
+    required Color color,
+    required Color textColor,
+    required double maxWidth,
+  }) => Align(
+    alignment: alignment,
+    child: ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(droverRadiusMedium),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(color: textColor, fontSize: 13.5, height: 1.5),
+        ),
+      ),
+    ),
+  );
+}

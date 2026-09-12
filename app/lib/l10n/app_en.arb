@@ -213,5 +213,33 @@
   "settingsDemo": "Try the demo",
   "settingsDemoSubtitle": "A scripted session — no host required",
   "settingsVersion": "Version",
-  "settingsVersionCopied": "Version copied"
+  "settingsVersionCopied": "Version copied",
+
+  "settingsAssistant": "Assistant",
+  "settingsVoiceAssistant": "Voice assistant",
+  "settingsVoiceAssistantSubtitle": "Talk to drover about your agents. Agent status and short summaries of their replies are sent to Google's Gemini Live API for the conversation.",
+  "herdVoiceButton": "Voice assistant",
+  "voiceTitle": "Voice assistant",
+  "voiceStatusConnecting": "Connecting…",
+  "voiceStatusLive": "Listening",
+  "voiceStatusEnded": "Ended",
+  "voiceStatusError": "Error: {error}",
+  "@voiceStatusError": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "voiceMicPermissionDenied": "Microphone access is off. Allow it in Settings to talk to drover.",
+  "voiceToolCalled": "Called {name}",
+  "@voiceToolCalled": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "voiceInterrupted": "Interrupted",
+  "voiceGoingAway": "The session is about to end",
+  "voiceEnded": "Session ended",
+  "voiceEnd": "End",
+  "voiceRestart": "Restart",
+  "voiceHint": "Ask about your agents, e.g. \u201cWhich agent is waiting for me?\u201d"
 }
