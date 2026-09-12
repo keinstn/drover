@@ -131,10 +131,21 @@ voicemail: you leave the agent a message, and it "calls back" when it is done
 or needs you.
 
 - **Leaving a message.** The user says something like "tell claude to add
-  tests too". The model composes the message in the user's own words, reads
-  the exact text back, and asks for confirmation. Only after an explicit yes
-  does it call `send_message`, which runs `herdr agent prompt` on the pane.
-  The user can end the voice session while the agent works.
+  tests too". Sending is two-step: the model calls `draft_message`, which
+  stores the message in the session's `VoiceDrafts` and returns it with a
+  `draft_id`; the model reads that text back word for word and asks for
+  confirmation; after an explicit yes it calls `send_message(draft_id)`,
+  which runs `herdr agent prompt` on the pane and marks the draft sent. The
+  app, not the model's narration, is the source of truth: on device
+  (2026-09-13) the model said "message sent" after the user's yes without
+  ever calling the single-step `send_message`, and nothing reached the
+  agent. Every draft shows on the voice screen as a card with the agent, the
+  message and a **Send** button while it is pending, so the user can deliver
+  it by hand if the model stalls; the card drops the button once sent and a
+  "Sent to …" line is logged. Ending the session with a draft still pending
+  logs an "unsent draft" notice, and Send still works after the session
+  ended (it only needs the SSH client). The user can end the voice session
+  while the agent works.
 - **Callback.** HerdScreen's 2 s poll records status transitions per pane
   into a `VoiceInbox` (one per host): `working → idle|done` is a *finished*
   event, `* → blocked` a *blocked* event. A live `VoiceSession` drains the
@@ -152,14 +163,15 @@ or needs you.
   model calls `answer_question`, which submits through the same capability
   the app uses, or types the digit / text into the pane.
 
-The four tools (`app/lib/src/voice/voice_tools.dart`) and what each sends
+The five tools (`app/lib/src/voice/voice_tools.dart`) and what each sends
 off-device:
 
 | Tool | Sends to Gemini |
 | --- | --- |
 | `list_agents` | title, kind, status, project folder name per agent |
 | `read_agent` | one agent's status and the text of its last reply |
-| `send_message` | confirmation `{sent, agent}` (the message itself was already spoken and transcribed) |
+| `draft_message` | `{draft_id, agent, message}` — echoes the message the model itself composed |
+| `send_message` | `{sent: true, agent, message}` or an error; the draft stays pending on error |
 | `answer_question` | `{answered}` or an error string |
 
 Callbacks are **foreground-only**: the event source is HerdScreen's poll, so

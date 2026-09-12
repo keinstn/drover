@@ -1,5 +1,6 @@
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
+import 'package:drover/src/voice/voice_drafts.dart';
 import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_screen.dart';
 import 'package:drover/src/voice/voice_session.dart';
@@ -21,28 +22,30 @@ void main() {
     speaker = FakeSpeaker();
   });
 
-  Widget app({FakeVoiceHerd? herd, VoiceInbox? inbox}) => MaterialApp(
-    theme: droverDarkTheme,
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: AppLocalizations.supportedLocales,
-    home: VoiceScreen(
-      session: VoiceSession(
-        connect: () async => transport,
-        mic: mic,
-        speaker: speaker,
-        herd: herd,
-        inbox: inbox,
-        tools: [
-          VoiceTool(
-            name: 'list_agents',
-            description: '',
-            parameters: const {},
-            run: (_) async => {'agents': []},
+  Widget app({FakeVoiceHerd? herd, VoiceInbox? inbox, VoiceDrafts? drafts}) =>
+      MaterialApp(
+        theme: droverDarkTheme,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: VoiceScreen(
+          session: VoiceSession(
+            connect: () async => transport,
+            mic: mic,
+            speaker: speaker,
+            herd: herd,
+            inbox: inbox,
+            drafts: drafts,
+            tools: [
+              VoiceTool(
+                name: 'list_agents',
+                description: '',
+                parameters: const {},
+                run: (_) async => {'agents': []},
+              ),
+            ],
           ),
-        ],
-      ),
-    ),
-  );
+        ),
+      );
 
   testWidgets('starts on open and shows the hint until something is said', (
     tester,
@@ -129,5 +132,58 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
     inbox.dispose();
+  });
+
+  testWidgets('a pending draft renders with Send; tapping sends it', (
+    tester,
+  ) async {
+    final herd = FakeVoiceHerd();
+    final drafts = VoiceDrafts();
+    await tester.pumpWidget(app(herd: herd, drafts: drafts));
+    await tester.pump();
+
+    drafts.add(fakeAgent(kind: 'claude'), 'add tests too');
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Waiting to send to claude'), findsOneWidget);
+    expect(find.text('add tests too'), findsOneWidget);
+    final send = find.byKey(const ValueKey('voice_draft_send_d1'));
+    expect(send, findsOneWidget);
+
+    await tester.tap(send);
+    await tester.pump();
+    await tester.pump();
+
+    expect(herd.sent.single.$2, 'add tests too');
+    expect(send, findsNothing);
+    expect(find.text('Waiting to send to claude'), findsNothing);
+    expect(find.text('Sent to claude'), findsOneWidget);
+    expect(find.text('add tests too'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('ending with a pending draft shows the unsent notice', (
+    tester,
+  ) async {
+    final drafts = VoiceDrafts();
+    await tester.pumpWidget(app(herd: FakeVoiceHerd(), drafts: drafts));
+    await tester.pump();
+    drafts.add(fakeAgent(kind: 'claude'), 'add tests too');
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('There is an unsent draft — tap Send to deliver it'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('voice_draft_send_d1')), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
   });
 }

@@ -563,4 +563,24 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get voiceEventAnnounceFailed => 'Couldn\'t read the agent\'s state';
+
+  @override
+  String voiceDraftPending(String agent) {
+    return 'Waiting to send to $agent';
+  }
+
+  @override
+  String voiceDraftSent(String agent) {
+    return 'Sent to $agent';
+  }
+
+  @override
+  String get voiceDraftSend => 'Send';
+
+  @override
+  String get voiceUnsentDrafts =>
+      'There is an unsent draft — tap Send to deliver it';
+
+  @override
+  String get voiceSendFailed => 'Couldn\'t send the message';
 }

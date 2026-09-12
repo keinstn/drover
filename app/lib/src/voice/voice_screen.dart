@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
+import 'voice_drafts.dart';
+import 'voice_herd.dart';
 import 'voice_session.dart';
 
 /// The voice-assistant conversation: a status line, the transcript log and
@@ -169,8 +171,18 @@ class _VoiceScreenState extends State<VoiceScreen> {
             VoiceSession.goingAwayCode => l10n.voiceGoingAway,
             VoiceSession.endedCode => l10n.voiceEnded,
             VoiceSession.announceFailedCode => l10n.voiceEventAnnounceFailed,
+            VoiceSession.unsentDraftsCode => l10n.voiceUnsentDrafts,
+            VoiceSession.sendFailedCode => l10n.voiceSendFailed,
             _ => entry.text,
           },
+          textAlign: TextAlign.center,
+          style: muted,
+        ),
+        VoiceEntryKind.draft => _draftCard(context, l10n, entry.text),
+        VoiceEntryKind.sent => Text(
+          l10n.voiceDraftSent(
+            voiceAgentTitle(widget.session.drafts.byId(entry.text)!.agent),
+          ),
           textAlign: TextAlign.center,
           style: muted,
         ),
@@ -187,6 +199,78 @@ class _VoiceScreenState extends State<VoiceScreen> {
           ],
         ),
       },
+    );
+  }
+
+  /// The draft [id] as a card: agent header, message, and a Send button
+  /// while it is still pending. Once sent the button goes and the header
+  /// shows a check; the "sent" statement itself is the [VoiceEntryKind.sent]
+  /// line, so it appears exactly once.
+  Widget _draftCard(BuildContext context, AppLocalizations l10n, String id) {
+    final scheme = Theme.of(context).colorScheme;
+    final colors = DroverColors.of(context);
+    final drafts = widget.session.drafts;
+    final VoiceDraft draft = drafts.byId(id)!;
+    final pending = drafts.isPending(draft);
+    final title = voiceAgentTitle(draft.agent);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.85,
+        ),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
+          decoration: BoxDecoration(
+            border: Border.all(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(droverRadiusMedium),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    pending ? Icons.schedule_send : Icons.check,
+                    size: 14,
+                    color: colors.tertiaryText,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      pending ? l10n.voiceDraftPending(title) : title,
+                      style: droverLabelStyle(
+                        context,
+                        color: colors.tertiaryText,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                draft.message,
+                style: TextStyle(
+                  color: scheme.onSurface,
+                  fontSize: 13.5,
+                  height: 1.5,
+                ),
+              ),
+              if (pending) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.tonal(
+                    key: ValueKey('voice_draft_send_$id'),
+                    onPressed: () => widget.session.sendDraft(id),
+                    child: Text(l10n.voiceDraftSend),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 
