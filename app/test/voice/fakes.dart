@@ -159,9 +159,14 @@ class FakeVoiceHerd implements VoiceHerd {
     return questions[agent.paneId];
   }
 
+  /// When set, [send] throws it instead of recording.
+  Object? sendError;
+
   @override
-  Future<void> send(AgentInfo agent, String text) async =>
-      sent.add((agent, text));
+  Future<void> send(AgentInfo agent, String text) async {
+    if (sendError != null) throw sendError!;
+    sent.add((agent, text));
+  }
 
   @override
   Future<void> answer(
