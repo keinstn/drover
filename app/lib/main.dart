@@ -179,6 +179,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
 
   /// null = follow the device locale (see [build] for how that resolves).
   Locale? _locale;
+  bool _voiceAssistantEnabled = false;
 
   /// Per-device push opt-ins, mirrored to the backend on every change.
   bool _notifyOnBlocked = true;
@@ -263,6 +264,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     _locale = widget.initialSettings.locale;
     _notifyOnBlocked = widget.initialSettings.notifyOnBlocked;
     _notifyOnDone = widget.initialSettings.notifyOnDone;
+    _voiceAssistantEnabled = widget.initialSettings.voiceAssistantEnabled;
     if (_hosts.isNotEmpty) {
       _scheduleNotificationRegistration();
     }
@@ -858,6 +860,17 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
               rebuildRoute(() {});
               _persistNotifyPreferences();
             },
+            voiceAssistantEnabled: _voiceAssistantEnabled,
+            onVoiceAssistantChanged: (enabled) {
+              setState(() => _voiceAssistantEnabled = enabled);
+              rebuildRoute(() {});
+              unawaited(
+                runBestEffort(
+                  () => widget.settingsStore.saveVoiceAssistantEnabled(enabled),
+                  context: 'persist voice assistant',
+                ),
+              );
+            },
             onManageHosts: _openHostList,
             // Hidden while the demo is already showing — settings is reached
             // from inside it, so offering the demo again would be a no-op row.
@@ -921,6 +934,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
               hasConfiguredHost: _hosts.isNotEmpty,
               onExitDemo: _exitDemo,
               onOpenSettings: _openSettings,
+              voiceAssistantEnabled: _voiceAssistantEnabled,
             )
           : _hosts.isEmpty
           ? HostSetupScreen(
@@ -946,6 +960,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
               onOpenHostSwitcher: _openHostSwitcher,
               onOpenSettings: _openSettings,
               networkChanges: _staleTransportSignal.changes,
+              voiceAssistantEnabled: _voiceAssistantEnabled,
             ),
     );
   }
