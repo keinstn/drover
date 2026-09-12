@@ -17,6 +17,7 @@ class DemoScreen extends StatefulWidget {
     required this.hasConfiguredHost,
     required this.onExitDemo,
     required this.onOpenSettings,
+    this.voiceAssistantEnabled = false,
   });
 
   final DemoBackend backend;
@@ -33,6 +34,9 @@ class DemoScreen extends StatefulWidget {
   /// navigator by main, not the inner one, so settings covers the demo banner
   /// like any other app-level screen.
   final VoidCallback onOpenSettings;
+
+  /// Forwarded to [HerdScreen.voiceAssistantEnabled].
+  final bool voiceAssistantEnabled;
 
   @override
   State<DemoScreen> createState() => _DemoScreenState();
@@ -86,6 +90,7 @@ class _DemoScreenState extends State<DemoScreen> {
                   // composer there would swallow a message the user had
                   // already taken the trouble to type.
                   showComposerFor: (paneId) => paneId == demoPaneId,
+                  voiceAssistantEnabled: widget.voiceAssistantEnabled,
                 ),
               ),
             ),

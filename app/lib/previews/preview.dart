@@ -405,6 +405,8 @@ class _SettingsPreviewState extends State<_SettingsPreview> {
       locale: _locale,
       onThemeModeChanged: (mode) => setState(() => _themeMode = mode),
       onLocaleChanged: (locale) => setState(() => _locale = locale),
+      voiceAssistantEnabled: false,
+      onVoiceAssistantChanged: (_) {},
       onManageHosts: () {},
       appVersion: '0.0.0-preview (0)',
     );

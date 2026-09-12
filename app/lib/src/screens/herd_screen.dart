@@ -13,6 +13,8 @@ import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
 import '../transcript/activity_snippet.dart';
 import '../utils/path.dart';
+import '../voice/voice_screen.dart';
+import '../voice/voice_session.dart';
 import '../widgets/agent_avatar.dart';
 import '../widgets/error_message_view.dart';
 import '../widgets/status_pill.dart';
@@ -146,6 +148,7 @@ class HerdScreen extends StatefulWidget {
     this.showComposerFor,
     this.pollInterval = const Duration(seconds: 2),
     this.networkChanges,
+    this.voiceAssistantEnabled = false,
   });
 
   /// Every stored host, in display order.
@@ -186,6 +189,11 @@ class HerdScreen extends StatefulWidget {
   /// this disabled, so the demo/preview harness and existing call sites are
   /// unaffected.
   final Stream<void>? networkChanges;
+
+  /// Shows the app-bar mic button that opens the voice assistant. The
+  /// session it opens is scoped to the first host in scope for now;
+  /// multi-host aggregation is a follow-up.
+  final bool voiceAssistantEnabled;
 
   @override
   State<HerdScreen> createState() => _HerdScreenState();
@@ -803,6 +811,17 @@ class _HerdScreenState extends State<HerdScreen> {
     return bucket == null || (bucket.agents.isEmpty && bucket.error == null);
   });
 
+  void _openVoice(BuildContext context) {
+    // Built once here, not in the route builder, which can run more than once.
+    final session = VoiceSession.forHost(
+      widget.clientFor(_hostsInScope.first),
+      Localizations.localeOf(context),
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => VoiceScreen(session: session)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -816,6 +835,13 @@ class _HerdScreenState extends State<HerdScreen> {
         toolbarHeight: 64,
         title: _appBarTitle(l10n),
         actions: [
+          if (widget.voiceAssistantEnabled && _hostsInScope.isNotEmpty)
+            IconButton(
+              key: const ValueKey('voice_button'),
+              icon: const Icon(Icons.mic),
+              tooltip: l10n.herdVoiceButton,
+              onPressed: () => _openVoice(context),
+            ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: widget.onOpenSettings,

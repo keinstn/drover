@@ -16,6 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # flutter_soloud's native-assets build hook compiles its Linux ALSA
+      # backend during `flutter test`, so the headers must exist on the runner.
+      - name: Install ALSA headers for flutter_soloud
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:

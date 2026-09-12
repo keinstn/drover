@@ -155,5 +155,23 @@
   "settingsDemo": "デモを試す",
   "settingsDemoSubtitle": "host なしで試せる台本付きのセッション",
   "settingsVersion": "バージョン",
-  "settingsVersionCopied": "バージョンをコピーしました"
+  "settingsVersionCopied": "バージョンをコピーしました",
+
+  "settingsAssistant": "アシスタント",
+  "settingsVoiceAssistant": "音声アシスタント",
+  "settingsVoiceAssistantSubtitle": "エージェントについて drover と話せます。会話のため、エージェントの状態と返答の短い要約が Google の Gemini Live API に送信されます。",
+  "herdVoiceButton": "音声アシスタント",
+  "voiceTitle": "音声アシスタント",
+  "voiceStatusConnecting": "接続中…",
+  "voiceStatusLive": "聞いています",
+  "voiceStatusEnded": "終了しました",
+  "voiceStatusError": "エラー: {error}",
+  "voiceMicPermissionDenied": "マイクへのアクセスがオフです。設定で許可すると drover と話せます。",
+  "voiceToolCalled": "{name} を呼び出しました",
+  "voiceInterrupted": "中断されました",
+  "voiceGoingAway": "セッションはまもなく終了します",
+  "voiceEnded": "セッションが終了しました",
+  "voiceEnd": "終了",
+  "voiceRestart": "再開",
+  "voiceHint": "エージェントについて聞いてみましょう。例:「どのエージェントが私を待っている？」"
 }

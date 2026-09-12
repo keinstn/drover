@@ -10,6 +10,8 @@ Widget _app({
   Locale? locale,
   ValueChanged<ThemeMode>? onThemeModeChanged,
   ValueChanged<Locale?>? onLocaleChanged,
+  bool voiceAssistantEnabled = false,
+  ValueChanged<bool>? onVoiceAssistantChanged,
   VoidCallback? onManageHosts,
   VoidCallback? onEnterDemo,
   String? appVersion,
@@ -24,6 +26,8 @@ Widget _app({
       locale: locale,
       onThemeModeChanged: onThemeModeChanged ?? (_) {},
       onLocaleChanged: onLocaleChanged ?? (_) {},
+      voiceAssistantEnabled: voiceAssistantEnabled,
+      onVoiceAssistantChanged: onVoiceAssistantChanged ?? (_) {},
       onManageHosts: onManageHosts ?? () {},
       onEnterDemo: onEnterDemo,
       appVersion: appVersion,
@@ -138,6 +142,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(picked, isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('toggling the voice assistant switch reports the new value', (
+    tester,
+  ) async {
+    bool? reported;
+    await tester.pumpWidget(
+      _app(onVoiceAssistantChanged: (enabled) => reported = enabled),
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('settings_voice_assistant_tile')),
+      200,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('settings_voice_assistant_tile')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(reported, isTrue);
+    // The switch sits under its own section header, not under Appearance.
+    // Rendered through the label ramp, which uppercases outside Japanese.
+    expect(find.text('ASSISTANT'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

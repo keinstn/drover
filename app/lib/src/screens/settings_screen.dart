@@ -16,6 +16,8 @@ class SettingsScreen extends StatelessWidget {
     required this.locale,
     required this.onThemeModeChanged,
     required this.onLocaleChanged,
+    required this.voiceAssistantEnabled,
+    required this.onVoiceAssistantChanged,
     required this.onManageHosts,
     this.onEnterDemo,
     this.appVersion,
@@ -27,6 +29,8 @@ class SettingsScreen extends StatelessWidget {
   final Locale? locale;
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final ValueChanged<Locale?> onLocaleChanged;
+  final bool voiceAssistantEnabled;
+  final ValueChanged<bool> onVoiceAssistantChanged;
   final VoidCallback onManageHosts;
 
   /// Enters the scripted demo session. The first-run setup screen offers it
@@ -118,6 +122,24 @@ class SettingsScreen extends StatelessWidget {
               current: locale,
               onSelect: onLocaleChanged,
             ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              droverLabelText(context, l10n.settingsAssistant),
+              style: droverLabelStyle(
+                context,
+                color: DroverColors.of(context).tertiaryText,
+              ),
+            ),
+          ),
+          SwitchListTile(
+            key: const ValueKey('settings_voice_assistant_tile'),
+            secondary: const Icon(Icons.mic),
+            title: Text(l10n.settingsVoiceAssistant),
+            subtitle: Text(l10n.settingsVoiceAssistantSubtitle),
+            value: voiceAssistantEnabled,
+            onChanged: onVoiceAssistantChanged,
           ),
           if (version != null && version.isNotEmpty) ...[
             // Detaches the row from the `settingsAppearance` section above,
