@@ -17,6 +17,10 @@ class FakeTransport implements VoiceTransport {
   void push(LiveServerMessage message) =>
       server.add(LiveServerResponse(message: message));
 
+  /// Offers [handle] as a resumption handle, as the server does periodically.
+  void pushResumption(String handle, {bool resumable = true}) =>
+      push(SessionResumptionUpdate(newHandle: handle, resumable: resumable));
+
   @override
   Stream<LiveServerResponse> receive() => server.stream;
 
@@ -36,6 +40,27 @@ class FakeTransport implements VoiceTransport {
     // Not awaited: once the session cancelled its subscription, close()
     // returns a root-zone future that never resolves under FakeAsync.
     if (!server.isClosed) unawaited(server.close());
+  }
+}
+
+/// Hands out a fresh [FakeTransport] per connect and records the resumption
+/// handle each one was asked for.
+class FakeConnector {
+  final transports = <FakeTransport>[];
+  final handles = <String?>[];
+
+  /// When set, the connect at that index (0-based) throws instead.
+  final throwAt = <int>{};
+
+  FakeTransport get last => transports.last;
+
+  Future<VoiceTransport> call(String? resumeHandle) async {
+    final index = handles.length;
+    handles.add(resumeHandle);
+    if (throwAt.contains(index)) throw StateError('handle refused');
+    final transport = FakeTransport();
+    transports.add(transport);
+    return transport;
   }
 }
 

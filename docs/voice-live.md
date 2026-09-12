@@ -120,9 +120,13 @@ Already done for this project; recorded so a fresh setup can repeat it.
   `SpeechConfig(languageCode: 'ja-JP')`.
 - Audio format: input PCM16 16 kHz mono, output PCM16 24 kHz.
 - Model: `gemini-3.1-flash-live-preview` on the Developer API backend.
-- Session limits: 15 minutes of audio, roughly 10 minutes per connection,
-  unless context-window compression and session resumption are enabled. They
-  are not enabled yet.
+- Session limits: the server caps a single Live connection at roughly ten
+  minutes, but the app no longer ends there (2026-09-13). Every connect asks
+  for session resumption and sliding-window context-window compression
+  (`FirebaseVoiceTransport.connect`); the server then keeps handing out
+  resumption handles, and when the socket drops `VoiceSession` reconnects
+  once on the latest handle, logs a "Reconnected, continuing" line and keeps
+  the mic and speaker up. The conversation carries on across connections.
 
 ## Voicemail and callback model
 
@@ -186,6 +190,10 @@ Ceilings, marked `ponytail:` in code:
   must be answered in the app; `answer_question` refuses it.
 - Announced replies are reduced to speakable prose (code fences become
   "(code omitted)") and cut at 600 characters.
+- A resumption handle can be refused by the server (it expires, or the state
+  is gone). The session then errors out and Restart starts a fresh
+  conversation with no context — there is no retry ladder, one resume attempt
+  per drop.
 
 ## Data boundary
 
