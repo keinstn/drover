@@ -1,4 +1,5 @@
 import 'package:drover/src/models/agent_info.dart';
+import 'package:drover/src/voice/voice_drafts.dart';
 import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_tools.dart';
 import 'package:firebase_ai/firebase_ai.dart';
@@ -31,19 +32,24 @@ final _agents = [
 void main() {
   group('droverVoiceTools', () {
     late FakeVoiceHerd herd;
+    late VoiceDrafts drafts;
     late List<VoiceTool> tools;
 
     VoiceTool tool(String name) => tools.singleWhere((t) => t.name == name);
 
     setUp(() {
       herd = FakeVoiceHerd(agents: _agents);
-      tools = droverVoiceTools(herd);
+      drafts = VoiceDrafts();
+      tools = droverVoiceTools(herd, drafts);
     });
 
-    test('exposes the four tools; only answer_question has optionals', () {
+    tearDown(() => drafts.dispose());
+
+    test('exposes the five tools; only answer_question has optionals', () {
       expect(tools.map((t) => t.name), [
         'list_agents',
         'read_agent',
+        'draft_message',
         'send_message',
         'answer_question',
       ]);
@@ -52,6 +58,7 @@ void main() {
         'option_number',
         'text',
       ]);
+      expect(tool('draft_message').description, contains('Nothing is sent'));
       expect(tool('send_message').description, contains('voicemail'));
     });
 
@@ -90,14 +97,55 @@ void main() {
       );
     });
 
-    test('send_message sends to the resolved agent', () async {
+    test('draft_message stores a pending draft and echoes it', () async {
       final result = await tool(
-        'send_message',
+        'draft_message',
       ).run({'agent': 'claude', 'message': 'add tests too'});
 
-      expect(result, {'sent': true, 'agent': 'Implement the OAuth callback'});
+      expect(result, {
+        'draft_id': 'd1',
+        'agent': 'Implement the OAuth callback',
+        'message': 'add tests too',
+      });
+      expect(drafts.pending.single.message, 'add tests too');
+      expect(drafts.pending.single.agent.paneId, 'wB:p1');
+      expect(herd.sent, isEmpty);
+    });
+
+    test('send_message delivers the draft and marks it sent', () async {
+      await tool(
+        'draft_message',
+      ).run({'agent': 'claude', 'message': 'add tests too'});
+
+      final result = await tool('send_message').run({'draft_id': 'd1'});
+
+      expect(result, {
+        'sent': true,
+        'agent': 'Implement the OAuth callback',
+        'message': 'add tests too',
+      });
       expect(herd.sent.single.$1.paneId, 'wB:p1');
       expect(herd.sent.single.$2, 'add tests too');
+      expect(drafts.pending, isEmpty);
+    });
+
+    test('send_message with an unknown id sends nothing', () async {
+      final result = await tool('send_message').run({'draft_id': 'd7'});
+
+      expect(result['error'], contains('unknown draft_id d7'));
+      expect(herd.sent, isEmpty);
+    });
+
+    test('a failed send keeps the draft pending', () async {
+      await tool('draft_message').run({'agent': 'claude', 'message': 'hi'});
+      herd.sendError = StateError('ssh down');
+
+      final responses = await runVoiceToolCalls([
+        const FunctionCall('send_message', {'draft_id': 'd1'}, id: 'c5'),
+      ], tools);
+
+      expect(responses.single.response['error'], contains('ssh down'));
+      expect(drafts.pending, hasLength(1));
     });
 
     test('answer_question answers by option number', () async {
@@ -122,7 +170,7 @@ void main() {
 
     test('an unknown agent becomes a readable error payload', () async {
       final responses = await runVoiceToolCalls([
-        const FunctionCall('send_message', {
+        const FunctionCall('draft_message', {
           'agent': 'gemini',
           'message': 'hi',
         }, id: 'c9'),
@@ -133,7 +181,7 @@ void main() {
         'no agent matches "gemini"; agents: Implement the OAuth callback, '
         'Reviewer, agent',
       );
-      expect(herd.sent, isEmpty);
+      expect(drafts.pending, isEmpty);
     });
   });
 
@@ -183,12 +231,15 @@ void main() {
   });
 
   test('voiceToolsToFirebase declares every tool', () {
-    final tool = voiceToolsToFirebase(droverVoiceTools(FakeVoiceHerd()));
+    final tool = voiceToolsToFirebase(
+      droverVoiceTools(FakeVoiceHerd(), VoiceDrafts()),
+    );
     final json = tool.toJson() as Map<String, Object?>;
     final decls = json['functionDeclarations'] as List<Object?>;
     expect(decls.map((d) => (d as Map<String, Object?>)['name']), [
       'list_agents',
       'read_agent',
+      'draft_message',
       'send_message',
       'answer_question',
     ]);
