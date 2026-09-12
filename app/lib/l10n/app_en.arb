@@ -254,5 +254,20 @@
       "name": { "type": "String" }
     }
   },
-  "voiceEventAnnounceFailed": "Couldn't read the agent's state"
+  "voiceEventAnnounceFailed": "Couldn't read the agent's state",
+  "voiceDraftPending": "Waiting to send to {agent}",
+  "@voiceDraftPending": {
+    "placeholders": {
+      "agent": { "type": "String" }
+    }
+  },
+  "voiceDraftSent": "Sent to {agent}",
+  "@voiceDraftSent": {
+    "placeholders": {
+      "agent": { "type": "String" }
+    }
+  },
+  "voiceDraftSend": "Send",
+  "voiceUnsentDrafts": "There is an unsent draft — tap Send to deliver it",
+  "voiceSendFailed": "Couldn't send the message"
 }

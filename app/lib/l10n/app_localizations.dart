@@ -1087,6 +1087,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t read the agent\'s state'**
   String get voiceEventAnnounceFailed;
+
+  /// No description provided for @voiceDraftPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting to send to {agent}'**
+  String voiceDraftPending(String agent);
+
+  /// No description provided for @voiceDraftSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to {agent}'**
+  String voiceDraftSent(String agent);
+
+  /// No description provided for @voiceDraftSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get voiceDraftSend;
+
+  /// No description provided for @voiceUnsentDrafts.
+  ///
+  /// In en, this message translates to:
+  /// **'There is an unsent draft — tap Send to deliver it'**
+  String get voiceUnsentDrafts;
+
+  /// No description provided for @voiceSendFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t send the message'**
+  String get voiceSendFailed;
 }
 
 class _AppLocalizationsDelegate

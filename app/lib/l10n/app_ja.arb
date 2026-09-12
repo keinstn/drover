@@ -176,5 +176,10 @@
   "voiceHint": "エージェントについて聞いてみましょう。例:「どのエージェントが私を待っている？」「claude にテストも追加するよう伝えて」",
   "voiceEventFinished": "{name} が完了しました",
   "voiceEventBlocked": "{name} があなたの返事を待っています",
-  "voiceEventAnnounceFailed": "エージェントの状態を読めませんでした"
+  "voiceEventAnnounceFailed": "エージェントの状態を読めませんでした",
+  "voiceDraftPending": "{agent} への送信待ち",
+  "voiceDraftSent": "{agent} に送信しました",
+  "voiceDraftSend": "送信",
+  "voiceUnsentDrafts": "未送信の下書きがあります。送信ボタンで送れます",
+  "voiceSendFailed": "メッセージを送信できませんでした"
 }

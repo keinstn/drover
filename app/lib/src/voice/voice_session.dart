@@ -6,19 +6,21 @@ import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/foundation.dart';
 
 import 'voice_audio.dart';
+import 'voice_drafts.dart';
 import 'voice_herd.dart';
 import 'voice_tools.dart';
 import 'voice_transport.dart';
 
 enum VoiceSessionStatus { idle, connecting, live, ended, error }
 
-enum VoiceEntryKind { user, assistant, tool, system, event }
+enum VoiceEntryKind { user, assistant, tool, system, event, draft, sent }
 
 /// One line of the conversation log. [VoiceEntryKind.system] entries carry a
 /// stable code ([VoiceSession.interruptedCode] etc.) that the screen maps to
-/// l10n, and [VoiceEntryKind.event] entries a `finished:<title>` /
-/// `blocked:<title>` code; the other kinds carry the spoken/called text
-/// verbatim.
+/// l10n, [VoiceEntryKind.event] entries a `finished:<title>` /
+/// `blocked:<title>` code, and [VoiceEntryKind.draft] / [VoiceEntryKind.sent]
+/// entries a draft id (see [VoiceSession.drafts]); the other kinds carry the
+/// spoken/called text verbatim.
 class VoiceEntry {
   const VoiceEntry(this.kind, this.text);
 
@@ -36,10 +38,21 @@ class VoiceSession extends ChangeNotifier {
     required this._tools,
     this._herd,
     this._inbox,
+    VoiceDrafts? drafts,
     this.muteMicWhileSpeaking = true,
     this._now = DateTime.now,
     this._sleep = Future.delayed,
-  });
+  }) : drafts = drafts ?? VoiceDrafts() {
+    _draftsSub = this.drafts.events.listen((event) {
+      _entries.add(
+        VoiceEntry(switch (event.kind) {
+          VoiceDraftEventKind.drafted => VoiceEntryKind.draft,
+          VoiceDraftEventKind.sent => VoiceEntryKind.sent,
+        }, event.draft.id),
+      );
+      _notify();
+    });
+  }
 
   /// Production wiring for one herdr host.
   ///
@@ -50,7 +63,8 @@ class VoiceSession extends ChangeNotifier {
     required VoiceInbox inbox,
     required Locale? locale,
   }) {
-    final tools = droverVoiceTools(herd);
+    final drafts = VoiceDrafts();
+    final tools = droverVoiceTools(herd, drafts);
     return VoiceSession(
       connect: () => FirebaseVoiceTransport.connect(
         tools: tools,
@@ -61,6 +75,7 @@ class VoiceSession extends ChangeNotifier {
       tools: tools,
       herd: herd,
       inbox: inbox,
+      drafts: drafts,
     );
   }
 
@@ -70,6 +85,16 @@ class VoiceSession extends ChangeNotifier {
 
   /// System code logged when an agent event could not be read for announcing.
   static const announceFailedCode = 'announce_failed';
+
+  /// System code logged when the session ends with a draft still pending.
+  static const unsentDraftsCode = 'unsent_drafts';
+
+  /// System code logged when [sendDraft] failed.
+  static const sendFailedCode = 'send_failed';
+
+  /// Message drafts of this session; the screen renders them and can send
+  /// a pending one via [sendDraft].
+  final VoiceDrafts drafts;
 
   /// [error] value when the microphone permission is missing.
   static const micPermissionDenied = 'mic_permission_denied';
@@ -96,6 +121,7 @@ class VoiceSession extends ChangeNotifier {
   StreamSubscription<LiveServerResponse>? _rxSub;
   StreamSubscription<Uint8List>? _micSub;
   StreamSubscription<AgentEvent>? _inboxSub;
+  StreamSubscription<VoiceDraftEvent>? _draftsSub;
 
   /// Announcements are chained like [_rx] so two events read back in order,
   /// but on their own chain: reading an agent's state goes over SSH and must
@@ -200,6 +226,24 @@ class VoiceSession extends ChangeNotifier {
 
   /// Tears everything down. Safe to call repeatedly.
   Future<void> stop() => _end();
+
+  /// Sends the pending draft [id] to its agent — the manual fallback when the
+  /// model never called send_message. Needs only the herd, so it works after
+  /// the live session ended. A failure is logged as [sendFailedCode] and the
+  /// draft stays pending.
+  Future<void> sendDraft(String id) async {
+    final draft = drafts.byId(id);
+    final herd = _herd;
+    if (draft == null || !drafts.isPending(draft)) return;
+    try {
+      if (herd == null) throw StateError('no herd');
+      await herd.send(draft.agent, draft.message);
+      drafts.markSent(draft);
+    } catch (_) {
+      _entries.add(const VoiceEntry(VoiceEntryKind.system, sendFailedCode));
+      _notify();
+    }
+  }
 
   Future<void> _onMessage(LiveServerResponse response) async {
     final message = response.message;
@@ -355,6 +399,9 @@ class VoiceSession extends ChangeNotifier {
     if (_status != VoiceSessionStatus.ended &&
         _status != VoiceSessionStatus.error) {
       _entries.add(const VoiceEntry(VoiceEntryKind.system, endedCode));
+      if (drafts.pending.isNotEmpty) {
+        _entries.add(const VoiceEntry(VoiceEntryKind.system, unsentDraftsCode));
+      }
       _setStatus(VoiceSessionStatus.ended);
     }
   }
@@ -398,7 +445,13 @@ class VoiceSession extends ChangeNotifier {
 
   @override
   void dispose() {
-    unawaited(_end().then((_) => _mic.dispose()));
+    unawaited(
+      _end().then((_) async {
+        await _mic.dispose();
+        await _draftsSub?.cancel();
+        drafts.dispose();
+      }),
+    );
     _disposed = true;
     super.dispose();
   }

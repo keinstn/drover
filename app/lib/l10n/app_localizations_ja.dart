@@ -545,4 +545,23 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get voiceEventAnnounceFailed => 'エージェントの状態を読めませんでした';
+
+  @override
+  String voiceDraftPending(String agent) {
+    return '$agent への送信待ち';
+  }
+
+  @override
+  String voiceDraftSent(String agent) {
+    return '$agent に送信しました';
+  }
+
+  @override
+  String get voiceDraftSend => '送信';
+
+  @override
+  String get voiceUnsentDrafts => '未送信の下書きがあります。送信ボタンで送れます';
+
+  @override
+  String get voiceSendFailed => 'メッセージを送信できませんでした';
 }

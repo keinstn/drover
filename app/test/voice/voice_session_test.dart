@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:drover/src/voice/voice_drafts.dart';
 import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_session.dart';
 import 'package:drover/src/voice/voice_tools.dart';
@@ -27,6 +28,7 @@ void main() {
     Future<VoiceTransport> Function()? connect,
     FakeVoiceHerd? herd,
     VoiceInbox? inbox,
+    VoiceDrafts? drafts,
     Completer<void>? sleepGate,
   }) => VoiceSession(
     connect: connect ?? () async => transport,
@@ -40,6 +42,7 @@ void main() {
     speaker: speaker,
     herd: herd,
     inbox: inbox,
+    drafts: drafts,
     tools: [
       VoiceTool(
         name: 'list_agents',
@@ -50,6 +53,12 @@ void main() {
           return {'agents': []};
         },
       ),
+      // The real draft/send pair, so tool calls drive the drafts box.
+      if (herd != null && drafts != null)
+        ...droverVoiceTools(
+          herd,
+          drafts,
+        ).where((t) => t.name == 'draft_message' || t.name == 'send_message'),
     ],
     muteMicWhileSpeaking: muteMicWhileSpeaking,
   );
@@ -579,6 +588,112 @@ void main() {
 
       expect(transport.sentText, isEmpty);
       expect(inbox.pending, hasLength(1), reason: 'kept for the next session');
+    });
+  });
+
+  group('drafts', () {
+    late FakeVoiceHerd herd;
+    late VoiceDrafts drafts;
+    final claude = fakeAgent(paneId: 'p1', title: 'Implement OAuth');
+
+    setUp(() {
+      herd = FakeVoiceHerd(agents: [claude]);
+      drafts = VoiceDrafts();
+    });
+
+    Future<void> draftViaTool() async {
+      transport.push(
+        LiveServerToolCall(
+          functionCalls: const [
+            FunctionCall('draft_message', {
+              'agent': 'claude',
+              'message': 'add tests too',
+            }, id: 'c1'),
+          ],
+        ),
+      );
+      await settle();
+    }
+
+    test(
+      'draft_message logs a draft entry; send_message a sent entry',
+      () async {
+        final s = session(herd: herd, inbox: VoiceInbox(), drafts: drafts);
+        await s.start();
+
+        await draftViaTool();
+        expect(s.entries.map((e) => (e.kind, e.text)), [
+          (VoiceEntryKind.tool, 'draft_message'),
+          (VoiceEntryKind.draft, 'd1'),
+        ]);
+        expect(herd.sent, isEmpty);
+
+        transport.push(
+          LiveServerToolCall(
+            functionCalls: const [
+              FunctionCall('send_message', {'draft_id': 'd1'}, id: 'c2'),
+            ],
+          ),
+        );
+        await settle();
+
+        expect(s.entries.skip(2).map((e) => (e.kind, e.text)), [
+          (VoiceEntryKind.tool, 'send_message'),
+          (VoiceEntryKind.sent, 'd1'),
+        ]);
+        expect(herd.sent.single.$2, 'add tests too');
+        expect(transport.toolResponses.last.single.response['sent'], isTrue);
+      },
+    );
+
+    test('stopping with a pending draft logs unsent_drafts once', () async {
+      final s = session(herd: herd, inbox: VoiceInbox(), drafts: drafts);
+      await s.start();
+      await draftViaTool();
+
+      await s.stop();
+      await s.stop();
+
+      expect(s.entries.map((e) => e.text).skip(2), [
+        VoiceSession.endedCode,
+        VoiceSession.unsentDraftsCode,
+      ]);
+    });
+
+    test('sendDraft sends via the herd and marks the draft sent', () async {
+      final s = session(herd: herd, inbox: VoiceInbox(), drafts: drafts);
+      await s.start();
+      await draftViaTool();
+      await s.stop();
+
+      await s.sendDraft('d1');
+      await s.sendDraft('d1');
+
+      expect(herd.sent.single.$1.paneId, 'p1');
+      expect(herd.sent.single.$2, 'add tests too');
+      expect(drafts.pending, isEmpty);
+      expect(
+        s.entries.last,
+        isA<VoiceEntry>().having((e) => e.kind, 'kind', VoiceEntryKind.sent),
+      );
+      expect(
+        s.entries.where((e) => e.kind == VoiceEntryKind.sent),
+        hasLength(1),
+      );
+    });
+
+    test('a failed sendDraft logs send_failed and keeps the draft', () async {
+      final s = session(herd: herd, inbox: VoiceInbox(), drafts: drafts);
+      await s.start();
+      await draftViaTool();
+      herd.sendError = StateError('ssh down');
+
+      await s.sendDraft('d1');
+
+      expect(drafts.pending, hasLength(1));
+      expect(s.entries.last.kind, VoiceEntryKind.system);
+      expect(s.entries.last.text, VoiceSession.sendFailedCode);
+      expect(s.status, VoiceSessionStatus.live);
     });
   });
 }
