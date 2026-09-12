@@ -518,7 +518,10 @@ class AppLocalizationsJa extends AppLocalizations {
   String get voiceInterrupted => '中断されました';
 
   @override
-  String get voiceGoingAway => 'セッションはまもなく終了します';
+  String get voiceGoingAway => 'まもなく再接続します';
+
+  @override
+  String get voiceResumed => '再接続しました。続けます';
 
   @override
   String get voiceEnded => 'セッションが終了しました';

@@ -66,9 +66,10 @@ class VoiceSession extends ChangeNotifier {
     final drafts = VoiceDrafts();
     final tools = droverVoiceTools(herd, drafts);
     return VoiceSession(
-      connect: () => FirebaseVoiceTransport.connect(
+      connect: (resumeHandle) => FirebaseVoiceTransport.connect(
         tools: tools,
         languageCode: voiceLanguageCodeFor(locale),
+        resumeHandle: resumeHandle,
       ),
       mic: RecordVoiceMic(),
       speaker: SoLoudVoiceSpeaker(),
@@ -82,6 +83,10 @@ class VoiceSession extends ChangeNotifier {
   static const interruptedCode = 'interrupted';
   static const goingAwayCode = 'going_away';
   static const endedCode = 'ended';
+
+  /// System code logged when the dropped connection was resumed and the
+  /// conversation carried on.
+  static const resumedCode = 'resumed';
 
   /// System code logged when an agent event could not be read for announcing.
   static const announceFailedCode = 'announce_failed';
@@ -108,7 +113,7 @@ class VoiceSession extends ChangeNotifier {
   static const _muteTail = Duration(milliseconds: 1500);
   static const _playbackBytesPerSecond = 48000;
 
-  final Future<VoiceTransport> Function() _connect;
+  final Future<VoiceTransport> Function(String? resumeHandle) _connect;
   final VoiceMic _mic;
   final VoiceSpeaker _speaker;
   final List<VoiceTool> _tools;
@@ -144,9 +149,13 @@ class VoiceSession extends ChangeNotifier {
   /// True from [start] until the matching teardown; makes [stop] idempotent.
   bool _active = false;
 
-  /// Bumped by every [start] and teardown so a [start] still awaiting a step
-  /// notices it lost to a [stop] and disposes what it just created.
+  /// Bumped by every [start], reconnect and teardown so a connect still in
+  /// flight notices it lost to a [stop] and disposes what it just created.
   int _generation = 0;
+
+  /// Latest resumption handle the server offered. While it is set a dropped
+  /// connection is resumed instead of ending the session.
+  String? _resumeHandle;
   bool _disposed = false;
 
   VoiceSessionStatus get status => _status;
@@ -182,44 +191,102 @@ class VoiceSession extends ChangeNotifier {
         await _speaker.dispose();
         return;
       }
-      final transport = await _connect();
+      final transport = await _connect(_resumeHandle);
       if (_stale(gen)) {
         await transport.close().catchError((Object _) {});
         return;
       }
-      _transport = transport;
-      _rxSub = transport.receive().listen(
-        (response) {
-          _rx = _rx
-              .then((_) => _onMessage(response))
-              .catchError((Object e) => _fail('$e'));
-        },
-        onError: (Object e) => unawaited(_fail('$e')),
-        onDone: () => unawaited(_end()),
-      );
+      _bind(transport, gen);
       final frames = await _mic.start();
       if (_stale(gen)) {
         await _mic.stop();
         return;
       }
       _micSub = frames.listen((data) {
-        if (data.isEmpty || _transport != transport || _micMuted) return;
+        // Read live: the transport is swapped on a resume, and is null while
+        // reconnecting, when frames are simply dropped.
+        final current = _transport;
+        if (data.isEmpty || current == null || _micMuted) return;
         // A send that races the socket closing is expected; nothing to do.
-        unawaited(transport.sendAudio(data).catchError((Object _) {}));
+        unawaited(current.sendAudio(data).catchError((Object _) {}));
       });
       final inbox = _inbox;
       if (inbox != null) {
         // Events that queued up before the conversation started go out as
-        // one block; later ones are announced as they arrive.
-        _announce(inbox.drain(), transport);
-        _inboxSub = inbox.events.listen((event) {
-          inbox.drain();
-          _announce([event], transport);
+        // one block; later ones are announced as they arrive — unless a
+        // reconnect is in flight, when they stay pending until it lands.
+        _announce(inbox.drain());
+        _inboxSub = inbox.events.listen((_) {
+          if (_transport != null) _announce(inbox.drain());
         });
       }
       _setStatus(VoiceSessionStatus.live);
     } catch (e) {
       if (_stale(gen)) return;
+      // A stale handle only surfaces as a connect failure; dropping it makes
+      // Restart start fresh instead of looping on it.
+      _resumeHandle = null;
+      await _fail('$e');
+    }
+  }
+
+  /// Makes [transport] the current one and routes its messages into [_rx].
+  void _bind(VoiceTransport transport, int gen) {
+    _transport = transport;
+    _rxSub = transport.receive().listen(
+      (response) {
+        _rx = _rx
+            .then((_) => _onMessage(response))
+            .catchError((Object e) => _fail('$e'));
+      },
+      onError: (Object e) => unawaited(_lost(gen, '$e')),
+      onDone: () => unawaited(_lost(gen, null)),
+    );
+  }
+
+  /// The connection dropped ([error] null when it closed cleanly). The server
+  /// caps every connection at a few minutes, so with a resumption handle this
+  /// reconnects once and carries the conversation on — mic and speaker stay
+  /// up throughout. Without one, the session ends as it always has.
+  Future<void> _lost(int gen, String? error) async {
+    if (_stale(gen)) return;
+    // Consumed, not reused: a connection that opens and closes again right
+    // away (the server does this when the API credits run out) would
+    // otherwise reconnect in a tight loop. The resumed connection re-arms
+    // this within seconds via its own SessionResumptionUpdate.
+    final handle = _resumeHandle;
+    _resumeHandle = null;
+    // Only a live session resumes: a drop during [start] would race the mic
+    // and inbox wiring that is still being set up behind this callback.
+    if (handle == null || _status != VoiceSessionStatus.live) {
+      await (error == null ? _end() : _fail(error));
+      return;
+    }
+    // Bumped before the first await so the error/done pair of one drop can
+    // only reconnect once.
+    final next = ++_generation;
+    unawaited(_rxSub?.cancel());
+    _rxSub = null;
+    final dropped = _transport;
+    _transport = null;
+    _setStatus(VoiceSessionStatus.connecting);
+    try {
+      try {
+        await dropped?.close();
+      } catch (_) {}
+      final transport = await _connect(handle);
+      if (_stale(next)) {
+        await transport.close().catchError((Object _) {});
+        return;
+      }
+      _bind(transport, next);
+      _entries.add(const VoiceEntry(VoiceEntryKind.system, resumedCode));
+      _setStatus(VoiceSessionStatus.live);
+      final inbox = _inbox;
+      if (inbox != null) _announce(inbox.drain());
+    } catch (e) {
+      if (_stale(next)) return;
+      // The handle was refused; Restart starts fresh (it was consumed above).
       await _fail('$e');
     }
   }
@@ -301,6 +368,11 @@ class VoiceSession extends ChangeNotifier {
       case GoingAwayNotice():
         _entries.add(const VoiceEntry(VoiceEntryKind.system, goingAwayCode));
         _notify();
+      case SessionResumptionUpdate():
+        final handle = message.newHandle;
+        if (message.resumable == true && handle != null && handle.isNotEmpty) {
+          _resumeHandle = handle;
+        }
       default:
         break;
     }
@@ -308,15 +380,20 @@ class VoiceSession extends ChangeNotifier {
 
   /// Tells the model about [events] as injected text, logging one entry per
   /// event. A failed read logs [announceFailedCode] and leaves the session
-  /// live; a send after the transport changed is dropped.
-  void _announce(List<AgentEvent> events, VoiceTransport transport) {
+  /// live; a send after the session ended is dropped. An announcement that
+  /// outlives a reconnect goes to the new transport.
+  ///
+  /// ponytail: one parked in [_awaitPlaybackEnd] when the socket drops is
+  /// logged but never spoken — its send finds no transport. Rare enough to
+  /// leave; re-queue it on the inbox if it bites.
+  void _announce(List<AgentEvent> events) {
     final herd = _herd;
     if (events.isEmpty || herd == null) return;
     _announcing = _announcing.then((_) async {
-      if (_transport != transport) return;
+      if (!_active) return;
       try {
         final text = await announceEvents(events, herd);
-        if (_transport != transport) return;
+        if (!_active) return;
         for (final event in events) {
           _entries.add(
             VoiceEntry(
@@ -326,10 +403,10 @@ class VoiceSession extends ChangeNotifier {
           );
         }
         _notify();
-        if (!await _awaitPlaybackEnd(transport)) return;
-        await transport.sendText(text);
+        if (!await _awaitPlaybackEnd()) return;
+        await _transport?.sendText(text);
       } catch (_) {
-        if (_transport != transport) return;
+        if (!_active) return;
         _entries.add(
           const VoiceEntry(VoiceEntryKind.system, announceFailedCode),
         );
@@ -343,20 +420,20 @@ class VoiceSession extends ChangeNotifier {
 
   /// Waits until the model's estimated playback (plus [_muteTail]) is over:
   /// Gemini Live treats injected text like user speech and barges in, so an
-  /// announcement sent mid-sentence cuts the model off. Returns false when
-  /// [transport] is no longer current. Bounded so a wedged estimate can never
+  /// announcement sent mid-sentence cuts the model off. Returns false once
+  /// the session is no longer active. Bounded so a wedged estimate can never
   /// hold an announcement back forever.
   ///
   /// ponytail: estimate-based (queued bytes at 24 kHz), the same guess the
   /// mic gate uses — the speaker's buffer stream gives no playback position.
-  Future<bool> _awaitPlaybackEnd(VoiceTransport transport) async {
+  Future<bool> _awaitPlaybackEnd() async {
     final deadline = _now().add(_announceWaitBound);
     while (_now().isBefore(_playbackEnd.add(_muteTail)) &&
         _now().isBefore(deadline)) {
       await _sleep(_announceWaitStep);
-      if (_transport != transport) return false;
+      if (!_active) return false;
     }
-    return true;
+    return _active;
   }
 
   /// Plays [bytes] and extends the playback estimate the mic gate keys on.

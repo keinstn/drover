@@ -1043,8 +1043,14 @@ abstract class AppLocalizations {
   /// No description provided for @voiceGoingAway.
   ///
   /// In en, this message translates to:
-  /// **'The session is about to end'**
+  /// **'Reconnecting shortly'**
   String get voiceGoingAway;
+
+  /// No description provided for @voiceResumed.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnected, continuing'**
+  String get voiceResumed;
 
   /// No description provided for @voiceEnded.
   ///
