@@ -241,5 +241,18 @@
   "voiceEnded": "Session ended",
   "voiceEnd": "End",
   "voiceRestart": "Restart",
-  "voiceHint": "Ask about your agents, e.g. \u201cWhich agent is waiting for me?\u201d"
+  "voiceHint": "Ask about your agents, e.g. \u201cWhich agent is waiting for me?\u201d, or say \u201cTell claude to add tests too\u201d.",
+  "voiceEventFinished": "{name} finished",
+  "@voiceEventFinished": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "voiceEventBlocked": "{name} is waiting for you",
+  "@voiceEventBlocked": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "voiceEventAnnounceFailed": "Couldn't read the agent's state"
 }

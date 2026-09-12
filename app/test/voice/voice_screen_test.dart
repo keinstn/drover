@@ -1,5 +1,6 @@
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
+import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_screen.dart';
 import 'package:drover/src/voice/voice_session.dart';
 import 'package:drover/src/voice/voice_tools.dart';
@@ -20,7 +21,7 @@ void main() {
     speaker = FakeSpeaker();
   });
 
-  Widget app() => MaterialApp(
+  Widget app({FakeVoiceHerd? herd, VoiceInbox? inbox}) => MaterialApp(
     theme: droverDarkTheme,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
@@ -29,6 +30,8 @@ void main() {
         connect: () async => transport,
         mic: mic,
         speaker: speaker,
+        herd: herd,
+        inbox: inbox,
         tools: [
           VoiceTool(
             name: 'list_agents',
@@ -109,5 +112,22 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
+  });
+
+  testWidgets('renders an announced event as a muted line', (tester) async {
+    final herd = FakeVoiceHerd();
+    final inbox = VoiceInbox();
+    await tester.pumpWidget(app(herd: herd, inbox: inbox));
+    await tester.pump();
+
+    inbox.add(AgentEvent(AgentEventKind.finished, fakeAgent(kind: 'claude')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('claude finished'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    inbox.dispose();
   });
 }

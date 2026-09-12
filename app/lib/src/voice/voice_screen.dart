@@ -168,13 +168,36 @@ class _VoiceScreenState extends State<VoiceScreen> {
             VoiceSession.interruptedCode => l10n.voiceInterrupted,
             VoiceSession.goingAwayCode => l10n.voiceGoingAway,
             VoiceSession.endedCode => l10n.voiceEnded,
+            VoiceSession.announceFailedCode => l10n.voiceEventAnnounceFailed,
             _ => entry.text,
           },
           textAlign: TextAlign.center,
           style: muted,
         ),
+        VoiceEntryKind.event => Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.notifications_none,
+              size: 14,
+              color: colors.tertiaryText,
+            ),
+            const SizedBox(width: 6),
+            Flexible(child: Text(_eventLabel(l10n, entry.text), style: muted)),
+          ],
+        ),
       },
     );
+  }
+
+  /// Maps an event code (`finished:<title>` / `blocked:<title>`) to copy.
+  String _eventLabel(AppLocalizations l10n, String code) {
+    final split = code.indexOf(':');
+    final kind = split < 0 ? code : code.substring(0, split);
+    final name = split < 0 ? '' : code.substring(split + 1);
+    return kind == 'blocked'
+        ? l10n.voiceEventBlocked(name)
+        : l10n.voiceEventFinished(name);
   }
 
   Widget _bubble(

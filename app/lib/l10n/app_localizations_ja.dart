@@ -530,5 +530,19 @@ class AppLocalizationsJa extends AppLocalizations {
   String get voiceRestart => '再開';
 
   @override
-  String get voiceHint => 'エージェントについて聞いてみましょう。例:「どのエージェントが私を待っている？」';
+  String get voiceHint =>
+      'エージェントについて聞いてみましょう。例:「どのエージェントが私を待っている？」「claude にテストも追加するよう伝えて」';
+
+  @override
+  String voiceEventFinished(String name) {
+    return '$name が完了しました';
+  }
+
+  @override
+  String voiceEventBlocked(String name) {
+    return '$name があなたの返事を待っています';
+  }
+
+  @override
+  String get voiceEventAnnounceFailed => 'エージェントの状態を読めませんでした';
 }

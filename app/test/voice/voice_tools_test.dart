@@ -1,61 +1,63 @@
-import 'package:drover/src/herdr/command_runner.dart';
-import 'package:drover/src/herdr/herdr_client.dart';
-import 'package:drover/src/models/remote_dir_entry.dart';
+import 'package:drover/src/models/agent_info.dart';
+import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_tools.dart';
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class _FakeRunner extends CommandRunner {
-  _FakeRunner(this.stdout);
+import 'fakes.dart';
 
-  final String stdout;
-  final commands = <String>[];
-
-  @override
-  Future<CommandResult> run(String command) async {
-    commands.add(command);
-    return CommandResult(exitCode: 0, stdout: stdout, stderr: '');
-  }
-
-  @override
-  Future<void> uploadFile(String remotePath, List<int> bytes) async {}
-
-  @override
-  Future<List<RemoteDirEntry>> listDirectory(String path) async => [];
-
-  @override
-  Future<String> resolvePath(String path) async => path;
-
-  @override
-  Future<void> dispose() async {}
-}
-
-const _agentList =
-    '{"id":"1","result":{"agents":['
-    '{"agent":"claude","agent_status":"blocked","cwd":"/tmp/proj",'
-    '"focused":false,"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
-    '"terminal_title_stripped":"Implement the OAuth callback"},'
-    '{"agent":"codex","name":"Reviewer","agent_status":"idle","cwd":"/tmp/x",'
-    '"focused":false,"pane_id":"wB:p2","tab_id":"wB:t1","workspace_id":"wB"},'
-    '{"agent":null,"agent_status":"working","cwd":"/tmp/y",'
-    '"focused":false,"pane_id":"wB:p3","tab_id":"wB:t2","workspace_id":"wB"}'
-    ']}}';
+final _agents = [
+  fakeAgent(
+    paneId: 'wB:p1',
+    kind: 'claude',
+    status: AgentStatus.blocked,
+    title: 'Implement the OAuth callback',
+  ),
+  fakeAgent(
+    paneId: 'wB:p2',
+    kind: 'codex',
+    name: 'Reviewer',
+    status: AgentStatus.idle,
+    cwd: '/tmp/x',
+  ),
+  fakeAgent(
+    paneId: 'wB:p3',
+    kind: null,
+    status: AgentStatus.working,
+    cwd: '/tmp/y',
+  ),
+];
 
 void main() {
   group('droverVoiceTools', () {
-    test('exposes exactly list_agents, with no parameters', () {
-      final tools = droverVoiceTools(HerdrClient(_FakeRunner(_agentList)));
-      expect(tools.map((t) => t.name), ['list_agents']);
-      expect(tools.single.parameters, isEmpty);
+    late FakeVoiceHerd herd;
+    late List<VoiceTool> tools;
+
+    VoiceTool tool(String name) => tools.singleWhere((t) => t.name == name);
+
+    setUp(() {
+      herd = FakeVoiceHerd(agents: _agents);
+      tools = droverVoiceTools(herd);
+    });
+
+    test('exposes the four tools; only answer_question has optionals', () {
+      expect(tools.map((t) => t.name), [
+        'list_agents',
+        'read_agent',
+        'send_message',
+        'answer_question',
+      ]);
+      expect(tool('list_agents').parameters, isEmpty);
+      expect(tool('answer_question').optionalParameters, [
+        'option_number',
+        'text',
+      ]);
+      expect(tool('send_message').description, contains('voicemail'));
     });
 
     test('list_agents returns title/kind/status/project per agent', () async {
-      final runner = _FakeRunner(_agentList);
-      final tool = droverVoiceTools(HerdrClient(runner)).single;
+      final result = await tool('list_agents').run({});
 
-      final result = await tool.run({});
-
-      expect(runner.commands.single, contains("'agent' 'list'"));
       expect(result, {
         'agents': [
           {
@@ -73,6 +75,65 @@ void main() {
           {'title': 'agent', 'kind': null, 'status': 'working', 'project': 'y'},
         ],
       });
+    });
+
+    test('read_agent returns status and the last reply', () async {
+      herd.replies['wB:p2'] = 'Looks good.';
+      expect(await tool('read_agent').run({'agent': 'reviewer'}), {
+        'agent': 'Reviewer',
+        'status': 'idle',
+        'last_reply': 'Looks good.',
+      });
+      expect(
+        (await tool('read_agent').run({'agent': 'oauth'}))['last_reply'],
+        isNull,
+      );
+    });
+
+    test('send_message sends to the resolved agent', () async {
+      final result = await tool(
+        'send_message',
+      ).run({'agent': 'claude', 'message': 'add tests too'});
+
+      expect(result, {'sent': true, 'agent': 'Implement the OAuth callback'});
+      expect(herd.sent.single.$1.paneId, 'wB:p1');
+      expect(herd.sent.single.$2, 'add tests too');
+    });
+
+    test('answer_question answers by option number', () async {
+      const question = AgentQuestion(question: 'Go?', options: ['Yes', 'No']);
+      herd.questions['wB:p1'] = question;
+
+      final result = await tool(
+        'answer_question',
+      ).run({'agent': 'claude', 'option_number': 2});
+
+      expect(result, {'answered': true});
+      expect(herd.answered.single, (_agents[0], question, 2, null));
+    });
+
+    test('answer_question reports an agent with nothing pending', () async {
+      expect(
+        await tool('answer_question').run({'agent': 'codex', 'text': 'x'}),
+        {'error': 'agent is not waiting on a question'},
+      );
+      expect(herd.answered, isEmpty);
+    });
+
+    test('an unknown agent becomes a readable error payload', () async {
+      final responses = await runVoiceToolCalls([
+        const FunctionCall('send_message', {
+          'agent': 'gemini',
+          'message': 'hi',
+        }, id: 'c9'),
+      ], tools);
+
+      expect(
+        responses.single.response['error'],
+        'no agent matches "gemini"; agents: Implement the OAuth callback, '
+        'Reviewer, agent',
+      );
+      expect(herd.sent, isEmpty);
     });
   });
 
@@ -122,12 +183,14 @@ void main() {
   });
 
   test('voiceToolsToFirebase declares every tool', () {
-    final tool = voiceToolsToFirebase(
-      droverVoiceTools(HerdrClient(_FakeRunner(_agentList))),
-    );
+    final tool = voiceToolsToFirebase(droverVoiceTools(FakeVoiceHerd()));
     final json = tool.toJson() as Map<String, Object?>;
     final decls = json['functionDeclarations'] as List<Object?>;
-    expect(decls, hasLength(1));
-    expect((decls.single as Map<String, Object?>)['name'], 'list_agents');
+    expect(decls.map((d) => (d as Map<String, Object?>)['name']), [
+      'list_agents',
+      'read_agent',
+      'send_message',
+      'answer_question',
+    ]);
   });
 }

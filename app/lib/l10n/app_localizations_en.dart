@@ -549,5 +549,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get voiceHint =>
-      'Ask about your agents, e.g. “Which agent is waiting for me?”';
+      'Ask about your agents, e.g. “Which agent is waiting for me?”, or say “Tell claude to add tests too”.';
+
+  @override
+  String voiceEventFinished(String name) {
+    return '$name finished';
+  }
+
+  @override
+  String voiceEventBlocked(String name) {
+    return '$name is waiting for you';
+  }
+
+  @override
+  String get voiceEventAnnounceFailed => 'Couldn\'t read the agent\'s state';
 }

@@ -173,5 +173,8 @@
   "voiceEnded": "セッションが終了しました",
   "voiceEnd": "終了",
   "voiceRestart": "再開",
-  "voiceHint": "エージェントについて聞いてみましょう。例:「どのエージェントが私を待っている？」"
+  "voiceHint": "エージェントについて聞いてみましょう。例:「どのエージェントが私を待っている？」「claude にテストも追加するよう伝えて」",
+  "voiceEventFinished": "{name} が完了しました",
+  "voiceEventBlocked": "{name} があなたの返事を待っています",
+  "voiceEventAnnounceFailed": "エージェントの状態を読めませんでした"
 }

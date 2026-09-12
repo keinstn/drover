@@ -318,6 +318,66 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('the mic button shows a badge once an agent finishes', (
+    tester,
+  ) async {
+    // Agent Three starts working; the second poll reports it idle.
+    var list = _listEnvelope;
+    final client = HerdrClient(
+      FakeCommandRunner(
+        (c) => c.contains("'agent' 'list'") ? ok(list) : _respond(c),
+      ),
+    );
+    await tester.pumpWidget(
+      _herdApp(
+        client: client,
+        voiceAssistantEnabled: true,
+        pollInterval: const Duration(seconds: 1),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    Badge badge() =>
+        tester.widget<Badge>(find.byKey(const ValueKey('voice_badge')));
+    expect(badge().isLabelVisible, isFalse);
+
+    list = _listEnvelope.replaceFirst(
+      '"agent_status":"working"',
+      '"agent_status":"idle"',
+    );
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+
+    expect(badge().isLabelVisible, isTrue);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('no voice badge when the assistant is off', (tester) async {
+    var list = _listEnvelope;
+    final client = HerdrClient(
+      FakeCommandRunner(
+        (c) => c.contains("'agent' 'list'") ? ok(list) : _respond(c),
+      ),
+    );
+    await tester.pumpWidget(
+      _herdApp(client: client, pollInterval: const Duration(seconds: 1)),
+    );
+    await tester.pump();
+    await tester.pump();
+    list = _listEnvelope.replaceFirst(
+      '"agent_status":"working"',
+      '"agent_status":"idle"',
+    );
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('voice_badge')), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('shows session titles grouped by workspace, blocked above idle', (
     tester,
   ) async {
