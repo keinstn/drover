@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_session.dart';
 import 'package:drover/src/voice/voice_tools.dart';
 import 'package:drover/src/voice/voice_transport.dart';
@@ -17,14 +18,28 @@ void main() {
   // Injected clock so the mic gate can be tested without sleeping.
   var clock = DateTime(2026, 1, 1);
 
+  // Recorded instead of waited: each call advances the fake clock by the
+  // requested duration.
+  final sleeps = <Duration>[];
+
   VoiceSession session({
     bool muteMicWhileSpeaking = true,
     Future<VoiceTransport> Function()? connect,
+    FakeVoiceHerd? herd,
+    VoiceInbox? inbox,
+    Completer<void>? sleepGate,
   }) => VoiceSession(
     connect: connect ?? () async => transport,
     now: () => clock,
+    sleep: (d) async {
+      sleeps.add(d);
+      clock = clock.add(d);
+      await sleepGate?.future;
+    },
     mic: mic,
     speaker: speaker,
+    herd: herd,
+    inbox: inbox,
     tools: [
       VoiceTool(
         name: 'list_agents',
@@ -52,6 +67,7 @@ void main() {
     speaker = FakeSpeaker();
     toolCalls = 0;
     clock = DateTime(2026, 1, 1);
+    sleeps.clear();
   });
 
   test('start goes live, inits the speaker and forwards mic audio', () async {
@@ -413,5 +429,156 @@ void main() {
     await settle();
 
     expect(transport.sentAudio, isEmpty);
+  });
+
+  group('callbacks', () {
+    late FakeVoiceHerd herd;
+    late VoiceInbox inbox;
+    final claude = fakeAgent(paneId: 'p1', title: 'Implement OAuth');
+    final codex = fakeAgent(paneId: 'p2', kind: 'codex', name: 'Reviewer');
+
+    setUp(() {
+      herd = FakeVoiceHerd(agents: [claude, codex])
+        ..replies['p1'] = 'All green.';
+      inbox = VoiceInbox();
+    });
+
+    tearDown(() => inbox.dispose());
+
+    test('pending events are announced as one text after going live', () async {
+      inbox.add(AgentEvent(AgentEventKind.finished, claude));
+      inbox.add(AgentEvent(AgentEventKind.blocked, codex));
+      final s = session(herd: herd, inbox: inbox);
+
+      await s.start();
+      await settle();
+
+      expect(inbox.pending, isEmpty);
+      expect(transport.sentText, hasLength(1));
+      expect(transport.sentText.single, startsWith('[event] Agent "Implement'));
+      expect(
+        transport.sentText.single,
+        contains('\n\n[event] Agent "Reviewer"'),
+      );
+      expect(s.entries.map((e) => (e.kind, e.text)), [
+        (VoiceEntryKind.event, 'finished:Implement OAuth'),
+        (VoiceEntryKind.event, 'blocked:Reviewer'),
+      ]);
+      expect(s.status, VoiceSessionStatus.live);
+    });
+
+    test('an event added while live is announced once and drained', () async {
+      final s = session(herd: herd, inbox: inbox);
+      await s.start();
+      expect(transport.sentText, isEmpty);
+
+      inbox.add(AgentEvent(AgentEventKind.finished, claude));
+      await settle();
+
+      expect(inbox.pending, isEmpty);
+      expect(transport.sentText, hasLength(1));
+      expect(transport.sentText.single, contains('Last reply: "All green."'));
+      expect(s.entries.single.text, 'finished:Implement OAuth');
+    });
+
+    test('a failed read logs announce_failed and keeps the session', () async {
+      herd.readError = StateError('ssh down');
+      final s = session(herd: herd, inbox: inbox);
+      await s.start();
+
+      inbox.add(AgentEvent(AgentEventKind.finished, claude));
+      await settle();
+
+      expect(transport.sentText, isEmpty);
+      expect(s.entries.single.kind, VoiceEntryKind.system);
+      expect(s.entries.single.text, VoiceSession.announceFailedCode);
+      expect(s.status, VoiceSessionStatus.live);
+    });
+
+    test('an announcement waits for playback plus the tail', () async {
+      final s = session(herd: herd, inbox: inbox);
+      await s.start();
+      // 96000 bytes = two seconds of 24 kHz PCM16 mono.
+      transport.push(audioChunk(bytes: 96000));
+      await settle();
+
+      inbox.add(AgentEvent(AgentEventKind.finished, claude));
+      await settle();
+
+      expect(transport.sentText, hasLength(1));
+      expect(s.entries.single.text, 'finished:Implement OAuth');
+      // Slept in 200 ms steps until 2 s + 1.5 s had elapsed, no further.
+      expect(sleeps, isNotEmpty);
+      expect(
+        sleeps.every((d) => d == const Duration(milliseconds: 200)),
+        isTrue,
+      );
+      expect(
+        sleeps.fold(Duration.zero, (a, d) => a + d),
+        const Duration(milliseconds: 3600),
+      );
+    });
+
+    test('an announcement with no recent audio is sent at once', () async {
+      final s = session(herd: herd, inbox: inbox);
+      await s.start();
+
+      inbox.add(AgentEvent(AgentEventKind.finished, claude));
+      await settle();
+
+      expect(transport.sentText, hasLength(1));
+      expect(sleeps, isEmpty);
+    });
+
+    test('the playback wait is bounded to 20 s', () async {
+      final s = session(herd: herd, inbox: inbox);
+      await s.start();
+      transport.push(audioChunk(bytes: 48000 * 60));
+      await settle();
+
+      // The sleep advances the clock, but the estimate is a minute out, so
+      // only the bound ends the wait.
+      inbox.add(AgentEvent(AgentEventKind.finished, claude));
+      await settle();
+
+      expect(transport.sentText, hasLength(1));
+      expect(
+        sleeps.fold(Duration.zero, (a, d) => a + d),
+        const Duration(seconds: 20),
+      );
+      expect(s.status, VoiceSessionStatus.live);
+    });
+
+    test('stopping during the playback wait drops the announcement', () async {
+      final gate = Completer<void>();
+      final s = session(herd: herd, inbox: inbox, sleepGate: gate);
+      await s.start();
+      transport.push(audioChunk(bytes: 96000));
+      await settle();
+
+      inbox.add(AgentEvent(AgentEventKind.finished, claude));
+      await settle();
+      expect(sleeps, hasLength(1), reason: 'parked in the first sleep');
+      expect(transport.sentText, isEmpty);
+
+      await s.stop();
+      gate.complete();
+      await settle();
+
+      expect(transport.sentText, isEmpty);
+      expect(s.status, VoiceSessionStatus.ended);
+    });
+
+    test('events after stop are not sent', () async {
+      final s = session(herd: herd, inbox: inbox);
+      await s.start();
+      await s.stop();
+
+      inbox.add(AgentEvent(AgentEventKind.finished, claude));
+      await settle();
+
+      expect(transport.sentText, isEmpty);
+      expect(inbox.pending, hasLength(1), reason: 'kept for the next session');
+    });
   });
 }

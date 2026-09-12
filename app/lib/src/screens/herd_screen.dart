@@ -13,6 +13,7 @@ import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
 import '../transcript/activity_snippet.dart';
 import '../utils/path.dart';
+import '../voice/voice_herd.dart';
 import '../voice/voice_screen.dart';
 import '../voice/voice_session.dart';
 import '../widgets/agent_avatar.dart';
@@ -118,7 +119,7 @@ class _HostHerd {
 
   // When each pane was first seen in its current status, so a tile can show a
   // client-side "N分前" since its last status change. Recorded/updated in
-  // [_HerdScreenState._checkBlockedTransitions]; pruned with the same
+  // [_HerdScreenState._checkStatusTransitions]; pruned with the same
   // lifecycle as [nativeHistory] in [_HerdScreenState._loadHost].
   final statusChangedAt = <String, DateTime>{};
 
@@ -201,6 +202,10 @@ class HerdScreen extends StatefulWidget {
 
 class _HerdScreenState extends State<HerdScreen> {
   final _byHost = <String, _HostHerd>{};
+
+  /// Agent events not yet announced by the voice assistant, per host. Kept
+  /// outside [_HostHerd] because a voice session outlives a bucket reset.
+  final _voiceInboxes = <String, VoiceInbox>{};
   Timer? _timer;
   StreamSubscription<void>? _networkChangesSub;
 
@@ -219,6 +224,9 @@ class _HerdScreenState extends State<HerdScreen> {
 
   _HostHerd _bucketFor(String hostId) =>
       _byHost.putIfAbsent(hostId, () => _HostHerd());
+
+  VoiceInbox _inboxFor(String hostId) =>
+      _voiceInboxes.putIfAbsent(hostId, VoiceInbox.new);
 
   @override
   void initState() {
@@ -278,6 +286,9 @@ class _HerdScreenState extends State<HerdScreen> {
   void dispose() {
     _timer?.cancel();
     _networkChangesSub?.cancel();
+    for (final inbox in _voiceInboxes.values) {
+      inbox.dispose();
+    }
     super.dispose();
   }
 
@@ -327,7 +338,7 @@ class _HerdScreenState extends State<HerdScreen> {
     try {
       final agents = await widget.clientFor(host).listAgents();
       if (!mounted || !identical(_byHost[host.hostId], bucket)) return;
-      _checkBlockedTransitions(bucket, agents);
+      _checkStatusTransitions(host, bucket, agents);
       setState(() {
         bucket.agents = agents;
         bucket.error = null;
@@ -476,8 +487,20 @@ class _HerdScreenState extends State<HerdScreen> {
     return activitySnippet(cached, l10n) ?? _agentMetadata(agent);
   }
 
-  void _checkBlockedTransitions(_HostHerd bucket, List<AgentInfo> agents) {
+  /// Records status changes per pane: the "since" timestamp, the blocked
+  /// toast + haptic, and — when the voice assistant is on — the finished /
+  /// blocked events its callbacks announce.
+  ///
+  /// ponytail: this foreground poll is the only event source, so callbacks
+  /// only fire while HerdScreen is polling. Background callbacks need
+  /// drover-notify to push `done` too.
+  void _checkStatusTransitions(
+    HerdHostRef host,
+    _HostHerd bucket,
+    List<AgentInfo> agents,
+  ) {
     final now = DateTime.now();
+    final inbox = widget.voiceAssistantEnabled ? _inboxFor(host.hostId) : null;
     for (final agent in agents) {
       final previous = bucket.previousStatus[agent.paneId];
       final seenBefore = bucket.previousStatus.containsKey(agent.paneId);
@@ -495,6 +518,13 @@ class _HerdScreenState extends State<HerdScreen> {
             l10n.herdAgentBlocked(_agentDisplayName(agent)),
           );
         }
+        inbox?.add(AgentEvent(AgentEventKind.blocked, agent));
+      }
+      if (seenBefore &&
+          previous == AgentStatus.working &&
+          (agent.status == AgentStatus.idle ||
+              agent.status == AgentStatus.done)) {
+        inbox?.add(AgentEvent(AgentEventKind.finished, agent));
       }
       bucket.previousStatus[agent.paneId] = agent.status;
     }
@@ -813,9 +843,17 @@ class _HerdScreenState extends State<HerdScreen> {
 
   void _openVoice(BuildContext context) {
     // Built once here, not in the route builder, which can run more than once.
-    final session = VoiceSession.forHost(
-      widget.clientFor(_hostsInScope.first),
-      Localizations.localeOf(context),
+    final host = _hostsInScope.first;
+    final herd = HerdVoiceHerd(
+      client: widget.clientFor(host),
+      agents: () => _bucketFor(host.hostId).agents,
+      loadTranscript: (agent) =>
+          _nativeHistoryFor(host, agent.paneId).load(agent),
+    );
+    final session = VoiceSession.forHerd(
+      herd: herd,
+      inbox: _inboxFor(host.hostId),
+      locale: Localizations.localeOf(context),
     );
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => VoiceScreen(session: session)),
@@ -836,11 +874,20 @@ class _HerdScreenState extends State<HerdScreen> {
         title: _appBarTitle(l10n),
         actions: [
           if (widget.voiceAssistantEnabled && _hostsInScope.isNotEmpty)
-            IconButton(
-              key: const ValueKey('voice_button'),
-              icon: const Icon(Icons.mic),
-              tooltip: l10n.herdVoiceButton,
-              onPressed: () => _openVoice(context),
+            ListenableBuilder(
+              listenable: _inboxFor(_hostsInScope.first.hostId),
+              builder: (context, _) => IconButton(
+                key: const ValueKey('voice_button'),
+                icon: Badge(
+                  key: const ValueKey('voice_badge'),
+                  isLabelVisible: _inboxFor(
+                    _hostsInScope.first.hostId,
+                  ).pending.isNotEmpty,
+                  child: const Icon(Icons.mic),
+                ),
+                tooltip: l10n.herdVoiceButton,
+                onPressed: () => _openVoice(context),
+              ),
             ),
           IconButton(
             icon: const Icon(Icons.settings),
