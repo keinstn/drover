@@ -545,7 +545,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceInterrupted => 'Interrupted';
 
   @override
-  String get voiceGoingAway => 'The session is about to end';
+  String get voiceGoingAway => 'Reconnecting shortly';
+
+  @override
+  String get voiceResumed => 'Reconnected, continuing';
 
   @override
   String get voiceEnded => 'Session ended';
