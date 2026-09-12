@@ -45,9 +45,14 @@ class FirebaseVoiceTransport implements VoiceTransport {
   final LiveSession _session;
 
   /// Builds the live model for [tools] and opens the session.
+  ///
+  /// With [resumeHandle] the server restores the conversation behind that
+  /// handle instead of starting a new one; either way the session is
+  /// resumable, so the server keeps sending [SessionResumptionUpdate]s.
   static Future<FirebaseVoiceTransport> connect({
     required List<VoiceTool> tools,
     required String languageCode,
+    String? resumeHandle,
   }) async {
     final model = FirebaseAI.googleAI().liveGenerativeModel(
       model: kVoiceModel,
@@ -61,13 +66,20 @@ class FirebaseVoiceTransport implements VoiceTransport {
         ),
         inputAudioTranscription: AudioTranscriptionConfig(),
         outputAudioTranscription: AudioTranscriptionConfig(),
+        // Keeps the conversation inside the model's context window across a
+        // resumed connection by dropping the oldest turns.
+        contextWindowCompression: ContextWindowCompressionConfig(
+          slidingWindow: SlidingWindow(),
+        ),
       ),
     );
-    // ponytail: no session resumption / context compression yet — a session
-    // dies with the socket (~10 min server cap). Add
-    // SessionResumptionConfig + ContextWindowCompressionConfig here when
-    // longer conversations matter.
-    return FirebaseVoiceTransport._(await model.connect());
+    return FirebaseVoiceTransport._(
+      await model.connect(
+        sessionResumption: resumeHandle == null
+            ? SessionResumptionConfig()
+            : SessionResumptionConfig.resume(resumeHandle),
+      ),
+    );
   }
 
   @override
