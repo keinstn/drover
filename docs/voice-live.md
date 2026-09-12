@@ -167,7 +167,7 @@ or needs you.
   model calls `answer_question`, which submits through the same capability
   the app uses, or types the digit / text into the pane.
 
-The five tools (`app/lib/src/voice/voice_tools.dart`) and what each sends
+The tools (`app/lib/src/voice/voice_tools.dart`) and what each sends
 off-device:
 
 | Tool | Sends to Gemini |
@@ -176,6 +176,8 @@ off-device:
 | `read_agent` | one agent's status and the text of its last reply |
 | `draft_message` | `{draft_id, agent, message}` — echoes the message the model itself composed |
 | `send_message` | `{sent: true, agent, message}` or an error; the draft stays pending on error |
+| `draft_launch` | `{draft_id, kind, project, brief}` — echoes the brief the model itself composed |
+| `launch` | `{launched: true, agent, project, brief_delivered}` or an error; the draft stays pending on error |
 | `answer_question` | `{answered}` or an error string |
 
 Callbacks are **foreground-only**: the event source is HerdScreen's poll, so
@@ -194,6 +196,54 @@ Ceilings, marked `ponytail:` in code:
   is gone). The session then errors out and Restart starts a fresh
   conversation with no context — there is no retry ladder, one resume attempt
   per drop.
+
+## Launching an agent by voice
+
+The user brainstorms, then says "start an agent for this". Starting is the
+same two-step draft as a message, for the same reason — only the app decides
+that something happened:
+
+1. The model writes the task as a **brief** for a coding agent, in the user's
+   language, and calls `draft_launch(kind, project, brief)`. It then says in
+   one sentence what the brief asks for, points at the card on screen, and
+   waits for an explicit yes.
+2. `launch(draft_id)` runs `VoiceHerd.launch`: `workspace create` (labelled
+   with the folder name) → `agent start` → wait for the new pane to list as
+   `idle` → `agent prompt` with the brief. A failed start closes the
+   workspace again, exactly like the launch sheet, so nothing leaks.
+3. The card carries the full brief and a **Launch** button, which works if
+   the model never calls the tool and after the session ended (it only needs
+   the SSH client), like the draft card's Send.
+
+**Folder resolution.** Voice cannot dictate a path, so `project` is a folder
+*name*, matched case-insensitively against the last path segment of the
+working directories of the agents already running on the host — `foregroundCwd
+?? cwd`, the same value `list_agents` names the project after and the launch
+sheet offers, so a name the model spoke always resolves back. An unknown name,
+or one shared by two different directories, is an error listing the available
+folder names. Launching into a brand-new directory stays a screen-only feature
+(the launch sheet).
+
+**The dropped-send guard.** herdr can silently drop a prompt sent right after
+`agent start`, even when the status already reads `idle`
+(`docs/herdr-notes.md`). So the brief is sent, the pane is re-read, and if
+the brief is not there it is sent once more. The check compares the head of
+the brief with all whitespace removed against the ANSI-stripped pane, because
+panes hard-wrap mid-word; a false negative costs one duplicated prompt, a
+false positive costs the brief.
+
+Ceilings, marked `ponytail:` in code:
+
+- The wait for the new agent to read `idle` is bounded (~60 s, polled every
+  1 s). On timeout the launch still counts as done but returns
+  `brief_delivered: false` and no prompt is sent at all — the system prompt
+  then has the model offer to deliver the brief with `draft_message`.
+- The brief is re-sent at most once.
+- While a delivery is in flight the draft is *busy*: the tool refuses a second
+  `launch` (or `send_message`) and the card's button is greyed out, so the
+  minute-long launch cannot be started twice into two workspaces. Busy is
+  released on success and on failure alike.
+- Only folder names of already-running agents can be named.
 
 ## Data boundary
 
