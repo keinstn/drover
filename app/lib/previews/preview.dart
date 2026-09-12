@@ -423,6 +423,8 @@ class _SettingsPreviewState extends State<_SettingsPreview> {
       onNotifyOnBlockedChanged: (value) =>
           setState(() => _notifyOnBlocked = value),
       onNotifyOnDoneChanged: (value) => setState(() => _notifyOnDone = value),
+      voiceAssistantEnabled: false,
+      onVoiceAssistantChanged: (_) {},
       onManageHosts: () {},
       appVersion: '0.0.0-preview (0)',
       staleNotifyPlugins: _staleNotifyPlugins,

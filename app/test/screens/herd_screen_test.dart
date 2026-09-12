@@ -159,6 +159,7 @@ Widget _herdApp({
   VoidCallback? onOpenHostSwitcher,
   Locale? locale,
   Stream<void>? networkChanges,
+  bool voiceAssistantEnabled = false,
 }) {
   return MaterialApp(
     theme: droverDarkTheme,
@@ -173,6 +174,7 @@ Widget _herdApp({
       onOpenSettings: () {},
       pollInterval: pollInterval,
       networkChanges: networkChanges,
+      voiceAssistantEnabled: voiceAssistantEnabled,
     ),
   );
 }
@@ -291,6 +293,31 @@ class NativeHistoryHerdRunner extends CommandRunner {
 }
 
 void main() {
+  testWidgets('the voice button is hidden by default', (tester) async {
+    final client = HerdrClient(FakeCommandRunner(_respond));
+    await tester.pumpWidget(_herdApp(client: client));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('voice_button')), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the voice button shows when the assistant is enabled', (
+    tester,
+  ) async {
+    final client = HerdrClient(FakeCommandRunner(_respond));
+    await tester.pumpWidget(
+      _herdApp(client: client, voiceAssistantEnabled: true),
+    );
+    await tester.pump();
+
+    // Not tapped: that would try to connect to Firebase.
+    expect(find.byKey(const ValueKey('voice_button')), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('shows session titles grouped by workspace, blocked above idle', (
     tester,
   ) async {
