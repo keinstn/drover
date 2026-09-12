@@ -1067,8 +1067,26 @@ abstract class AppLocalizations {
   /// No description provided for @voiceHint.
   ///
   /// In en, this message translates to:
-  /// **'Ask about your agents, e.g. “Which agent is waiting for me?”'**
+  /// **'Ask about your agents, e.g. “Which agent is waiting for me?”, or say “Tell claude to add tests too”.'**
   String get voiceHint;
+
+  /// No description provided for @voiceEventFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} finished'**
+  String voiceEventFinished(String name);
+
+  /// No description provided for @voiceEventBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is waiting for you'**
+  String voiceEventBlocked(String name);
+
+  /// No description provided for @voiceEventAnnounceFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read the agent\'s state'**
+  String get voiceEventAnnounceFailed;
 }
 
 class _AppLocalizationsDelegate

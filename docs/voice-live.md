@@ -124,6 +124,57 @@ Already done for this project; recorded so a fresh setup can repeat it.
   unless context-window compression and session resumption are enabled. They
   are not enabled yet.
 
+## Voicemail and callback model
+
+Talking to an agent is asynchronous, so the conversation is modelled on
+voicemail: you leave the agent a message, and it "calls back" when it is done
+or needs you.
+
+- **Leaving a message.** The user says something like "tell claude to add
+  tests too". The model composes the message in the user's own words, reads
+  the exact text back, and asks for confirmation. Only after an explicit yes
+  does it call `send_message`, which runs `herdr agent prompt` on the pane.
+  The user can end the voice session while the agent works.
+- **Callback.** HerdScreen's 2 s poll records status transitions per pane
+  into a `VoiceInbox` (one per host): `working → idle|done` is a *finished*
+  event, `* → blocked` a *blocked* event. A live `VoiceSession` drains the
+  inbox and injects one text block into the conversation
+  (`sendTextRealtime`), one paragraph per event, each starting with
+  `[event]`; the system prompt tells the model to announce those immediately.
+  Events that arrive while no session is open stay pending — the mic button
+  shows a badge — and are announced as one block when the next session goes
+  live.
+- **Answering by voice.** A blocked event carries the agent's pending
+  question and its options, numbered: a Claude `AskUserQuestion` from the
+  native transcript when the agent has a `StructuredPromptCapability`, else a
+  numbered prompt parsed from the pane text (permission dialogs). The model
+  reads the options out; the user picks a number or answers freely; the
+  model calls `answer_question`, which submits through the same capability
+  the app uses, or types the digit / text into the pane.
+
+The four tools (`app/lib/src/voice/voice_tools.dart`) and what each sends
+off-device:
+
+| Tool | Sends to Gemini |
+| --- | --- |
+| `list_agents` | title, kind, status, project folder name per agent |
+| `read_agent` | one agent's status and the text of its last reply |
+| `send_message` | confirmation `{sent, agent}` (the message itself was already spoken and transcribed) |
+| `answer_question` | `{answered}` or an error string |
+
+Callbacks are **foreground-only**: the event source is HerdScreen's poll, so
+nothing is recorded while the app is backgrounded or another screen suspends
+the poll. Background callbacks would need drover-notify to push `done` as
+well as `blocked`; not done yet.
+
+Ceilings, marked `ponytail:` in code:
+
+- One host per voice session (the first host in scope).
+- A multi-question structured prompt is announced (first question only) but
+  must be answered in the app; `answer_question` refuses it.
+- Announced replies are reduced to speakable prose (code fences become
+  "(code omitted)") and cut at 600 characters.
+
 ## Data boundary
 
 The assistant is opt-in via a Settings toggle. Its tools return only agent
@@ -132,3 +183,9 @@ directory, or raw terminal output. This is a deliberate policy: drover is
 otherwise SSH-local, and the voice path is the only place its data leaves the
 device for a third-party model, so the surface sent there stays as small as
 the feature allows.
+
+Concretely, what crosses to Gemini Live: agent status, session titles and
+kinds, project folder names, the user's own spoken message, an agent's
+pending question with its option labels, and the agent's last reply as prose
+with code blocks omitted and capped at 600 characters. Pane text is parsed on
+the device; only the extracted question and options leave it.
