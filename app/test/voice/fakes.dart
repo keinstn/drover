@@ -140,6 +140,7 @@ AgentInfo fakeAgent({
   String? title,
   AgentStatus status = AgentStatus.idle,
   String cwd = '/tmp/proj',
+  String? foregroundCwd,
 }) => AgentInfo(
   paneId: paneId,
   workspaceId: 'w',
@@ -148,6 +149,7 @@ AgentInfo fakeAgent({
   name: name,
   status: status,
   cwd: cwd,
+  foregroundCwd: foregroundCwd,
   focused: false,
   terminalTitle: title,
 );
@@ -187,10 +189,14 @@ class FakeVoiceHerd implements VoiceHerd {
   /// When set, [send] throws it instead of recording.
   Object? sendError;
 
+  /// When set, [send] waits for it before returning.
+  Completer<void>? sendGate;
+
   @override
   Future<void> send(AgentInfo agent, String text) async {
     if (sendError != null) throw sendError!;
     sent.add((agent, text));
+    await sendGate?.future;
   }
 
   @override
@@ -200,4 +206,29 @@ class FakeVoiceHerd implements VoiceHerd {
     int? option,
     String? text,
   }) async => answered.add((agent, question, option, text));
+
+  /// (kind, cwd, brief) per [launch] call.
+  final launched = <(String, String, String)>[];
+
+  /// When set, [launch] throws it instead of recording.
+  Object? launchError;
+
+  /// What [launch] reports about the brief.
+  bool briefDelivered = true;
+
+  /// When set, [launch] waits for it before returning — the in-flight window
+  /// a second launch must not slip into.
+  Completer<void>? launchGate;
+
+  @override
+  Future<VoiceLaunch> launch({
+    required String kind,
+    required String cwd,
+    required String brief,
+  }) async {
+    if (launchError != null) throw launchError!;
+    launched.add((kind, cwd, brief));
+    await launchGate?.future;
+    return (paneId: 'w:new', title: kind, briefDelivered: briefDelivered);
+  }
 }

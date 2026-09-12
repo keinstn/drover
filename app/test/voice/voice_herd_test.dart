@@ -11,14 +11,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'fakes.dart';
 
 class _FakeRunner extends CommandRunner {
+  _FakeRunner([this.respond]);
+
   final commands = <String>[];
+
+  /// Per-command stdout; a null result falls back to an empty ok envelope.
+  final String? Function(String command)? respond;
 
   @override
   Future<CommandResult> run(String command) async {
     commands.add(command);
     return CommandResult(
       exitCode: 0,
-      stdout: '{"id":"1","result":{}}',
+      stdout: respond?.call(command) ?? '{"id":"1","result":{}}',
       stderr: '',
     );
   }
@@ -396,5 +401,235 @@ Ship it.''';
         ]);
       },
     );
+  });
+
+  group('HerdVoiceHerd.launch', () {
+    const workspace =
+        '{"id":"1","result":{"workspace":{"workspace_id":"w2"},'
+        '"root_pane":{"pane_id":"w2:p1"}}}';
+
+    String agentList(String status) =>
+        '{"id":"1","result":{"agents":[{"pane_id":"w2:p1","workspace_id":"w2",'
+        '"tab_id":"w2:t1","agent":"claude","agent_status":"$status",'
+        '"cwd":"/home/me/proj","focused":false,'
+        '"terminal_title_stripped":"Add retries"}]}}';
+
+    /// A herd whose `agent list` walks [statuses] (the last one repeating)
+    /// and whose pane reads [panes] (likewise).
+    ({HerdVoiceHerd herd, _FakeRunner runner}) launcher({
+      List<String> statuses = const ['idle'],
+      List<String> panes = const ['> add retries'],
+      bool startFails = false,
+    }) {
+      var listCalls = 0;
+      var paneCalls = 0;
+      late final _FakeRunner runner;
+      runner = _FakeRunner((command) {
+        if (command.contains("'workspace' 'create'")) return workspace;
+        if (command.contains("'agent' 'list'")) {
+          final i = listCalls++;
+          return agentList(
+            statuses[i < statuses.length ? i : statuses.length - 1],
+          );
+        }
+        if (startFails && command.contains("'agent' 'start'")) {
+          return '{"id":"1","error":{"code":"no_agent","message":"nope"}}';
+        }
+        return null;
+      });
+      return (
+        herd: HerdVoiceHerd(
+          client: HerdrClient(runner),
+          agents: () => const [],
+          loadTranscript: (_) async => null,
+          readPane: (_) async {
+            final i = paneCalls++;
+            return panes[i < panes.length ? i : panes.length - 1];
+          },
+          adapterFor: (_) => null,
+          sleep: (_) async {},
+        ),
+        runner: runner,
+      );
+    }
+
+    test(
+      'creates a workspace, starts the agent and prompts the brief',
+      () async {
+        final (:herd, :runner) = launcher();
+
+        final result = await herd.launch(
+          kind: 'claude',
+          cwd: '/home/me/proj',
+          brief: 'add retries',
+        );
+
+        expect(result, (
+          paneId: 'w2:p1',
+          title: 'Add retries',
+          briefDelivered: true,
+        ));
+        expect(
+          runner.commands
+              .where((c) => c.contains("'workspace' 'create'"))
+              .single,
+          allOf(
+            contains("'--label' 'proj'"),
+            contains("'--cwd' '/home/me/proj'"),
+          ),
+        );
+        expect(
+          runner.commands.where((c) => c.contains("'agent' 'start'")).single,
+          allOf(
+            contains("'agent' 'start' 'claude'"),
+            contains("'--pane' 'w2:p1'"),
+          ),
+        );
+        expect(
+          runner.commands.where((c) => c.contains("'agent' 'prompt'")),
+          hasLength(1),
+        );
+      },
+    );
+
+    test('rolls the workspace back when the start fails', () async {
+      final (:herd, :runner) = launcher(startFails: true);
+
+      await expectLater(
+        herd.launch(kind: 'claude', cwd: '/home/me/proj', brief: 'x'),
+        throwsA(isA<HerdrException>()),
+      );
+      expect(
+        runner.commands.where((c) => c.contains("'workspace' 'close' 'w2'")),
+        hasLength(1),
+      );
+      expect(
+        runner.commands.any((c) => c.contains("'agent' 'prompt'")),
+        isFalse,
+      );
+    });
+
+    test('waits for the pane to read idle before prompting', () async {
+      final (:herd, :runner) = launcher(
+        statuses: ['working', 'working', 'idle'],
+      );
+
+      final result = await herd.launch(
+        kind: 'claude',
+        cwd: '/home/me/proj',
+        brief: 'add retries',
+      );
+
+      expect(result.briefDelivered, isTrue);
+      expect(
+        runner.commands.where((c) => c.contains("'agent' 'list'")),
+        hasLength(3),
+      );
+    });
+
+    test('never prompts an agent that stays busy, and reports it', () async {
+      final (:herd, :runner) = launcher(statuses: ['working']);
+
+      final result = await herd.launch(
+        kind: 'claude',
+        cwd: '/home/me/proj',
+        brief: 'add retries',
+      );
+
+      expect(result.briefDelivered, isFalse);
+      expect(result.title, 'claude');
+      expect(
+        runner.commands.any((c) => c.contains("'agent' 'prompt'")),
+        isFalse,
+      );
+    });
+
+    test('prompts again when the brief is not in the pane', () async {
+      final (:herd, :runner) = launcher(
+        panes: ['\u001b[1mstarting…\u001b[0m', '> add ret\nries now'],
+      );
+
+      final result = await herd.launch(
+        kind: 'claude',
+        cwd: '/home/me/proj',
+        brief: 'add retries now',
+      );
+
+      // Wrapped mid-word and coloured: still counts as delivered.
+      expect(result.briefDelivered, isTrue);
+      expect(
+        runner.commands.where((c) => c.contains("'agent' 'prompt'")),
+        hasLength(2),
+      );
+    });
+
+    test('gives up after one re-prompt', () async {
+      final (:herd, :runner) = launcher(panes: ['nothing here']);
+
+      final result = await herd.launch(
+        kind: 'claude',
+        cwd: '/home/me/proj',
+        brief: 'add retries',
+      );
+
+      expect(result.briefDelivered, isFalse);
+      expect(
+        runner.commands.where((c) => c.contains("'agent' 'prompt'")),
+        hasLength(2),
+      );
+    });
+  });
+
+  group('resolveProjectCwd', () {
+    final agents = [
+      fakeAgent(paneId: 'p1', cwd: '/home/me/Drover'),
+      fakeAgent(paneId: 'p2', cwd: '/home/me/billing-api'),
+      fakeAgent(paneId: 'p3', cwd: '/home/me/Drover'),
+    ];
+
+    test('follows foregroundCwd, like list_agents and the launch sheet', () {
+      final agent = fakeAgent(
+        paneId: 'p9',
+        cwd: '/home/me/Drover',
+        foregroundCwd: '/home/me/drover/app',
+      );
+      // The folder list_agents named is the one the user says back.
+      expect(resolveProjectCwd([agent], 'app'), '/home/me/drover/app');
+      expect(
+        () => resolveProjectCwd([agent], 'drover'),
+        throwsA(isA<VoiceAgentLookupError>()),
+      );
+    });
+
+    test('matches a folder name case-insensitively', () {
+      expect(resolveProjectCwd(agents, ' drover '), '/home/me/Drover');
+      expect(resolveProjectCwd(agents, 'billing-api'), '/home/me/billing-api');
+    });
+
+    test('lists the folders when nothing or several match', () {
+      expect(
+        () => resolveProjectCwd(agents, 'nope'),
+        throwsA(
+          isA<VoiceAgentLookupError>().having(
+            (e) => e.message,
+            'message',
+            'no project folder matches "nope"; projects: drover, billing-api',
+          ),
+        ),
+      );
+      expect(
+        () => resolveProjectCwd([
+          ...agents,
+          fakeAgent(paneId: 'p4', cwd: '/tmp/drover'),
+        ], 'drover'),
+        throwsA(
+          isA<VoiceAgentLookupError>().having(
+            (e) => e.message,
+            'message',
+            contains('several projects are called "drover"'),
+          ),
+        ),
+      );
+    });
   });
 }

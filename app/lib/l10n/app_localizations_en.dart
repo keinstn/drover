@@ -582,8 +582,29 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get voiceUnsentDrafts =>
-      'There is an unsent draft — tap Send to deliver it';
+      'A draft is still pending — the button on its card still works';
 
   @override
   String get voiceSendFailed => 'Couldn\'t send the message';
+
+  @override
+  String voiceLaunchPending(String kind, String project) {
+    return 'Waiting to start $kind in $project';
+  }
+
+  @override
+  String voiceLaunchHeader(String kind, String project) {
+    return '$kind in $project';
+  }
+
+  @override
+  String voiceLaunchStarted(String kind, String project) {
+    return 'Started $kind in $project';
+  }
+
+  @override
+  String get voiceLaunchStart => 'Launch';
+
+  @override
+  String get voiceLaunchFailed => 'Couldn\'t start the agent';
 }

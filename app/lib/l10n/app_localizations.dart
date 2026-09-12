@@ -1115,7 +1115,7 @@ abstract class AppLocalizations {
   /// No description provided for @voiceUnsentDrafts.
   ///
   /// In en, this message translates to:
-  /// **'There is an unsent draft — tap Send to deliver it'**
+  /// **'A draft is still pending — the button on its card still works'**
   String get voiceUnsentDrafts;
 
   /// No description provided for @voiceSendFailed.
@@ -1123,6 +1123,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t send the message'**
   String get voiceSendFailed;
+
+  /// No description provided for @voiceLaunchPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting to start {kind} in {project}'**
+  String voiceLaunchPending(String kind, String project);
+
+  /// No description provided for @voiceLaunchHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'{kind} in {project}'**
+  String voiceLaunchHeader(String kind, String project);
+
+  /// No description provided for @voiceLaunchStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Started {kind} in {project}'**
+  String voiceLaunchStarted(String kind, String project);
+
+  /// No description provided for @voiceLaunchStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Launch'**
+  String get voiceLaunchStart;
+
+  /// No description provided for @voiceLaunchFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t start the agent'**
+  String get voiceLaunchFailed;
 }
 
 class _AppLocalizationsDelegate

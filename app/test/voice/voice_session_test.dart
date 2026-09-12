@@ -881,6 +881,73 @@ void main() {
       );
     });
 
+    test(
+      'launchDraft launches via the herd and marks the draft done',
+      () async {
+        final s = session(herd: herd, inbox: VoiceInbox(), drafts: drafts);
+        await s.start();
+        drafts.addLaunch(kind: 'codex', cwd: '/tmp/proj', brief: 'add retries');
+        await s.stop();
+
+        await s.launchDraft('d1');
+        await s.launchDraft('d1');
+
+        expect(herd.launched.single, ('codex', '/tmp/proj', 'add retries'));
+        expect(drafts.pending, isEmpty);
+        expect(
+          s.entries.where((e) => e.kind == VoiceEntryKind.sent).single.text,
+          'd1',
+        );
+      },
+    );
+
+    test(
+      'a failed launchDraft logs launch_failed and keeps the draft',
+      () async {
+        final s = session(herd: herd, inbox: VoiceInbox(), drafts: drafts);
+        await s.start();
+        drafts.addLaunch(kind: 'codex', cwd: '/tmp/proj', brief: 'add retries');
+        herd.launchError = StateError('ssh down');
+
+        await s.launchDraft('d1');
+
+        expect(drafts.pending, hasLength(1));
+        expect(s.entries.last.kind, VoiceEntryKind.system);
+        expect(s.entries.last.text, VoiceSession.launchFailedCode);
+        expect(s.status, VoiceSessionStatus.live);
+        // Released again, so the card's button still works.
+        expect(drafts.isBusy(drafts.byId('d1')!), isFalse);
+      },
+    );
+
+    test('launchDraft is a no-op while a launch is in flight', () async {
+      final s = session(herd: herd, inbox: VoiceInbox(), drafts: drafts);
+      await s.start();
+      drafts.addLaunch(kind: 'codex', cwd: '/tmp/proj', brief: 'add retries');
+      herd.launchGate = Completer<void>();
+      final first = s.launchDraft('d1');
+      await pumpEventQueue();
+
+      await s.launchDraft('d1');
+
+      expect(herd.launched, hasLength(1));
+      herd.launchGate!.complete();
+      await first;
+      expect(drafts.pending, isEmpty);
+      expect(drafts.isBusy(drafts.byId('d1')!), isFalse);
+    });
+
+    test('sendDraft ignores a launch draft id', () async {
+      final s = session(herd: herd, inbox: VoiceInbox(), drafts: drafts);
+      await s.start();
+      drafts.addLaunch(kind: 'codex', cwd: '/tmp/proj', brief: 'add retries');
+
+      await s.sendDraft('d1');
+
+      expect(herd.sent, isEmpty);
+      expect(drafts.pending, hasLength(1));
+    });
+
     test('a failed sendDraft logs send_failed and keeps the draft', () async {
       final s = session(herd: herd, inbox: VoiceInbox(), drafts: drafts);
       await s.start();

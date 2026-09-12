@@ -52,6 +52,10 @@ class VoiceSession extends ChangeNotifier {
       );
       _notify();
     });
+    // Busy flips carry no event, and the screen listens to the session, not
+    // to the drafts: forward them so a card can grey its button while its
+    // delivery is in flight.
+    this.drafts.addListener(_notify);
   }
 
   /// Production wiring for one herdr host.
@@ -97,8 +101,11 @@ class VoiceSession extends ChangeNotifier {
   /// System code logged when [sendDraft] failed.
   static const sendFailedCode = 'send_failed';
 
-  /// Message drafts of this session; the screen renders them and can send
-  /// a pending one via [sendDraft].
+  /// System code logged when [launchDraft] failed.
+  static const launchFailedCode = 'launch_failed';
+
+  /// Drafts of this session; the screen renders them and can act on a
+  /// pending one via [sendDraft] / [launchDraft].
   final VoiceDrafts drafts;
 
   /// [error] value when the microphone permission is missing.
@@ -301,7 +308,12 @@ class VoiceSession extends ChangeNotifier {
   Future<void> sendDraft(String id) async {
     final draft = drafts.byId(id);
     final herd = _herd;
-    if (draft == null || !drafts.isPending(draft)) return;
+    if (draft is! MessageDraft ||
+        !drafts.isPending(draft) ||
+        drafts.isBusy(draft)) {
+      return;
+    }
+    drafts.markBusy(draft);
     try {
       if (herd == null) throw StateError('no herd');
       await herd.send(draft.agent, draft.message);
@@ -309,6 +321,8 @@ class VoiceSession extends ChangeNotifier {
     } catch (_) {
       _entries.add(const VoiceEntry(VoiceEntryKind.system, sendFailedCode));
       _notify();
+    } finally {
+      drafts.release(draft);
     }
   }
 
@@ -531,5 +545,30 @@ class VoiceSession extends ChangeNotifier {
     );
     _disposed = true;
     super.dispose();
+  }
+
+  /// Starts the pending launch draft [id] — the manual fallback when the
+  /// model never called launch. Needs only the herd, so it works after the
+  /// live session ended. A failure is logged as [launchFailedCode] and the
+  /// draft stays pending.
+  Future<void> launchDraft(String id) async {
+    final draft = drafts.byId(id);
+    final herd = _herd;
+    if (draft is! LaunchDraft ||
+        !drafts.isPending(draft) ||
+        drafts.isBusy(draft)) {
+      return;
+    }
+    drafts.markBusy(draft);
+    try {
+      if (herd == null) throw StateError('no herd');
+      await herd.launch(kind: draft.kind, cwd: draft.cwd, brief: draft.brief);
+      drafts.markSent(draft);
+    } catch (_) {
+      _entries.add(const VoiceEntry(VoiceEntryKind.system, launchFailedCode));
+      _notify();
+    } finally {
+      drafts.release(draft);
+    }
   }
 }
