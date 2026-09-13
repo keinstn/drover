@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  deviceAllowsEvent,
+  notificationContent,
   parseBlockedNotification,
   parseDeviceId,
   parseDeviceRegistration,
@@ -66,8 +68,93 @@ void test("accepts pairing and blocked notification payloads", () => {
       paneId: "workspace:pane",
       eventId: "event_123",
       agentName: "Claude",
+      status: "blocked",
     },
   );
+});
+
+void test("accepts an explicit done status and rejects unknown ones", () => {
+  assert.deepEqual(
+    parseBlockedNotification({
+      hostId: "host_123",
+      paneId: "workspace:pane",
+      eventId: "event_123",
+      status: "done",
+    }),
+    {
+      hostId: "host_123",
+      paneId: "workspace:pane",
+      eventId: "event_123",
+      status: "done",
+    },
+  );
+  assert.equal(
+    parseBlockedNotification({
+      hostId: "host_123",
+      paneId: "workspace:pane",
+      eventId: "event_123",
+      status: "finished",
+    }),
+    null,
+  );
+});
+
+void test("maps status to push content", () => {
+  assert.deepEqual(notificationContent("blocked", "Claude"), {
+    title: "Agent needs your input",
+    body: "Claude is blocked.",
+    event: "blocked",
+  });
+  assert.deepEqual(notificationContent("done", "Claude"), {
+    title: "Agent finished",
+    body: "Claude finished.",
+    event: "done",
+  });
+});
+
+void test("accepts per-device notification preferences and rejects non-booleans", () => {
+  assert.deepEqual(
+    parseDeviceRegistration({
+      deviceId: "valid-device",
+      fcmToken: "a".repeat(32),
+      platform: "ios",
+      notifyOnBlocked: false,
+      notifyOnDone: true,
+    }),
+    {
+      deviceId: "valid-device",
+      fcmToken: "a".repeat(32),
+      platform: "ios",
+      notifyOnBlocked: false,
+      notifyOnDone: true,
+    },
+  );
+  assert.equal(
+    parseDeviceRegistration({
+      deviceId: "valid-device",
+      fcmToken: "a".repeat(32),
+      platform: "ios",
+      notifyOnBlocked: "false",
+    }),
+    null,
+  );
+});
+
+void test("deviceAllowsEvent treats only a stored false as opt-out", () => {
+  assert.equal(deviceAllowsEvent({}, "blocked"), true);
+  assert.equal(deviceAllowsEvent({}, "done"), true);
+  assert.equal(
+    deviceAllowsEvent(
+      { notifyOnBlocked: false, notifyOnDone: true },
+      "blocked",
+    ),
+    false,
+  );
+  assert.equal(
+    deviceAllowsEvent({ notifyOnBlocked: false, notifyOnDone: true }, "done"),
+    true,
+  );
+  assert.equal(deviceAllowsEvent({ notifyOnDone: false }, "blocked"), true);
 });
 
 void test("collapses whitespace runs in agent names", () => {
@@ -83,6 +170,7 @@ void test("collapses whitespace runs in agent names", () => {
       paneId: "workspace:pane",
       eventId: "event_123",
       agentName: "Claude An agent is blocked. Claude",
+      status: "blocked",
     },
   );
   assert.deepEqual(
@@ -97,6 +185,7 @@ void test("collapses whitespace runs in agent names", () => {
       paneId: "workspace:pane",
       eventId: "event_123",
       agentName: "codex cli",
+      status: "blocked",
     },
   );
 });
@@ -113,6 +202,7 @@ void test("drops agent names that sanitize to nothing", () => {
       hostId: "host_123",
       paneId: "workspace:pane",
       eventId: "event_123",
+      status: "blocked",
     },
   );
 });

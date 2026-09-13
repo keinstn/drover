@@ -482,6 +482,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsLanguageSystem => 'System';
 
   @override
+  String get settingsNotifications => 'Notifications';
+
+  @override
+  String get settingsNotifyBlocked => 'Blocked agents';
+
+  @override
+  String get settingsNotifyDone => 'Finished agents';
+
+  @override
   String get settingsDemo => 'Try the demo';
 
   @override

@@ -3,13 +3,17 @@ const pairingCodePattern = /^[A-Za-z0-9_-]{32,128}$/;
 const paneIdPattern = /^[^\s/][^\r\n/]{0,255}$/;
 
 const platforms = ["android", "ios", "macos"] as const;
+const notificationEvents = ["blocked", "done"] as const;
 
 export type DevicePlatform = (typeof platforms)[number];
+export type NotificationEvent = (typeof notificationEvents)[number];
 
 export interface DeviceRegistration {
   deviceId: string;
   fcmToken: string;
   platform: DevicePlatform;
+  notifyOnBlocked?: boolean;
+  notifyOnDone?: boolean;
 }
 
 export interface PairingCodeRequest {
@@ -25,6 +29,7 @@ export interface BlockedNotification {
   paneId: string;
   eventId: string;
   agentName?: string;
+  status: NotificationEvent;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -53,16 +58,24 @@ export function parseDeviceRegistration(
     return null;
   }
 
-  const { fcmToken, platform } = input;
+  const { fcmToken, platform, notifyOnBlocked, notifyOnDone } = input;
   if (
     typeof fcmToken !== "string" ||
     fcmToken.length < 32 ||
     fcmToken.length > 4096 ||
-    !platforms.includes(platform as DevicePlatform)
+    !platforms.includes(platform as DevicePlatform) ||
+    (notifyOnBlocked != null && typeof notifyOnBlocked !== "boolean") ||
+    (notifyOnDone != null && typeof notifyOnDone !== "boolean")
   ) {
     return null;
   }
-  return { deviceId, fcmToken, platform: platform as DevicePlatform };
+  return {
+    deviceId,
+    fcmToken,
+    platform: platform as DevicePlatform,
+    ...(notifyOnBlocked != null ? { notifyOnBlocked } : {}),
+    ...(notifyOnDone != null ? { notifyOnDone } : {}),
+  };
 }
 
 export function parsePairingCodeRequest(
@@ -106,6 +119,12 @@ export function parseBlockedNotification(
   ) {
     return null;
   }
+  if (
+    input.status != null &&
+    !notificationEvents.includes(input.status as NotificationEvent)
+  ) {
+    return null;
+  }
   const agentName =
     typeof input.agentName === "string"
       ? sanitizeSingleLine(input.agentName)
@@ -115,7 +134,34 @@ export function parseBlockedNotification(
     paneId: input.paneId,
     eventId: input.eventId,
     ...(agentName.length > 0 ? { agentName } : {}),
+    status: (input.status as NotificationEvent | undefined) ?? "blocked",
   };
+}
+
+export function notificationContent(
+  status: NotificationEvent,
+  agentName: string,
+): { title: string; body: string; event: NotificationEvent } {
+  return status === "done"
+    ? {
+        title: "Agent finished",
+        body: `${agentName} finished.`,
+        event: "done",
+      }
+    : {
+        title: "Agent needs your input",
+        body: `${agentName} is blocked.`,
+        event: "blocked",
+      };
+}
+
+export function deviceAllowsEvent(
+  fields: { notifyOnBlocked?: unknown; notifyOnDone?: unknown },
+  event: NotificationEvent,
+): boolean {
+  const stored =
+    event === "done" ? fields.notifyOnDone : fields.notifyOnBlocked;
+  return stored !== false;
 }
 
 // agentName is interpolated into the push-notification body, so collapse CR/LF

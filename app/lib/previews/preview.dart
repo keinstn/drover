@@ -397,14 +397,21 @@ class _SettingsPreview extends StatefulWidget {
 class _SettingsPreviewState extends State<_SettingsPreview> {
   ThemeMode _themeMode = ThemeMode.system;
   Locale? _locale;
+  bool _notifyOnBlocked = true;
+  bool _notifyOnDone = true;
 
   @override
   Widget build(BuildContext context) {
     return SettingsScreen(
       themeMode: _themeMode,
       locale: _locale,
+      notifyOnBlocked: _notifyOnBlocked,
+      notifyOnDone: _notifyOnDone,
       onThemeModeChanged: (mode) => setState(() => _themeMode = mode),
       onLocaleChanged: (locale) => setState(() => _locale = locale),
+      onNotifyOnBlockedChanged: (value) =>
+          setState(() => _notifyOnBlocked = value),
+      onNotifyOnDoneChanged: (value) => setState(() => _notifyOnDone = value),
       onManageHosts: () {},
       appVersion: '0.0.0-preview (0)',
     );

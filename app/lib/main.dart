@@ -179,6 +179,10 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
   /// null = follow the device locale (see [build] for how that resolves).
   Locale? _locale;
 
+  /// Per-device push opt-ins, mirrored to the backend on every change.
+  bool _notifyOnBlocked = true;
+  bool _notifyOnDone = true;
+
   /// One lazily built connection per host; HerdScreen resolves clients from
   /// it via [HerdScreen.clientFor], so no connection is opened for a host
   /// until something actually talks to it.
@@ -222,6 +226,10 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     _speechInput = widget.speechInput ?? SpeechInputController();
     _notificationRegistration =
         widget.notificationRegistration ?? NotificationRegistration();
+    // Read at registration time, so both the first registration and every
+    // later re-registration carry whatever the switches say right then.
+    _notificationRegistration.preferences = () =>
+        (onBlocked: _notifyOnBlocked, onDone: _notifyOnDone);
     _hostPairingGateway =
         widget.hostPairingGateway ?? FirebaseHostPairingGateway();
     _staleTransportSignal =
@@ -252,6 +260,8 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     _activeHostId = widget.initialActiveHostId;
     _themeMode = widget.initialSettings.themeMode;
     _locale = widget.initialSettings.locale;
+    _notifyOnBlocked = widget.initialSettings.notifyOnBlocked;
+    _notifyOnDone = widget.initialSettings.notifyOnDone;
     if (_hosts.isNotEmpty) {
       _scheduleNotificationRegistration();
     }
@@ -743,6 +753,8 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
           builder: (_, rebuildRoute) => SettingsScreen(
             themeMode: _themeMode,
             locale: _locale,
+            notifyOnBlocked: _notifyOnBlocked,
+            notifyOnDone: _notifyOnDone,
             appVersion: widget.appVersion,
             onThemeModeChanged: (mode) {
               setState(() => _themeMode = mode);
@@ -764,6 +776,16 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
                 ),
               );
             },
+            onNotifyOnBlockedChanged: (value) {
+              setState(() => _notifyOnBlocked = value);
+              rebuildRoute(() {});
+              _persistNotifyPreferences();
+            },
+            onNotifyOnDoneChanged: (value) {
+              setState(() => _notifyOnDone = value);
+              rebuildRoute(() {});
+              _persistNotifyPreferences();
+            },
             onManageHosts: _openHostList,
             // Hidden while the demo is already showing — settings is reached
             // from inside it, so offering the demo again would be a no-op row.
@@ -772,6 +794,31 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  /// Stores the switches locally and mirrors them to the backend. The two
+  /// are independent: a failed re-registration must not cost the user the
+  /// local setting they just made. It is reported, though — a silent failure
+  /// would leave the device still receiving what the switch says is off.
+  void _persistNotifyPreferences() {
+    unawaited(
+      runBestEffort(
+        () => widget.settingsStore.saveNotifyPreferences(
+          onBlocked: _notifyOnBlocked,
+          onDone: _notifyOnDone,
+        ),
+        context: 'persist notification preferences',
+      ),
+    );
+    unawaited(_pushNotifyPreferences());
+  }
+
+  Future<void> _pushNotifyPreferences() async {
+    try {
+      await _notificationRegistration.refreshRegistration();
+    } catch (_) {
+      _showNotificationRegistrationFailure();
+    }
   }
 
   HerdrClient _clientFor(HerdHostRef ref) {

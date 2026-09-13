@@ -12,6 +12,9 @@ const _apnsTokenMaxAttempts = 10;
 
 typedef NotificationDelay = Future<void> Function(Duration duration);
 
+/// This device's push opt-ins, one per event kind the backend delivers.
+typedef NotificationPreferences = ({bool onBlocked, bool onDone});
+
 enum NotificationAuthorization { authorized, denied }
 
 abstract interface class PushMessaging {
@@ -26,6 +29,8 @@ abstract interface class DeviceRegistrationGateway {
     required String deviceId,
     required String fcmToken,
     required String platform,
+    required bool notifyOnBlocked,
+    required bool notifyOnDone,
   });
 }
 
@@ -77,11 +82,15 @@ class FirebaseDeviceRegistrationGateway implements DeviceRegistrationGateway {
     required String deviceId,
     required String fcmToken,
     required String platform,
+    required bool notifyOnBlocked,
+    required bool notifyOnDone,
   }) async {
     await _functions.httpsCallable('registerDevice').call<void>({
       'deviceId': deviceId,
       'fcmToken': fcmToken,
       'platform': platform,
+      'notifyOnBlocked': notifyOnBlocked,
+      'notifyOnDone': notifyOnDone,
     });
   }
 }
@@ -129,9 +138,17 @@ class NotificationRegistration {
   final DeviceIdStore _deviceIdStore;
   final TargetPlatform _platform;
   final NotificationDelay _delay;
+
+  /// Invoked at registration time, not captured at construction: [initialize]
+  /// is memoised, so the settings screen's owner mutates this instead of
+  /// rebuilding the object when a switch flips.
+  NotificationPreferences Function() preferences = () =>
+      (onBlocked: true, onDone: true);
+
   final _failures = StreamController<Object>.broadcast();
   StreamSubscription<String>? _tokenRefreshSubscription;
   Future<void>? _initialization;
+  String? _fcmToken;
 
   Stream<Object> get failures => _failures.stream;
 
@@ -194,12 +211,30 @@ class NotificationRegistration {
     _ => throw UnsupportedError('Notifications are unsupported on $_platform.'),
   };
 
+  /// Re-sends the most recent token with the current [preferences], and
+  /// throws what the gateway throws so the caller can surface it. Does
+  /// nothing only while no token is known at all — before [initialize], or
+  /// after it returned early because authorization was denied.
+  Future<void> refreshRegistration() async {
+    final fcmToken = _fcmToken;
+    if (fcmToken == null) return;
+    await _registerToken(fcmToken);
+  }
+
   Future<void> _registerToken(String fcmToken) async {
     final deviceId = await _deviceIdStore.readOrCreate();
+    final preference = preferences();
+    // Recorded before the call, not after it: a registration that failed (or
+    // a rotation that did) still leaves this the token the backend should be
+    // told about, so a later preference change retries it instead of
+    // re-registering a dead one.
+    _fcmToken = fcmToken;
     await _gateway.registerDevice(
       deviceId: deviceId,
       fcmToken: fcmToken,
       platform: _platformName,
+      notifyOnBlocked: preference.onBlocked,
+      notifyOnDone: preference.onDone,
     );
   }
 
