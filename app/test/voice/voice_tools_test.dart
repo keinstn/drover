@@ -59,10 +59,7 @@ void main() {
       ]);
       expect(tool('draft_launch').optionalParameters, ['kind']);
       expect(tool('list_agents').parameters, isEmpty);
-      expect(tool('answer_question').optionalParameters, [
-        'option_number',
-        'text',
-      ]);
+      expect(tool('answer_question').optionalParameters, isEmpty);
       expect(tool('draft_message').description, contains('Nothing is sent'));
       expect(tool('send_message').description, contains('voicemail'));
     });
@@ -154,16 +151,79 @@ void main() {
       expect(drafts.pending, hasLength(1));
     });
 
-    test('answer_question answers by option number', () async {
-      const question = AgentQuestion(question: 'Go?', options: ['Yes', 'No']);
+    test('answer_question answers every question in one call', () async {
+      const question = AgentQuestion(
+        questions: [
+          VoiceQuestion(question: 'Go?', options: ['Yes', 'No']),
+          VoiceQuestion(
+            question: 'Which?',
+            options: ['lib', 'test'],
+            multiSelect: true,
+          ),
+        ],
+      );
       herd.questions['wB:p1'] = question;
 
-      final result = await tool(
-        'answer_question',
-      ).run({'agent': 'claude', 'option_number': 2});
+      final result = await tool('answer_question').run({
+        'agent': 'claude',
+        'answers': [
+          {
+            'option_numbers': [2],
+          },
+          {
+            'option_numbers': [1, 2],
+          },
+        ],
+      });
 
       expect(result, {'answered': true});
-      expect(herd.answered.single, (_agents[0], question, 2, null));
+      final (recordedAgent, recordedQuestion, answers) = herd.answered.single;
+      expect(recordedAgent, _agents[0]);
+      expect(recordedQuestion, question);
+      // Records hold a List, so == would compare it by identity; assert the
+      // fields instead.
+      expect(answers.map((a) => a.optionNumbers), [
+        [2],
+        [1, 2],
+      ]);
+      expect(answers.map((a) => a.text), [null, null]);
+    });
+
+    test('answer_question errors instead of crashing on a bad count', () async {
+      herd.questions['wB:p1'] = const AgentQuestion(
+        questions: [
+          VoiceQuestion(question: 'Go?', options: ['Yes', 'No']),
+          VoiceQuestion(question: 'Which?', options: ['lib', 'test']),
+        ],
+      );
+
+      final responses = await runVoiceToolCalls([
+        const FunctionCall('answer_question', {
+          'agent': 'claude',
+          'answers': [
+            {
+              'option_numbers': [1],
+            },
+          ],
+        }, id: 'c9'),
+      ], tools);
+
+      expect(responses.single.id, 'c9');
+      expect(
+        responses.single.response['error'],
+        allOf(contains('1 answer'), contains('2 question')),
+      );
+      expect(herd.answered, isEmpty);
+
+      // A non-list `answers` is reported the same way, without reaching the
+      // herd.
+      expect(
+        await tool(
+          'answer_question',
+        ).run({'agent': 'claude', 'answers': 'yes'}),
+        {'error': 'answers must be a list, one entry per question'},
+      );
+      expect(herd.answered, isEmpty);
     });
 
     test('answer_question reports an agent with nothing pending', () async {
@@ -171,6 +231,32 @@ void main() {
         await tool('answer_question').run({'agent': 'codex', 'text': 'x'}),
         {'error': 'agent is not waiting on a question'},
       );
+      expect(herd.answered, isEmpty);
+    });
+
+    test('answer_question errors on option_numbers it cannot read', () async {
+      herd.questions['wB:p1'] = const AgentQuestion(
+        questions: [
+          VoiceQuestion(question: 'Go?', options: ['Yes', 'No']),
+        ],
+      );
+
+      // A stringly-typed number would otherwise have been read as "no option
+      // chosen" and submitted as a blank answer.
+      final result = await tool('answer_question').run({
+        'agent': 'claude',
+        'answers': [
+          {'option_numbers': '1'},
+        ],
+      });
+      expect(result['error'], contains('answers entry 1'));
+
+      // So would a bare value where an object belongs.
+      final bare = await tool('answer_question').run({
+        'agent': 'claude',
+        'answers': [1],
+      });
+      expect(bare['error'], contains('answers entry 1'));
       expect(herd.answered, isEmpty);
     });
 
