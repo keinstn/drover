@@ -247,34 +247,83 @@ List<VoiceTool> droverVoiceTools(VoiceHerd herd, VoiceDrafts drafts) {
     VoiceTool(
       name: 'answer_question',
       description:
-          'Answers the question an agent is waiting on, either by option '
-          'number or with free text. Give exactly one of the two.',
+          'Answers every question an agent is waiting on, in one call. Give '
+          'one entry in answers per question, in the order they were asked, '
+          'each holding the chosen option numbers or free text.',
       parameters: {
         'agent': agentParam,
-        'option_number': Schema.integer(
-          description: 'The 1-based number of the option the user chose.',
+        'answers': Schema.array(
+          items: Schema.object(
+            properties: {
+              'option_numbers': Schema.array(
+                items: Schema.integer(description: '1-based option number.'),
+              ),
+              'text': Schema.string(
+                description: 'A free-text answer instead of option numbers.',
+              ),
+            },
+            optionalProperties: const ['option_numbers', 'text'],
+          ),
+          description: 'One entry per question, in the order asked.',
         ),
-        'text': Schema.string(description: 'A free-text answer instead.'),
       },
-      optionalParameters: const ['option_number', 'text'],
       run: (args) async {
         final agent = resolveAgent(herd.agents, '${args['agent']}');
         final question = await herd.pendingQuestion(agent);
         if (question == null) {
           return {'error': 'agent is not waiting on a question'};
         }
-        final option = args['option_number'];
-        final text = args['text'];
-        await herd.answer(
-          agent,
-          question,
-          option: option is num ? option.toInt() : null,
-          text: text is String && text.isNotEmpty ? text : null,
-        );
+        final answers = args['answers'];
+        if (answers is! List) {
+          return {'error': 'answers must be a list, one entry per question'};
+        }
+        final parsed = <VoiceAnswer>[];
+        for (final entry in answers) {
+          final answer = _voiceAnswer(entry);
+          if (answer == null) {
+            return {
+              'error':
+                  'answers entry ${parsed.length + 1} must be an object with '
+                  'option_numbers (1-based numbers) or text',
+            };
+          }
+          parsed.add(answer);
+        }
+        // A wrong count, or an answer holding neither an option nor text,
+        // throws out of herd.answer before anything is typed at the agent;
+        // the caller turns that into an error payload the model can recover
+        // from.
+        await herd.answer(agent, question, parsed);
         return {'answered': true};
       },
     ),
   ];
+}
+
+/// One `answers` entry of `answer_question`, read leniently: the model may
+/// omit either field, send a bare number instead of a list, or send an empty
+/// string for text. Null when the entry is not an object, or when its
+/// option_numbers carried something no number could be read from — an answer
+/// silently emptied that way would submit the wrong thing, so the caller
+/// reports it instead. What survives is validated by [VoiceHerd.answer].
+VoiceAnswer? _voiceAnswer(Object? entry) {
+  if (entry is! Map) return null;
+  final raw = entry['option_numbers'];
+  final text = entry['text'];
+  final numbers = [
+    if (raw is num) raw.toInt(),
+    if (raw is List)
+      for (final n in raw)
+        if (n is num) n.toInt(),
+  ];
+  // An absent or empty option_numbers is a legitimate "answered with text";
+  // anything else that yields nothing was misread, not omitted.
+  final omitted = raw == null || (raw is List && raw.isEmpty);
+  if (!omitted && numbers.isEmpty) return null;
+  return (
+    optionNumbers: numbers,
+    text: text is String && text.isNotEmpty ? text : null,
+  );
 }
 
 /// Converts [tools] into the single function-declarations [Tool] the live
