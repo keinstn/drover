@@ -13,6 +13,9 @@ import * as logger from "firebase-functions/logger";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 
 import {
+  deviceAllowsEvent,
+  type NotificationEvent,
+  notificationContent,
   parseBlockedNotification,
   parseDeviceId,
   parseDeviceRegistration,
@@ -82,9 +85,13 @@ function matchingSecret(expectedHash: unknown, value: string): boolean {
 
 function tokenRegistrations(
   devices: QueryDocumentSnapshot[],
+  eventKind?: NotificationEvent,
 ): TokenRegistration[] {
   const refsByToken = new Map<string, DocumentReference[]>();
   for (const document of devices) {
+    if (eventKind != null && !deviceAllowsEvent(document.data(), eventKind)) {
+      continue;
+    }
     const token = document.get("fcmToken");
     if (typeof token !== "string" || token.length === 0) {
       continue;
@@ -131,13 +138,14 @@ async function deliverNotification(
   uid: string,
   notification: { title: string; body: string },
   data: Record<string, string>,
+  eventKind?: NotificationEvent,
 ): Promise<NotificationDelivery> {
   const devices = await db
     .collection("users")
     .doc(uid)
     .collection("devices")
     .get();
-  const registrations = tokenRegistrations(devices.docs);
+  const registrations = tokenRegistrations(devices.docs, eventKind);
 
   let successCount = 0;
   let failureCount = 0;
@@ -283,6 +291,12 @@ export const registerDevice = onCall(
           fcmToken: registration.fcmToken,
           platform: registration.platform,
           updatedAt: FieldValue.serverTimestamp(),
+          ...(registration.notifyOnBlocked != null
+            ? { notifyOnBlocked: registration.notifyOnBlocked }
+            : {}),
+          ...(registration.notifyOnDone != null
+            ? { notifyOnDone: registration.notifyOnDone }
+            : {}),
           ...(existing.exists
             ? {}
             : { createdAt: FieldValue.serverTimestamp() }),
@@ -545,18 +559,17 @@ export const sendBlockedNotification = onRequest(
 
     try {
       const agentName = notification.agentName ?? "An agent";
+      const content = notificationContent(notification.status, agentName);
       const delivery = await deliverNotification(
         uid,
+        { title: content.title, body: content.body },
         {
-          title: "Agent needs your input",
-          body: `${agentName} is blocked.`,
-        },
-        {
-          event: "blocked",
+          event: content.event,
           eventId: notification.eventId,
           hostId: notification.hostId,
           paneId: notification.paneId,
         },
+        content.event,
       );
       if (delivery.successCount === 0 && delivery.retryableFailureCount > 0) {
         throw new HttpsError(
@@ -568,6 +581,7 @@ export const sendBlockedNotification = onRequest(
         hostId: notification.hostId,
         paneId: notification.paneId,
         eventId: notification.eventId,
+        status: notification.status,
         ...delivery,
       });
       response.status(200).json({ duplicate: false, ...delivery });
