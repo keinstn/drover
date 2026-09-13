@@ -1,3 +1,28 @@
+## [1.0.5] - 2026-09-13
+
+### 🚀 Features
+
+- *(app)* Reconnect fast after a network change (#222)
+- *(app)* Invalidate stale SSH transport on app resume (#224)
+- *(app)* Compact the launch-agent sheet with a chip/segmented layout (#225)
+
+### 🐛 Bug Fixes
+
+- *(site)* Remove two visible gaps in the Japanese support page (#212)
+- *(app)* Anchor the key-row refresh debounce to send completion (#220)
+- *(app)* Stop raw keys interleaving into a multi-step send (#221)
+- *(app)* Retry host-platform detection after a failure (#223)
+
+### 🚜 Refactor
+
+- *(app)* Route key row's Esc and Enter through the key queue (#219)
+
+### 📚 Documentation
+
+- Add promo movie recording runbook (#213)
+- Correct the promo movie runbook from a real shoot (#214)
+- Drop the incorrect claim about preset and chat rendering (#215)
+- Add a demo GIF to the README (#216)
 ## [1.0.4] - 2026-09-09
 
 ### 🚀 Features
