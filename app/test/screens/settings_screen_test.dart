@@ -352,6 +352,12 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(_app(appVersion: '9.9.9 (42)'));
+    // The assistant and notification sections push the footer past the fold;
+    // a lazy ListView never builds an off-screen row.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('settings_version_tile')),
+      200,
+    );
 
     expect(
       find.descendant(
@@ -407,6 +413,12 @@ void main() {
     );
 
     await tester.pumpWidget(_app(appVersion: '9.9.9 (42)'));
+    // The assistant and notification sections push the footer past the fold;
+    // a lazy ListView never builds an off-screen row.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('settings_version_tile')),
+      200,
+    );
     await tester.tap(find.byKey(const ValueKey('settings_version_tile')));
     await tester.pumpAndSettle();
 
@@ -422,17 +434,24 @@ void main() {
 
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey('settings_version_tile')),
-        matching: find.byIcon(Icons.chevron_right),
-      ),
-      findsNothing,
-    );
-    expect(
-      find.descendant(
         of: find.byKey(const ValueKey('settings_hosts_tile')),
         matching: find.byIcon(Icons.chevron_right),
       ),
       findsOneWidget,
+    );
+    // The assistant and notification sections push the footer past the fold;
+    // a lazy ListView never builds an off-screen row.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('settings_version_tile')),
+      200,
+    );
+    expect(find.byKey(const ValueKey('settings_version_tile')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_version_tile')),
+        matching: find.byIcon(Icons.chevron_right),
+      ),
+      findsNothing,
     );
 
     await tester.pumpWidget(const SizedBox());
