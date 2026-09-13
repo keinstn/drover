@@ -25,6 +25,7 @@ void main() {
 
   VoiceSession session({
     bool muteMicWhileSpeaking = true,
+    Duration aecWarmUp = Duration.zero,
     Future<VoiceTransport> Function(String?)? connect,
     FakeVoiceHerd? herd,
     VoiceInbox? inbox,
@@ -61,6 +62,7 @@ void main() {
         ).where((t) => t.name == 'draft_message' || t.name == 'send_message'),
     ],
     muteMicWhileSpeaking: muteMicWhileSpeaking,
+    aecWarmUp: aecWarmUp,
   );
 
   Future<void> settle() => Future<void>.delayed(Duration.zero);
@@ -290,6 +292,79 @@ void main() {
       expect(transport.sentAudio, hasLength(1));
     },
   );
+
+  group('AEC warm-up gate', () {
+    // 48000 bytes = one second of 24 kHz PCM16 mono.
+    Future<void> playSecond(FakeTransport t) async {
+      t.push(audioChunk(bytes: 48000));
+      await settle();
+    }
+
+    /// Moves past the playback estimate of one second plus the 1.5 s tail.
+    void skipPlayback() => clock = clock.add(const Duration(seconds: 3));
+
+    test('gates while the model is speaking until the threshold', () async {
+      final s = session(
+        muteMicWhileSpeaking: false,
+        aecWarmUp: const Duration(seconds: 2),
+      );
+      await s.start();
+
+      await playSecond(transport);
+      await sendMicFrame();
+      expect(transport.sentAudio, isEmpty, reason: 'warming up, 1 s of 2 s');
+
+      skipPlayback();
+      await sendMicFrame();
+      expect(transport.sentAudio, hasLength(1), reason: 'nothing playing');
+
+      await playSecond(transport);
+      await sendMicFrame();
+      expect(transport.sentAudio, hasLength(2), reason: 'warmed up at 2 s');
+    });
+
+    test('a restart re-arms it: the canceller starts cold again', () async {
+      // A fresh transport per connect: FakeTransport.close() closes its
+      // stream, so a restart on the same one would just end the session.
+      final connector = FakeConnector();
+      final s = session(
+        muteMicWhileSpeaking: false,
+        aecWarmUp: const Duration(seconds: 2),
+        connect: connector.call,
+      );
+      await s.start();
+      await playSecond(connector.last);
+      await playSecond(connector.last);
+      await s.stop();
+
+      await s.start();
+      await playSecond(connector.last);
+      await sendMicFrame();
+
+      expect(connector.transports.last.sentAudio, isEmpty);
+    });
+
+    test('a resume keeps it: the mic never stopped', () async {
+      final connector = FakeConnector();
+      final s = session(
+        muteMicWhileSpeaking: false,
+        aecWarmUp: const Duration(seconds: 2),
+        connect: connector.call,
+      );
+      await s.start();
+      await playSecond(connector.last);
+      await playSecond(connector.last);
+      connector.last.pushResumption('h1');
+      await settle();
+      await connector.transports.first.server.close();
+      await settle();
+
+      await playSecond(connector.last);
+      await sendMicFrame();
+
+      expect(connector.transports.last.sentAudio, hasLength(1));
+    });
+  });
 
   test('an audio-only chunk does not notify listeners', () async {
     final s = session();
