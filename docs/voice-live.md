@@ -112,9 +112,16 @@ Already done for this project; recorded so a fresh setup can repeat it.
   microphone prompt, but it terminates the running app; restart `flutter
   run` afterwards.
 - The simulator has no echo cancellation, so the model hears its own speech
-  through the Mac speaker and interrupts itself. The app therefore mutes the
-  microphone while the model is speaking (half-duplex) until echo
-  cancellation is verified on a device. Wear headphones to test barge-in.
+  through the Mac speaker and interrupts itself. A **debug build therefore
+  mutes the microphone while the model is speaking** (half-duplex), and a
+  release build does not — `voiceMicGateNeeded` in `voice_session.dart`. So
+  barge-in (talking over the assistant to cut it off) works on TestFlight but
+  not on the simulator; wear headphones to test it there. The build mode is a
+  proxy for "is this the simulator": an iOS app gets an empty
+  `Platform.environment` (measured 2026-09-13), so the app cannot detect the
+  simulator without a new dependency or an FFI `sysctl` call, and here the
+  simulator only ever runs debug builds while the device only gets release
+  builds through TestFlight.
 - Verified on Flutter with `firebase_ai` 4.0.0: the Live API works, including
   function calling, `sendTextRealtime`, input and output transcription, and
   `SpeechConfig(languageCode: 'ja-JP')`.
