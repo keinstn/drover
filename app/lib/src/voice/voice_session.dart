@@ -28,13 +28,16 @@ class VoiceEntry {
   final String text;
 }
 
-/// Whether the model's own voice loops back into the microphone, so the
-/// half-duplex gate has to stay on.
+/// Whether the model's own voice loops back into the microphone for good, so
+/// the half-duplex gate has to stay on for the whole session.
 ///
 /// A real device cancels the echo: [RecordVoiceMic] opens the mic with
 /// `echoCancel: true`, which iOS answers with its voice-processing unit. The
 /// simulator has no such unit and the model hears itself through the Mac
-/// speakers.
+/// speakers, forever — only a permanent gate helps there.
+///
+/// Where the canceller does exist it still starts cold, which the shorter
+/// [kVoiceAecWarmUp] gate covers; the two layers are independent.
 ///
 /// ponytail: a debug build stands in for "the simulator". The app cannot ask:
 /// an iOS app gets an EMPTY `Platform.environment` (measured on the simulator
@@ -46,6 +49,22 @@ class VoiceEntry {
 /// gate (barge-in off, today's behaviour); only `flutter run --release` on the
 /// simulator gets it wrong, and that just brings the echo back in dev.
 const voiceMicGateNeeded = !kReleaseMode;
+
+/// How much of the model's own audio has to play before the warm-up gate
+/// lets go, on a build that relies on the device's echo canceller.
+///
+/// iOS's canceller is adaptive: it needs a few seconds of the model's voice
+/// to converge, and the first utterance plays right after the mic opens.
+/// Measured on device 2026-09-13: the model interrupted itself on the first
+/// two or three turns of a session and then never again. So the mic stays
+/// gated while the model speaks until this much *model audio* has played
+/// (cumulative queued playback, not wall clock — a quiet session warms up
+/// slowly), and the gate gets out of the way afterwards.
+///
+/// ponytail: 10 s is a first guess, to be tuned on device. The trade-off is
+/// that barge-in does not work for roughly the first one or two model turns
+/// of a session.
+const kVoiceAecWarmUp = Duration(seconds: 10);
 
 /// Drives one full-duplex voice conversation: mic -> transport -> speaker,
 /// with tool calls answered from [tools]. UI-agnostic; the screen listens.
@@ -59,6 +78,7 @@ class VoiceSession extends ChangeNotifier {
     this._inbox,
     VoiceDrafts? drafts,
     this.muteMicWhileSpeaking = true,
+    this.aecWarmUp = Duration.zero,
     this._now = DateTime.now,
     this._sleep = Future.delayed,
   }) : drafts = drafts ?? VoiceDrafts() {
@@ -97,6 +117,7 @@ class VoiceSession extends ChangeNotifier {
       mic: RecordVoiceMic(),
       speaker: SoLoudVoiceSpeaker(),
       muteMicWhileSpeaking: voiceMicGateNeeded,
+      aecWarmUp: kVoiceAecWarmUp,
       tools: tools,
       herd: herd,
       inbox: inbox,
@@ -131,13 +152,20 @@ class VoiceSession extends ChangeNotifier {
   /// [error] value when the microphone permission is missing.
   static const micPermissionDenied = 'mic_permission_denied';
 
-  /// Half-duplex gate: the mic is dropped while the model's audio is
-  /// estimated to still be playing (queued bytes at 24 kHz PCM16 mono) plus a
-  /// 1.5 s tail, so the model cannot hear itself. It also kills barge-in, so
-  /// production only turns it on where echo cancellation is missing — see
-  /// [voiceMicGateNeeded]. Defaults to on: a caller that has not thought
-  /// about echo gets the safe half-duplex behaviour.
+  /// Permanent half-duplex gate: the mic is dropped while the model's audio
+  /// is estimated to still be playing (queued bytes at 24 kHz PCM16 mono)
+  /// plus a 1.5 s tail, so the model cannot hear itself. It also kills
+  /// barge-in, so production only turns it on where echo cancellation is
+  /// missing altogether — see [voiceMicGateNeeded]. Defaults to on: a caller
+  /// that has not thought about echo gets the safe half-duplex behaviour.
   final bool muteMicWhileSpeaking;
+
+  /// Temporary half-duplex gate for a device whose echo canceller exists but
+  /// starts cold: the same drop applies while less than this much model audio
+  /// has played since [start], and stops applying once it has. Zero (the
+  /// default) means no warm-up gate; production passes [kVoiceAecWarmUp].
+  /// Combines with [muteMicWhileSpeaking] by OR.
+  final Duration aecWarmUp;
   static const _muteTail = Duration(milliseconds: 1500);
   static const _playbackBytesPerSecond = 48000;
 
@@ -174,6 +202,9 @@ class VoiceSession extends ChangeNotifier {
   /// When the model's queued audio is expected to finish playing.
   DateTime _playbackEnd = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// Model audio queued since the mic was started, against [aecWarmUp].
+  int _playedBytesSinceStart = 0;
+
   /// True from [start] until the matching teardown; makes [stop] idempotent.
   bool _active = false;
 
@@ -193,7 +224,14 @@ class VoiceSession extends ChangeNotifier {
   String? get error => _error;
 
   bool get _micMuted =>
-      muteMicWhileSpeaking && _now().isBefore(_playbackEnd.add(_muteTail));
+      (muteMicWhileSpeaking || !_aecWarmedUp) &&
+      _now().isBefore(_playbackEnd.add(_muteTail));
+
+  /// Whether [aecWarmUp] worth of model audio has played, so the device's
+  /// echo canceller has had the input it needs to converge.
+  bool get _aecWarmedUp =>
+      _playedBytesSinceStart >=
+      aecWarmUp.inMicroseconds * _playbackBytesPerSecond ~/ 1000000;
 
   bool _stale(int generation) => generation != _generation || !_active;
 
@@ -225,6 +263,9 @@ class VoiceSession extends ChangeNotifier {
         return;
       }
       _bind(transport, gen);
+      // The mic engine restarts here, so the device's echo canceller starts
+      // cold again and the warm-up gate has to re-earn its way out.
+      _playedBytesSinceStart = 0;
       final frames = await _mic.start();
       if (_stale(gen)) {
         await _mic.stop();
@@ -472,8 +513,14 @@ class VoiceSession extends ChangeNotifier {
   }
 
   /// Plays [bytes] and extends the playback estimate the mic gate keys on.
+  ///
+  /// ponytail: bytes an [interrupt] later drops still count towards
+  /// [aecWarmUp], so the warm-up ends a little early after an interrupted
+  /// turn. Track what actually reached the speaker if that turns out to
+  /// matter.
   void _queuePlayback(Uint8List bytes) {
     _speaker.play(bytes);
+    _playedBytesSinceStart += bytes.length;
     final now = _now();
     final base = _playbackEnd.isAfter(now) ? _playbackEnd : now;
     _playbackEnd = base.add(
