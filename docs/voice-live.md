@@ -166,13 +166,19 @@ or needs you.
   Events that arrive while no session is open stay pending — the mic button
   shows a badge — and are announced as one block when the next session goes
   live.
-- **Answering by voice.** A blocked event carries the agent's pending
-  question and its options, numbered: a Claude `AskUserQuestion` from the
-  native transcript when the agent has a `StructuredPromptCapability`, else a
-  numbered prompt parsed from the pane text (permission dialogs). The model
-  reads the options out; the user picks a number or answers freely; the
-  model calls `answer_question`, which submits through the same capability
-  the app uses, or types the digit / text into the pane.
+- **Answering by voice.** A blocked event carries every question the agent is
+  waiting on, each with its numbered options: a Claude `AskUserQuestion` from
+  the native transcript when the agent has a `StructuredPromptCapability`,
+  else a numbered prompt parsed from the pane text (permission dialogs, which
+  are always a single question). The model reads each question out — a
+  multi-question prompt numbers them "Question 1 of N", and a multi-select
+  question says more than one choice is allowed — and asks them in order; the
+  user picks numbers or answers freely; the model then calls
+  `answer_question` **once**, with one `answers` entry per question in the
+  order asked. That submits through the same capability the app uses, or
+  types the digit / text into the pane. `AskUserQuestionSubmitter` validates
+  the whole answer set before sending a single keystroke, so a mismatched or
+  unkeyable set leaves the dialog untouched rather than half-answered.
 
 The tools (`app/lib/src/voice/voice_tools.dart`) and what each sends
 off-device:
@@ -195,8 +201,10 @@ well as `blocked`; not done yet.
 Ceilings, marked `ponytail:` in code:
 
 - One host per voice session (the first host in scope).
-- A multi-question structured prompt is announced (first question only) but
-  must be answered in the app; `answer_question` refuses it.
+- An option number past 9, or a custom-text row past 9, cannot be keyed
+  safely (the TUI acts on the first digit), so the submitter refuses it and
+  the prompt has to be answered in the app. Custom text on a multi-select
+  question is refused too — that dialog has no "Type something" row.
 - Announced replies are reduced to speakable prose (code fences become
   "(code omitted)") and cut at 600 characters.
 - A resumption handle can be refused by the server (it expires, or the state
