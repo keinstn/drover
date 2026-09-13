@@ -491,6 +491,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsNotifyDone => 'Finished agents';
 
   @override
+  String get settingsNotifyPluginUpdateTitle =>
+      'Update the notification plugin';
+
+  @override
+  String settingsNotifyPluginUpdateSubtitle(String host, String version) {
+    return '$host is running $version';
+  }
+
+  @override
+  String settingsNotifyPluginUpdateIntro(String host, String version) {
+    return '$host is running drover-notify $version. Reinstall it on the Herdr host to get the latest notifications.';
+  }
+
+  @override
+  String get settingsNotifyPluginUninstallLabel => '1. Remove the old plugin';
+
+  @override
+  String get settingsNotifyPluginInstallLabel => '2. Install the latest';
+
+  @override
   String get settingsDemo => 'Try the demo';
 
   @override

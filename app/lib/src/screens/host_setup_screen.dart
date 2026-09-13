@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
+import '../infra/shell_command.dart';
 import '../models/host_config.dart';
 import '../models/plugin_info.dart';
 import '../notifications/host_pairing.dart';
+import '../widgets/copyable_value.dart';
 import '../widgets/error_message_view.dart';
 import '../widgets/text_context_menu.dart';
 
@@ -242,7 +243,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
       context: context,
       builder: (context) {
         final l10n = AppLocalizations.of(context)!;
-        final herdrBin = _shellCommandPath(config.herdrBin);
+        final herdrBin = shellCommandPath(config.herdrBin);
         // `plugin install` clones from GitHub, so there is no checkout path for
         // the user to substitute, and the install location is herdr's to
         // choose — which is why no setup command is offered here. Once the
@@ -258,7 +259,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
               children: [
                 Text(l10n.hostPairingCodeIntro),
                 const SizedBox(height: 16),
-                _CopyableValue(
+                CopyableValue(
                   key: const ValueKey('pairing_install_command'),
                   label: l10n.hostPairingInstallCommandLabel,
                   value: installCommand,
@@ -266,12 +267,12 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 const SizedBox(height: 16),
                 Text(l10n.hostPairingManualNote),
                 const SizedBox(height: 16),
-                _CopyableValue(
+                CopyableValue(
                   label: l10n.hostPairingCodeLabel,
                   value: pairing.code,
                 ),
                 const SizedBox(height: 16),
-                _CopyableValue(
+                CopyableValue(
                   label: l10n.hostPairingUrlLabel,
                   value: pairing.completionUrl,
                 ),
@@ -535,49 +536,3 @@ final _privateKeyPemPattern = RegExp(
 
 bool _looksLikePrivateKeyPem(String value) =>
     _privateKeyPemPattern.hasMatch(value);
-
-String _shellCommandPath(String value) => value.startsWith('~/')
-    ? '\$HOME/${_shellQuote(value.substring(2))}'
-    : _shellQuote(value);
-
-String _shellQuote(String value) => "'${value.replaceAll("'", "'\"'\"'")}'";
-
-class _CopyableValue extends StatelessWidget {
-  const _CopyableValue({super.key, required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          droverLabelText(context, label),
-          style: droverLabelStyle(context, fontSize: 10.5),
-        ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Expanded(
-              child: SelectableText(
-                value,
-                style: const TextStyle(
-                  fontFamily: droverMonoFamily,
-                  fontFeatures: droverMonoFeatures,
-                ),
-              ),
-            ),
-            IconButton(
-              tooltip: l10n.commonCopy,
-              icon: const Icon(Icons.copy_outlined),
-              onPressed: () => Clipboard.setData(ClipboardData(text: value)),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}

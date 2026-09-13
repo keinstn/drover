@@ -1,5 +1,6 @@
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
+import 'package:drover/src/notifications/notify_plugin_version.dart';
 import 'package:drover/src/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +18,7 @@ Widget _app({
   VoidCallback? onManageHosts,
   VoidCallback? onEnterDemo,
   String? appVersion,
+  Future<List<StaleNotifyPlugin>>? staleNotifyPlugins,
 }) {
   return MaterialApp(
     // The screen reads DroverColors, so the harness needs the real theme.
@@ -35,6 +37,7 @@ Widget _app({
       onManageHosts: onManageHosts ?? () {},
       onEnterDemo: onEnterDemo,
       appVersion: appVersion,
+      staleNotifyPlugins: staleNotifyPlugins,
     ),
   );
 }
@@ -56,6 +59,7 @@ class _SettingsHost extends StatefulWidget {
     required this.onManageHosts,
     required this.onEnterDemo,
     required this.appVersion,
+    required this.staleNotifyPlugins,
   });
 
   final ThemeMode themeMode;
@@ -69,6 +73,7 @@ class _SettingsHost extends StatefulWidget {
   final VoidCallback onManageHosts;
   final VoidCallback? onEnterDemo;
   final String? appVersion;
+  final Future<List<StaleNotifyPlugin>>? staleNotifyPlugins;
 
   @override
   State<_SettingsHost> createState() => _SettingsHostState();
@@ -98,6 +103,7 @@ class _SettingsHostState extends State<_SettingsHost> {
       onManageHosts: widget.onManageHosts,
       onEnterDemo: widget.onEnterDemo,
       appVersion: widget.appVersion,
+      staleNotifyPlugins: widget.staleNotifyPlugins,
     );
   }
 }
@@ -390,4 +396,127 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('a stale notify plugin renders its row, title and subtitle', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(staleNotifyPlugins: Future.value(const [_staleEntry])),
+    );
+    await tester.pumpAndSettle();
+
+    final row = find.byKey(
+      const ValueKey('settings_notify_plugin_update_tile_0'),
+    );
+    expect(row, findsOneWidget);
+    expect(
+      find.descendant(
+        of: row,
+        matching: find.text('Update the notification plugin'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: row,
+        matching: find.text('dev@stub-host is running 0.0.1'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: row, matching: find.byIcon(Icons.chevron_right)),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('tapping the row offers both reinstall commands verbatim, with '
+      '~ expanded so the path is paste-safe', (tester) async {
+    await tester.pumpWidget(
+      _app(staleNotifyPlugins: Future.value(const [_staleEntry])),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_notify_plugin_update_tile_0')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text("\$HOME/'.local/bin/herdr' plugin uninstall drover.notify"),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        "\$HOME/'.local/bin/herdr' plugin install keinstn/drover-notify",
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'dev@stub-host is running drover-notify 0.0.1. Reinstall it on the '
+        'Herdr host to get the latest notifications.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('an empty result renders no row', (tester) async {
+    await tester.pumpWidget(
+      _app(staleNotifyPlugins: Future.value(const <StaleNotifyPlugin>[])),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('settings_notify_plugin_update_tile_0')),
+      findsNothing,
+    );
+    expect(find.text('Update the notification plugin'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a failed probe renders no row and does not surface the error — '
+      'this is a diagnostic, not a feature the user asked for', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        staleNotifyPlugins: Future<List<StaleNotifyPlugin>>(
+          () => throw StateError('host unreachable'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('settings_notify_plugin_update_tile_0')),
+      findsNothing,
+    );
+    expect(find.text('Update the notification plugin'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('no future at all renders no row', (tester) async {
+    await tester.pumpWidget(_app());
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('settings_notify_plugin_update_tile_0')),
+      findsNothing,
+    );
+    expect(find.text('Update the notification plugin'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
 }
+
+const _staleEntry = StaleNotifyPlugin(
+  hostName: 'dev@stub-host',
+  installedVersion: '0.0.1',
+  // Tilde-prefixed on purpose: the rendered command must expand it.
+  herdrBin: '~/.local/bin/herdr',
+);

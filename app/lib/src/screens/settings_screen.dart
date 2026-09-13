@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
+import '../infra/shell_command.dart';
+import '../notifications/notify_plugin_version.dart';
+import '../widgets/copyable_value.dart';
 import '../widgets/top_toast.dart';
 
 /// App-level settings: theme, language, push opt-ins, and a shortcut into
@@ -23,6 +26,7 @@ class SettingsScreen extends StatelessWidget {
     required this.onManageHosts,
     this.onEnterDemo,
     this.appVersion,
+    this.staleNotifyPlugins,
   });
 
   final ThemeMode themeMode;
@@ -49,6 +53,12 @@ class SettingsScreen extends StatelessWidget {
   /// startup by the caller. Null *or blank* hides the row — e.g. when the
   /// platform lookup failed; an empty value would be worse than none.
   final String? appVersion;
+
+  /// Hosts whose notification plugin is out of date, as an *already-started*
+  /// future rather than a callback: this screen is rebuilt by a
+  /// `StatefulBuilder` on every theme/locale/switch change, so a callback
+  /// would re-probe every host over SSH on each of those rebuilds.
+  final Future<List<StaleNotifyPlugin>>? staleNotifyPlugins;
 
   @override
   Widget build(BuildContext context) {
@@ -132,6 +142,36 @@ class SettingsScreen extends StatelessWidget {
             value: notifyOnDone,
             onChanged: onNotifyOnDoneChanged,
           ),
+          FutureBuilder<List<StaleNotifyPlugin>>(
+            future: staleNotifyPlugins,
+            builder: (context, snapshot) {
+              // Fail-quiet: a probe that is still running, failed, or found
+              // nothing renders nothing at all. A spinner or an error here
+              // would be noise in a screen the user opened for something else.
+              final stale = snapshot.data ?? const <StaleNotifyPlugin>[];
+              if (stale.isEmpty) return const SizedBox.shrink();
+              return Column(
+                children: [
+                  for (final (index, entry) in stale.indexed)
+                    ListTile(
+                      key: ValueKey(
+                        'settings_notify_plugin_update_tile_$index',
+                      ),
+                      leading: const Icon(Icons.system_update),
+                      title: Text(l10n.settingsNotifyPluginUpdateTitle),
+                      subtitle: Text(
+                        l10n.settingsNotifyPluginUpdateSubtitle(
+                          entry.hostName,
+                          entry.installedVersion,
+                        ),
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _showPluginUpdateDialog(context, entry),
+                    ),
+                ],
+              );
+            },
+          ),
           if (version != null && version.isNotEmpty) ...[
             // Detaches the row from the section above, so a footer doesn't
             // read as one of its settings.
@@ -156,6 +196,56 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The reinstall recipe, as two copyable commands. No `-y` on either: the
+/// install pulls executable code onto the host, so herdr's own confirmation
+/// prompt stays in the loop — same call as the pairing dialog's install
+/// command.
+Future<void> _showPluginUpdateDialog(
+  BuildContext context,
+  StaleNotifyPlugin entry,
+) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) {
+      final l10n = AppLocalizations.of(context)!;
+      final herdrBin = shellCommandPath(entry.herdrBin);
+      return AlertDialog(
+        title: Text(l10n.settingsNotifyPluginUpdateTitle),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                l10n.settingsNotifyPluginUpdateIntro(
+                  entry.hostName,
+                  entry.installedVersion,
+                ),
+              ),
+              const SizedBox(height: 16),
+              CopyableValue(
+                label: l10n.settingsNotifyPluginUninstallLabel,
+                value: '$herdrBin plugin uninstall drover.notify',
+              ),
+              const SizedBox(height: 16),
+              CopyableValue(
+                label: l10n.settingsNotifyPluginInstallLabel,
+                value: '$herdrBin plugin install keinstn/drover-notify',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(l10n.commonClose),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 Widget _sectionHeader(BuildContext context, String label) => Padding(

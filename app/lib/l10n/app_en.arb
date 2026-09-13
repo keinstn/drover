@@ -213,6 +213,23 @@
   "settingsNotifications": "Notifications",
   "settingsNotifyBlocked": "Blocked agents",
   "settingsNotifyDone": "Finished agents",
+  "settingsNotifyPluginUpdateTitle": "Update the notification plugin",
+  "settingsNotifyPluginUpdateSubtitle": "{host} is running {version}",
+  "@settingsNotifyPluginUpdateSubtitle": {
+    "placeholders": {
+      "host": { "type": "String" },
+      "version": { "type": "String" }
+    }
+  },
+  "settingsNotifyPluginUpdateIntro": "{host} is running drover-notify {version}. Reinstall it on the Herdr host to get the latest notifications.",
+  "@settingsNotifyPluginUpdateIntro": {
+    "placeholders": {
+      "host": { "type": "String" },
+      "version": { "type": "String" }
+    }
+  },
+  "settingsNotifyPluginUninstallLabel": "1. Remove the old plugin",
+  "settingsNotifyPluginInstallLabel": "2. Install the latest",
   "settingsDemo": "Try the demo",
   "settingsDemoSubtitle": "A scripted session — no host required",
   "settingsVersion": "Version",
