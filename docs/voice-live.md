@@ -122,6 +122,16 @@ Already done for this project; recorded so a fresh setup can repeat it.
   simulator without a new dependency or an FFI `sysctl` call, and here the
   simulator only ever runs debug builds while the device only gets release
   builds through TestFlight.
+- A device's echo canceller is **adaptive**, and the model's first utterance
+  plays right after the mic opens: on a real iPhone the model still heard
+  itself for the first two or three turns of a session, then never again
+  (measured 2026-09-13). A release build therefore keeps the gate on while
+  the model speaks until roughly ten seconds of *model audio* have played —
+  cumulative playback, not wall clock — and drops it afterwards, which gives
+  the canceller the input it needs to converge and still leaves barge-in
+  working for the rest of the session. The threshold is `kVoiceAecWarmUp` in
+  `voice_session.dart`, a first guess meant to be tuned on device; the cost
+  of raising it is that barge-in stays off for more of the first turns.
 - Verified on Flutter with `firebase_ai` 4.0.0: the Live API works, including
   function calling, `sendTextRealtime`, input and output transcription, and
   `SpeechConfig(languageCode: 'ja-JP')`.
