@@ -8,8 +8,12 @@ import 'package:flutter_test/flutter_test.dart';
 Widget _app({
   ThemeMode themeMode = ThemeMode.system,
   Locale? locale,
+  bool notifyOnBlocked = true,
+  bool notifyOnDone = true,
   ValueChanged<ThemeMode>? onThemeModeChanged,
   ValueChanged<Locale?>? onLocaleChanged,
+  ValueChanged<bool>? onNotifyOnBlockedChanged,
+  ValueChanged<bool>? onNotifyOnDoneChanged,
   VoidCallback? onManageHosts,
   VoidCallback? onEnterDemo,
   String? appVersion,
@@ -19,17 +23,93 @@ Widget _app({
     theme: droverDarkTheme,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
-    home: SettingsScreen(
+    home: _SettingsHost(
       themeMode: themeMode,
       locale: locale,
+      notifyOnBlocked: notifyOnBlocked,
+      notifyOnDone: notifyOnDone,
       onThemeModeChanged: onThemeModeChanged ?? (_) {},
       onLocaleChanged: onLocaleChanged ?? (_) {},
+      onNotifyOnBlockedChanged: onNotifyOnBlockedChanged ?? (_) {},
+      onNotifyOnDoneChanged: onNotifyOnDoneChanged ?? (_) {},
       onManageHosts: onManageHosts ?? () {},
       onEnterDemo: onEnterDemo,
       appVersion: appVersion,
     ),
   );
 }
+
+/// Owns the switch values the way `main.dart` does. [SettingsScreen] is
+/// stateless, so without a caller that rebuilds it a tap could never move the
+/// rendered switch — the harness has to model that contract for the test to
+/// mean anything.
+class _SettingsHost extends StatefulWidget {
+  const _SettingsHost({
+    required this.themeMode,
+    required this.locale,
+    required this.notifyOnBlocked,
+    required this.notifyOnDone,
+    required this.onThemeModeChanged,
+    required this.onLocaleChanged,
+    required this.onNotifyOnBlockedChanged,
+    required this.onNotifyOnDoneChanged,
+    required this.onManageHosts,
+    required this.onEnterDemo,
+    required this.appVersion,
+  });
+
+  final ThemeMode themeMode;
+  final Locale? locale;
+  final bool notifyOnBlocked;
+  final bool notifyOnDone;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
+  final ValueChanged<Locale?> onLocaleChanged;
+  final ValueChanged<bool> onNotifyOnBlockedChanged;
+  final ValueChanged<bool> onNotifyOnDoneChanged;
+  final VoidCallback onManageHosts;
+  final VoidCallback? onEnterDemo;
+  final String? appVersion;
+
+  @override
+  State<_SettingsHost> createState() => _SettingsHostState();
+}
+
+class _SettingsHostState extends State<_SettingsHost> {
+  late bool _notifyOnBlocked = widget.notifyOnBlocked;
+  late bool _notifyOnDone = widget.notifyOnDone;
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsScreen(
+      themeMode: widget.themeMode,
+      locale: widget.locale,
+      notifyOnBlocked: _notifyOnBlocked,
+      notifyOnDone: _notifyOnDone,
+      onThemeModeChanged: widget.onThemeModeChanged,
+      onLocaleChanged: widget.onLocaleChanged,
+      onNotifyOnBlockedChanged: (value) {
+        setState(() => _notifyOnBlocked = value);
+        widget.onNotifyOnBlockedChanged(value);
+      },
+      onNotifyOnDoneChanged: (value) {
+        setState(() => _notifyOnDone = value);
+        widget.onNotifyOnDoneChanged(value);
+      },
+      onManageHosts: widget.onManageHosts,
+      onEnterDemo: widget.onEnterDemo,
+      appVersion: widget.appVersion,
+    );
+  }
+}
+
+bool _renderedSwitch(WidgetTester tester, String tileKey) => tester
+    .widget<Switch>(
+      find.descendant(
+        of: find.byKey(ValueKey(tileKey)),
+        matching: find.byType(Switch),
+      ),
+    )
+    .value;
 
 void main() {
   testWidgets('shows the current theme and language labels on the rows', (
@@ -76,6 +156,48 @@ void main() {
       ),
       findsOneWidget,
     );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the notification switches render their stored values', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app(notifyOnBlocked: false, notifyOnDone: true));
+
+    // Section headers render through droverLabelText, which uppercases
+    // outside Japanese.
+    expect(find.text('NOTIFICATIONS'), findsOneWidget);
+    expect(find.text('Blocked agents'), findsOneWidget);
+    expect(find.text('Finished agents'), findsOneWidget);
+    expect(_renderedSwitch(tester, 'settings_notify_blocked_tile'), isFalse);
+    expect(_renderedSwitch(tester, 'settings_notify_done_tile'), isTrue);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('tapping a notification switch flips the rendered switch and '
+      'reports the new value', (tester) async {
+    final blockedChanges = <bool>[];
+    await tester.pumpWidget(_app(onNotifyOnBlockedChanged: blockedChanges.add));
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_notify_blocked_tile')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(blockedChanges, [false]);
+    expect(_renderedSwitch(tester, 'settings_notify_blocked_tile'), isFalse);
+    // The other switch must not ride along.
+    expect(_renderedSwitch(tester, 'settings_notify_done_tile'), isTrue);
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_notify_blocked_tile')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(blockedChanges, [false, true]);
+    expect(_renderedSwitch(tester, 'settings_notify_blocked_tile'), isTrue);
 
     await tester.pumpWidget(const SizedBox());
   });

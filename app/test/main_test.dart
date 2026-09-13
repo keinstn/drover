@@ -15,6 +15,7 @@ import 'package:drover/src/screens/host_setup_screen.dart';
 import 'package:drover/src/speech/speech_input.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Records [saveHosts] calls instead of touching real secure storage, so a
 /// test can assert drover never persists the demo as a stored host.
@@ -51,7 +52,26 @@ class _FakeDeviceRegistrationGateway implements DeviceRegistrationGateway {
     required String deviceId,
     required String fcmToken,
     required String platform,
+    required bool notifyOnBlocked,
+    required bool notifyOnDone,
   }) async {}
+}
+
+/// A registration whose backend push always fails, standing in for the
+/// flaky-network case: the class is concrete, so overriding the one method
+/// under test is cheaper than driving a real registration into that state.
+class _FailingRefreshRegistration extends NotificationRegistration {
+  _FailingRefreshRegistration()
+    : super(
+        messaging: _FakePushMessaging(),
+        gateway: _FakeDeviceRegistrationGateway(),
+        deviceIdStore: _FakeDeviceIdStore(),
+        platform: TargetPlatform.iOS,
+      );
+
+  @override
+  Future<void> refreshRegistration() async =>
+      throw StateError('registerDevice is unavailable.');
 }
 
 class _FakeDeviceIdStore implements DeviceIdStore {
@@ -138,18 +158,21 @@ Widget _app({
   String? appVersion,
   StaleTransportSignal? staleTransportSignal,
   HostConnectionRegistry? hostConnectionRegistry,
+  NotificationRegistration? notificationRegistration,
   DateTime Function()? clock,
 }) => DroverApp(
   hostStore: hostStore,
   settingsStore: SettingsStore(),
   initialSettings: settings,
   appVersion: appVersion,
-  notificationRegistration: NotificationRegistration(
-    messaging: _FakePushMessaging(),
-    gateway: _FakeDeviceRegistrationGateway(),
-    deviceIdStore: _FakeDeviceIdStore(),
-    platform: TargetPlatform.iOS,
-  ),
+  notificationRegistration:
+      notificationRegistration ??
+      NotificationRegistration(
+        messaging: _FakePushMessaging(),
+        gateway: _FakeDeviceRegistrationGateway(),
+        deviceIdStore: _FakeDeviceIdStore(),
+        platform: TargetPlatform.iOS,
+      ),
   hostPairingGateway: _NoopHostPairingGateway(),
   speechInput: _NoopSpeechInput(),
   staleTransportSignal: staleTransportSignal,
@@ -250,6 +273,90 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('flipping a notification switch in settings persists it', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_app(hostStore: _SpyHostStore()));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('enter_demo_button')));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.settings));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_notify_blocked_tile')),
+    );
+    await tester.pumpAndSettle();
+
+    // The route caches its page widget, so the rendered switch only moves if
+    // `rebuildRoute` actually re-read the app-level field.
+    expect(
+      tester
+          .widget<Switch>(
+            find.descendant(
+              of: find.byKey(const ValueKey('settings_notify_blocked_tile')),
+              matching: find.byType(Switch),
+            ),
+          )
+          .value,
+      isFalse,
+    );
+    final stored = await SettingsStore().load();
+    expect(stored.notifyOnBlocked, isFalse);
+    expect(stored.notifyOnDone, isTrue);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a notification switch whose backend push fails still saves '
+      'locally, but says so', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _app(
+        hostStore: _SpyHostStore(),
+        notificationRegistration: _FailingRefreshRegistration(),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('enter_demo_button')));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.settings));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('settings_notify_done_tile')));
+    await tester.pumpAndSettle();
+
+    // A backend that kept the old value while the switch reads "off" is
+    // exactly what the user must not be left unaware of.
+    expect(
+      find.text("Couldn't enable notifications. Try opening Drover again."),
+      findsOneWidget,
+    );
+    // The failed push must not cost the local setting.
+    expect((await SettingsStore().load()).notifyOnDone, isFalse);
+
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('the settings control inside the demo opens the real settings '
       'screen', (tester) async {

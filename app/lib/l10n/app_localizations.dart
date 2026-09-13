@@ -944,6 +944,24 @@ abstract class AppLocalizations {
   /// **'System'**
   String get settingsLanguageSystem;
 
+  /// No description provided for @settingsNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get settingsNotifications;
+
+  /// No description provided for @settingsNotifyBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked agents'**
+  String get settingsNotifyBlocked;
+
+  /// No description provided for @settingsNotifyDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Finished agents'**
+  String get settingsNotifyDone;
+
   /// No description provided for @settingsDemo.
   ///
   /// In en, this message translates to:

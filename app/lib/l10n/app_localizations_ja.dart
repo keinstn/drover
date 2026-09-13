@@ -464,6 +464,15 @@ class AppLocalizationsJa extends AppLocalizations {
   String get settingsLanguageSystem => 'システム';
 
   @override
+  String get settingsNotifications => '通知';
+
+  @override
+  String get settingsNotifyBlocked => '返事待ちになったとき';
+
+  @override
+  String get settingsNotifyDone => '作業が完了したとき';
+
+  @override
   String get settingsDemo => 'デモを試す';
 
   @override

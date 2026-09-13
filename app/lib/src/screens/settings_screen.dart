@@ -5,17 +5,21 @@ import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
 import '../widgets/top_toast.dart';
 
-/// App-level settings: theme, language, and a shortcut into host management.
-/// Takes plain [ThemeMode]/[Locale] values rather than reading a settings
-/// store directly — the caller owns persistence and rebuilds this screen
-/// (and the rest of the app) when either changes.
+/// App-level settings: theme, language, push opt-ins, and a shortcut into
+/// host management. Takes plain values rather than reading a settings store
+/// directly — the caller owns persistence and rebuilds this screen (and the
+/// rest of the app) when any of them changes.
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
     super.key,
     required this.themeMode,
     required this.locale,
+    required this.notifyOnBlocked,
+    required this.notifyOnDone,
     required this.onThemeModeChanged,
     required this.onLocaleChanged,
+    required this.onNotifyOnBlockedChanged,
+    required this.onNotifyOnDoneChanged,
     required this.onManageHosts,
     this.onEnterDemo,
     this.appVersion,
@@ -25,8 +29,14 @@ class SettingsScreen extends StatelessWidget {
 
   /// null = follow the device locale.
   final Locale? locale;
+
+  /// Per-device push opt-ins, one per event kind the backend delivers.
+  final bool notifyOnBlocked;
+  final bool notifyOnDone;
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final ValueChanged<Locale?> onLocaleChanged;
+  final ValueChanged<bool> onNotifyOnBlockedChanged;
+  final ValueChanged<bool> onNotifyOnDoneChanged;
   final VoidCallback onManageHosts;
 
   /// Enters the scripted demo session. The first-run setup screen offers it
@@ -66,19 +76,7 @@ class SettingsScreen extends StatelessWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: onEnterDemo,
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              droverLabelText(context, l10n.settingsAppearance),
-              // Not the accent: under ink that is body-text colour, and a
-              // section header has to read quieter than what it labels. Same
-              // treatment as the herd screen's workspace headers.
-              style: droverLabelStyle(
-                context,
-                color: DroverColors.of(context).tertiaryText,
-              ),
-            ),
-          ),
+          _sectionHeader(context, l10n.settingsAppearance),
           ListTile(
             key: const ValueKey('settings_theme_tile'),
             leading: const Icon(Icons.brightness_6),
@@ -119,9 +117,24 @@ class SettingsScreen extends StatelessWidget {
               onSelect: onLocaleChanged,
             ),
           ),
+          _sectionHeader(context, l10n.settingsNotifications),
+          SwitchListTile(
+            key: const ValueKey('settings_notify_blocked_tile'),
+            secondary: const Icon(Icons.notifications_active_outlined),
+            title: Text(l10n.settingsNotifyBlocked),
+            value: notifyOnBlocked,
+            onChanged: onNotifyOnBlockedChanged,
+          ),
+          SwitchListTile(
+            key: const ValueKey('settings_notify_done_tile'),
+            secondary: const Icon(Icons.task_alt),
+            title: Text(l10n.settingsNotifyDone),
+            value: notifyOnDone,
+            onChanged: onNotifyOnDoneChanged,
+          ),
           if (version != null && version.isNotEmpty) ...[
-            // Detaches the row from the `settingsAppearance` section above,
-            // so a footer doesn't read as an Appearance setting.
+            // Detaches the row from the section above, so a footer doesn't
+            // read as one of its settings.
             const Divider(height: 32),
             ListTile(
               key: const ValueKey('settings_version_tile'),
@@ -144,6 +157,20 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 }
+
+Widget _sectionHeader(BuildContext context, String label) => Padding(
+  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+  child: Text(
+    droverLabelText(context, label),
+    // Not the accent: under ink that is body-text colour, and a section
+    // header has to read quieter than what it labels. Same treatment as the
+    // herd screen's workspace headers.
+    style: droverLabelStyle(
+      context,
+      color: DroverColors.of(context).tertiaryText,
+    ),
+  ),
+);
 
 String _themeModeLabel(AppLocalizations l10n, ThemeMode mode) => switch (mode) {
   ThemeMode.system => l10n.settingsThemeSystem,

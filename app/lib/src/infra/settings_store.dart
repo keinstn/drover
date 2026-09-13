@@ -3,15 +3,28 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _themeModeKey = 'theme_mode';
 const _localeKey = 'locale';
+const _notifyOnBlockedKey = 'notify_on_blocked';
+const _notifyOnDoneKey = 'notify_on_done';
 
 /// The user's app-level preferences.
 class AppSettings {
-  const AppSettings({this.themeMode = ThemeMode.system, this.locale});
+  const AppSettings({
+    this.themeMode = ThemeMode.system,
+    this.locale,
+    this.notifyOnBlocked = true,
+    this.notifyOnDone = true,
+  });
 
   final ThemeMode themeMode;
 
   /// null = follow the device locale.
   final Locale? locale;
+
+  /// Per-device push opt-ins. Both default to on, matching the backend's
+  /// treatment of an unset field, so a fresh install and an already-paired
+  /// device behave the same.
+  final bool notifyOnBlocked;
+  final bool notifyOnDone;
 }
 
 /// Persists [AppSettings] in shared_preferences.
@@ -21,6 +34,8 @@ class SettingsStore {
     return AppSettings(
       themeMode: _themeModeFrom(prefs.getString(_themeModeKey)),
       locale: _localeFrom(prefs.getString(_localeKey)),
+      notifyOnBlocked: prefs.getBool(_notifyOnBlockedKey) ?? true,
+      notifyOnDone: prefs.getBool(_notifyOnDoneKey) ?? true,
     );
   }
 
@@ -36,6 +51,15 @@ class SettingsStore {
   Future<void> saveLocale(Locale? locale) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_localeKey, locale?.languageCode ?? 'system');
+  }
+
+  Future<void> saveNotifyPreferences({
+    required bool onBlocked,
+    required bool onDone,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_notifyOnBlockedKey, onBlocked);
+    await prefs.setBool(_notifyOnDoneKey, onDone);
   }
 
   // Unrecognised/missing values fall back to the default rather than

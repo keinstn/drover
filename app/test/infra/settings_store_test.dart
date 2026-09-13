@@ -16,6 +16,23 @@ void main() {
     final settings = await store.load();
     expect(settings.themeMode, ThemeMode.system);
     expect(settings.locale, isNull);
+    expect(settings.notifyOnBlocked, isTrue);
+    expect(settings.notifyOnDone, isTrue);
+  });
+
+  test('saveNotifyPreferences()/load() roundtrips both switches', () async {
+    SharedPreferences.setMockInitialValues({});
+    await store.saveNotifyPreferences(onBlocked: false, onDone: true);
+
+    var settings = await store.load();
+    expect(settings.notifyOnBlocked, isFalse);
+    expect(settings.notifyOnDone, isTrue);
+
+    await store.saveNotifyPreferences(onBlocked: true, onDone: false);
+
+    settings = await store.load();
+    expect(settings.notifyOnBlocked, isTrue);
+    expect(settings.notifyOnDone, isFalse);
   });
 
   test('saveThemeMode()/load() roundtrips each theme mode', () async {
