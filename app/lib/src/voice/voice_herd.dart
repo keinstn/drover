@@ -23,27 +23,39 @@ class AgentEvent {
   final AgentInfo agent;
 }
 
-/// What an agent is waiting on: a structured prompt or a numbered pane
-/// prompt. Option N is `options[N - 1]`.
-class AgentQuestion {
-  const AgentQuestion({
+/// One question an agent is waiting on. Option N is `options[N - 1]`.
+class VoiceQuestion {
+  const VoiceQuestion({
     required this.question,
     required this.options,
-    this.prompt,
-    this.questionCount = 1,
+    this.multiSelect = false,
   });
 
-  /// The first question's text (structured) or the parsed prompt's heading;
-  /// may be empty.
+  /// The question's text (structured) or the parsed prompt's heading; may be
+  /// empty.
   final String question;
+
+  /// Option labels only — never the pane text they were parsed from.
   final List<String> options;
+
+  /// Whether the user may pick more than one option.
+  final bool multiSelect;
+}
+
+/// What an agent is waiting on: a structured prompt, which can carry several
+/// questions, or a numbered pane prompt, which carries exactly one.
+class AgentQuestion {
+  const AgentQuestion({required this.questions, this.prompt});
+
+  final List<VoiceQuestion> questions;
 
   /// Non-null when the question comes from a [StructuredPromptCapability].
   final StructuredPrompt? prompt;
-
-  /// Structured prompts can carry several questions; a pane prompt has one.
-  final int questionCount;
 }
+
+/// One answer to one [VoiceQuestion]: the option numbers the user chose (1
+/// based, as spoken and announced), or free text instead.
+typedef VoiceAnswer = ({List<int> optionNumbers, String? text});
 
 /// The voice layer's view of one host's herd: everything the tools and the
 /// callback announcer need. Faked in tests.
@@ -58,12 +70,12 @@ abstract interface class VoiceHerd {
 
   Future<void> send(AgentInfo agent, String text);
 
+  /// Submits [answers] — one per entry of `question.questions`, in order.
   Future<void> answer(
     AgentInfo agent,
-    AgentQuestion question, {
-    int? option,
-    String? text,
-  });
+    AgentQuestion question,
+    List<VoiceAnswer> answers,
+  );
 
   /// Starts a [kind] agent in [cwd] and hands it [brief] as its first
   /// prompt. Returns the new agent's pane and speakable title, and whether
@@ -231,22 +243,31 @@ Future<String> announceEvents(List<AgentEvent> events, VoiceHerd herd) async {
           );
           continue;
         }
-        final options = [
-          for (var i = 0; i < question.options.length; i++)
-            '${i + 1}) ${question.options[i]}',
+        final questions = question.questions;
+        final asked = [
+          for (var i = 0; i < questions.length; i++)
+            _speakQuestion(questions[i], i, questions.length),
         ].join(' ');
-        final more = question.questionCount > 1
-            ? ' This prompt has ${question.questionCount} questions; only the '
-                  'first can be answered by voice.'
-            : '';
         paragraphs.add(
-          '[event] $who is waiting for you. Question: "${question.question}" '
-          'Options: $options Ask the user which option (or a free-text '
-          'answer), then call answer_question.$more',
+          '[event] $who is waiting for you. $asked Ask the user each question '
+          'in order — an option number, or a free-text answer — then call '
+          'answer_question ONCE with one answer per question, in that order.',
         );
     }
   }
   return paragraphs.join('\n\n');
+}
+
+/// One question of a blocked-agent announcement: its ordinal (spelled out only
+/// when the prompt carries several), its text, and its numbered options.
+String _speakQuestion(VoiceQuestion question, int index, int total) {
+  final options = [
+    for (var i = 0; i < question.options.length; i++)
+      '${i + 1}) ${question.options[i]}',
+  ].join(' ');
+  final head = total > 1 ? 'Question ${index + 1} of $total' : 'Question';
+  final multi = question.multiSelect ? ' (more than one choice allowed)' : '';
+  return '$head: "${question.question}"$multi Options: $options';
 }
 
 /// Whether [pane] shows [brief], compared without any whitespace: a pane
@@ -308,20 +329,28 @@ class HerdVoiceHerd implements VoiceHerd {
           ? null
           : capability.pendingPrompt(transcript);
       if (prompt != null && prompt.questions.isNotEmpty) {
-        final first = prompt.questions.first;
         return AgentQuestion(
-          question: first.question,
-          options: [for (final o in first.options) o.label],
+          questions: [
+            for (final q in prompt.questions)
+              VoiceQuestion(
+                question: q.question,
+                options: [for (final o in q.options) o.label],
+                multiSelect: q.multiSelect,
+              ),
+          ],
           prompt: prompt,
-          questionCount: prompt.questions.length,
         );
       }
     }
     final parsed = parsePromptOptions(stripAnsi(await _readPane(agent.paneId)));
     if (parsed == null) return null;
     return AgentQuestion(
-      question: parsed.question ?? '',
-      options: [for (final o in parsed.options) o.label],
+      questions: [
+        VoiceQuestion(
+          question: parsed.question ?? '',
+          options: [for (final o in parsed.options) o.label],
+        ),
+      ],
     );
   }
 
@@ -332,41 +361,66 @@ class HerdVoiceHerd implements VoiceHerd {
   @override
   Future<void> answer(
     AgentInfo agent,
-    AgentQuestion question, {
-    int? option,
-    String? text,
-  }) async {
-    if ((option == null) == (text == null)) {
-      throw ArgumentError('give exactly one of option or text');
-    }
-    if (option != null) {
-      RangeError.checkValueInInterval(
-        option,
-        1,
-        question.options.length,
-        'option',
+    AgentQuestion question,
+    List<VoiceAnswer> answers,
+  ) async {
+    if (answers.length != question.questions.length) {
+      throw ArgumentError(
+        'got ${answers.length} answer(s) for '
+        '${question.questions.length} question(s)',
       );
+    }
+    // The shape of each answer is guarded here, for every adapter, because no
+    // submitter covers it: Claude's keys the custom row FIRST and would drop
+    // an option the user also picked, and an answer holding neither commits a
+    // multi-select dialog with nothing checked. Both would report success.
+    for (var i = 0; i < answers.length; i++) {
+      final (:optionNumbers, :text) = answers[i];
+      if (optionNumbers.isEmpty == (text == null)) {
+        throw ArgumentError(
+          'question ${i + 1} needs exactly one of an option number or text',
+        );
+      }
     }
     final prompt = question.prompt;
     if (prompt == null) {
-      await _client.prompt(agent.paneId, option != null ? '$option' : text!);
+      final (:optionNumbers, :text) = answers.single;
+      if (text != null) {
+        await _client.prompt(agent.paneId, text);
+        return;
+      }
+      // No submitter guards this path, so the one pane question is checked
+      // here — it takes a single typed digit and nothing richer.
+      if (optionNumbers.length != 1) {
+        throw ArgumentError('a pane prompt takes exactly one option number');
+      }
+      final option = optionNumbers.single;
+      RangeError.checkValueInInterval(
+        option,
+        1,
+        question.questions.single.options.length,
+        'option',
+      );
+      await _client.prompt(agent.paneId, '$option');
       return;
     }
-    // ponytail: only the first question of a multi-question prompt is read
-    // out, and Claude's submitter needs every question answered in order —
-    // so those stay in the app until the voice flow can walk all of them.
-    if (question.questionCount > 1) {
-      throw StateError('multi-question prompts must be answered in the app');
-    }
+    // What the submitter does validate (option ranges, custom text on a
+    // multi-select, unkeyable two-digit numbers) is left to it: it checks the
+    // whole answer set before sending a single keystroke.
     await _adapterFor(agent)!.structuredPrompt!.submit(
       client: _client,
       paneId: agent.paneId,
       prompt: prompt,
       answers: [
-        StructuredPromptAnswer(
-          selectedIndexes: option != null ? [option - 1] : const [],
-          customText: text,
-        ),
+        for (final (:optionNumbers, :text) in answers)
+          StructuredPromptAnswer(
+            // Each number is keyed as a checkbox toggle, so a repeat would
+            // switch the user's own choice back off.
+            selectedIndexes: [
+              for (final n in {...optionNumbers}) n - 1,
+            ],
+            customText: text,
+          ),
       ],
     );
   }

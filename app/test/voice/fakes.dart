@@ -172,7 +172,7 @@ class FakeVoiceHerd implements VoiceHerd {
   Object? readError;
 
   final sent = <(AgentInfo, String)>[];
-  final answered = <(AgentInfo, AgentQuestion, int?, String?)>[];
+  final answered = <(AgentInfo, AgentQuestion, List<VoiceAnswer>)>[];
 
   @override
   Future<String?> lastReply(AgentInfo agent) async {
@@ -202,10 +202,18 @@ class FakeVoiceHerd implements VoiceHerd {
   @override
   Future<void> answer(
     AgentInfo agent,
-    AgentQuestion question, {
-    int? option,
-    String? text,
-  }) async => answered.add((agent, question, option, text));
+    AgentQuestion question,
+    List<VoiceAnswer> answers,
+  ) async {
+    // Mirrors HerdVoiceHerd: a mismatched count submits nothing.
+    if (answers.length != question.questions.length) {
+      throw ArgumentError(
+        'got ${answers.length} answer(s) for '
+        '${question.questions.length} question(s)',
+      );
+    }
+    answered.add((agent, question, answers));
+  }
 
   /// (kind, cwd, brief) per [launch] call.
   final launched = <(String, String, String)>[];
