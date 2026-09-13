@@ -85,21 +85,22 @@ const _permissionPrompt = '''
 
  Esc to cancel · Tab to amend · ctrl+e to explain''';
 
-StructuredPrompt _prompt(int questions) => StructuredPrompt(
-  id: 'toolu_1',
-  questions: [
-    for (var i = 0; i < questions; i++)
-      StructuredPromptQuestion(
-        question: 'Question $i?',
-        header: 'Q$i',
-        multiSelect: false,
-        options: const [
-          StructuredPromptOption(label: 'Alpha'),
-          StructuredPromptOption(label: 'Beta'),
-        ],
-      ),
-  ],
-);
+StructuredPrompt _prompt(int questions, {int? multiSelectAt}) =>
+    StructuredPrompt(
+      id: 'toolu_1',
+      questions: [
+        for (var i = 0; i < questions; i++)
+          StructuredPromptQuestion(
+            question: 'Question $i?',
+            header: 'Q$i',
+            multiSelect: i == multiSelectAt,
+            options: const [
+              StructuredPromptOption(label: 'Alpha'),
+              StructuredPromptOption(label: 'Beta'),
+            ],
+          ),
+      ],
+    );
 
 NativeTranscript _transcript(List<(TranscriptSpeaker, String)> messages) =>
     NativeTranscript([
@@ -264,14 +265,17 @@ Ship it.''';
     test('pendingQuestion prefers the structured prompt', () async {
       final h = herd(
         transcript: const NativeTranscript([]),
-        adapter: _FakeAdapter(_FakeCapability(_prompt(2))),
+        adapter: _FakeAdapter(_FakeCapability(_prompt(2, multiSelectAt: 1))),
         pane: _permissionPrompt,
       );
       final q = (await h.pendingQuestion(agent))!;
-      expect(q.question, 'Question 0?');
-      expect(q.options, ['Alpha', 'Beta']);
+      expect(q.questions.map((e) => e.question), [
+        'Question 0?',
+        'Question 1?',
+      ]);
+      expect(q.questions.first.options, ['Alpha', 'Beta']);
+      expect(q.questions.map((e) => e.multiSelect), [false, true]);
       expect(q.prompt, isNotNull);
-      expect(q.questionCount, 2);
     });
 
     test('pendingQuestion falls back to the numbered pane prompt', () async {
@@ -280,14 +284,14 @@ Ship it.''';
         pane: '\x1b[1m$_permissionPrompt\x1b[0m',
       );
       final q = (await h.pendingQuestion(agent))!;
-      expect(q.question, 'Do you want to proceed?');
-      expect(q.options, [
+      expect(q.questions.single.question, 'Do you want to proceed?');
+      expect(q.questions.single.options, [
         'Yes',
         'Yes, and always allow access to drover-spike-test/ from this project',
         'No',
       ]);
+      expect(q.questions.single.multiSelect, isFalse);
       expect(q.prompt, isNull);
-      expect(q.questionCount, 1);
       expect(await herd(pane: 'just working').pendingQuestion(agent), isNull);
     });
 
@@ -305,8 +309,10 @@ Ship it.''';
       );
       final q = (await h.pendingQuestion(agent))!;
 
-      await h.answer(agent, q, option: 2);
-      await h.answer(agent, q, text: 'neither');
+      await h.answer(agent, q, [
+        (optionNumbers: [2], text: null),
+      ]);
+      await h.answer(agent, q, [(optionNumbers: [], text: 'neither')]);
 
       expect(capability.submitted[0].single.selectedIndexes, [1]);
       expect(capability.submitted[0].single.customText, isNull);
@@ -315,35 +321,160 @@ Ship it.''';
       expect(runner.commands, isEmpty);
     });
 
-    test('answer refuses multi-question prompts', () async {
+    test('answer submits every question of a multi-question prompt', () async {
+      final capability = _FakeCapability(_prompt(2, multiSelectAt: 1));
       final h = herd(
         transcript: const NativeTranscript([]),
-        adapter: _FakeAdapter(_FakeCapability(_prompt(2))),
+        adapter: _FakeAdapter(capability),
       );
       final q = (await h.pendingQuestion(agent))!;
-      expect(() => h.answer(agent, q, option: 1), throwsStateError);
+
+      await h.answer(agent, q, [
+        (optionNumbers: const [], text: 'something else'),
+        (optionNumbers: const [1, 2], text: null),
+      ]);
+
+      final submitted = capability.submitted.single;
+      expect(submitted, hasLength(2));
+      expect(submitted[0].selectedIndexes, isEmpty);
+      expect(submitted[0].customText, 'something else');
+      expect(submitted[1].selectedIndexes, [0, 1]);
+      expect(submitted[1].customText, isNull);
+    });
+
+    test('answer refuses a wrong number of answers', () async {
+      final capability = _FakeCapability(_prompt(2));
+      final h = herd(
+        transcript: const NativeTranscript([]),
+        adapter: _FakeAdapter(capability),
+      );
+      final q = (await h.pendingQuestion(agent))!;
+
+      await expectLater(
+        h.answer(agent, q, [
+          (optionNumbers: const [1], text: null),
+        ]),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => '$e',
+            'message',
+            allOf(contains('1 answer'), contains('2 question')),
+          ),
+        ),
+      );
+      expect(capability.submitted, isEmpty);
+    });
+
+    test('answer refuses an answer holding both or neither', () async {
+      final capability = _FakeCapability(_prompt(2, multiSelectAt: 1));
+      final h = herd(
+        transcript: const NativeTranscript([]),
+        adapter: _FakeAdapter(capability),
+      );
+      final q = (await h.pendingQuestion(agent))!;
+      Matcher named(String question) => throwsA(
+        isA<ArgumentError>().having((e) => '$e', 'message', contains(question)),
+      );
+
+      // Both: the submitter keys the custom row first, silently dropping the
+      // option the user picked.
+      expect(
+        () => h.answer(agent, q, [
+          (optionNumbers: const [1], text: 'also this'),
+          (optionNumbers: const [1], text: null),
+        ]),
+        named('question 1'),
+      );
+      // Neither: the multi-select dialog would be committed with nothing
+      // checked, and reported as answered.
+      expect(
+        () => h.answer(agent, q, [
+          (optionNumbers: const [1], text: null),
+          (optionNumbers: const [], text: null),
+        ]),
+        named('question 2'),
+      );
+      expect(capability.submitted, isEmpty);
+    });
+
+    test('answer dedupes repeated option numbers', () async {
+      final capability = _FakeCapability(_prompt(1, multiSelectAt: 0));
+      final h = herd(
+        transcript: const NativeTranscript([]),
+        adapter: _FakeAdapter(capability),
+      );
+      final q = (await h.pendingQuestion(agent))!;
+
+      await h.answer(agent, q, [
+        (optionNumbers: const [1, 1], text: null),
+      ]);
+
+      expect(capability.submitted.single.single.selectedIndexes, [0]);
     });
 
     test('answer types the option digit into a pane prompt', () async {
       final h = herd(pane: _permissionPrompt);
       final q = (await h.pendingQuestion(agent))!;
 
-      await h.answer(agent, q, option: 3);
+      await h.answer(agent, q, [
+        (optionNumbers: const [3], text: null),
+      ]);
 
       expect(runner.commands.single, contains("'agent' 'prompt' 'w:p1' '3'"));
+    });
+
+    test('answer types free text into a pane prompt', () async {
+      final h = herd(pane: _permissionPrompt);
+      final q = (await h.pendingQuestion(agent))!;
+
+      await h.answer(agent, q, [(optionNumbers: const [], text: 'neither')]);
+
+      expect(
+        runner.commands.single,
+        contains("'agent' 'prompt' 'w:p1' 'neither'"),
+      );
+    });
+
+    test('answer refuses two option numbers for a pane prompt', () async {
+      final h = herd(pane: _permissionPrompt);
+      final q = (await h.pendingQuestion(agent))!;
+
+      expect(
+        () => h.answer(agent, q, [
+          (optionNumbers: const [1, 2], text: null),
+        ]),
+        throwsArgumentError,
+      );
+      expect(runner.commands, isEmpty);
     });
 
     test('answer validates the option range and argument pair', () async {
       final h = herd(pane: _permissionPrompt);
       final q = (await h.pendingQuestion(agent))!;
 
-      expect(() => h.answer(agent, q, option: 0), throwsRangeError);
-      expect(() => h.answer(agent, q, option: 4), throwsRangeError);
-      expect(() => h.answer(agent, q), throwsArgumentError);
+      VoiceAnswer a(List<int> numbers, [String? text]) =>
+          (optionNumbers: numbers, text: text);
+
       expect(
-        () => h.answer(agent, q, option: 1, text: 'x'),
+        () => h.answer(agent, q, [
+          a([0]),
+        ]),
+        throwsRangeError,
+      );
+      expect(
+        () => h.answer(agent, q, [
+          a([4]),
+        ]),
+        throwsRangeError,
+      );
+      expect(() => h.answer(agent, q, [a([])]), throwsArgumentError);
+      expect(
+        () => h.answer(agent, q, [
+          a([1], 'x'),
+        ]),
         throwsArgumentError,
       );
+      expect(() => h.answer(agent, q, []), throwsArgumentError);
       expect(runner.commands, isEmpty);
     });
   });
@@ -372,18 +503,52 @@ Ship it.''';
     test('blocked with a question lists numbered options', () async {
       final herd = FakeVoiceHerd()
         ..questions['p1'] = const AgentQuestion(
-          question: 'Proceed?',
-          options: ['Yes', 'No'],
-          questionCount: 2,
+          questions: [
+            VoiceQuestion(question: 'Proceed?', options: ['Yes', 'No']),
+          ],
         );
       expect(
         await announceEvents([AgentEvent(AgentEventKind.blocked, agent)], herd),
         '[event] Agent "Implement OAuth" (claude) is waiting for you. '
-        'Question: "Proceed?" Options: 1) Yes 2) No Ask the user which option '
-        '(or a free-text answer), then call answer_question. This prompt has '
-        '2 questions; only the first can be answered by voice.',
+        'Question: "Proceed?" Options: 1) Yes 2) No Ask the user each '
+        'question in order — an option number, or a free-text answer — then '
+        'call answer_question ONCE with one answer per question, in that '
+        'order.',
       );
     });
+
+    test(
+      'blocked reads out every question of a multi-question prompt',
+      () async {
+        final herd = FakeVoiceHerd()
+          ..questions['p1'] = const AgentQuestion(
+            questions: [
+              VoiceQuestion(question: 'Proceed?', options: ['Yes', 'No']),
+              VoiceQuestion(
+                question: 'Which files?',
+                options: ['lib', 'test'],
+                multiSelect: true,
+              ),
+            ],
+          );
+        final text = await announceEvents([
+          AgentEvent(AgentEventKind.blocked, agent),
+        ], herd);
+
+        expect(
+          text,
+          allOf(
+            contains('Question 1 of 2: "Proceed?" Options: 1) Yes 2) No'),
+            contains(
+              'Question 2 of 2: "Which files?" (more than one choice allowed) '
+              'Options: 1) lib 2) test',
+            ),
+            contains('answer_question ONCE with one answer per question'),
+            isNot(contains('only the first')),
+          ),
+        );
+      },
+    );
 
     test(
       'blocked without a question points to the app; one paragraph per event',
