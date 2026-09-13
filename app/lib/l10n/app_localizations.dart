@@ -962,6 +962,36 @@ abstract class AppLocalizations {
   /// **'Finished agents'**
   String get settingsNotifyDone;
 
+  /// No description provided for @settingsNotifyPluginUpdateTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Update the notification plugin'**
+  String get settingsNotifyPluginUpdateTitle;
+
+  /// No description provided for @settingsNotifyPluginUpdateSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{host} is running {version}'**
+  String settingsNotifyPluginUpdateSubtitle(String host, String version);
+
+  /// No description provided for @settingsNotifyPluginUpdateIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'{host} is running drover-notify {version}. Reinstall it on the Herdr host to get the latest notifications.'**
+  String settingsNotifyPluginUpdateIntro(String host, String version);
+
+  /// No description provided for @settingsNotifyPluginUninstallLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'1. Remove the old plugin'**
+  String get settingsNotifyPluginUninstallLabel;
+
+  /// No description provided for @settingsNotifyPluginInstallLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'2. Install the latest'**
+  String get settingsNotifyPluginInstallLabel;
+
   /// No description provided for @settingsDemo.
   ///
   /// In en, this message translates to:

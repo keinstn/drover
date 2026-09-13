@@ -30,6 +30,7 @@ import '../src/infra/ssh_command_runner.dart';
 import '../src/models/host_config.dart';
 import '../src/models/plugin_info.dart';
 import '../src/notifications/host_pairing.dart';
+import '../src/notifications/notify_plugin_version.dart';
 import '../src/screens/agent_screen.dart';
 import '../src/screens/herd_screen.dart';
 import '../src/screens/host_setup_screen.dart';
@@ -400,6 +401,16 @@ class _SettingsPreviewState extends State<_SettingsPreview> {
   bool _notifyOnBlocked = true;
   bool _notifyOnDone = true;
 
+  // Held in a field, not built in [build]: a fresh future on every rebuild
+  // would drop the row back to its empty state on each switch toggle.
+  final _staleNotifyPlugins = Future.value(const [
+    StaleNotifyPlugin(
+      hostName: 'dev@stub-host',
+      installedVersion: '0.0.1',
+      herdrBin: kDefaultHerdrBin,
+    ),
+  ]);
+
   @override
   Widget build(BuildContext context) {
     return SettingsScreen(
@@ -414,6 +425,7 @@ class _SettingsPreviewState extends State<_SettingsPreview> {
       onNotifyOnDoneChanged: (value) => setState(() => _notifyOnDone = value),
       onManageHosts: () {},
       appVersion: '0.0.0-preview (0)',
+      staleNotifyPlugins: _staleNotifyPlugins,
     );
   }
 }

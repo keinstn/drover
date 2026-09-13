@@ -473,6 +473,25 @@ class AppLocalizationsJa extends AppLocalizations {
   String get settingsNotifyDone => '作業が完了したとき';
 
   @override
+  String get settingsNotifyPluginUpdateTitle => '通知 plugin を更新';
+
+  @override
+  String settingsNotifyPluginUpdateSubtitle(String host, String version) {
+    return '$host は $version です';
+  }
+
+  @override
+  String settingsNotifyPluginUpdateIntro(String host, String version) {
+    return '$host の drover-notify は $version です。Herdr host で入れ直すと最新の通知を受け取れます。';
+  }
+
+  @override
+  String get settingsNotifyPluginUninstallLabel => '1. 古い plugin を削除';
+
+  @override
+  String get settingsNotifyPluginInstallLabel => '2. 最新版をインストール';
+
+  @override
   String get settingsDemo => 'デモを試す';
 
   @override

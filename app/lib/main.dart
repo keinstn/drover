@@ -31,6 +31,7 @@ import 'src/models/plugin_info.dart';
 import 'src/notifications/notification_registration.dart';
 import 'src/notifications/notification_target.dart';
 import 'src/notifications/host_pairing.dart';
+import 'src/notifications/notify_plugin_version.dart';
 import 'src/notifications/plugin_auto_pairer.dart';
 import 'src/screens/agent_screen.dart';
 import 'src/screens/herd_screen.dart';
@@ -520,6 +521,43 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     }
   }
 
+  /// Per-host cap on how long Settings waits for the stale-plugin probe — it
+  /// does not cancel it. The probe keeps running and the runner winds down on
+  /// its own bounded waits (10s connect/auth, 15s per command).
+  static const _notifyProbeTimeout = Duration(seconds: 20);
+
+  /// Probes every saved host for an out-of-date notification plugin.
+  /// Notifications arrive from all hosts, not just the one in view, so the
+  /// active-host filter is deliberately not applied. Each probe is bounded
+  /// and swallows its own failures: an unreachable host must not hang the
+  /// section or hide a stale sibling.
+  Future<List<StaleNotifyPlugin>> _checkNotifyPlugins() async {
+    final probes = _hosts.where((host) => host.hostId != null).map((
+      config,
+    ) async {
+      try {
+        final plugin = await _detectNotifyPlugin(
+          config,
+        ).timeout(_notifyProbeTimeout);
+        // Only a GitHub install is fixed by the reinstall commands the notice
+        // renders; a linked checkout is updated with git, and an unknown kind
+        // stays silent rather than suggesting the wrong thing.
+        if (plugin?.sourceKind != 'github') return null;
+        final version = plugin?.version;
+        if (!isNotifyPluginStale(version)) return null;
+        return StaleNotifyPlugin(
+          hostName: config.displayName,
+          installedVersion: version!,
+          herdrBin: config.herdrBin,
+        );
+      } catch (_) {
+        return null;
+      }
+    });
+    final results = await Future.wait(probes);
+    return results.whereType<StaleNotifyPlugin>().toList();
+  }
+
   Future<void> _autoPairNotifications(
     HostConfig config,
     PluginInfo plugin,
@@ -740,6 +778,11 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
   }
 
   void _openSettings() {
+    // Started here, once: the StatefulBuilder below rebuilds on every
+    // setting change, and a future created inside it would re-probe every
+    // host over SSH each time. Skipped inside the demo, which keeps the
+    // stored hosts around but must not reach out to them.
+    final staleNotifyPlugins = _demo == null ? _checkNotifyPlugins() : null;
     _navKey.currentState?.push(
       MaterialPageRoute<void>(
         // The StatefulBuilder is load-bearing, not noise: a pushed route
@@ -756,6 +799,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
             notifyOnBlocked: _notifyOnBlocked,
             notifyOnDone: _notifyOnDone,
             appVersion: widget.appVersion,
+            staleNotifyPlugins: staleNotifyPlugins,
             onThemeModeChanged: (mode) {
               setState(() => _themeMode = mode);
               rebuildRoute(() {});

@@ -78,7 +78,9 @@ void main() {
         (_) => ok(
           '{"id":"1","result":{"plugins":[{"enabled":true,'
           '"plugin_id":"drover.notify",'
-          '"plugin_root":"/checkout/drover-notify"}]}}',
+          '"plugin_root":"/checkout/drover-notify",'
+          '"source":{"kind":"github","owner":"keinstn",'
+          '"repo":"drover-notify"}}]}}',
         ),
       );
       final pairer = PluginAutoPairer(HerdrClient(runner));
@@ -87,6 +89,7 @@ void main() {
 
       expect(plugin, isNotNull);
       expect(plugin!.pluginRoot, '/checkout/drover-notify');
+      expect(plugin.sourceKind, 'github');
     });
 
     test('returns null when the plugin is linked but disabled', () async {
