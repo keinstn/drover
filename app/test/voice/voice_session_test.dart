@@ -208,6 +208,18 @@ void main() {
     expect(s.entries.single.text, VoiceSession.interruptedCode);
   });
 
+  test('the gate defaults to on, so a caller that omits it stays safe', () {
+    final s = VoiceSession(
+      connect: (_) async => transport,
+      mic: mic,
+      speaker: speaker,
+      tools: const [],
+    );
+    // Production overrides it per build mode (voiceMicGateNeeded); what
+    // matters here is that omitting it cannot silently drop the gate.
+    expect(s.muteMicWhileSpeaking, isTrue);
+  });
+
   test(
     'the gate mutes the mic for the estimated playback plus the tail',
     () async {
