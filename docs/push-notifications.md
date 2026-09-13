@@ -25,12 +25,6 @@ herdr plugin install keinstn/drover-notify
 `herdr plugin install` fetches over unauthenticated HTTPS, which is why this is
 the one-line path now that the repo is public.
 
-drover-notify's own README says Herdr 0.7.0, which is right for the plugin by
-itself. The floor above is drover's — `kMinHerdrVersion` in
-`app/lib/src/herdr/herdr_version.dart` is `(0, 7, 5)` — because below it drover
-still reads and steers agents but refuses to start them. **Do not lower this
-number to match the plugin's README.**
-
 If you would rather run your own checkout — a fork, or a branch you are testing
 — clone it and link that instead:
 
