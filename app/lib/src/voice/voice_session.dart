@@ -28,6 +28,25 @@ class VoiceEntry {
   final String text;
 }
 
+/// Whether the model's own voice loops back into the microphone, so the
+/// half-duplex gate has to stay on.
+///
+/// A real device cancels the echo: [RecordVoiceMic] opens the mic with
+/// `echoCancel: true`, which iOS answers with its voice-processing unit. The
+/// simulator has no such unit and the model hears itself through the Mac
+/// speakers.
+///
+/// ponytail: a debug build stands in for "the simulator". The app cannot ask:
+/// an iOS app gets an EMPTY `Platform.environment` (measured on the simulator
+/// 2026-09-13, so the usual `SIMULATOR_DEVICE_NAME` probe reads the same there
+/// as on a device), and a real check would mean a new dependency or an FFI
+/// `sysctl` call for one bool. In this project the proxy holds: the simulator
+/// is only ever run in debug, and the device only ever gets release builds
+/// through TestFlight. It errs safely — a debug build on a device keeps the
+/// gate (barge-in off, today's behaviour); only `flutter run --release` on the
+/// simulator gets it wrong, and that just brings the echo back in dev.
+const voiceMicGateNeeded = !kReleaseMode;
+
 /// Drives one full-duplex voice conversation: mic -> transport -> speaker,
 /// with tool calls answered from [tools]. UI-agnostic; the screen listens.
 class VoiceSession extends ChangeNotifier {
@@ -77,6 +96,7 @@ class VoiceSession extends ChangeNotifier {
       ),
       mic: RecordVoiceMic(),
       speaker: SoLoudVoiceSpeaker(),
+      muteMicWhileSpeaking: voiceMicGateNeeded,
       tools: tools,
       herd: herd,
       inbox: inbox,
@@ -111,11 +131,12 @@ class VoiceSession extends ChangeNotifier {
   /// [error] value when the microphone permission is missing.
   static const micPermissionDenied = 'mic_permission_denied';
 
-  // ponytail: half-duplex gate — the iOS simulator has no echo cancellation so
-  // the model hears itself. The mic is dropped while the model's audio is
-  // estimated to still be playing (queued bytes at 24 kHz PCM16 mono) plus a
-  // 1.5 s tail. Kills barge-in; flip muteMicWhileSpeaking to false once AEC
-  // is confirmed on a real device.
+  /// Half-duplex gate: the mic is dropped while the model's audio is
+  /// estimated to still be playing (queued bytes at 24 kHz PCM16 mono) plus a
+  /// 1.5 s tail, so the model cannot hear itself. It also kills barge-in, so
+  /// production only turns it on where echo cancellation is missing — see
+  /// [voiceMicGateNeeded]. Defaults to on: a caller that has not thought
+  /// about echo gets the safe half-duplex behaviour.
   final bool muteMicWhileSpeaking;
   static const _muteTail = Duration(milliseconds: 1500);
   static const _playbackBytesPerSecond = 48000;
