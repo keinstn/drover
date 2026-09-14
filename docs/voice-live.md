@@ -24,9 +24,14 @@ released `1.0.x` train.
 ## Branch workflow
 
 - Feature PRs target `voice-live`, not `main`.
-- Merge `main` into `voice-live` about weekly — a merge, not a rebase. The
-  branch is shared and Xcode Cloud builds it by name, so its history must
-  not be rewritten.
+- Pull `main` into `voice-live` about weekly, by rebasing: `git rebase
+  origin/main`, then `git push --force-with-lease`. Back the branch up first
+  (`git branch voice-live-prerebaseN origin/voice-live` and push it) — the
+  rewrite is the whole point, so the backup is the only way back. Xcode Cloud
+  resolves the branch by name and builds whatever the remote tip is, so a
+  rewrite doesn't disturb it; keeping the history linear is what makes the
+  eventual single `voice-live` → `main` PR readable. The cost is the usual
+  one: anyone else holding the branch has to reset onto the new tip.
 - When it is ready, open one PR `voice-live` → `main`, merge it, then run
   `just release 1.1.0` from `main` as usual.
 - Versioning: `voice-live` carries marketing version `1.1.0`; `main` stays
@@ -34,11 +39,31 @@ released `1.0.x` train.
   (ITMS-90186, see "Releasing" in `CLAUDE.md`), and a `1.0.x` build from this
   branch would either be rejected or, worse, end up in the shipped train.
   Keeping the branch one minor ahead avoids both.
-- The weekly merge from `main` conflicts on `app/pubspec.yaml`'s `version:`
-  line whenever `main` released in between (its `just release` commits bump
-  that line). Resolve it by keeping `1.1.0`. `just voice-build` refuses to run
-  if the marketing version equals `main`'s, so a botched resolution is caught
-  before a build starts.
+- That rebase conflicts in at most two places, both in the commits that set
+  the branch up (#226, #227):
+  - `app/pubspec.yaml`'s `version:` line, whenever `main` released in between
+    (its `just release` commits bump that line). Keep `1.1.0` and take
+    `main`'s build number — the `+N` is cosmetic either way, since Xcode Cloud
+    assigns build numbers from its own counter. `just voice-build` refuses to
+    run if the marketing version equals `main`'s, so a botched resolution is
+    caught before a build starts.
+  - `app/pubspec.lock`, whenever a dependency bump landed on `main`. Never
+    hand-merge it: take `main`'s side and regenerate. During a rebase `--ours`
+    is `main`, not the branch — so `git checkout --ours app/pubspec.lock`,
+    then `fvm flutter pub get` to add the voice packages back on top. Check
+    the result with `fvm flutter pub outdated`: `firebase_ai` constrains
+    `firebase_core`, so pub can silently downgrade packages `main` just
+    upgraded. Direct and dev dependencies should still read "all up-to-date".
+- Verify the rebased tip locally before pushing — `fvm flutter analyze`, the
+  full `fvm flutter test`, and the `ci-ios-deps` steps by hand (`fvm flutter
+  build ios --config-only --release --no-codesign`, then `xcodebuild
+  -resolvePackageDependencies -workspace Runner.xcworkspace -scheme Runner`,
+  then `git diff --exit-code` on both `Package.resolved` files). That workflow
+  only triggers on `pull_request`, so a direct push to `voice-live` runs no
+  CI for it at all: local is the only gate. A real `fvm flutter build ios
+  --release --no-codesign` is worth the 100s too — it is the only check that
+  covers the native packages (`record`, `flutter_soloud`) and the native-assets
+  transitives, which a passing test suite and a resolution-only check both miss.
 
 ## TestFlight builds
 
