@@ -54,11 +54,13 @@ class SettingsScreen extends StatelessWidget {
   /// platform lookup failed; an empty value would be worse than none.
   final String? appVersion;
 
-  /// Hosts whose notification plugin is out of date, as an *already-started*
-  /// future rather than a callback: this screen is rebuilt by a
-  /// `StatefulBuilder` on every theme/locale/switch change, so a callback
-  /// would re-probe every host over SSH on each of those rebuilds.
-  final Future<List<StaleNotifyPlugin>>? staleNotifyPlugins;
+  /// One already-started probe future per host, rather than one combined
+  /// future or a callback: a callback would re-probe every host over SSH on
+  /// every rebuild (this screen is rebuilt by a `StatefulBuilder` on every
+  /// theme/locale/switch change), and combining them with e.g. `Future.wait`
+  /// would let the slowest host's probe hold back a row whose own probe
+  /// already answered.
+  final List<Future<StaleNotifyPlugin?>>? staleNotifyPlugins;
 
   @override
   Widget build(BuildContext context) {
@@ -142,36 +144,35 @@ class SettingsScreen extends StatelessWidget {
             value: notifyOnDone,
             onChanged: onNotifyOnDoneChanged,
           ),
-          FutureBuilder<List<StaleNotifyPlugin>>(
-            future: staleNotifyPlugins,
-            builder: (context, snapshot) {
-              // Fail-quiet: a probe that is still running, failed, or found
-              // nothing renders nothing at all. A spinner or an error here
-              // would be noise in a screen the user opened for something else.
-              final stale = snapshot.data ?? const <StaleNotifyPlugin>[];
-              if (stale.isEmpty) return const SizedBox.shrink();
-              return Column(
-                children: [
-                  for (final (index, entry) in stale.indexed)
-                    ListTile(
-                      key: ValueKey(
-                        'settings_notify_plugin_update_tile_$index',
-                      ),
-                      leading: const Icon(Icons.system_update),
-                      title: Text(l10n.settingsNotifyPluginUpdateTitle),
-                      subtitle: Text(
-                        l10n.settingsNotifyPluginUpdateSubtitle(
-                          entry.hostName,
-                          entry.installedVersion,
-                        ),
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _showPluginUpdateDialog(context, entry),
+          // One FutureBuilder per host so a row appears as soon as its own
+          // probe resolves, instead of all rows waiting on the slowest host.
+          for (final (index, probe)
+              in (staleNotifyPlugins ?? const <Future<StaleNotifyPlugin?>>[])
+                  .indexed)
+            FutureBuilder<StaleNotifyPlugin?>(
+              future: probe,
+              builder: (context, snapshot) {
+                // Fail-quiet: a probe that is still running, failed, or found
+                // nothing renders nothing at all. A spinner or an error here
+                // would be noise in a screen the user opened for something
+                // else.
+                final entry = snapshot.data;
+                if (entry == null) return const SizedBox.shrink();
+                return ListTile(
+                  key: ValueKey('settings_notify_plugin_update_tile_$index'),
+                  leading: const Icon(Icons.system_update),
+                  title: Text(l10n.settingsNotifyPluginUpdateTitle),
+                  subtitle: Text(
+                    l10n.settingsNotifyPluginUpdateSubtitle(
+                      entry.hostName,
+                      entry.installedVersion,
                     ),
-                ],
-              );
-            },
-          ),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showPluginUpdateDialog(context, entry),
+                );
+              },
+            ),
           if (version != null && version.isNotEmpty) ...[
             // Detaches the row from the section above, so a footer doesn't
             // read as one of its settings.
