@@ -140,9 +140,12 @@ void test("accepts per-device notification preferences and rejects non-booleans"
   );
 });
 
-void test("deviceAllowsEvent treats only a stored false as opt-out", () => {
+void test("deviceAllowsEvent: blocked fails open, done requires opt-in", () => {
+  // Devices registered before the preference switches existed send neither
+  // field. Blocked must still fire for them — collapsing these two rules into
+  // one uniform check silently kills a shipped feature.
   assert.equal(deviceAllowsEvent({}, "blocked"), true);
-  assert.equal(deviceAllowsEvent({}, "done"), true);
+  assert.equal(deviceAllowsEvent({}, "done"), false);
   assert.equal(
     deviceAllowsEvent(
       { notifyOnBlocked: false, notifyOnDone: true },

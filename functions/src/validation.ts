@@ -159,9 +159,12 @@ export function deviceAllowsEvent(
   fields: { notifyOnBlocked?: unknown; notifyOnDone?: unknown },
   event: NotificationEvent,
 ): boolean {
-  const stored =
-    event === "done" ? fields.notifyOnDone : fields.notifyOnBlocked;
-  return stored !== false;
+  // ponytail: asymmetric on purpose — pre-1.0.6 devices send neither field, so
+  // "done" fails closed (opt-in) while "blocked" keeps failing open, until no
+  // such device remains registered and this can collapse to one check.
+  return event === "done"
+    ? fields.notifyOnDone === true
+    : fields.notifyOnBlocked !== false;
 }
 
 // agentName is interpolated into the push-notification body, so collapse CR/LF

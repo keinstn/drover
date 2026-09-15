@@ -20,9 +20,9 @@ class AppSettings {
   /// null = follow the device locale.
   final Locale? locale;
 
-  /// Per-device push opt-ins. Both default to on, matching the backend's
-  /// treatment of an unset field, so a fresh install and an already-paired
-  /// device behave the same.
+  /// Per-device push opt-ins. Both default to on, and registering writes them
+  /// explicitly — which is what switches `done` on for this device, since the
+  /// backend suppresses that kind for a device that has never sent the field.
   final bool notifyOnBlocked;
   final bool notifyOnDone;
 }
