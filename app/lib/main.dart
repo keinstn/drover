@@ -522,23 +522,53 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
   }
 
   /// Per-host cap on how long Settings waits for the stale-plugin probe — it
-  /// does not cancel it. The probe keeps running and the runner winds down on
-  /// its own bounded waits (10s connect/auth, 15s per command).
+  /// does not cancel it. The probe keeps running: a cold-path runner winds
+  /// down on its own bounded waits (10s connect/auth, 15s per command), and
+  /// a warm-path one is the registry's and stays, still serving the poll.
   static const _notifyProbeTimeout = Duration(seconds: 20);
 
-  /// Probes every saved host for an out-of-date notification plugin.
-  /// Notifications arrive from all hosts, not just the one in view, so the
-  /// active-host filter is deliberately not applied. Each probe is bounded
-  /// and swallows its own failures: an unreachable host must not hang the
-  /// section or hide a stale sibling.
-  Future<List<StaleNotifyPlugin>> _checkNotifyPlugins() async {
-    final probes = _hosts.where((host) => host.hostId != null).map((
-      config,
-    ) async {
+  /// Probes every saved host for an out-of-date notification plugin, one
+  /// future per host rather than a single `Future.wait`-combined one: the
+  /// registry caches a connection object even when its socket is dead, so
+  /// "cached" does not mean "fast" — an unreachable host must not hold back
+  /// a row whose sibling already has its answer. Notifications arrive from
+  /// all hosts, not just the one in view, so the active-host filter is
+  /// deliberately not applied. Each probe is bounded and swallows its own
+  /// failures: an unreachable host must not hang its row or hide a stale
+  /// sibling.
+  ///
+  /// Reuses the registry's already-connected client when one is cached,
+  /// rather than always building a fresh [SshCommandRunner]: this row is
+  /// invisible until the probe returns, and paying a full connect + auth
+  /// (up to 10s + 10s) on every Settings open makes it feel like it never
+  /// loads, when the polling connection sitting right there could answer in
+  /// one round trip. The shared runner serializes channels, so the probe
+  /// queues behind an in-flight poll command rather than racing it — one
+  /// short command, and still far cheaper than a second handshake.
+  ///
+  /// Accepted with it: a `plugin list` that wedges past the runner's 15s
+  /// per-command bound now invalidates the connection the herd list polls
+  /// on, blipping it through a reconnect. That is the same recovery any
+  /// wedged command on that runner triggers, and a wedged connection is one
+  /// worth dropping — a private connection would only hide it. Same for a
+  /// cached entry whose socket has died (the network-switch path keeps the
+  /// entry and drops only the client): the probe pays the reconnect inside
+  /// the runner's mutex and the poll queues behind it, but that poll would
+  /// have paid the very same reconnect on its next tick.
+  ///
+  /// `.toList()` is mandatory on the `.map(...)` below: a lazy `Iterable`
+  /// would re-run each async body — a fresh SSH probe — every time Settings
+  /// traverses the list, instead of returning the one future already
+  /// in flight.
+  List<Future<StaleNotifyPlugin?>> _checkNotifyPlugins() {
+    return _hosts.where((host) => host.hostId != null).map((config) async {
       try {
-        final plugin = await _detectNotifyPlugin(
-          config,
-        ).timeout(_notifyProbeTimeout);
+        final cached = _registry.get(config.hostId!);
+        final plugin =
+            await (cached != null
+                    ? PluginAutoPairer(cached.client).detectPlugin()
+                    : _detectNotifyPlugin(config))
+                .timeout(_notifyProbeTimeout);
         // Only a GitHub install is fixed by the reinstall commands the notice
         // renders; a linked checkout is updated with git, and an unknown kind
         // stays silent rather than suggesting the wrong thing.
@@ -553,9 +583,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
       } catch (_) {
         return null;
       }
-    });
-    final results = await Future.wait(probes);
-    return results.whereType<StaleNotifyPlugin>().toList();
+    }).toList();
   }
 
   Future<void> _autoPairNotifications(

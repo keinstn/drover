@@ -403,13 +403,15 @@ class _SettingsPreviewState extends State<_SettingsPreview> {
 
   // Held in a field, not built in [build]: a fresh future on every rebuild
   // would drop the row back to its empty state on each switch toggle.
-  final _staleNotifyPlugins = Future.value(const [
-    StaleNotifyPlugin(
-      hostName: 'dev@stub-host',
-      installedVersion: '0.0.1',
-      herdrBin: kDefaultHerdrBin,
+  final List<Future<StaleNotifyPlugin?>> _staleNotifyPlugins = [
+    Future.value(
+      const StaleNotifyPlugin(
+        hostName: 'dev@stub-host',
+        installedVersion: '0.0.1',
+        herdrBin: kDefaultHerdrBin,
+      ),
     ),
-  ]);
+  ];
 
   @override
   Widget build(BuildContext context) {

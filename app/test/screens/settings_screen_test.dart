@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/notifications/notify_plugin_version.dart';
@@ -18,7 +20,7 @@ Widget _app({
   VoidCallback? onManageHosts,
   VoidCallback? onEnterDemo,
   String? appVersion,
-  Future<List<StaleNotifyPlugin>>? staleNotifyPlugins,
+  List<Future<StaleNotifyPlugin?>>? staleNotifyPlugins,
 }) {
   return MaterialApp(
     // The screen reads DroverColors, so the harness needs the real theme.
@@ -73,7 +75,7 @@ class _SettingsHost extends StatefulWidget {
   final VoidCallback onManageHosts;
   final VoidCallback? onEnterDemo;
   final String? appVersion;
-  final Future<List<StaleNotifyPlugin>>? staleNotifyPlugins;
+  final List<Future<StaleNotifyPlugin?>>? staleNotifyPlugins;
 
   @override
   State<_SettingsHost> createState() => _SettingsHostState();
@@ -401,7 +403,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      _app(staleNotifyPlugins: Future.value(const [_staleEntry])),
+      _app(staleNotifyPlugins: [Future.value(_staleEntry)]),
     );
     await tester.pumpAndSettle();
 
@@ -434,7 +436,7 @@ void main() {
   testWidgets('tapping the row offers both reinstall commands verbatim, with '
       '~ expanded so the path is paste-safe', (tester) async {
     await tester.pumpWidget(
-      _app(staleNotifyPlugins: Future.value(const [_staleEntry])),
+      _app(staleNotifyPlugins: [Future.value(_staleEntry)]),
     );
     await tester.pumpAndSettle();
 
@@ -464,10 +466,10 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('an empty result renders no row', (tester) async {
-    await tester.pumpWidget(
-      _app(staleNotifyPlugins: Future.value(const <StaleNotifyPlugin>[])),
-    );
+  testWidgets('a probe that finds nothing stale renders no row', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app(staleNotifyPlugins: [Future.value(null)]));
     await tester.pumpAndSettle();
 
     expect(
@@ -483,9 +485,11 @@ void main() {
       'this is a diagnostic, not a feature the user asked for', (tester) async {
     await tester.pumpWidget(
       _app(
-        staleNotifyPlugins: Future<List<StaleNotifyPlugin>>(
-          () => throw StateError('host unreachable'),
-        ),
+        staleNotifyPlugins: [
+          Future<StaleNotifyPlugin?>(
+            () => throw StateError('host unreachable'),
+          ),
+        ],
       ),
     );
     await tester.pumpAndSettle();
@@ -512,6 +516,34 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'a resolved probe renders its row while a sibling that never resolves '
+    'stays pending — the reason for one future per host instead of '
+    'Future.wait, which would hold the resolved row back too',
+    (tester) async {
+      final neverResolves = Completer<StaleNotifyPlugin?>();
+      addTearDown(() => neverResolves.complete(null));
+
+      await tester.pumpWidget(
+        _app(
+          staleNotifyPlugins: [Future.value(_staleEntry), neverResolves.future],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('settings_notify_plugin_update_tile_0')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('settings_notify_plugin_update_tile_1')),
+        findsNothing,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }
 
 const _staleEntry = StaleNotifyPlugin(
