@@ -7,20 +7,21 @@ void main() {
     expect(isNotifyPluginStale('0.0.9'), isTrue);
     expect(isNotifyPluginStale('0.0.99'), isTrue);
     expect(isNotifyPluginStale('0.0'), isTrue);
+    expect(isNotifyPluginStale('0.1.0'), isTrue);
+    expect(isNotifyPluginStale('0.1.1'), isTrue);
   });
 
   test('accepts the minimum and anything newer', () {
     expect(isNotifyPluginStale(kMinNotifyPluginVersion), isFalse);
-    expect(isNotifyPluginStale('0.1.0'), isFalse);
-    expect(isNotifyPluginStale('0.1.1'), isFalse);
-    expect(isNotifyPluginStale('0.2.0'), isFalse);
+    expect(isNotifyPluginStale('0.2.1'), isFalse);
+    expect(isNotifyPluginStale('0.3.0'), isFalse);
     expect(isNotifyPluginStale('1.0.0'), isFalse);
     expect(isNotifyPluginStale('0.10.0'), isFalse);
   });
 
   test('treats missing trailing segments as zero', () {
-    expect(isNotifyPluginStale('0.1'), isFalse);
-    expect(isNotifyPluginStale('0.1.0.0'), isFalse);
+    expect(isNotifyPluginStale('0.2'), isFalse);
+    expect(isNotifyPluginStale('0.2.0.0'), isFalse);
   });
 
   test('stays silent on a version it cannot parse', () {

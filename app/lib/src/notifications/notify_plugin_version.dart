@@ -1,9 +1,10 @@
 /// The lowest `drover-notify` version this app build treats as current.
 ///
-/// ponytail: pinned to the already-published 0.1.0, so the notice renders for
-/// nobody today; bumping this constant on the next drover-notify release is
-/// the one-line change that activates it.
-const kMinNotifyPluginVersion = '0.1.0';
+/// By the time a build carrying this value reaches users,
+/// `herdr plugin install keinstn/drover-notify` must already resolve to it:
+/// the update notice hands out that command as the fix, so a floor ahead of
+/// the plugin's default branch nags with a reinstall that changes nothing.
+const kMinNotifyPluginVersion = '0.2.0';
 
 /// Whether the host's `drover-notify` is older than [kMinNotifyPluginVersion].
 ///
