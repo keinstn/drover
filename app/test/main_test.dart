@@ -4,11 +4,16 @@ import 'package:drover/main.dart';
 import 'package:drover/src/demo/demo_backend.dart';
 import 'package:drover/src/demo/demo_content_en.dart';
 import 'package:drover/src/demo/demo_content_ja.dart';
+import 'package:drover/src/herdr/command_runner.dart';
+import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/infra/host_connections.dart';
 import 'package:drover/src/infra/host_store.dart';
 import 'package:drover/src/infra/network_change_signal.dart';
 import 'package:drover/src/infra/settings_store.dart';
+import 'package:drover/src/infra/ssh_command_runner.dart';
 import 'package:drover/src/infra/stale_transport_signal.dart';
+import 'package:drover/src/models/host_config.dart';
+import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/notifications/host_pairing.dart';
 import 'package:drover/src/notifications/notification_registration.dart';
 import 'package:drover/src/screens/host_setup_screen.dart';
@@ -135,6 +140,49 @@ class _CountingRegistry extends HostConnectionRegistry {
   }
 }
 
+/// Records every command it receives and answers with a scripted response,
+/// so a test can prove which commands actually reached the transport.
+class _FakeCommandRunner extends CommandRunner {
+  _FakeCommandRunner(this._response);
+
+  final CommandResult Function(String command) _response;
+  final commands = <String>[];
+
+  @override
+  Future<CommandResult> run(String command) async {
+    commands.add(command);
+    return _response(command);
+  }
+
+  @override
+  Future<void> uploadFile(String remotePath, List<int> bytes) async {}
+
+  @override
+  Future<List<RemoteDirEntry>> listDirectory(String path) async => [];
+
+  @override
+  Future<String> resolvePath(String path) async => path;
+
+  @override
+  Future<void> dispose() async {}
+}
+
+/// Always returns the same pre-built [HostConnection] from [get], regardless
+/// of [hostId] — standing in for a registry that already has a warm
+/// connection cached for the one host the test uses. [obtain] is left
+/// throwing, same as [_CountingRegistry]: `HerdScreen`'s own polling calls
+/// it too, but each call site wraps it in a try/catch, so the throw just
+/// shows up as that host's poll error rather than crashing the test.
+class _CachedConnectionRegistry extends HostConnectionRegistry {
+  _CachedConnectionRegistry(this._connection)
+    : super((_) => throw UnimplementedError('not used'));
+
+  final HostConnection _connection;
+
+  @override
+  HostConnection? get(String hostId) => _connection;
+}
+
 class _NoopSpeechInput implements SpeechInput {
   @override
   Future<SpeechInputStartResult> start({
@@ -160,10 +208,12 @@ Widget _app({
   HostConnectionRegistry? hostConnectionRegistry,
   NotificationRegistration? notificationRegistration,
   DateTime Function()? clock,
+  List<HostConfig> initialHosts = const [],
 }) => DroverApp(
   hostStore: hostStore,
   settingsStore: SettingsStore(),
   initialSettings: settings,
+  initialHosts: initialHosts,
   appVersion: appVersion,
   notificationRegistration:
       notificationRegistration ??
@@ -572,6 +622,68 @@ void main() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       expect(signal.markStaleCalls, 0);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'Settings renders a stale-plugin row from a warm registry connection, '
+    'without opening a new SSH connection',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final config = HostConfig(
+        host: 'example.com',
+        user: 'alice',
+        privateKeyPem: 'pem',
+        hostId: 'host-1',
+      );
+      final fakeRunner = _FakeCommandRunner(
+        (_) => CommandResult(
+          exitCode: 0,
+          stdout:
+              '{"id":"1","result":{"plugins":['
+              '{"enabled":true,"plugin_id":"drover.notify",'
+              '"plugin_root":"/checkout/drover-notify","version":"0.1.0",'
+              '"source":{"kind":"github"}}]}}',
+          stderr: '',
+        ),
+      );
+      final connection = HostConnection(
+        // Never connects: only its `client` (backed by `fakeRunner` above,
+        // not this runner) is reached by the fast path under test.
+        config: config,
+        runner: SshCommandRunner(config),
+        client: HerdrClient(fakeRunner),
+      );
+
+      await tester.pumpWidget(
+        _app(
+          hostStore: _SpyHostStore(),
+          initialHosts: [config],
+          hostConnectionRegistry: _CachedConnectionRegistry(connection),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.settings));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('settings_notify_plugin_update_tile_0')),
+        findsOneWidget,
+      );
+      // Proves the warm client answered, not a freshly-built runner: only
+      // the registry's `fakeRunner` was ever asked for `plugin list`.
+      expect(
+        fakeRunner.commands.any((c) => c.contains("'plugin' 'list'")),
+        isTrue,
+      );
 
       await tester.pumpWidget(const SizedBox());
     },
