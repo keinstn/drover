@@ -517,13 +517,13 @@ class AppLocalizationsJa extends AppLocalizations {
   String get herdVoiceButton => '音声アシスタント';
 
   @override
-  String get voiceTitle => '音声アシスタント';
-
-  @override
   String get voiceStatusConnecting => '接続中…';
 
   @override
   String get voiceStatusLive => '聞いています';
+
+  @override
+  String get voiceStatusSpeaking => '話しています';
 
   @override
   String get voiceStatusEnded => '終了しました';
@@ -559,6 +559,15 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get voiceRestart => '再開';
+
+  @override
+  String get voiceGreeting => 'エージェントについて話しましょう';
+
+  @override
+  String get voiceTranscript => '文字起こし';
+
+  @override
+  String get voiceClose => '閉じる';
 
   @override
   String get voiceHint =>

@@ -536,13 +536,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get herdVoiceButton => 'Voice assistant';
 
   @override
-  String get voiceTitle => 'Voice assistant';
-
-  @override
   String get voiceStatusConnecting => 'Connecting…';
 
   @override
   String get voiceStatusLive => 'Listening';
+
+  @override
+  String get voiceStatusSpeaking => 'Speaking';
 
   @override
   String get voiceStatusEnded => 'Ended';
@@ -578,6 +578,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get voiceRestart => 'Restart';
+
+  @override
+  String get voiceGreeting => 'Let\'s talk about your agents';
+
+  @override
+  String get voiceTranscript => 'Transcript';
+
+  @override
+  String get voiceClose => 'Close';
 
   @override
   String get voiceHint =>
