@@ -128,6 +128,32 @@ Ship it.''';
       );
     });
 
+    test('replaces inline code spans too, so paths in them never cross', () {
+      expect(
+        speakable('Updated `lib/src/voice/voice_session.dart` and `x.yaml`.'),
+        'Updated (code omitted) and (code omitted) .',
+      );
+    });
+
+    test('a lone backtick does not swallow the rest of the prose', () {
+      // Single-line by construction: an unpaired backtick must not eat the
+      // paragraph looking for a partner.
+      expect(
+        speakable('It prints ` then stops.\nAll green.'),
+        'It prints ` then stops. All green.',
+      );
+    });
+
+    test(
+      'prose keeps the paths it carries — code stripping is not a scrubber',
+      () {
+        expect(
+          speakable('Wrote the fix to lib/src/voice/voice_tools.dart today.'),
+          'Wrote the fix to lib/src/voice/voice_tools.dart today.',
+        );
+      },
+    );
+
     test('truncates to 600 characters with an ellipsis', () {
       final result = speakable('a' * 700);
       expect(result.length, 601);
