@@ -645,7 +645,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get voiceConsentBody =>
-      'The voice assistant runs on Google\'s Gemini Live. While a session is open, your microphone audio and its transcript are sent to Google, along with the context it needs to answer you: your agents\' status, session titles and kinds, project folder names, any question an agent is waiting on with its options, and an agent\'s last reply as prose with code blocks stripped out. Nothing is sent while no session is open. A session ends on its own after a time limit, and you can end one whenever you like.';
+      'The voice assistant runs on Google\'s Gemini Live. While a session is open, your microphone audio and its transcript are sent to Google, along with the context it needs to answer you: your agents\' status, session titles and kinds, project folder names, any question an agent is waiting on with its options, and an agent\'s last reply as prose — which is also sent on its own when an agent finishes, even if you have said nothing. Code is stripped from that reply, fenced or inline, and a failed action reports a short code instead of the terminal\'s output. Prose is sent as written, so a path an agent typed in a sentence, or in the wording of a question, goes with it. Nothing is sent while no session is open. A session ends on its own after a time limit, and you can end one whenever you like.';
 
   @override
   String get voiceConsentAccept => 'Allow and continue';
