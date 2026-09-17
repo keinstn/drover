@@ -100,12 +100,23 @@ class FakeSpeaker implements VoiceSpeaker {
   /// When set, [interrupt] throws it.
   final Object? interruptError;
   final played = <Uint8List>[];
+
+  /// Drives [level]. Closed by [dispose] and re-created by [init], exactly
+  /// like [SoLoudVoiceSpeaker] — a fake that kept one controller open across
+  /// a restart would pass whether or not the real one does.
+  var levels = StreamController<double>.broadcast();
+
+  @override
+  Stream<double> get level => levels.stream;
   var initCalls = 0;
   var interruptCalls = 0;
   var disposeCalls = 0;
 
   @override
-  Future<void> init() async => initCalls++;
+  Future<void> init() async {
+    initCalls++;
+    if (levels.isClosed) levels = StreamController<double>.broadcast();
+  }
 
   @override
   void play(Uint8List pcm24k) => played.add(pcm24k);
@@ -120,6 +131,7 @@ class FakeSpeaker implements VoiceSpeaker {
   @override
   Future<void> dispose() async {
     disposeCalls++;
+    await levels.close();
     await disposeGate?.future;
   }
 }
@@ -131,6 +143,16 @@ LiveServerContent audioChunk({int bytes = 3}) => LiveServerContent(
     InlineDataPart('audio/pcm;rate=24000', Uint8List(bytes)),
   ]),
 );
+
+/// A PCM16 little-endian mic frame of [samples] samples all at [amplitude]
+/// of full scale, so its RMS is exactly [amplitude].
+Uint8List pcm16Frame(double amplitude, {int samples = 160}) {
+  final data = ByteData(samples * 2);
+  for (var i = 0; i < samples; i++) {
+    data.setInt16(i * 2, (amplitude * 32767).round(), Endian.little);
+  }
+  return data.buffer.asUint8List();
+}
 
 /// An [AgentInfo] with only the fields the voice layer looks at.
 AgentInfo fakeAgent({

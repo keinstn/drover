@@ -419,6 +419,178 @@ void main() {
     expect(s.speaking, isFalse);
   });
 
+  group('level', () {
+    // RMS 0.1 of full scale x kVoiceLevelGain -> a 0.6 target.
+    final loud = pcm16Frame(0.1);
+    final silent = pcm16Frame(0);
+
+    Future<void> pushMic(Uint8List frame, int times) async {
+      for (var i = 0; i < times; i++) {
+        mic.frames.add(frame);
+        await settle();
+      }
+    }
+
+    test('loud mic frames raise it, silence brings it back down', () async {
+      final s = session(muteMicWhileSpeaking: false);
+      await s.start();
+
+      await pushMic(loud, 5);
+      final peak = s.level.value;
+      expect(peak, greaterThan(0.3));
+
+      await pushMic(silent, 30);
+      expect(s.level.value, lessThan(peak));
+      expect(s.level.value, lessThan(0.05));
+    });
+
+    test('while speaking the speaker drives it, not the mic', () async {
+      // Ungated, so the mic path really is live during playback.
+      final s = session(muteMicWhileSpeaking: false);
+      await s.start();
+
+      transport.push(audioChunk(bytes: 48000));
+      await settle();
+      expect(s.speaking, isTrue);
+
+      for (var i = 0; i < 10; i++) {
+        speaker.levels.add(0.8);
+        await settle();
+      }
+      final fromSpeaker = s.level.value;
+      expect(fromSpeaker, greaterThan(0.6));
+
+      // Silence on the mic would drag it down if the mic path won.
+      await pushMic(silent, 5);
+      expect(s.level.value, fromSpeaker);
+
+      await s.stop();
+    });
+
+    test('a mic frame while the model speaks does not raise it', () async {
+      final s = session();
+      await s.start();
+
+      transport.push(audioChunk(bytes: 48000));
+      await settle();
+
+      await pushMic(loud, 5);
+      expect(s.level.value, 0);
+
+      await s.stop();
+    });
+
+    test('stop() zeroes it', () async {
+      final s = session(muteMicWhileSpeaking: false);
+      await s.start();
+
+      await pushMic(loud, 5);
+      expect(s.level.value, greaterThan(0));
+
+      await s.stop();
+      expect(s.level.value, 0);
+    });
+
+    // testWidgets for the FakeAsync zone: the playback timer is a real Timer.
+    testWidgets('the playback timer zeroes it', (tester) async {
+      final s = session(muteMicWhileSpeaking: false);
+      await s.start();
+
+      transport.push(audioChunk(bytes: 48000));
+      await tester.pump();
+      speaker.levels.add(0.9);
+      await tester.pump();
+      expect(s.level.value, greaterThan(0));
+
+      clock = clock.add(const Duration(seconds: 2));
+      await tester.pump(const Duration(seconds: 2));
+      expect(s.level.value, 0, reason: 'frozen otherwise for the mute tail');
+
+      // Re-armed by the next chunk: stop() must zero it with a timer pending.
+      transport.push(audioChunk(bytes: 48000));
+      await tester.pump();
+      speaker.levels.add(0.9);
+      await tester.pump();
+      expect(s.level.value, greaterThan(0));
+
+      await s.stop();
+      expect(s.level.value, 0);
+    });
+
+    testWidgets("a barge-in disarms the dropped turn's timer", (tester) async {
+      final s = session(muteMicWhileSpeaking: false);
+      await s.start();
+
+      // Eight seconds of audio arrive at once, as Gemini streams them.
+      transport.push(audioChunk(bytes: 48000 * 8));
+      await tester.pump();
+      expect(s.speaking, isTrue);
+
+      // The user barges in half a second in.
+      clock = clock.add(const Duration(milliseconds: 500));
+      transport.push(LiveServerContent(interrupted: true));
+      await tester.pump();
+      expect(s.speaking, isFalse);
+
+      for (var i = 0; i < 5; i++) {
+        mic.frames.add(loud);
+        await tester.pump();
+      }
+      expect(s.level.value, greaterThan(0.3));
+
+      // Past the end the dropped turn would have had.
+      clock = clock.add(const Duration(seconds: 10));
+      await tester.pump(const Duration(seconds: 10));
+      expect(
+        s.level.value,
+        greaterThan(0.3),
+        reason: 'a stale timer slammed the orb to rest mid-sentence',
+      );
+
+      await s.stop();
+    });
+
+    test('a mic frame in the mute tail raises it but is not sent', () async {
+      final s = session();
+      await s.start();
+
+      transport.push(audioChunk(bytes: 48000));
+      await settle();
+
+      // The audio has finished, the AEC tail has not: the user is replying.
+      clock = clock.add(const Duration(milliseconds: 1200));
+      expect(s.speaking, isFalse);
+
+      await pushMic(loud, 5);
+      expect(s.level.value, greaterThan(0.3));
+      expect(transport.sentAudio, isEmpty, reason: 'the gate still drops it');
+
+      await s.stop();
+    });
+
+    test('after a stop/start the speaker still drives it', () async {
+      // A fresh transport per connect, as FakeTransport.close() closes its
+      // stream; the speaker is the same one, disposed and re-inited.
+      final connector = FakeConnector();
+      final s = session(muteMicWhileSpeaking: false, connect: connector.call);
+      await s.start();
+      await s.stop();
+      await s.start();
+
+      connector.last.push(audioChunk(bytes: 48000));
+      await settle();
+      expect(s.speaking, isTrue);
+
+      for (var i = 0; i < 10; i++) {
+        speaker.levels.add(0.8);
+        await settle();
+      }
+      expect(s.level.value, greaterThan(0.6));
+
+      await s.stop();
+    });
+  });
+
   test('messages are handled in order: audio waits for interrupt', () async {
     final gate = Completer<void>();
     speaker = FakeSpeaker(interruptGate: gate);

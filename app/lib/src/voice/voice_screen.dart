@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -9,10 +10,10 @@ import 'voice_drafts.dart';
 import 'voice_herd.dart';
 import 'voice_session.dart';
 
-/// The voice-assistant stage: a breathing orb over a status line and a live
-/// caption, pending draft cards, and round controls along the bottom. The
-/// transcript log sits behind a toggle. Owns the [session] lifecycle: starts
-/// it on first frame, disposes it with the screen.
+/// The voice-assistant stage: an orb that follows the voice, over a status
+/// line and a live caption, pending draft cards, and round controls along
+/// the bottom. The transcript log sits behind a toggle. Owns the [session]
+/// lifecycle: starts it on first frame, disposes it with the screen.
 class VoiceScreen extends StatefulWidget {
   const VoiceScreen({super.key, required this.session});
 
@@ -130,7 +131,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
                   children: [
                     _Orb(
                       status: session.status,
-                      speaking: session.speaking,
+                      level: session.level,
                       listening: session.partialUser != null,
                     ),
                     const SizedBox(height: 24),
@@ -575,78 +576,47 @@ class _VoiceScreenState extends State<VoiceScreen> {
   );
 }
 
-/// The stage's centre: a soft glow of the page's ink, no hue. Dim and still
-/// while connecting and once the session is over; lit while live, when it
-/// breathes slowly, pulses while the model is [speaking], and gains a thin
-/// ring while the user is being heard ([listening]). Never repeats when the
-/// platform asks for no animation.
-class _Orb extends StatefulWidget {
+/// The stage's centre: a soft glow of the page's ink, no hue. Dim while
+/// connecting and once the session is over; lit while live, and gains a thin
+/// ring while the user is being heard ([listening]). Its size follows
+/// [level] — the voice actually in the room — so it is completely still when
+/// nothing is being said, and fixed when the platform asks for no animation.
+class _Orb extends StatelessWidget {
   const _Orb({
     required this.status,
-    required this.speaking,
+    required this.level,
     required this.listening,
   });
 
   final VoiceSessionStatus status;
-  final bool speaking;
+
+  /// The session's smoothed 0..1 audio level. Already smoothed upstream, so
+  /// it drives the scale directly — no second easing layer here.
+  final ValueListenable<double> level;
+
   final bool listening;
 
-  @override
-  State<_Orb> createState() => _OrbState();
-}
-
-class _OrbState extends State<_Orb> with SingleTickerProviderStateMixin {
-  static const _breathe = Duration(seconds: 3);
-  static const _pulse = Duration(milliseconds: 700);
   static const _size = 168.0;
 
-  late final _controller = AnimationController(vsync: this, duration: _breathe);
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _sync();
-  }
-
-  @override
-  void didUpdateWidget(_Orb oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _sync();
-  }
-
-  void _sync() {
-    // Still until live: a session that never connects must not keep the
-    // ticker going. A live screen repeats its ticker, so tests must `pump` a
-    // live screen, never `pumpAndSettle` it.
-    if (widget.status != VoiceSessionStatus.live ||
-        MediaQuery.disableAnimationsOf(context)) {
-      _controller.reset();
-      return;
-    }
-    final duration = widget.speaking ? _pulse : _breathe;
-    if (_controller.isAnimating && _controller.duration == duration) return;
-    _controller.duration = duration;
-    _controller.repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  /// ponytail: [_scaleMin] and [_scaleMax] are a by-eye knob, not derived —
+  /// the union of the old idle/speaking tweens, to be tuned on a device.
+  static const _scaleMin = 0.96;
+  static const _scaleMax = 1.08;
 
   @override
   Widget build(BuildContext context) {
     final ink = Theme.of(context).colorScheme.onSurface;
-    final scale = widget.speaking
-        ? Tween<double>(begin: 1, end: 1.08)
-        : Tween<double>(begin: 0.96, end: 1);
-    return ScaleTransition(
-      scale: scale.animate(
-        CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    // Reduce motion reads as a permanently silent room: fixed at rest size.
+    final still = MediaQuery.disableAnimationsOf(context);
+    return ValueListenableBuilder<double>(
+      valueListenable: level,
+      builder: (context, value, child) => Transform.scale(
+        key: const ValueKey('voice_orb_scale'),
+        scale: _scaleMin + (_scaleMax - _scaleMin) * (still ? 0 : value),
+        child: child,
       ),
       child: AnimatedOpacity(
-        opacity: widget.status == VoiceSessionStatus.live ? 1 : 0.45,
+        opacity: status == VoiceSessionStatus.live ? 1 : 0.45,
         duration: const Duration(milliseconds: 400),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
@@ -654,7 +624,7 @@ class _OrbState extends State<_Orb> with SingleTickerProviderStateMixin {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: ink.withValues(alpha: widget.listening ? 0.35 : 0),
+              color: ink.withValues(alpha: listening ? 0.35 : 0),
               width: 1.5,
             ),
           ),

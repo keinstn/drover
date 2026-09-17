@@ -16,6 +16,7 @@
 // entrypoint file and no new justfile recipe. If it varies by scenario, list
 // the scenario names in [_scenariosByPreview] too.
 import 'dart:async';
+import 'dart:math';
 
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/foundation.dart';
@@ -337,14 +338,46 @@ final _errorSamples = <(String, Object)>[
   ),
 ];
 
-/// [VoiceMic] that grants permission but never actually records.
+/// A scripted 0..1 level: bursts with a pause between them, so the orb has a
+/// voice to follow with no mic and no engine. Deterministic, so a screenshot
+/// of a given tick always comes back the same.
+double _scriptedLevel(int tick) {
+  final t = tick % 120; // a 6 s sentence at [_voiceTick]
+  if (t > 84) return 0; // then the pause before the next one
+  return ((sin(t * 0.7) * 0.5 + 0.5) * (sin(t * 0.13) * 0.35 + 0.6)).clamp(
+    0.0,
+    1.0,
+  );
+}
+
+const _voiceTick = Duration(milliseconds: 50);
+
+/// One PCM16 frame whose RMS is exactly [amplitude] — every sample sits at
+/// the same magnitude, which is all [voiceLevelFromPcm16] measures.
+Uint8List _scriptedFrame(double amplitude) {
+  const samples = 480;
+  final frame = Uint8List(samples * 2);
+  final value = (amplitude.clamp(0.0, 1.0) * 32767).round();
+  final data = ByteData.sublistView(frame);
+  for (var i = 0; i < samples; i++) {
+    data.setInt16(i * 2, value, Endian.little);
+  }
+  return frame;
+}
+
+/// [VoiceMic] that grants permission and records nothing real, but streams a
+/// scripted voice so the orb moves in a preview.
 class _StubVoiceMic implements VoiceMic {
   @override
   Future<bool> hasPermission() async => true;
 
   @override
-  Future<Stream<Uint8List>> start() async =>
-      StreamController<Uint8List>.broadcast().stream;
+  Future<Stream<Uint8List>> start() async => Stream.periodic(
+    _voiceTick,
+    // Undo the gain the level takes on the way back out, so the scripted
+    // level is what the orb actually sees.
+    (tick) => _scriptedFrame(_scriptedLevel(tick) / kVoiceLevelGain),
+  );
 
   @override
   Future<void> stop() async {}
@@ -353,8 +386,13 @@ class _StubVoiceMic implements VoiceMic {
   Future<void> dispose() async {}
 }
 
-/// [VoiceSpeaker] that drops every byte it's handed.
+/// [VoiceSpeaker] that drops every byte it's handed, but reports a scripted
+/// level so the `speaking` scenario shows the orb following the model — the
+/// mic is gated for echo cancellation while the model talks.
 class _StubVoiceSpeaker implements VoiceSpeaker {
+  @override
+  Stream<double> get level => Stream.periodic(_voiceTick, _scriptedLevel);
+
   @override
   Future<void> init() async {}
 

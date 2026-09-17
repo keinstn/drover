@@ -25,18 +25,14 @@ void main() {
     speaker = FakeSpeaker();
   });
 
-  // A live screen repeats the orb's ticker, so tests must `pump` a live
-  // screen, never `pumpAndSettle` it (only an ended session settles).
   Widget app({
     FakeVoiceHerd? herd,
     VoiceInbox? inbox,
     VoiceDrafts? drafts,
     Future<VoiceTransport> Function(String?)? connect,
-  }) => MaterialApp(
-    theme: droverDarkTheme,
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: AppLocalizations.supportedLocales,
-    home: VoiceScreen(
+    bool reduceMotion = false,
+  }) {
+    final screen = VoiceScreen(
       session: VoiceSession(
         connect: connect ?? (_) async => transport,
         mic: mic,
@@ -53,8 +49,44 @@ void main() {
           ),
         ],
       ),
-    ),
-  );
+    );
+    return MaterialApp(
+      theme: droverDarkTheme,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      // copyWith, not a bare MediaQueryData: the stage must still lay out
+      // against a real screen size.
+      home: reduceMotion
+          ? Builder(
+              builder: (context) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(disableAnimations: true),
+                child: screen,
+              ),
+            )
+          : screen,
+    );
+  }
+
+  /// The orb's rendered scale, straight off its [Transform]'s matrix. Not
+  /// getMaxScaleOnAxis(): the untouched z axis floors that at 1.
+  double orbScale(WidgetTester tester) => tester
+      .widget<Transform>(find.byKey(const ValueKey('voice_orb_scale')))
+      .transform
+      .storage[0];
+
+  /// Feeds [times] mic frames at [amplitude] of full scale and lets each one
+  /// reach the level notifier.
+  Future<void> pushMic(
+    WidgetTester tester,
+    double amplitude, {
+    int times = 4,
+  }) async {
+    for (var i = 0; i < times; i++) {
+      mic.frames.add(pcm16Frame(amplitude));
+      await tester.pump();
+      await tester.pump();
+    }
+  }
 
   /// Toggles the transcript and lets the stage/transcript switch finish.
   Future<void> toggleTranscript(WidgetTester tester) async {
@@ -411,5 +443,58 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
+  });
+
+  group('orb', () {
+    testWidgets('grows with the level and shrinks as it falls', (tester) async {
+      await tester.pumpWidget(app());
+      await tester.pump();
+      final rest = orbScale(tester);
+
+      expect(rest, closeTo(0.96, 1e-6));
+
+      await pushMic(tester, 0.3);
+      final loud = orbScale(tester);
+      expect(loud, greaterThan(1));
+
+      await pushMic(tester, 0, times: 30);
+      expect(orbScale(tester), lessThan(loud));
+      expect(orbScale(tester), closeTo(rest, 0.005));
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('holds still at level 0', (tester) async {
+      await tester.pumpWidget(app());
+      await tester.pump();
+      final rest = orbScale(tester);
+
+      // Nothing repeats any more, so a live screen settles.
+      await tester.pumpAndSettle();
+      expect(orbScale(tester), rest);
+      await tester.pump(const Duration(seconds: 3));
+      expect(orbScale(tester), rest);
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(orbScale(tester), rest);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('stays fixed under reduce motion, however loud it gets', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(reduceMotion: true));
+      await tester.pump();
+      final rest = orbScale(tester);
+      expect(rest, closeTo(0.96, 1e-6));
+
+      await pushMic(tester, 0.3);
+      expect(orbScale(tester), rest);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
   });
 }
