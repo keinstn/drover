@@ -296,7 +296,9 @@ class NativeHistoryHerdRunner extends CommandRunner {
 }
 
 void main() {
-  testWidgets('the voice button is hidden by default', (tester) async {
+  testWidgets('the voice button is hidden when the assistant is off', (
+    tester,
+  ) async {
     final client = HerdrClient(FakeCommandRunner(_respond));
     await tester.pumpWidget(_herdApp(client: client));
     await tester.pump();

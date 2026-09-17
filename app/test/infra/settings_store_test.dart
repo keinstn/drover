@@ -18,8 +18,15 @@ void main() {
     expect(settings.locale, isNull);
     expect(settings.notifyOnBlocked, isTrue);
     expect(settings.notifyOnDone, isTrue);
-    expect(settings.voiceAssistantEnabled, isFalse);
+    expect(settings.voiceAssistantEnabled, isTrue);
     expect(settings.voiceConsentAccepted, isFalse);
+  });
+
+  test('a stored voice-assistant opt-out survives the on-by-default', () async {
+    SharedPreferences.setMockInitialValues({});
+    await store.saveVoiceAssistantEnabled(false);
+
+    expect((await store.load()).voiceAssistantEnabled, isFalse);
   });
 
   test('saveVoiceConsentAccepted()/load() roundtrips', () async {

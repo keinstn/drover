@@ -15,7 +15,7 @@ class AppSettings {
     this.locale,
     this.notifyOnBlocked = true,
     this.notifyOnDone = true,
-    this.voiceAssistantEnabled = false,
+    this.voiceAssistantEnabled = true,
     this.voiceConsentAccepted = false,
   });
 
@@ -30,7 +30,9 @@ class AppSettings {
   final bool notifyOnBlocked;
   final bool notifyOnDone;
 
-  /// Opt-in: shows the voice-assistant entry point on the herd screen.
+  /// The off switch: shows the voice-assistant entry point on the herd
+  /// screen. Not the opt-in — [voiceConsentAccepted] gates everything that
+  /// leaves the device, and turning this off clears it.
   final bool voiceAssistantEnabled;
 
   /// Whether the user has accepted that a voice session streams their speech
@@ -48,7 +50,7 @@ class SettingsStore {
       locale: _localeFrom(prefs.getString(_localeKey)),
       notifyOnBlocked: prefs.getBool(_notifyOnBlockedKey) ?? true,
       notifyOnDone: prefs.getBool(_notifyOnDoneKey) ?? true,
-      voiceAssistantEnabled: prefs.getBool(_voiceAssistantKey) ?? false,
+      voiceAssistantEnabled: prefs.getBool(_voiceAssistantKey) ?? true,
       voiceConsentAccepted: prefs.getBool(_voiceConsentKey) ?? false,
     );
   }

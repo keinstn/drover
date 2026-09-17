@@ -34,6 +34,11 @@ released `1.0.x` train.
   one: anyone else holding the branch has to reset onto the new tip.
 - When it is ready, open one PR `voice-live` → `main`, merge it, then run
   `just release 1.1.0` from `main` as usual.
+- Re-decide the Settings toggle's default before that merge (2026-09-18): it
+  ships **on** here, where builds only reach TestFlight internal testers. The
+  per-session cost has never been measured and nothing meters it (see
+  `docs/voice-billing.md`), so on-by-default on the App Store train is a
+  separate decision from on-by-default on this branch.
 - Versioning: `voice-live` carries marketing version `1.1.0`; `main` stays
   `1.0.x`. Apple closes a marketing version's pre-release train once it ships
   (ITMS-90186, see "Releasing" in `CLAUDE.md`), and a `1.0.x` build from this
@@ -306,17 +311,20 @@ Ceilings, marked `ponytail:` in code:
 
 ## Data boundary
 
-The assistant is opt-in via a Settings toggle, and consent is taken before
-anything is sent (2026-09-17): the first tap on the voice button opens a sheet
-naming Google and listing what crosses to it, and only an accept builds the
-session — declining returns to the herd screen with no microphone opened and
-no socket dialled. The answer persists as `voice_consent_accepted`, so later
-taps go straight to the session; the Settings toggle stays the off switch, so
-there is no separate revoke. Its tools return only agent status and short
-assistant prose. This is a deliberate policy: drover is otherwise SSH-local,
-and the voice path is the only place its data leaves the device for a
-third-party model, so the surface sent there stays as small as the feature
-allows.
+Consent is taken before anything is sent (2026-09-17): the first tap on the
+voice button opens a sheet naming Google and listing what crosses to it, and
+only an accept builds the session — declining returns to the herd screen with
+no microphone opened and no socket dialled. The answer persists as
+`voice_consent_accepted`, so later taps go straight to the session. The
+Settings toggle ships **on** (2026-09-18) and decides whether the voice entry
+point and its on-device inbox are live at all: the sheet, not the toggle, is
+the opt-in, and it gates every transmission, so a fresh install still sends
+nothing until the user taps the voice button and accepts. Switching the toggle
+off is the revoke — it clears `voice_consent_accepted`, so turning it back on
+asks again. The tools return only agent status and short assistant prose.
+This is a deliberate policy: drover is otherwise SSH-local, and the voice
+path is the only place its data leaves the device for a third-party model, so
+the surface sent there stays as small as the feature allows.
 
 Concretely, what crosses to Gemini Live: the user's microphone audio, and the
 transcripts Google makes of *both* sides of the conversation — `connect` asks
