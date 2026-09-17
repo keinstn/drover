@@ -198,6 +198,7 @@ class VoiceSession extends ChangeNotifier {
   StreamSubscription<Uint8List>? _micSub;
   StreamSubscription<AgentEvent>? _inboxSub;
   StreamSubscription<VoiceDraftEvent>? _draftsSub;
+  StreamSubscription<double>? _speakerLevelSub;
 
   /// Announcements are chained like [_rx] so two events read back in order,
   /// but on their own chain: reading an agent's state goes over SSH and must
@@ -239,6 +240,16 @@ class VoiceSession extends ChangeNotifier {
   /// Fires [_notify] at [_playbackEnd] so listeners see [speaking] flip back.
   /// Re-armed per audio chunk; cancelled with [_capTimer].
   Timer? _playbackTimer;
+
+  /// Live audio level, 0..1: the mic while the user talks, the speaker while
+  /// the model does. Deliberately NOT on this [ChangeNotifier] — windows
+  /// arrive tens of times a second and would rebuild the whole screen.
+  ValueListenable<double> get level => _level;
+  final _level = ValueNotifier<double>(0);
+
+  void _setLevel(double target) {
+    if (!_disposed) _level.value = smoothVoiceLevel(_level.value, target);
+  }
 
   VoiceSessionStatus get status => _status;
   List<VoiceEntry> get entries => UnmodifiableListView(_entries);
@@ -289,6 +300,10 @@ class VoiceSession extends ChangeNotifier {
         await _speaker.dispose();
         return;
       }
+      // Strictly after init(): the speaker hands out a fresh stream there.
+      _speakerLevelSub = _speaker.level.listen((value) {
+        if (speaking) _setLevel(value);
+      });
       final transport = await _connect(_resumeHandle);
       if (_stale(gen)) {
         await transport.close().catchError((Object _) {});
@@ -304,10 +319,20 @@ class VoiceSession extends ChangeNotifier {
         return;
       }
       _micSub = frames.listen((data) {
+        if (data.isEmpty) return;
+        // Level before the gate, frames after. The output path owns the
+        // level while the model plays ([speaking]), so the two never fight
+        // and echo can't reach it. What is left gated is the 1.5 s mute
+        // tail, a conservative AEC guard that runs *after* the speaker
+        // stopped — what the mic hears there is the room, not the model, and
+        // it is exactly when the user starts replying. So the tail still
+        // drops the frames, but no longer freezes the orb.
+        if (!speaking) _setLevel(voiceLevelFromPcm16(data));
+        if (_micMuted) return;
         // Read live: the transport is swapped on a resume, and is null while
         // reconnecting, when frames are simply dropped.
         final current = _transport;
-        if (data.isEmpty || current == null || _micMuted) return;
+        if (current == null) return;
         // A send that races the socket closing is expected; nothing to do.
         unawaited(current.sendAudio(data).catchError((Object _) {}));
       });
@@ -427,6 +452,13 @@ class VoiceSession extends ChangeNotifier {
         var changed = false;
         if (message.interrupted == true) {
           _playbackEnd = _now();
+          // Still armed for the ORIGINAL end of the turn we just dropped —
+          // seconds away, because Gemini streams audio faster than realtime.
+          // Left alone it would zero the level mid-sentence while the user
+          // talks. Safe to cancel here: the [_queuePlayback] loop below
+          // re-arms it for any audio in this same message.
+          _playbackTimer?.cancel();
+          _playbackTimer = null;
           await _speaker.interrupt();
           _entries.add(
             const VoiceEntry(VoiceEntryKind.system, interruptedCode),
@@ -563,7 +595,12 @@ class VoiceSession extends ChangeNotifier {
       Duration(microseconds: bytes.length * 1000000 ~/ _playbackBytesPerSecond),
     );
     _playbackTimer?.cancel();
-    _playbackTimer = Timer(_playbackEnd.difference(now), _notify);
+    _playbackTimer = Timer(_playbackEnd.difference(now), () {
+      // Neither path writes during the mute tail that follows, so without
+      // this the level would freeze at its last value for 1.5 s.
+      if (!_disposed) _level.value = 0;
+      _notify();
+    });
     if (!wasSpeaking) _notify();
   }
 
@@ -625,7 +662,10 @@ class VoiceSession extends ChangeNotifier {
     _rxSub = null;
     unawaited(_inboxSub?.cancel());
     _inboxSub = null;
+    unawaited(_speakerLevelSub?.cancel());
+    _speakerLevelSub = null;
     _playbackEnd = DateTime.fromMillisecondsSinceEpoch(0);
+    if (!_disposed) _level.value = 0;
     try {
       await _mic.stop();
     } catch (_) {}
@@ -654,6 +694,7 @@ class VoiceSession extends ChangeNotifier {
         await _mic.dispose();
         await _draftsSub?.cancel();
         drafts.dispose();
+        _level.dispose();
       }),
     );
     _disposed = true;
