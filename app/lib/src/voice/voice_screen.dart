@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
@@ -8,9 +9,10 @@ import 'voice_drafts.dart';
 import 'voice_herd.dart';
 import 'voice_session.dart';
 
-/// The voice-assistant conversation: a status line, the transcript log and
-/// an End/Restart button. Owns the [session] lifecycle: starts it on first
-/// frame, disposes it with the screen.
+/// The voice-assistant stage: a breathing orb over a status line and a live
+/// caption, pending draft cards, and round controls along the bottom. The
+/// transcript log sits behind a toggle. Owns the [session] lifecycle: starts
+/// it on first frame, disposes it with the screen.
 class VoiceScreen extends StatefulWidget {
   const VoiceScreen({super.key, required this.session});
 
@@ -22,6 +24,7 @@ class VoiceScreen extends StatefulWidget {
 
 class _VoiceScreenState extends State<VoiceScreen> {
   final _scroll = ScrollController();
+  var _showTranscript = false;
 
   @override
   void initState() {
@@ -50,6 +53,10 @@ class _VoiceScreenState extends State<VoiceScreen> {
     final stick = _wasAtBottom;
     setState(() {});
     if (!stick) return;
+    _jumpToEnd();
+  }
+
+  void _jumpToEnd() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.jumpTo(_scroll.position.maxScrollExtent);
@@ -57,62 +64,265 @@ class _VoiceScreenState extends State<VoiceScreen> {
     });
   }
 
+  void _toggleTranscript() {
+    setState(() => _showTranscript = !_showTranscript);
+    // Opened to catch up, so land on the newest line.
+    if (_showTranscript) _jumpToEnd();
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final session = widget.session;
-    final scheme = Theme.of(context).colorScheme;
-    final tertiary = DroverColors.of(context).tertiaryText;
-    final rows = <Widget>[
-      for (final entry in session.entries) _entryRow(context, l10n, entry),
-      if (session.partialUser case final text?)
-        _entryRow(context, l10n, VoiceEntry(VoiceEntryKind.user, text)),
-      if (session.partialAssistant case final text?)
-        _entryRow(context, l10n, VoiceEntry(VoiceEntryKind.assistant, text)),
-    ];
     final active =
         session.status == VoiceSessionStatus.connecting ||
         session.status == VoiceSessionStatus.live;
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.voiceTitle)),
-      body: Column(
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // No AppBar, so this is the only labelled way back while live
+            // (macOS, VoiceOver); leaving disposes the session as before.
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(padding: EdgeInsets.all(8), child: BackButton()),
+            ),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: _showTranscript
+                    ? KeyedSubtree(
+                        key: const ValueKey('transcript'),
+                        child: _transcript(context, l10n),
+                      )
+                    : KeyedSubtree(
+                        key: const ValueKey('stage'),
+                        child: _stage(context, l10n),
+                      ),
+              ),
+            ),
+            _controls(context, l10n, active),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _stage(BuildContext context, AppLocalizations l10n) {
+    final session = widget.session;
+    final tertiary = DroverColors.of(context).tertiaryText;
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: Text(
-              _statusLabel(l10n, session),
-              key: const ValueKey('voice_status'),
-              style: droverLabelStyle(context, color: tertiary),
+          Expanded(
+            // Takes what the cards leave; scrolls once that is less than
+            // the orb, status and caption need.
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 16,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _Orb(
+                      status: session.status,
+                      speaking: session.speaking,
+                      listening: session.partialUser != null,
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      _statusLabel(l10n, session),
+                      key: const ValueKey('voice_status'),
+                      textAlign: TextAlign.center,
+                      style: droverLabelStyle(context, color: tertiary),
+                    ),
+                    const SizedBox(height: 10),
+                    DefaultTextStyle.merge(
+                      textAlign: TextAlign.center,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      child: Column(children: _caption(context, l10n)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // The cards are the actionable part, so they win over the orb: as
+          // tall as they need up to most of the stage, then they scroll. Not
+          // a Flexible — a loose flex child never hands its unused share
+          // back to the Expanded above, which would leave a gap under one
+          // short card.
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: constraints.maxHeight * 0.7),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final draft in session.drafts.pending)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: _draftCard(context, l10n, draft.id, stretch: true),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// What sits under the status label: the live transcription while someone
+  /// is speaking; otherwise the trailing system notices (why the session
+  /// ended, that it resumed); otherwise the greeting on a fresh live session.
+  /// While live, notices about the previous session's end stay off the
+  /// stage — after Restart the caption must not read "Session ended".
+  List<Widget> _caption(BuildContext context, AppLocalizations l10n) {
+    final session = widget.session;
+    final scheme = Theme.of(context).colorScheme;
+    final body = TextStyle(color: scheme.onSurface, fontSize: 17, height: 1.4);
+    final muted = TextStyle(
+      color: DroverColors.of(context).tertiaryText,
+      fontSize: 13,
+      height: 1.4,
+    );
+    if (session.partialAssistant case final text?) {
+      return [Text(text, style: body)];
+    }
+    if (session.partialUser case final text?) {
+      return [Text(text, style: body.copyWith(color: scheme.onSurfaceVariant))];
+    }
+    final notices = session.entries.reversed
+        .takeWhile((e) => e.kind == VoiceEntryKind.system)
+        .toList()
+        .reversed
+        .toList();
+    const previousSession = {
+      VoiceSession.endedCode,
+      VoiceSession.capReachedCode,
+      VoiceSession.unsentDraftsCode,
+    };
+    final stale =
+        session.status == VoiceSessionStatus.live &&
+        notices.isNotEmpty &&
+        previousSession.contains(notices.last.text);
+    if (notices.isNotEmpty && !stale) {
+      return [
+        for (final entry in notices)
+          Text(_systemLabel(l10n, entry.text), style: muted),
+      ];
+    }
+    if (session.status == VoiceSessionStatus.live && session.entries.isEmpty) {
+      return [
+        Text(l10n.voiceGreeting, style: body),
+        const SizedBox(height: 8),
+        Text(l10n.voiceHint, style: muted),
+      ];
+    }
+    // Between turns the last thing said stays up, so an answer can still be
+    // glanced at once the model has stopped speaking.
+    final spoken = session.entries.lastWhere(
+      (e) =>
+          e.kind == VoiceEntryKind.user || e.kind == VoiceEntryKind.assistant,
+      orElse: () => const VoiceEntry(VoiceEntryKind.system, ''),
+    );
+    return switch (spoken.kind) {
+      VoiceEntryKind.assistant => [
+        Text(spoken.text, style: body.copyWith(color: scheme.onSurfaceVariant)),
+      ],
+      VoiceEntryKind.user => [
+        Text(spoken.text, style: muted.copyWith(fontSize: 15)),
+      ],
+      _ => const [],
+    };
+  }
+
+  Widget _transcript(BuildContext context, AppLocalizations l10n) {
+    final session = widget.session;
+    return ListView(
+      controller: _scroll,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      children: [
+        for (final entry in session.entries) _entryRow(context, l10n, entry),
+        if (session.partialUser case final text?)
+          _entryRow(context, l10n, VoiceEntry(VoiceEntryKind.user, text)),
+        if (session.partialAssistant case final text?)
+          _entryRow(context, l10n, VoiceEntry(VoiceEntryKind.assistant, text)),
+      ],
+    );
+  }
+
+  /// Transcript toggle on the left, Restart in the middle once the session
+  /// is over, and the ink-filled End/Close on the right. Exactly one button
+  /// carries `voice_action_button`: End while active, Restart after.
+  Widget _controls(BuildContext context, AppLocalizations l10n, bool active) {
+    final session = widget.session;
+    final tertiary = DroverColors.of(context).tertiaryText;
+    final tonal = IconButton.styleFrom(fixedSize: const Size.square(52));
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Center(
+              child: IconButton.filledTonal(
+                key: const ValueKey('voice_transcript_button'),
+                style: tonal,
+                isSelected: _showTranscript,
+                icon: const Icon(Icons.notes),
+                selectedIcon: const Icon(Icons.graphic_eq),
+                tooltip: l10n.voiceTranscript,
+                onPressed: _toggleTranscript,
+              ),
             ),
           ),
           Expanded(
-            child: rows.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        l10n.voiceHint,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: scheme.onSurfaceVariant),
+            child: active
+                ? const SizedBox.shrink()
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton.filledTonal(
+                        key: const ValueKey('voice_action_button'),
+                        style: tonal,
+                        icon: const Icon(Icons.refresh),
+                        tooltip: l10n.voiceRestart,
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          session.start();
+                        },
                       ),
-                    ),
-                  )
-                : ListView(
-                    controller: _scroll,
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                    children: rows,
+                      const SizedBox(height: 6),
+                      Text(
+                        l10n.voiceRestart,
+                        style: droverLabelStyle(context, color: tertiary),
+                      ),
+                    ],
                   ),
           ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: FilledButton.icon(
-                key: const ValueKey('voice_action_button'),
-                onPressed: active ? session.stop : session.start,
-                icon: Icon(active ? Icons.stop : Icons.refresh),
-                label: Text(active ? l10n.voiceEnd : l10n.voiceRestart),
+          Expanded(
+            child: Center(
+              // Colours are the M3 defaults: both themes pin primary/onPrimary
+              // to the page's ink and surface, the same pair FilledButton uses.
+              child: IconButton.filled(
+                key: ValueKey(
+                  active ? 'voice_action_button' : 'voice_close_button',
+                ),
+                style: IconButton.styleFrom(fixedSize: const Size.square(56)),
+                icon: const Icon(Icons.close),
+                tooltip: active ? l10n.voiceEnd : l10n.voiceClose,
+                onPressed: active
+                    ? () {
+                        HapticFeedback.lightImpact();
+                        session.stop();
+                      }
+                    : () => Navigator.of(context).maybePop(),
               ),
             ),
           ),
@@ -125,7 +335,8 @@ class _VoiceScreenState extends State<VoiceScreen> {
       switch (session.status) {
         VoiceSessionStatus.idle ||
         VoiceSessionStatus.connecting => l10n.voiceStatusConnecting,
-        VoiceSessionStatus.live => l10n.voiceStatusLive,
+        VoiceSessionStatus.live =>
+          session.speaking ? l10n.voiceStatusSpeaking : l10n.voiceStatusLive,
         VoiceSessionStatus.ended => l10n.voiceStatusEnded,
         VoiceSessionStatus.error => l10n.voiceStatusError(
           session.error == VoiceSession.micPermissionDenied
@@ -133,6 +344,20 @@ class _VoiceScreenState extends State<VoiceScreen> {
               : session.error ?? '',
         ),
       };
+
+  /// Copy for a [VoiceEntryKind.system] code; unknown codes pass through.
+  String _systemLabel(AppLocalizations l10n, String code) => switch (code) {
+    VoiceSession.interruptedCode => l10n.voiceInterrupted,
+    VoiceSession.goingAwayCode => l10n.voiceGoingAway,
+    VoiceSession.resumedCode => l10n.voiceResumed,
+    VoiceSession.endedCode => l10n.voiceEnded,
+    VoiceSession.announceFailedCode => l10n.voiceEventAnnounceFailed,
+    VoiceSession.unsentDraftsCode => l10n.voiceUnsentDrafts,
+    VoiceSession.sendFailedCode => l10n.voiceSendFailed,
+    VoiceSession.launchFailedCode => l10n.voiceLaunchFailed,
+    VoiceSession.capReachedCode => l10n.voiceCapReached,
+    _ => code,
+  };
 
   Widget _entryRow(
     BuildContext context,
@@ -168,18 +393,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
           ],
         ),
         VoiceEntryKind.system => Text(
-          switch (entry.text) {
-            VoiceSession.interruptedCode => l10n.voiceInterrupted,
-            VoiceSession.goingAwayCode => l10n.voiceGoingAway,
-            VoiceSession.resumedCode => l10n.voiceResumed,
-            VoiceSession.endedCode => l10n.voiceEnded,
-            VoiceSession.announceFailedCode => l10n.voiceEventAnnounceFailed,
-            VoiceSession.unsentDraftsCode => l10n.voiceUnsentDrafts,
-            VoiceSession.sendFailedCode => l10n.voiceSendFailed,
-            VoiceSession.launchFailedCode => l10n.voiceLaunchFailed,
-            VoiceSession.capReachedCode => l10n.voiceCapReached,
-            _ => entry.text,
-          },
+          _systemLabel(l10n, entry.text),
           textAlign: TextAlign.center,
           style: muted,
         ),
@@ -217,8 +431,14 @@ class _VoiceScreenState extends State<VoiceScreen> {
   /// button while it is still pending — Send for a message, Launch for a new
   /// agent. Once acted on the button goes and the header shows a check; the
   /// "sent" statement itself is the [VoiceEntryKind.sent] line, so it appears
-  /// exactly once.
-  Widget _draftCard(BuildContext context, AppLocalizations l10n, String id) {
+  /// exactly once. In the transcript it sits like an assistant bubble; on the
+  /// stage ([stretch]) it spans the width like a sheet.
+  Widget _draftCard(
+    BuildContext context,
+    AppLocalizations l10n,
+    String id, {
+    bool stretch = false,
+  }) {
     final scheme = Theme.of(context).colorScheme;
     final colors = DroverColors.of(context);
     final drafts = widget.session.drafts;
@@ -247,71 +467,70 @@ class _VoiceScreenState extends State<VoiceScreen> {
         () => widget.session.launchDraft(id),
       ),
     };
+    final card = Container(
+      padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(droverRadiusMedium),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                pending
+                    ? (draft is LaunchDraft
+                          ? Icons.rocket_launch
+                          : Icons.schedule_send)
+                    : Icons.check,
+                size: 14,
+                color: colors.tertiaryText,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  header,
+                  style: droverLabelStyle(context, color: colors.tertiaryText),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            body,
+            style: TextStyle(
+              color: scheme.onSurface,
+              fontSize: 13.5,
+              height: 1.5,
+            ),
+          ),
+          if (pending) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonal(
+                key: ValueKey(
+                  draft is LaunchDraft
+                      ? 'voice_launch_$id'
+                      : 'voice_draft_send_$id',
+                ),
+                onPressed: drafts.isBusy(draft) ? null : onAction,
+                child: Text(action),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+    if (stretch) return card;
     return Align(
       alignment: Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: MediaQuery.sizeOf(context).width * 0.85,
         ),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
-          decoration: BoxDecoration(
-            border: Border.all(color: scheme.outlineVariant),
-            borderRadius: BorderRadius.circular(droverRadiusMedium),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    pending
-                        ? (draft is LaunchDraft
-                              ? Icons.rocket_launch
-                              : Icons.schedule_send)
-                        : Icons.check,
-                    size: 14,
-                    color: colors.tertiaryText,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      header,
-                      style: droverLabelStyle(
-                        context,
-                        color: colors.tertiaryText,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                body,
-                style: TextStyle(
-                  color: scheme.onSurface,
-                  fontSize: 13.5,
-                  height: 1.5,
-                ),
-              ),
-              if (pending) ...[
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.tonal(
-                    key: ValueKey(
-                      draft is LaunchDraft
-                          ? 'voice_launch_$id'
-                          : 'voice_draft_send_$id',
-                    ),
-                    onPressed: drafts.isBusy(draft) ? null : onAction,
-                    child: Text(action),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
+        child: card,
       ),
     );
   }
@@ -354,4 +573,109 @@ class _VoiceScreenState extends State<VoiceScreen> {
       ),
     ),
   );
+}
+
+/// The stage's centre: a soft glow of the page's ink, no hue. Dim and still
+/// while connecting and once the session is over; lit while live, when it
+/// breathes slowly, pulses while the model is [speaking], and gains a thin
+/// ring while the user is being heard ([listening]). Never repeats when the
+/// platform asks for no animation.
+class _Orb extends StatefulWidget {
+  const _Orb({
+    required this.status,
+    required this.speaking,
+    required this.listening,
+  });
+
+  final VoiceSessionStatus status;
+  final bool speaking;
+  final bool listening;
+
+  @override
+  State<_Orb> createState() => _OrbState();
+}
+
+class _OrbState extends State<_Orb> with SingleTickerProviderStateMixin {
+  static const _breathe = Duration(seconds: 3);
+  static const _pulse = Duration(milliseconds: 700);
+  static const _size = 168.0;
+
+  late final _controller = AnimationController(vsync: this, duration: _breathe);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_Orb oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sync();
+  }
+
+  void _sync() {
+    // Still until live: a session that never connects must not keep the
+    // ticker going. A live screen repeats its ticker, so tests must `pump` a
+    // live screen, never `pumpAndSettle` it.
+    if (widget.status != VoiceSessionStatus.live ||
+        MediaQuery.disableAnimationsOf(context)) {
+      _controller.reset();
+      return;
+    }
+    final duration = widget.speaking ? _pulse : _breathe;
+    if (_controller.isAnimating && _controller.duration == duration) return;
+    _controller.duration = duration;
+    _controller.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = Theme.of(context).colorScheme.onSurface;
+    final scale = widget.speaking
+        ? Tween<double>(begin: 1, end: 1.08)
+        : Tween<double>(begin: 0.96, end: 1);
+    return ScaleTransition(
+      scale: scale.animate(
+        CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+      ),
+      child: AnimatedOpacity(
+        opacity: widget.status == VoiceSessionStatus.live ? 1 : 0.45,
+        duration: const Duration(milliseconds: 400),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: ink.withValues(alpha: widget.listening ? 0.35 : 0),
+              width: 1.5,
+            ),
+          ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                // A body with a soft rim rather than a fog: opaque well past
+                // the centre, then a short fall-off.
+                colors: [
+                  ink.withValues(alpha: 0.92),
+                  ink.withValues(alpha: 0.85),
+                  ink.withValues(alpha: 0),
+                ],
+                stops: const [0, 0.62, 1],
+              ),
+            ),
+            child: const SizedBox.square(dimension: _size),
+          ),
+        ),
+      ),
+    );
+  }
 }

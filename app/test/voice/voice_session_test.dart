@@ -366,22 +366,57 @@ void main() {
     });
   });
 
-  test('an audio-only chunk does not notify listeners', () async {
+  test(
+    'audio chunks notify once, when speaking begins, not per chunk',
+    () async {
+      final s = session();
+      await s.start();
+      var notifications = 0;
+      s.addListener(() => notifications++);
+
+      // Seconds of audio: a real timer fires at the estimated end, and a
+      // tiny chunk would already be over by the next line.
+      transport.push(audioChunk(bytes: 48000));
+      transport.push(audioChunk(bytes: 48000));
+      await settle();
+      expect(speaker.played, hasLength(2));
+      expect(notifications, 1);
+
+      transport.push(
+        LiveServerContent(outputTranscription: const Transcription(text: 'hi')),
+      );
+      await settle();
+      expect(notifications, 2);
+    },
+  );
+
+  // testWidgets for the FakeAsync zone: the playback timer is a real Timer.
+  testWidgets('speaking follows the playback estimate, and its end notifies', (
+    tester,
+  ) async {
     final s = session();
     await s.start();
     var notifications = 0;
     s.addListener(() => notifications++);
 
-    transport.push(audioChunk());
-    await settle();
-    expect(speaker.played, hasLength(1));
-    expect(notifications, 0);
-
-    transport.push(
-      LiveServerContent(outputTranscription: const Transcription(text: 'hi')),
-    );
-    await settle();
+    // One second of audio; the transcript plays no part.
+    transport.push(audioChunk(bytes: 48000));
+    await tester.pump();
+    expect(s.speaking, isTrue);
     expect(notifications, 1);
+
+    clock = clock.add(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 2));
+    expect(notifications, 2, reason: 'the timer reported the end');
+    expect(s.speaking, isFalse);
+
+    // Re-armed by the next chunk; stop() must leave no timer pending (the
+    // framework fails the test on a leaked one).
+    transport.push(audioChunk(bytes: 48000));
+    await tester.pump();
+    expect(s.speaking, isTrue);
+    await s.stop();
+    expect(s.speaking, isFalse);
   });
 
   test('messages are handled in order: audio waits for interrupt', () async {
