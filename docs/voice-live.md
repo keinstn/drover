@@ -207,7 +207,7 @@ or needs you.
   inbox and injects one text block into the conversation
   (`sendTextRealtime`), one paragraph per event, each starting with
   `[event]`; the system prompt tells the model to announce those immediately.
-  Events that arrive while no session is open stay pending — the mic button
+  Events that arrive while no session is open stay pending — the voice button
   shows a badge — and are announced as one block when the next session goes
   live.
 - **Answering by voice.** A blocked event carries every question the agent is
