@@ -177,6 +177,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
             VoiceSession.unsentDraftsCode => l10n.voiceUnsentDrafts,
             VoiceSession.sendFailedCode => l10n.voiceSendFailed,
             VoiceSession.launchFailedCode => l10n.voiceLaunchFailed,
+            VoiceSession.capReachedCode => l10n.voiceCapReached,
             _ => entry.text,
           },
           textAlign: TextAlign.center,

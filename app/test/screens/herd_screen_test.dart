@@ -5,13 +5,16 @@ import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
+import 'package:drover/src/infra/settings_store.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/screens/herd_screen.dart';
 import 'package:drover/src/screens/launch_agent_sheet.dart';
+import 'package:drover/src/voice/voice_screen.dart';
 import 'package:drover/src/widgets/error_message_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeCommandRunner extends CommandRunner {
   FakeCommandRunner(this._response);
@@ -316,6 +319,92 @@ void main() {
     expect(find.byKey(const ValueKey('voice_button')), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
+  });
+
+  group('voice consent', () {
+    Future<void> openHerd(WidgetTester tester) async {
+      final client = HerdrClient(FakeCommandRunner(_respond));
+      await tester.pumpWidget(
+        _herdApp(client: client, voiceAssistantEnabled: true),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the first tap renders the disclosure naming Google', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+
+      await openHerd(tester);
+
+      expect(find.text('Voice uses Google Gemini'), findsOneWidget);
+      expect(
+        find.textContaining("Google's Gemini Live", findRichText: true),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('microphone audio', findRichText: true),
+        findsOneWidget,
+      );
+      expect(find.text('Allow and continue'), findsOneWidget);
+      expect(find.text('Not now'), findsOneWidget);
+      expect(find.byType(VoiceScreen), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('declining stays on the herd screen and records nothing', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+
+      await openHerd(tester);
+      await tester.tap(find.byKey(const ValueKey('voice_consent_decline')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VoiceScreen), findsNothing);
+      expect(find.text('Voice uses Google Gemini'), findsNothing);
+      expect(find.byKey(const ValueKey('voice_button')), findsOneWidget);
+      expect(
+        (await SettingsStore().load()).voiceConsentAccepted,
+        isFalse,
+        reason: 'a decline must not be remembered as consent',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('accepting opens the voice screen and is remembered', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+
+      await openHerd(tester);
+      await tester.tap(find.byKey(const ValueKey('voice_consent_accept')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VoiceScreen), findsOneWidget);
+      expect((await SettingsStore().load()).voiceConsentAccepted, isTrue);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a later tap goes straight to the session, no sheet', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({'voice_consent_accepted': true});
+
+      await openHerd(tester);
+
+      expect(find.text('Voice uses Google Gemini'), findsNothing);
+      expect(find.byType(VoiceScreen), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
   });
 
   testWidgets('the mic button shows a badge once an agent finishes', (
