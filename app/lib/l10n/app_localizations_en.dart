@@ -636,4 +636,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get voiceLaunchFailed => 'Couldn\'t start the agent';
+
+  @override
+  String get voiceCapReached => 'Session time limit reached';
+
+  @override
+  String get voiceConsentTitle => 'Voice uses Google Gemini';
+
+  @override
+  String get voiceConsentBody =>
+      'The voice assistant runs on Google\'s Gemini Live. While a session is open, your microphone audio and its transcript are sent to Google, along with the context it needs to answer you: your agents\' status, session titles and kinds, project folder names, any question an agent is waiting on with its options, and an agent\'s last reply as prose with code blocks stripped out. Nothing is sent while no session is open. A session ends on its own after a time limit, and you can end one whenever you like.';
+
+  @override
+  String get voiceConsentAccept => 'Allow and continue';
+
+  @override
+  String get voiceConsentDecline => 'Not now';
 }

@@ -163,12 +163,21 @@ Already done for this project; recorded so a fresh setup can repeat it.
 - Audio format: input PCM16 16 kHz mono, output PCM16 24 kHz.
 - Model: `gemini-3.1-flash-live-preview` on the Developer API backend.
 - Session limits: the server caps a single Live connection at roughly ten
-  minutes, but the app no longer ends there (2026-09-13). Every connect asks
-  for session resumption and sliding-window context-window compression
-  (`FirebaseVoiceTransport.connect`); the server then keeps handing out
-  resumption handles, and when the socket drops `VoiceSession` reconnects
-  once on the latest handle, logs a "Reconnected, continuing" line and keeps
-  the mic and speaker up. The conversation carries on across connections.
+  minutes, but a drop no longer ends the conversation (2026-09-13). Every
+  connect asks for session resumption and sliding-window context-window
+  compression (`FirebaseVoiceTransport.connect`); the server then keeps
+  handing out resumption handles, and when the socket drops `VoiceSession`
+  reconnects once on the latest handle, logs a "Reconnected, continuing" line
+  and keeps the mic and speaker up. The conversation carries on across
+  connections.
+- The app sets its own ceiling instead (2026-09-17): `kVoiceSessionCap` in
+  `voice_session.dart`, ten minutes of wall clock from `start()`, after which
+  the session ends itself and logs why through the normal end path. Wall
+  clock, not per connection — a cap that restarted with every reconnect would
+  bound nothing, and an open mic streaming to a third party has to have an
+  end. Restart begins a fresh conversation and a fresh cap. It just ends,
+  with no warning beforehand; raise or lower the constant if ten minutes
+  turns out to cut real conversations short.
 
 ## Voicemail and callback model
 
@@ -297,12 +306,18 @@ Ceilings, marked `ponytail:` in code:
 
 ## Data boundary
 
-The assistant is opt-in via a Settings toggle. Its tools return only agent
-status and short assistant prose — never code, paths beyond the working
-directory, or raw terminal output. This is a deliberate policy: drover is
-otherwise SSH-local, and the voice path is the only place its data leaves the
-device for a third-party model, so the surface sent there stays as small as
-the feature allows.
+The assistant is opt-in via a Settings toggle, and consent is taken before
+anything is sent (2026-09-17): the first tap on the voice button opens a sheet
+naming Google and listing what crosses to it, and only an accept builds the
+session — declining returns to the herd screen with no microphone opened and
+no socket dialled. The answer persists as `voice_consent_accepted`, so later
+taps go straight to the session; the Settings toggle stays the off switch, so
+there is no separate revoke. Its tools return only agent status and short
+assistant prose — never code, paths beyond the working directory, or raw
+terminal output. This is a deliberate policy: drover is otherwise SSH-local,
+and the voice path is the only place its data leaves the device for a
+third-party model, so the surface sent there stays as small as the feature
+allows.
 
 Concretely, what crosses to Gemini Live: agent status, session titles and
 kinds, project folder names, the user's own spoken message, an agent's

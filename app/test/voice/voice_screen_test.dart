@@ -141,6 +141,23 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('renders why the session ended when the cap runs out', (
+    tester,
+  ) async {
+    await tester.pumpWidget(app());
+    await tester.pump();
+
+    await tester.pump(kVoiceSessionCap + const Duration(seconds: 1));
+    await tester.pump();
+
+    expect(find.text('Session time limit reached'), findsOneWidget);
+    expect(find.text('Ended'), findsOneWidget);
+    expect(find.text('Restart'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
   testWidgets('renders an announced event as a muted line', (tester) async {
     final herd = FakeVoiceHerd();
     final inbox = VoiceInbox();

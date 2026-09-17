@@ -616,4 +616,20 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get voiceLaunchFailed => 'エージェントを起動できませんでした';
+
+  @override
+  String get voiceCapReached => 'セッションの制限時間に達しました';
+
+  @override
+  String get voiceConsentTitle => '音声アシスタントは Google Gemini を利用します';
+
+  @override
+  String get voiceConsentBody =>
+      '音声アシスタントは Google の Gemini Live 上で動作します。セッション中は、マイクの音声とその文字起こしが Google に送信されます。あわせて、応答に必要な情報（エージェントの状態、セッション名と種類、プロジェクトのフォルダ名、エージェントが待っている質問と選択肢、エージェントの最後の返信をコードブロックを除いた文章にしたもの）も送信されます。セッションを開いていない間は何も送信されません。セッションは制限時間で自動的に終了し、いつでも自分で終了できます。';
+
+  @override
+  String get voiceConsentAccept => '同意して続ける';
+
+  @override
+  String get voiceConsentDecline => '今はしない';
 }

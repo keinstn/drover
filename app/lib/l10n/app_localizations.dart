@@ -1201,6 +1201,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t start the agent'**
   String get voiceLaunchFailed;
+
+  /// No description provided for @voiceCapReached.
+  ///
+  /// In en, this message translates to:
+  /// **'Session time limit reached'**
+  String get voiceCapReached;
+
+  /// No description provided for @voiceConsentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice uses Google Gemini'**
+  String get voiceConsentTitle;
+
+  /// No description provided for @voiceConsentBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The voice assistant runs on Google\'s Gemini Live. While a session is open, your microphone audio and its transcript are sent to Google, along with the context it needs to answer you: your agents\' status, session titles and kinds, project folder names, any question an agent is waiting on with its options, and an agent\'s last reply as prose with code blocks stripped out. Nothing is sent while no session is open. A session ends on its own after a time limit, and you can end one whenever you like.'**
+  String get voiceConsentBody;
+
+  /// No description provided for @voiceConsentAccept.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow and continue'**
+  String get voiceConsentAccept;
+
+  /// No description provided for @voiceConsentDecline.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get voiceConsentDecline;
 }
 
 class _AppLocalizationsDelegate

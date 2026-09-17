@@ -18,6 +18,15 @@ void main() {
     expect(settings.locale, isNull);
     expect(settings.notifyOnBlocked, isTrue);
     expect(settings.notifyOnDone, isTrue);
+    expect(settings.voiceAssistantEnabled, isFalse);
+    expect(settings.voiceConsentAccepted, isFalse);
+  });
+
+  test('saveVoiceConsentAccepted()/load() roundtrips', () async {
+    SharedPreferences.setMockInitialValues({});
+    await store.saveVoiceConsentAccepted(true);
+
+    expect((await store.load()).voiceConsentAccepted, isTrue);
   });
 
   test('saveNotifyPreferences()/load() roundtrips both switches', () async {

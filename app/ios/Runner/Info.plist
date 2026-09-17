@@ -31,7 +31,7 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Drover connects to your development machine over SSH to supervise coding agents.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Drover uses the microphone to dictate messages to coding agents.</string>
+	<string>Drover uses the microphone to dictate messages to coding agents, and — if you turn the voice assistant on and agree to it — to stream your speech to Google's Gemini service so you can talk to your agents.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Attach an image from your photo library to send to an agent.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
