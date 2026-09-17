@@ -76,8 +76,10 @@ notify you when an agent finishes.
 ## Privacy
 
 Drover connects directly from your device to your own machine. Your transcripts,
-commands, and code never reach the developer. See the
-[privacy policy](https://keinstn.github.io/drover/privacy).
+commands, and code never reach the developer. The optional voice assistant is
+the one feature that sends data off your device: while a voice session is
+running, your speech and the agent context the assistant needs go to Google. See
+the [privacy policy](https://keinstn.github.io/drover/privacy).
 
 ## Documentation
 

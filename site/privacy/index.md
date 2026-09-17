@@ -4,7 +4,7 @@ titleTemplate: false
 
 # Privacy Policy — Drover
 
-**Effective date:** 2026-07-28
+**Effective date:** 2026-09-17
 **Developer:** Keisuke Nishitani
 **Contact:** kei.sj.nstn@gmail.com
 
@@ -12,12 +12,20 @@ titleTemplate: false
 
 Drover connects your device **directly to your own computer** over SSH. The
 developer operates no server in that path and cannot see what passes through it.
-Your agent transcripts, the commands you send, your source code, and your file
-contents never reach the developer.
+Everything that travels over that connection — your agent transcripts, the
+commands you send, your source code, your file contents — passes between your
+device and your own machine and goes nowhere else.
 
-The only developer-operated service is the **optional push-notification
-backend**, which exists so your device can be told that an agent is waiting for
-you. What it stores is listed in full below.
+Two optional features reach outside that path:
+
+- the **push-notification backend**, the only service the developer operates,
+  which exists so your device can be told that an agent is waiting for you;
+- the **voice assistant**, which sends your microphone audio and the agent
+  context it needs to **Google's Gemini** so that you can talk to your agents.
+  It is off until you switch it on, and the first time you open it Drover asks
+  you to agree.
+
+What each one sends or stores is listed in full below.
 
 Drover contains no analytics, no advertising, no tracking, and no third-party
 SDKs that collect data about you. Nothing is sold or shared for marketing.
@@ -35,6 +43,13 @@ developer:
 - Dictated audio (see "Dictation" below)
 - Your SSH private key or its passphrase
 
+"Never reaches the developer" is not the same as "never leaves your device". If
+you switch the **voice assistant** on, some of what is listed above — your
+speech, and part of what your agent said — goes to Google instead, for as long
+as a voice session is running. That is set out in full under "Voice assistant"
+below. It still does not reach the developer, but the developer is not the only
+thing worth knowing about.
+
 There is no account to create. You never give Drover a name, an email address,
 or an Apple ID.
 
@@ -49,7 +64,8 @@ developer:
 - **Host connection settings** — hostname, port, username, the path to the
   `herdr` binary, and the host key fingerprint Drover pinned on first connect.
   Also held in the Keychain.
-- **Preferences** — your theme and language choice.
+- **Preferences** — your theme and language choice, and whether you have
+  switched the voice assistant on and agreed to it.
 
 Deleting the app removes all of this.
 
@@ -98,7 +114,10 @@ They are retained according to Google Cloud Logging's default retention.
 
 ## Dictation
 
-Drover can transcribe speech so you can dictate a message to an agent.
+Drover can transcribe speech so you can dictate a message to an agent. This
+uses Apple's speech recognition and is **a different feature from the voice
+assistant** described in the next section: dictation turns your speech into text
+that you then send to your own machine, and nothing about it involves Google.
 
 **Speech recognition runs entirely on your device.** Drover requests on-device
 recognition, and if your device cannot perform recognition on-device, **Drover
@@ -108,6 +127,50 @@ developer.
 
 The transcribed text becomes a message you choose to send to your own machine
 over SSH.
+
+## Voice assistant
+
+Drover has an optional voice assistant that lets you talk to your coding agents
+instead of typing to them. It is **off by default**. You switch it on in
+Settings, and the first time you open it Drover shows you what this section
+describes and asks you to agree. If you decline, no microphone is opened and
+nothing is sent.
+
+The assistant is powered by **Google's Gemini Live**, reached through **Firebase
+AI Logic**. While a voice session is running — and only then — the following is
+sent to Google:
+
+- **Your microphone audio**, streamed live for as long as the session is open.
+- **Transcripts of both sides** of the conversation, your words and the
+  assistant's, produced by Google from that audio.
+- **The agent context the assistant needs to answer you:** your agents' names,
+  titles, kinds and statuses; the folder name of each agent's project; the text
+  and options of a question an agent is waiting on; and an agent's last reply.
+- **The messages you ask it to send to an agent**, so it can read them back to
+  you for confirmation before sending.
+
+Two things are worth stating precisely.
+
+**Code is removed from an agent's reply. Paths are not.** Before a reply is
+sent it is shortened, and its code — both fenced blocks and inline snippets — is
+replaced by "(code omitted)". Ordinary prose is sent as written, so a file path
+an agent typed inside a sentence, or inside the wording of a question it is
+asking you, goes to Google with it. Drover does not attempt to find and remove
+paths from prose: that cannot be done reliably, and claiming it here would be
+worse than saying so. When an action fails, the assistant is told a short error
+code rather than the output of the command that failed.
+
+**An agent's reply can be sent without you having said anything.** If an agent
+finishes while a session is open, Drover sends its last reply so the assistant
+can tell you about it, whether or not you have spoken.
+
+A session ends by itself after ten minutes, and you can end it sooner at any
+time. Nothing is sent while no session is running, and switching the voice
+assistant off in Settings stops all of it.
+
+None of this reaches, is stored by, or is visible to the developer. Google
+processes it in order to provide the service; see Google's privacy
+documentation for how Google handles data sent to Gemini and Firebase AI Logic.
 
 ## Camera and photo library
 
@@ -125,8 +188,10 @@ you.
 ## Third parties
 
 - **Google (Firebase)** — processes the notification-backend data listed above
-  on the developer's behalf. See Google's privacy documentation for how Google
-  handles data processed through Firebase.
+  on the developer's behalf, and, if you use the voice assistant, receives the
+  microphone audio and agent context listed under "Voice assistant" through
+  Firebase AI Logic and the Gemini API. See Google's privacy documentation for
+  how Google handles data processed through Firebase and Gemini.
 - **Apple** — delivers push notifications through the Apple Push Notification
   service, and provides the App Attest attestation described above.
 
@@ -144,6 +209,8 @@ use the Advertising Identifier and does not ask for tracking permission.
 - **Revoke a host** in Drover to delete that host's record and its pairing
   credential hash from the backend.
 - **Remove notifications for a device** to delete that device's push token.
+- **Switch the voice assistant off** in Settings to stop anything further being
+  sent to Google.
 - **Delete the app** to remove everything stored on the device, including your
   SSH key.
 - To have any remaining backend record deleted, contact kei.sj.nstn@gmail.com.
