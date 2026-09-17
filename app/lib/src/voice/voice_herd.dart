@@ -207,16 +207,27 @@ String resolveProjectCwd(List<AgentInfo> agents, String query) {
 
 const _speakableMax = 600;
 final _fence = RegExp(r'```[\s\S]*?(```|$)');
+
+/// Inline spans, applied after [_fence] so a fence's own backticks are gone
+/// by then. Deliberately single-line: a lone stray backtick would otherwise
+/// swallow whole paragraphs looking for its partner.
+final _inlineCode = RegExp(r'`[^`\n]*`');
 final _lineMarkers = RegExp(
   r'^\s*(#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)',
   multiLine: true,
 );
 
-/// Markdown prose reduced to something a voice can read: code fences are
-/// replaced by "(code omitted)", heading markers and list bullets dropped,
-/// whitespace collapsed, and the result capped at 600 characters.
+/// Markdown prose reduced to something a voice can read: code — fenced or
+/// inline — is replaced by "(code omitted)", heading markers and list bullets
+/// dropped, whitespace collapsed, and the result capped at 600 characters.
+///
+/// The code stripping is also a data-boundary measure: this text crosses to
+/// Gemini, and a snippet or a path is the likeliest thing in an agent's reply
+/// that should not. It does not extend to paths an agent writes into ordinary
+/// prose — see the note on [announceEvents].
 String speakable(String text) {
   var s = text.replaceAll(_fence, ' (code omitted) ');
+  s = s.replaceAll(_inlineCode, ' (code omitted) ');
   s = s.replaceAll(_lineMarkers, '');
   s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
   if (s.length > _speakableMax) s = '${s.substring(0, _speakableMax)}…';
@@ -225,6 +236,16 @@ String speakable(String text) {
 
 /// One text block for the model, one paragraph per event, each starting with
 /// "[event]" so the system prompt can tell it apart from the user's speech.
+///
+/// Data boundary: this is sent unprompted — an agent finishing is enough, the
+/// user need not have spoken. A finished agent's reply goes through
+/// [speakable], so its code is stripped; a blocked agent's question and option
+/// labels do **not**, because they are the thing the user is being asked to
+/// choose between and redacting them would make the question unanswerable. So
+/// an option label can still carry a path the agent typed. Nothing here
+/// attempts to scrub paths out of prose: that is a heuristic that misfires on
+/// ordinary sentences and no test could hold it honest, so the consent copy
+/// says plainly that prose is sent as written.
 Future<String> announceEvents(List<AgentEvent> events, VoiceHerd herd) async {
   final paragraphs = <String>[];
   for (final event in events) {

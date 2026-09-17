@@ -1,5 +1,6 @@
 import 'package:firebase_ai/firebase_ai.dart';
 
+import '../herdr/herdr_client.dart';
 import '../models/agent_preset.dart';
 import '../utils/path.dart';
 import 'voice_drafts.dart';
@@ -8,10 +9,15 @@ import 'voice_herd.dart';
 /// One function the voice model may call.
 ///
 /// Data-boundary rule: tool results cross into Google's Gemini Live API, so
-/// they carry only agent status and short prose — never raw terminal output,
-/// transcripts, code or full paths (a project is named by its folder only).
-/// Keep that promise in every tool added here; the settings copy tells the
-/// user exactly this.
+/// they carry only agent status and short prose — no transcripts, no raw
+/// terminal output, no whole paths of their own (a project is named by its
+/// folder only), and code is stripped from an agent's reply by [speakable].
+/// A failure reports a coded reason via [voiceToolError] rather than the
+/// host's words. What is *not* promised: a path an agent typed into ordinary
+/// prose, or into the option labels of a question, is passed through as
+/// written — scrubbing those is a heuristic no test could keep honest. Keep
+/// that shape in every tool added here, and keep the consent sheet's copy
+/// (`voiceConsentBody`) true to it.
 class VoiceTool {
   const VoiceTool({
     required this.name,
@@ -338,6 +344,22 @@ Tool voiceToolsToFirebase(List<VoiceTool> tools) => Tool.functionDeclarations([
     ),
 ]);
 
+/// What a thrown [error] tells the model about a failed tool call.
+///
+/// The model needs enough to say what went wrong and offer the user a way on;
+/// it does not need the host's own words. A [HerdrException]'s message is
+/// assembled from raw herdr stdout/stderr — absolute paths, shell diagnostics
+/// — so only its code crosses. Anything unrecognised is reduced to its type
+/// for the same reason: an SSH or socket failure names hosts and ports.
+/// Errors the app raises from its own strings pass through, because that text
+/// is exactly what lets the model correct itself and retry.
+String voiceToolError(Object error) => switch (error) {
+  VoiceAgentLookupError() => error.message,
+  ArgumentError() => '${error.message}',
+  HerdrException() => error.code,
+  _ => '${error.runtimeType}',
+};
+
 /// Runs every call in [calls] against [tools]. Never throws: an unknown tool
 /// or a throwing handler becomes an `{'error': ...}` payload so the model can
 /// recover in conversation. Each response keeps the call's id.
@@ -355,7 +377,7 @@ Future<List<FunctionResponse>> runVoiceToolCalls(
       try {
         result = await tool.run(call.args);
       } catch (e) {
-        result = {'error': '$e'};
+        result = {'error': voiceToolError(e)};
       }
     }
     responses.add(FunctionResponse(call.name, result, id: call.id));

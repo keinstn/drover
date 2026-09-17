@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/voice/voice_drafts.dart';
 import 'package:drover/src/voice/voice_herd.dart';
@@ -147,7 +148,32 @@ void main() {
         const FunctionCall('send_message', {'draft_id': 'd1'}, id: 'c5'),
       ], tools);
 
-      expect(responses.single.response['error'], contains('ssh down'));
+      // The model is told it failed and nothing else: an unrecognised error
+      // is reduced to its type, so the host's own words cannot cross.
+      expect(responses.single.response['error'], 'StateError');
+      expect(responses.single.response['error'], isNot(contains('ssh down')));
+      expect(drafts.pending, hasLength(1));
+    });
+
+    test('a herdr failure sends the code, never the host stderr', () async {
+      await tool('draft_message').run({'agent': 'claude', 'message': 'hi'});
+      // Shaped exactly like HerdrClient._exec's transport fallback, whose
+      // message embeds the raw stderr of the command it ran.
+      herd.sendError = const HerdrException(
+        'agent_pane_busy',
+        "herdr 'agent' 'prompt' failed (exit 1): "
+            '/Users/kei/Projects/drover/app: permission denied',
+      );
+
+      final responses = await runVoiceToolCalls([
+        const FunctionCall('send_message', {'draft_id': 'd1'}, id: 'c5b'),
+      ], tools);
+
+      final error = '${responses.single.response['error']}';
+      expect(error, 'agent_pane_busy', reason: 'the coded reason, on its own');
+      expect(error, isNot(contains('/Users/kei')));
+      expect(error, isNot(contains('permission denied')));
+      expect(error, isNot(contains('exit 1')));
       expect(drafts.pending, hasLength(1));
     });
 
@@ -421,13 +447,21 @@ void main() {
 
     test('a failed launch keeps the draft pending', () async {
       await tool('draft_launch').run({'project': 'x', 'brief': 'ship it'});
-      herd.launchError = StateError('ssh down');
+      herd.launchError = const HerdrException(
+        'workspace_create_failed',
+        'herdr workspace create failed (exit 2): /Users/kei/Projects: no such '
+            'file or directory',
+      );
 
       final responses = await runVoiceToolCalls([
         const FunctionCall('launch', {'draft_id': 'd1'}, id: 'c6'),
       ], tools);
 
-      expect(responses.single.response['error'], contains('ssh down'));
+      expect(responses.single.response['error'], 'workspace_create_failed');
+      expect(
+        '${responses.single.response['error']}',
+        isNot(contains('/Users/kei')),
+      );
       expect(drafts.pending, hasLength(1));
     });
 
@@ -489,7 +523,34 @@ void main() {
       ], tools);
 
       expect(responses.single.id, 'c3');
-      expect(responses.single.response['error'], contains('nope'));
+      // The type, not the thrown message: see voiceToolError.
+      expect(responses.single.response['error'], 'StateError');
+    });
+
+    group('voiceToolError', () {
+      test('keeps what the app itself wrote, so the model can retry', () {
+        expect(
+          voiceToolError(const VoiceAgentLookupError('no agent matches "x"')),
+          'no agent matches "x"',
+        );
+        expect(
+          voiceToolError(ArgumentError('got 1 answer(s) for 2 question(s)')),
+          'got 1 answer(s) for 2 question(s)',
+        );
+      });
+
+      test('drops what the host wrote', () {
+        expect(
+          voiceToolError(
+            const HerdrException('transport', 'boom at /Users/kei/secret'),
+          ),
+          'transport',
+        );
+        expect(
+          voiceToolError(const FormatException('bad JSON from /etc/herdr')),
+          'FormatException',
+        );
+      });
     });
   });
 

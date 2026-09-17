@@ -313,8 +313,7 @@ session — declining returns to the herd screen with no microphone opened and
 no socket dialled. The answer persists as `voice_consent_accepted`, so later
 taps go straight to the session; the Settings toggle stays the off switch, so
 there is no separate revoke. Its tools return only agent status and short
-assistant prose — never code, paths beyond the working directory, or raw
-terminal output. This is a deliberate policy: drover is otherwise SSH-local,
+assistant prose. This is a deliberate policy: drover is otherwise SSH-local,
 and the voice path is the only place its data leaves the device for a
 third-party model, so the surface sent there stays as small as the feature
 allows.
@@ -322,5 +321,20 @@ allows.
 Concretely, what crosses to Gemini Live: agent status, session titles and
 kinds, project folder names, the user's own spoken message, an agent's
 pending question with its option labels, and the agent's last reply as prose
-with code blocks omitted and capped at 600 characters. Pane text is parsed on
-the device; only the extracted question and options leave it.
+capped at 600 characters, with code — fenced or inline — replaced by "(code
+omitted)" by `speakable`. Pane text is parsed on the device; only the
+extracted question and options leave it. A tool that fails reports a coded
+reason through `voiceToolError` rather than the exception's text
+(2026-09-17): a `HerdrException`'s message is assembled from raw herdr
+stdout/stderr, and an unrecognised failure is reduced to its type because an
+SSH or socket error names hosts and ports.
+
+What is deliberately **not** promised (2026-09-17): a path an agent typed
+into ordinary prose is sent as written. `speakable` strips code, not paths,
+and a blocked agent's question and option labels never go through it at all —
+redacting the thing the user is being asked to choose between would make the
+question unanswerable. A scrubber over prose is a heuristic that misfires on
+ordinary sentences and that no test could keep honest, so the consent sheet
+says this in as many words instead of reaching for an absolute. Announcements
+are unprompted, too: an agent finishing sends its last reply with no user
+utterance at all (`announceEvents`), which the consent copy also states.
