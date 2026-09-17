@@ -93,7 +93,8 @@ can tap, and tells you the moment an agent is waiting on you.
 NO SERVER IN BETWEEN
 Drover connects straight from your device to your own machine over SSH. There
 is no service in the middle. Your transcripts, your commands and your code go
-to your machine and nowhere else — the developer of this app cannot see them.
+to your machine — the developer of this app cannot see them. The optional voice
+assistant is the one exception, and it sends to Google, not to the developer.
 
 WHAT YOU CAN DO
 • See every agent and its status at a glance — waiting for you, working, done
@@ -116,9 +117,12 @@ computer running Herdr (herdr.dev) with your coding agents in it, SSH access to
 that machine with key-based authentication, and Herdr 0.8.0 or newer.
 
 PRIVACY
-Speech recognition runs entirely on your device — Drover will not fall back to
-a server. Notifications carry a fixed message and never any of your transcript.
-Your SSH key is stored in the iOS Keychain and never leaves your device.
+Dictation runs entirely on your device — Drover will not fall back to a server.
+The optional voice assistant is different: it is off until you turn it on, and
+while a voice session is running your speech and the agent context it needs are
+sent to Google's Gemini. Notifications carry a fixed message and never any of
+your transcript. Your SSH key is stored in the iOS Keychain and never leaves
+your device.
 
 Drover is an independent project. It is not affiliated with, endorsed by, or
 sponsored by the Herdr project, Anthropic, OpenAI, or GitHub, and is not
@@ -137,8 +141,9 @@ Drover は、自分のコンピュータの Herdr で動かしている AI コ�
 
 あいだにサーバーがありません
 Drover は端末から自分のマシンへ SSH で直接つなぎます。途中に何のサービスも
-ありません。トランスクリプトも、コマンドも、コードも、自分のマシンにだけ届き
-ます。このアプリの開発者がそれらを見ることはできません。
+ありません。トランスクリプトも、コマンドも、コードも自分のマシンに届き、この
+アプリの開発者がそれらを見ることはできません。例外は任意の音声アシスタントで、
+送信先は開発者ではなく Google です。
 
 できること
 • すべてのエージェントと状態を一目で把握（返事待ち / 作業中 / できました）
@@ -160,9 +165,11 @@ Drover は、すでにあなたが持っているマシンのためのクライ�
 鍵認証による SSH アクセス、そして Herdr 0.8.0 以降が必要です。
 
 プライバシー
-音声認識は完全に端末内で処理され、サーバーにフォールバックすることはありません。
-通知には固定の文面のみが入り、トランスクリプトの内容は一切含まれません。SSH の
-秘密鍵は iOS キーチェーンに保存され、端末の外に出ることはありません。
+音声入力は完全に端末内で処理され、サーバーにフォールバックすることはありません。
+任意の音声アシスタントは別で、オンにしたときだけ動き、音声セッション中は発話と
+応答に必要なエージェントの情報が Google の Gemini に送信されます。通知には固定の
+文面のみが入り、トランスクリプトの内容は一切含まれません。SSH の秘密鍵は iOS
+キーチェーンに保存され、端末の外に出ることはありません。
 
 Drover は独立したプロジェクトです。Herdr プロジェクト、Anthropic、OpenAI、
 GitHub のいずれとも関係がなく、公認・推薦・認定を受けたものではありません。
@@ -211,12 +218,18 @@ The boundary that decides every answer: **data flowing over SSH to the user's
 own machine is not developer collection.** Only what lands in the developer's
 Firebase project counts — the anonymous auth uid, FCM tokens, `deviceId`,
 `hostId`, pairing-code hashes, credential hashes, de-duplication records and
-rate-limit counters.
+rate-limit counters, **and, from 1.1.0, everything the voice assistant sends
+through Firebase AI Logic to Gemini**: microphone audio, Google's transcripts of
+both sides, and the agent context in the tool results. AI Logic is reached
+through the developer's own Firebase project, so it falls inside this boundary
+by the boundary's own rule — see the third judgment call below.
 
 | Data type | Collected | Notes |
 |---|---|---|
 | Contact info, Health, Financial, Location, Sensitive info, Contacts | **No** | No account exists; no name or email is ever requested |
-| User content — photos, audio, other | **No** | Attached images go over SSH to the user's own machine. Speech recognition is on-device only |
+| User content — photos | **No** | Attached images go over SSH to the user's own machine |
+| User content — audio | **Yes** (from 1.1.0) | The voice assistant streams microphone audio to Gemini through Firebase AI Logic. Purpose: App Functionality. **Not** linked to identity. **Not** used for tracking. Dictation is unaffected: Apple's recognizer is on-device only and its audio never leaves |
+| User content — other | **Yes** (from 1.1.0) | The same sessions send Google's transcripts of both sides plus the agent context — agent names, titles, kinds and statuses, project folder names, a blocked agent's question and options, and an agent's last reply with code stripped out. Purpose: App Functionality. **Not** linked to identity. **Not** used for tracking |
 | Browsing / search history | **No** | |
 | Identifiers — Device ID | **Yes** | FCM push token and `deviceId`. Purpose: App Functionality. **Not** linked to identity. **Not** used for tracking |
 | Identifiers — User ID | **Yes** (judgment call) | The anonymous auth uid. See below |
@@ -228,15 +241,36 @@ rate-limit counters.
 cross-app tracking. Drover needs no App Tracking Transparency prompt.
 
 Product page result: *Data Used to Track You* — none. *Data Linked to You* —
-none. *Data Not Linked to You* — Device ID and User ID.
+none. *Data Not Linked to You* — Device ID, User ID and, from 1.1.0, Audio Data
+and Other User Content.
 
-### The two judgment calls
+**These answers must be re-submitted in App Store Connect for the 1.1.0
+release.** The questionnaire is not part of the build and is not generated from
+this file: someone has to open App Store Connect → the app → App Privacy and
+change the answers by hand, copying them from the table above, before 1.1.0
+goes to review. A 1.1.0 build submitted against the 1.0.x answers is a
+misdeclaration.
+
+### The three judgment calls
 
 **Is the anonymous uid a "User ID"?** It identifies an installation, not a
 person: created automatically, never tied to a name or email, not recoverable on
 a new device. Arguments exist both ways. **Declare it.** It costs nothing on the
 product page — it joins Device ID in the same "Not Linked to You" bucket —
 whereas under-declaring is a compliance problem.
+
+**Does the voice assistant's traffic count as collection, when the developer
+never sees it?** Google is a processor here, not the developer, and none of it
+is retained by or visible to the developer — so under the "reaches the
+developer" framing the old answers survive intact. **Declare it anyway.** The
+questionnaire asks what the *app* collects, not what the developer keeps, and
+data sent to a third party through an SDK integrated in the app is collection
+for Apple's purposes. It also lands in the developer's own Firebase project,
+which is the same boundary that makes the notification backend countable. The
+same reasoning governs the published privacy policy: "never reaches the
+developer" is literally true of the voice path and still misleads, because what
+a reader takes from it is where their data goes, not who runs the server. So
+the policy states the Google path plainly instead of leaning on the framing.
 
 **Do the Cloud Functions logs count as "Diagnostics"?** There is no crash or
 performance SDK in the app. The backend logs host, pane and event identifiers
