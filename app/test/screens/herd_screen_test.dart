@@ -348,6 +348,12 @@ void main() {
         find.textContaining('microphone audio', findRichText: true),
         findsOneWidget,
       );
+      // Both sides are transcribed server-side (inputAudioTranscription and
+      // outputAudioTranscription), so the disclosure has to say so.
+      expect(
+        find.textContaining('both sides', findRichText: true),
+        findsOneWidget,
+      );
       expect(find.text('Allow and continue'), findsOneWidget);
       expect(find.text('Not now'), findsOneWidget);
       expect(find.byType(VoiceScreen), findsNothing);
