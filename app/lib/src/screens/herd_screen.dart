@@ -193,9 +193,9 @@ class HerdScreen extends StatefulWidget {
   /// unaffected.
   final Stream<void>? networkChanges;
 
-  /// Shows the app-bar mic button that opens the voice assistant. The
-  /// session it opens is scoped to the first host in scope for now;
-  /// multi-host aggregation is a follow-up.
+  /// Shows the round voice button beside the launch-agent FAB that opens the
+  /// voice assistant. The session it opens is scoped to the first host in
+  /// scope for now; multi-host aggregation is a follow-up.
   final bool voiceAssistantEnabled;
 
   @override
@@ -888,22 +888,6 @@ class _HerdScreenState extends State<HerdScreen> {
         toolbarHeight: 64,
         title: _appBarTitle(l10n),
         actions: [
-          if (widget.voiceAssistantEnabled && _hostsInScope.isNotEmpty)
-            ListenableBuilder(
-              listenable: _inboxFor(_hostsInScope.first.hostId),
-              builder: (context, _) => IconButton(
-                key: const ValueKey('voice_button'),
-                icon: Badge(
-                  key: const ValueKey('voice_badge'),
-                  isLabelVisible: _inboxFor(
-                    _hostsInScope.first.hostId,
-                  ).pending.isNotEmpty,
-                  child: const Icon(Icons.mic),
-                ),
-                tooltip: l10n.herdVoiceButton,
-                onPressed: () => _openVoice(context),
-              ),
-            ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: widget.onOpenSettings,
@@ -919,6 +903,9 @@ class _HerdScreenState extends State<HerdScreen> {
             child: _isEmpty
                 ? Center(child: Text(l10n.herdNoAgents))
                 : ListView(
+                    // Clears the FAB row, which now spans two buttons, so the
+                    // last card's trailing edge is never left under it.
+                    padding: const EdgeInsets.only(bottom: 72),
                     children: [
                       for (final host in _hostsInScope)
                         ..._hostSection(context, l10n, host, now),
@@ -928,25 +915,60 @@ class _HerdScreenState extends State<HerdScreen> {
         ],
       ),
       // 48px tall: the tight SizedBox overrides the M3 extended-FAB default
-      // (56px) while staying above the 44px tap-target floor.
-      floatingActionButton: SizedBox(
-        height: 48,
-        child: FloatingActionButton.extended(
-          key: const ValueKey('launch_agent_fab'),
-          tooltip: l10n.commonLaunchAgent,
-          onPressed: _onLaunchPressed,
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          foregroundColor: Theme.of(context).colorScheme.onPrimary,
-          icon: const Icon(Icons.add),
-          label: Text(
-            droverLabelText(context, l10n.commonLaunchAgent),
-            style: droverLabelStyle(
-              context,
-              fontSize: 11.5,
-              weight: FontWeight.w700,
+      // (56px) while staying above the 44px tap-target floor. The voice
+      // button sits beside it at the thumb, composer-style, as a 48px round
+      // FAB in the same ink; the Row centres it against the extended one.
+      floatingActionButton: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 48,
+            child: FloatingActionButton.extended(
+              key: const ValueKey('launch_agent_fab'),
+              tooltip: l10n.commonLaunchAgent,
+              onPressed: _onLaunchPressed,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              icon: const Icon(Icons.add),
+              label: Text(
+                droverLabelText(context, l10n.commonLaunchAgent),
+                style: droverLabelStyle(
+                  context,
+                  fontSize: 11.5,
+                  weight: FontWeight.w700,
+                ),
+              ),
             ),
           ),
-        ),
+          if (widget.voiceAssistantEnabled && _hostsInScope.isNotEmpty) ...[
+            const SizedBox(width: 12),
+            ListenableBuilder(
+              listenable: _inboxFor(_hostsInScope.first.hostId),
+              builder: (context, _) => SizedBox.square(
+                dimension: 48,
+                child: FloatingActionButton(
+                  key: const ValueKey('voice_button'),
+                  // Two FABs on one route: the launch FAB keeps the default
+                  // hero tag, so this one opts out of the Hero entirely.
+                  heroTag: null,
+                  tooltip: l10n.herdVoiceButton,
+                  onPressed: () => _openVoice(context),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  // Waveform, not a mic: the agent composer's mic dictates
+                  // text, while this opens a full conversation mode.
+                  child: Badge(
+                    key: const ValueKey('voice_badge'),
+                    isLabelVisible: _inboxFor(
+                      _hostsInScope.first.hostId,
+                    ).pending.isNotEmpty,
+                    child: const Icon(Icons.graphic_eq),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

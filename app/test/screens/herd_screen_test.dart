@@ -302,6 +302,8 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey('voice_button')), findsNothing);
+    // The FAB row still carries the launch FAB on its own.
+    expect(find.byKey(const ValueKey('launch_agent_fab')), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -316,7 +318,21 @@ void main() {
     await tester.pump();
 
     // Not tapped: that would try to connect to Firebase.
-    expect(find.byKey(const ValueKey('voice_button')), findsOneWidget);
+    final voiceButton = find.byKey(const ValueKey('voice_button'));
+    expect(voiceButton, findsOneWidget);
+    // Placed in the Scaffold's FAB slot beside the launch FAB, not the AppBar.
+    expect(
+      find.ancestor(of: voiceButton, matching: find.byType(AppBar)),
+      findsNothing,
+    );
+    final launchFab = find.byKey(const ValueKey('launch_agent_fab'));
+    expect(tester.getSize(voiceButton), const Size(48, 48));
+    expect(
+      tester.getTopLeft(voiceButton).dx,
+      greaterThan(tester.getTopRight(launchFab).dx),
+    );
+    expect(tester.getCenter(voiceButton).dy, tester.getCenter(launchFab).dy);
+    expect(find.byIcon(Icons.graphic_eq), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -413,7 +429,7 @@ void main() {
     });
   });
 
-  testWidgets('the mic button shows a badge once an agent finishes', (
+  testWidgets('the voice button shows a badge once an agent finishes', (
     tester,
   ) async {
     // Agent Three starts working; the second poll reports it idle.
