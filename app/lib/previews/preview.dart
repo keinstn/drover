@@ -15,6 +15,9 @@
 // To add a screen, register a builder in [_previews] below — no new
 // entrypoint file and no new justfile recipe. If it varies by scenario, list
 // the scenario names in [_scenariosByPreview] too.
+import 'dart:async';
+
+import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
@@ -25,6 +28,7 @@ import '../src/demo/demo_herdr.dart';
 import '../src/herdr/command_runner.dart';
 import '../src/herdr/herdr_client.dart';
 import '../src/herdr/herdr_version.dart';
+import '../src/models/agent_info.dart';
 import '../src/models/agent_preset.dart';
 import '../src/infra/ssh_command_runner.dart';
 import '../src/models/host_config.dart';
@@ -36,6 +40,12 @@ import '../src/screens/herd_screen.dart';
 import '../src/screens/host_setup_screen.dart';
 import '../src/screens/launch_agent_sheet.dart';
 import '../src/screens/settings_screen.dart';
+import '../src/voice/voice_audio.dart';
+import '../src/voice/voice_drafts.dart';
+import '../src/voice/voice_screen.dart';
+import '../src/voice/voice_session.dart';
+import '../src/voice/voice_tools.dart';
+import '../src/voice/voice_transport.dart';
 import '../src/widgets/error_message_view.dart';
 
 const _scenario = String.fromEnvironment('SCENARIO', defaultValue: 'idle');
@@ -49,6 +59,7 @@ const _scenariosByPreview = <String, List<String>>{
   'host-setup': ['idle', 'plugin-detected', 'auto-pair-failure'],
   'errors': ['en', 'ja'],
   'herd': ['idle', 'herdr-too-old'],
+  'voice': ['live', 'speaking', 'draft', 'ended'],
 };
 
 HerdrClient _client(
@@ -225,6 +236,12 @@ final _previews = <String, PreviewBuilder>{
       existingCwds: const ['/home/dev/proj'],
     ),
   ),
+  // A stubbed voice conversation, no Firebase/mic/network involved. Every
+  // scenario scripts the same two finished transcripts on the transport's
+  // receive() stream, then diverges: 'speaking' leaves an unfinished
+  // assistant transcript pending (the orb should read as speaking), 'draft'
+  // adds a pending message draft, 'ended' closes the stream.
+  'voice': (_, scenario) => VoiceScreen(session: _voiceSession(scenario)),
   'settings': (_, _) => const _SettingsPreview(),
   // Notification pairing: SCENARIO=idle (default) shows the manual dialog,
   // as if drover.notify were not linked on the host. SCENARIO=plugin-detected
@@ -319,6 +336,159 @@ final _errorSamples = <(String, Object)>[
     const HerdrVersionUnsupportedException(found: '0.7.0', minimum: '0.8.0'),
   ),
 ];
+
+/// [VoiceMic] that grants permission but never actually records.
+class _StubVoiceMic implements VoiceMic {
+  @override
+  Future<bool> hasPermission() async => true;
+
+  @override
+  Future<Stream<Uint8List>> start() async =>
+      StreamController<Uint8List>.broadcast().stream;
+
+  @override
+  Future<void> stop() async {}
+
+  @override
+  Future<void> dispose() async {}
+}
+
+/// [VoiceSpeaker] that drops every byte it's handed.
+class _StubVoiceSpeaker implements VoiceSpeaker {
+  @override
+  Future<void> init() async {}
+
+  @override
+  void play(Uint8List pcm24k) {}
+
+  @override
+  Future<void> interrupt() async {}
+
+  @override
+  Future<void> dispose() async {}
+}
+
+/// [VoiceTransport] whose `receive()` is scripted by [_voiceSession]; sends
+/// are no-ops.
+class _StubVoiceTransport implements VoiceTransport {
+  _StubVoiceTransport(this._server);
+
+  final StreamController<LiveServerResponse> _server;
+  var _closed = false;
+
+  @override
+  Stream<LiveServerResponse> receive() => _server.stream;
+
+  @override
+  Future<void> sendAudio(Uint8List pcm16k) async {}
+
+  @override
+  Future<void> sendText(String text) async {}
+
+  @override
+  Future<void> sendToolResponse(List<FunctionResponse> responses) async {}
+
+  @override
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    await _server.close();
+  }
+}
+
+/// A [VoiceSession] wired to stubs (no Firebase, mic or speaker touched),
+/// scripted per [scenario]: after ~800ms every scenario gets one finished
+/// user transcript and one finished assistant transcript, then diverges —
+/// see the 'voice' entry in [_previews] for what each scenario adds. Every
+/// connect gets a fresh scripted stream, so Restart replays it; the draft
+/// is added on the first connect only, so cards don't multiply.
+VoiceSession _voiceSession(String scenario) {
+  final drafts = VoiceDrafts();
+  var connects = 0;
+  return VoiceSession(
+    connect: (_) async {
+      final server = StreamController<LiveServerResponse>();
+      _scriptVoice(server, scenario, drafts, first: connects++ == 0);
+      return _StubVoiceTransport(server);
+    },
+    mic: _StubVoiceMic(),
+    speaker: _StubVoiceSpeaker(),
+    tools: [
+      VoiceTool(
+        name: 'list_agents',
+        description: '',
+        parameters: const {},
+        run: (_) async => {'agents': []},
+      ),
+    ],
+    drafts: drafts,
+  );
+}
+
+void _scriptVoice(
+  StreamController<LiveServerResponse> server,
+  String scenario,
+  VoiceDrafts drafts, {
+  required bool first,
+}) {
+  Future<void>.delayed(const Duration(milliseconds: 800), () {
+    if (server.isClosed) return;
+    server.add(
+      LiveServerResponse(
+        message: LiveServerContent(
+          inputTranscription: const Transcription(
+            text: 'Which agent is waiting for me?',
+            finished: true,
+          ),
+        ),
+      ),
+    );
+    server.add(
+      LiveServerResponse(
+        message: LiveServerContent(
+          outputTranscription: const Transcription(
+            text: 'Claude Code in drover is waiting on a question about tests.',
+            finished: true,
+          ),
+        ),
+      ),
+    );
+    switch (scenario) {
+      case 'speaking':
+        // The orb pulses on queued audio, not on the transcript: a minute
+        // of silence the stub speaker drops keeps it speaking.
+        server.add(
+          LiveServerResponse(
+            message: LiveServerContent(
+              modelTurn: Content('model', [
+                InlineDataPart('audio/pcm;rate=24000', Uint8List(48000 * 60)),
+              ]),
+              outputTranscription: const Transcription(
+                text: 'Let me check on that for you...',
+                finished: false,
+              ),
+            ),
+          ),
+        );
+      case 'draft' when first:
+        drafts.add(
+          const AgentInfo(
+            paneId: 'wB:p1',
+            workspaceId: 'wB',
+            tabId: 'wB:t1',
+            agent: 'claude',
+            status: AgentStatus.blocked,
+            cwd: '/tmp/proj',
+            focused: false,
+            terminalTitle: 'Implement the OAuth callback',
+          ),
+          'Please rerun the failing tests once more.',
+        );
+      case 'ended':
+        unawaited(server.close());
+    }
+  });
+}
 
 void main() {
   if (kDebugMode) {

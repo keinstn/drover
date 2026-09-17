@@ -1040,12 +1040,6 @@ abstract class AppLocalizations {
   /// **'Voice assistant'**
   String get herdVoiceButton;
 
-  /// No description provided for @voiceTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Voice assistant'**
-  String get voiceTitle;
-
   /// No description provided for @voiceStatusConnecting.
   ///
   /// In en, this message translates to:
@@ -1057,6 +1051,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Listening'**
   String get voiceStatusLive;
+
+  /// No description provided for @voiceStatusSpeaking.
+  ///
+  /// In en, this message translates to:
+  /// **'Speaking'**
+  String get voiceStatusSpeaking;
 
   /// No description provided for @voiceStatusEnded.
   ///
@@ -1117,6 +1117,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Restart'**
   String get voiceRestart;
+
+  /// No description provided for @voiceGreeting.
+  ///
+  /// In en, this message translates to:
+  /// **'Let\'s talk about your agents'**
+  String get voiceGreeting;
+
+  /// No description provided for @voiceTranscript.
+  ///
+  /// In en, this message translates to:
+  /// **'Transcript'**
+  String get voiceTranscript;
+
+  /// No description provided for @voiceClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get voiceClose;
 
   /// No description provided for @voiceHint.
   ///

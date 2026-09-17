@@ -236,11 +236,19 @@ class VoiceSession extends ChangeNotifier {
   /// [_lost] never goes back through [start].
   Timer? _capTimer;
 
+  /// Fires [_notify] at [_playbackEnd] so listeners see [speaking] flip back.
+  /// Re-armed per audio chunk; cancelled with [_capTimer].
+  Timer? _playbackTimer;
+
   VoiceSessionStatus get status => _status;
   List<VoiceEntry> get entries => UnmodifiableListView(_entries);
   String? get partialUser => _partialUser;
   String? get partialAssistant => _partialAssistant;
   String? get error => _error;
+
+  /// Whether the model's audio is still queued at the speaker. The transcript
+  /// can finish seconds before the audio does, so the orb keys on this.
+  bool get speaking => _active && _now().isBefore(_playbackEnd);
 
   bool get _micMuted =>
       (muteMicWhileSpeaking || !_aecWarmedUp) &&
@@ -449,7 +457,8 @@ class VoiceSession extends ChangeNotifier {
           _partialAssistant = null;
           changed = true;
         }
-        // Audio-only chunks arrive many times a second; nothing to redraw.
+        // Audio-only chunks arrive many times a second; nothing to redraw
+        // here ([_queuePlayback] notifies once, when speaking begins).
         if (changed) _notify();
       case LiveServerToolCall():
         // The user's transcription usually arrives after the model already
@@ -536,7 +545,9 @@ class VoiceSession extends ChangeNotifier {
     return _active;
   }
 
-  /// Plays [bytes] and extends the playback estimate the mic gate keys on.
+  /// Plays [bytes] and extends the playback estimate the mic gate and
+  /// [speaking] key on. Notifies only when speaking begins; the end is
+  /// reported by [_playbackTimer].
   ///
   /// ponytail: bytes an [interrupt] later drops still count towards
   /// [aecWarmUp], so the warm-up ends a little early after an interrupted
@@ -546,10 +557,14 @@ class VoiceSession extends ChangeNotifier {
     _speaker.play(bytes);
     _playedBytesSinceStart += bytes.length;
     final now = _now();
+    final wasSpeaking = speaking;
     final base = _playbackEnd.isAfter(now) ? _playbackEnd : now;
     _playbackEnd = base.add(
       Duration(microseconds: bytes.length * 1000000 ~/ _playbackBytesPerSecond),
     );
+    _playbackTimer?.cancel();
+    _playbackTimer = Timer(_playbackEnd.difference(now), _notify);
+    if (!wasSpeaking) _notify();
   }
 
   /// Appends [t]'s text to [partial]; a finished transcription becomes an
@@ -596,6 +611,8 @@ class VoiceSession extends ChangeNotifier {
     // a timer left armed would fire into a torn-down session.
     _capTimer?.cancel();
     _capTimer = null;
+    _playbackTimer?.cancel();
+    _playbackTimer = null;
     _generation++;
     final transport = _transport;
     _transport = null;
