@@ -9,10 +9,12 @@ import '../app_theme.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/herdr_version.dart';
 import '../i18n/status_label.dart';
+import '../infra/settings_store.dart';
 import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
 import '../transcript/activity_snippet.dart';
 import '../utils/path.dart';
+import '../voice/voice_consent_sheet.dart';
 import '../voice/voice_herd.dart';
 import '../voice/voice_screen.dart';
 import '../voice/voice_session.dart';
@@ -841,7 +843,20 @@ class _HerdScreenState extends State<HerdScreen> {
     return bucket == null || (bucket.agents.isEmpty && bucket.error == null);
   });
 
-  void _openVoice(BuildContext context) {
+  /// Opens the voice assistant, gated on the one-time consent to stream
+  /// speech and agent context to Google. Declining returns before any session
+  /// is built, so nothing is recorded, no microphone opens and no socket is
+  /// dialled. Read straight from [SettingsStore] rather than threaded through
+  /// `main.dart`: this is the only place that needs it.
+  Future<void> _openVoice(BuildContext context) async {
+    final store = SettingsStore();
+    if (!(await store.load()).voiceConsentAccepted) {
+      if (!context.mounted) return;
+      if (!await showVoiceConsentSheet(context)) return;
+      await store.saveVoiceConsentAccepted(true);
+    }
+    // The poll keeps running behind the sheet and can empty the scope.
+    if (!context.mounted || _hostsInScope.isEmpty) return;
     // Built once here, not in the route builder, which can run more than once.
     final host = _hostsInScope.first;
     final herd = HerdVoiceHerd(

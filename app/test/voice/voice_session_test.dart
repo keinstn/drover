@@ -1049,4 +1049,69 @@ void main() {
       expect(s.status, VoiceSessionStatus.live);
     });
   });
+
+  // testWidgets, not test: the cap is a real Timer, and only flutter_test's
+  // FakeAsync zone lets it fire on demand instead of after ten real minutes.
+  group('session cap', () {
+    testWidgets('ends the session by itself once the cap runs out', (
+      tester,
+    ) async {
+      final s = session();
+      await s.start();
+      expect(s.status, VoiceSessionStatus.live);
+
+      await tester.pump(kVoiceSessionCap + const Duration(seconds: 1));
+      await tester.pump();
+
+      expect(s.status, VoiceSessionStatus.ended);
+      expect(s.entries.map((e) => e.text), [
+        VoiceSession.capReachedCode,
+        VoiceSession.endedCode,
+      ]);
+      expect(mic.stopCalls, 1);
+      expect(speaker.disposeCalls, 1);
+    });
+
+    testWidgets('is wall clock from start: a reconnect does not restart it', (
+      tester,
+    ) async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await tester.pump();
+
+      // One minute short of the cap, the connection drops and is resumed.
+      await tester.pump(kVoiceSessionCap - const Duration(minutes: 1));
+      await connector.transports.first.server.close();
+      await tester.pump();
+
+      expect(connector.handles, [null, 'h1']);
+      expect(s.status, VoiceSessionStatus.live);
+
+      // A cap that restarted with the reconnect would still have most of its
+      // ten minutes left here.
+      await tester.pump(const Duration(minutes: 1, seconds: 1));
+      await tester.pump();
+
+      expect(s.status, VoiceSessionStatus.ended);
+      expect(s.entries.map((e) => e.text), [
+        VoiceSession.resumedCode,
+        VoiceSession.capReachedCode,
+        VoiceSession.endedCode,
+      ]);
+    });
+
+    testWidgets('stopping before the cap leaves no timer to fire', (
+      tester,
+    ) async {
+      final s = session();
+      await s.start();
+      await s.stop();
+
+      await tester.pump(kVoiceSessionCap + const Duration(seconds: 1));
+
+      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode]);
+    });
+  });
 }

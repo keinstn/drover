@@ -66,6 +66,17 @@ const voiceMicGateNeeded = !kReleaseMode;
 /// of a session.
 const kVoiceAecWarmUp = Duration(seconds: 10);
 
+/// Hard ceiling on one voice conversation, measured as wall clock from
+/// [VoiceSession.start] — not per connection. The session reconnects across
+/// Live drops (session resumption), so a per-connection cap would bound
+/// nothing: an open mic streaming to a third party has to have an end.
+/// Restart begins a fresh conversation and a fresh cap.
+///
+/// ponytail: it just ends, with no warning beforehand — the log line and the
+/// Restart button are the whole story. Add a countdown only if ten minutes
+/// turns out to cut real conversations short.
+const kVoiceSessionCap = Duration(minutes: 10);
+
 /// Drives one full-duplex voice conversation: mic -> transport -> speaker,
 /// with tool calls answered from [tools]. UI-agnostic; the screen listens.
 class VoiceSession extends ChangeNotifier {
@@ -145,6 +156,10 @@ class VoiceSession extends ChangeNotifier {
   /// System code logged when [launchDraft] failed.
   static const launchFailedCode = 'launch_failed';
 
+  /// System code logged when [kVoiceSessionCap] ran out and the session ended
+  /// itself.
+  static const capReachedCode = 'cap_reached';
+
   /// Drafts of this session; the screen renders them and can act on a
   /// pending one via [sendDraft] / [launchDraft].
   final VoiceDrafts drafts;
@@ -217,6 +232,10 @@ class VoiceSession extends ChangeNotifier {
   String? _resumeHandle;
   bool _disposed = false;
 
+  /// Armed by [start], cancelled by [_teardown]; survives reconnects because
+  /// [_lost] never goes back through [start].
+  Timer? _capTimer;
+
   VoiceSessionStatus get status => _status;
   List<VoiceEntry> get entries => UnmodifiableListView(_entries);
   String? get partialUser => _partialUser;
@@ -244,6 +263,11 @@ class VoiceSession extends ChangeNotifier {
     }
     final gen = ++_generation;
     _active = true;
+    _capTimer?.cancel();
+    _capTimer = Timer(kVoiceSessionCap, () {
+      _entries.add(const VoiceEntry(VoiceEntryKind.system, capReachedCode));
+      unawaited(_end());
+    });
     _setStatus(VoiceSessionStatus.connecting, error: null);
     try {
       final permitted = await _mic.hasPermission();
@@ -568,6 +592,10 @@ class VoiceSession extends ChangeNotifier {
   Future<void> _teardown() async {
     if (!_active) return;
     _active = false;
+    // Cancelled before the first await: dispose() does not await _end(), and
+    // a timer left armed would fire into a torn-down session.
+    _capTimer?.cancel();
+    _capTimer = null;
     _generation++;
     final transport = _transport;
     _transport = null;

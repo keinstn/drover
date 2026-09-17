@@ -6,6 +6,7 @@ const _localeKey = 'locale';
 const _notifyOnBlockedKey = 'notify_on_blocked';
 const _notifyOnDoneKey = 'notify_on_done';
 const _voiceAssistantKey = 'voice_assistant_enabled';
+const _voiceConsentKey = 'voice_consent_accepted';
 
 /// The user's app-level preferences.
 class AppSettings {
@@ -15,6 +16,7 @@ class AppSettings {
     this.notifyOnBlocked = true,
     this.notifyOnDone = true,
     this.voiceAssistantEnabled = false,
+    this.voiceConsentAccepted = false,
   });
 
   final ThemeMode themeMode;
@@ -30,6 +32,11 @@ class AppSettings {
 
   /// Opt-in: shows the voice-assistant entry point on the herd screen.
   final bool voiceAssistantEnabled;
+
+  /// Whether the user has accepted that a voice session streams their speech
+  /// and agent context to Google (Gemini Live). False blocks the session
+  /// before anything is recorded or sent — App Store guideline 5.1.2(i).
+  final bool voiceConsentAccepted;
 }
 
 /// Persists [AppSettings] in shared_preferences.
@@ -42,6 +49,7 @@ class SettingsStore {
       notifyOnBlocked: prefs.getBool(_notifyOnBlockedKey) ?? true,
       notifyOnDone: prefs.getBool(_notifyOnDoneKey) ?? true,
       voiceAssistantEnabled: prefs.getBool(_voiceAssistantKey) ?? false,
+      voiceConsentAccepted: prefs.getBool(_voiceConsentKey) ?? false,
     );
   }
 
@@ -71,6 +79,11 @@ class SettingsStore {
   Future<void> saveVoiceAssistantEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_voiceAssistantKey, enabled);
+  }
+
+  Future<void> saveVoiceConsentAccepted(bool accepted) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_voiceConsentKey, accepted);
   }
 
   // Unrecognised/missing values fall back to the default rather than
