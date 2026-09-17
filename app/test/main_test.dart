@@ -369,6 +369,58 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('switching the voice assistant off clears the stored consent', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({'voice_consent_accepted': true});
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_app(hostStore: _SpyHostStore()));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('enter_demo_button')));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.settings));
+    await tester.pumpAndSettle();
+
+    final voiceSwitch = find.descendant(
+      of: find.byKey(const ValueKey('settings_voice_assistant_tile')),
+      matching: find.byType(Switch),
+    );
+    // The switch ships on, so the tap below is the off direction.
+    expect(tester.widget<Switch>(voiceSwitch).value, isTrue);
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_voice_assistant_tile')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<Switch>(voiceSwitch).value, isFalse);
+    var stored = await SettingsStore().load();
+    expect(stored.voiceAssistantEnabled, isFalse);
+    expect(stored.voiceConsentAccepted, isFalse);
+
+    // Back on must not re-grant what the user just revoked — the herd
+    // screen's consent sheet has to ask again.
+    await tester.tap(
+      find.byKey(const ValueKey('settings_voice_assistant_tile')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<Switch>(voiceSwitch).value, isTrue);
+    stored = await SettingsStore().load();
+    expect(stored.voiceAssistantEnabled, isTrue);
+    expect(stored.voiceConsentAccepted, isFalse);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('a notification switch whose backend push fails still saves '
       'locally, but says so', (tester) async {
     SharedPreferences.setMockInitialValues({});
