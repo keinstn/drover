@@ -33,47 +33,58 @@ class _VoiceConsentSheet extends StatelessWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+      // Only the disclosure scrolls; Accept and Decline stay pinned below it.
+      // The copy is long enough to overflow a short screen, and a consent gate
+      // whose buttons sit under the fold is not a consent gate.
       child: SafeArea(
         top: false,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: scheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: scheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              Text(
-                l10n.voiceConsentTitle,
-                style: Theme.of(context).textTheme.titleMedium,
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      l10n.voiceConsentTitle,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      l10n.voiceConsentBody,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              Text(
-                l10n.voiceConsentBody,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 20),
-              FilledButton(
-                key: const ValueKey('voice_consent_accept'),
-                onPressed: () => Navigator.pop(context, true),
-                child: Text(l10n.voiceConsentAccept),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                key: const ValueKey('voice_consent_decline'),
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(l10n.voiceConsentDecline),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 20),
+            FilledButton(
+              key: const ValueKey('voice_consent_accept'),
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(l10n.voiceConsentAccept),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              key: const ValueKey('voice_consent_decline'),
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(l10n.voiceConsentDecline),
+            ),
+          ],
         ),
       ),
     );

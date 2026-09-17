@@ -318,9 +318,12 @@ and the voice path is the only place its data leaves the device for a
 third-party model, so the surface sent there stays as small as the feature
 allows.
 
-Concretely, what crosses to Gemini Live: agent status, session titles and
-kinds, project folder names, the user's own spoken message, an agent's
-pending question with its option labels, and the agent's last reply as prose
+Concretely, what crosses to Gemini Live: the user's microphone audio, and the
+transcripts Google makes of *both* sides of the conversation — `connect` asks
+for `inputAudioTranscription` and `outputAudioTranscription`, so the model's
+own speech is transcribed server side too, not only the user's. Then agent
+status, session titles and kinds, project folder names, an agent's pending
+question with its option labels, and the agent's last reply as prose
 capped at 600 characters, with code — fenced or inline — replaced by "(code
 omitted)" by `speakable`. Pane text is parsed on the device; only the
 extracted question and options leave it. A tool that fails reports a coded
