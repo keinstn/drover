@@ -240,7 +240,7 @@ final _previews = <String, PreviewBuilder>{
   // A stubbed voice conversation, no Firebase/mic/network involved. Every
   // scenario scripts the same two finished transcripts on the transport's
   // receive() stream, then diverges: 'speaking' leaves an unfinished
-  // assistant transcript pending (the orb should read as speaking), 'draft'
+  // assistant transcript pending (the glow should read as speaking), 'draft'
   // adds a pending message draft, 'ended' closes the stream.
   'voice': (_, scenario) => VoiceScreen(session: _voiceSession(scenario)),
   'settings': (_, _) => const _SettingsPreview(),
@@ -338,7 +338,7 @@ final _errorSamples = <(String, Object)>[
   ),
 ];
 
-/// A scripted 0..1 level: bursts with a pause between them, so the orb has a
+/// A scripted 0..1 level: bursts with a pause between them, so the glow has a
 /// voice to follow with no mic and no engine. Deterministic, so a screenshot
 /// of a given tick always comes back the same.
 double _scriptedLevel(int tick) {
@@ -366,7 +366,7 @@ Uint8List _scriptedFrame(double amplitude) {
 }
 
 /// [VoiceMic] that grants permission and records nothing real, but streams a
-/// scripted voice so the orb moves in a preview.
+/// scripted voice so the glow moves in a preview.
 class _StubVoiceMic implements VoiceMic {
   @override
   Future<bool> hasPermission() async => true;
@@ -375,7 +375,7 @@ class _StubVoiceMic implements VoiceMic {
   Future<Stream<Uint8List>> start() async => Stream.periodic(
     _voiceTick,
     // Undo the gain the level takes on the way back out, so the scripted
-    // level is what the orb actually sees.
+    // level is what the glow actually sees.
     (tick) => _scriptedFrame(_scriptedLevel(tick) / kVoiceLevelGain),
   );
 
@@ -387,7 +387,7 @@ class _StubVoiceMic implements VoiceMic {
 }
 
 /// [VoiceSpeaker] that drops every byte it's handed, but reports a scripted
-/// level so the `speaking` scenario shows the orb following the model — the
+/// level so the `speaking` scenario shows the glow following the model — the
 /// mic is gated for echo cancellation while the model talks.
 class _StubVoiceSpeaker implements VoiceSpeaker {
   @override
@@ -493,7 +493,7 @@ void _scriptVoice(
     );
     switch (scenario) {
       case 'speaking':
-        // The orb pulses on queued audio, not on the transcript: a minute
+        // The glow follows queued audio, not the transcript: a minute
         // of silence the stub speaker drops keeps it speaking.
         server.add(
           LiveServerResponse(

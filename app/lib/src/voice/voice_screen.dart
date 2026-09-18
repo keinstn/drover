@@ -10,10 +10,46 @@ import 'voice_drafts.dart';
 import 'voice_herd.dart';
 import 'voice_session.dart';
 
-/// The voice-assistant stage: an orb that follows the voice, over a status
-/// line and a live caption, pending draft cards, and round controls along
-/// the bottom. The transcript log sits behind a toggle. Owns the [session]
-/// lifecycle: starts it on first frame, disposes it with the screen.
+/// Secondary text on this screen, lifted off [DroverColors.tertiaryText].
+/// The edge glow lays up to ~0.30 of the page's ink over the ground behind
+/// every unbubbled line — in the bottom corners, where the 0.22 wash along
+/// the bottom edge and the 0.10 side glow meet — which leaves `#908F96` far
+/// under the 4.5:1 WCAG AA wants for text this size. This clears that worst
+/// case (the contrast test reads it off the render) and holds 11.5:1 over
+/// the bare ground. The screen forces the dark ground in both themes, so the
+/// headroom above the theme's tertiary ink is always there to take.
+const _mutedInk = Color(0xFFCFCED5);
+
+/// The unbubbled lines — tool, system, sent, event and the error — in that
+/// ink.
+const _mutedStyle = TextStyle(color: _mutedInk, fontSize: 12.5);
+
+/// Who holds the floor, as light: [_listeningInk] while the user talks,
+/// [_speakingInk] while the assistant does. Colour on a drover screen means
+/// *which agent* or *what state* and never decoration (see the doc on
+/// [droverDarkTheme]); who is talking is a state of the voice session, so
+/// this is inside that rule.
+///
+/// Screen-local and not a [ThemeExtension]: the voice screen forces
+/// [droverDarkTheme] in both themes, so a themed field would be one constant
+/// written out twice.
+///
+/// ponytail: both are a by-eye knob, to be tuned on a device against the
+/// reference. They are the same HSL saturation (79%) and lightness (75.5%)
+/// and differ only in hue — 210° and 16° — so a tint reads as the same light
+/// taking on a colour, never as a dimmer or brighter one. Keep the lightness
+/// high if you retune them: a dark warm ink at these alphas would make the
+/// assistant's glow dimmer than the resting one, and the tests check it is
+/// not.
+const _listeningInk = Color(0xFF8FC0F2);
+const _speakingInk = Color(0xFFF2A98F);
+
+/// The voice-assistant screen: the transcript *is* the screen — every line in
+/// one log, pending draft cards pinned above the controls until they are
+/// acted on — with the assistant's presence as light bleeding in from the
+/// bottom edge, and round controls along the bottom.
+/// Owns the [session] lifecycle: starts it on first frame, disposes it with
+/// the screen.
 class VoiceScreen extends StatefulWidget {
   const VoiceScreen({super.key, required this.session});
 
@@ -25,7 +61,6 @@ class VoiceScreen extends StatefulWidget {
 
 class _VoiceScreenState extends State<VoiceScreen> {
   final _scroll = ScrollController();
-  var _showTranscript = false;
 
   @override
   void initState() {
@@ -65,112 +100,125 @@ class _VoiceScreenState extends State<VoiceScreen> {
     });
   }
 
-  void _toggleTranscript() {
-    setState(() => _showTranscript = !_showTranscript);
-    // Opened to catch up, so land on the newest line.
-    if (_showTranscript) _jumpToEnd();
-  }
-
+  /// The voice screen is dark in both themes. Light can only be *depicted*
+  /// by adding luminance, and on the light theme's white page every version
+  /// of the edge glow subtracted it — measured on device it read as a smudge
+  /// or a paper fold, never as light arriving. So this joins the live
+  /// terminal and the code/diff panels: a surface showing live machine
+  /// output stays dark whatever the app's theme is.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Theme(
+    data: droverDarkTheme,
+    // There is no AppBar to carry the overlay style, so annotate it here:
+    // light glyphs for a dark ground. Being an annotation and not a
+    // `SystemChrome` call, it reverts by itself once this route is popped.
+    child: AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      // Builder: every helper below is handed a context, and one taken
+      // above the Theme would still resolve the ambient (possibly light)
+      // colours — bubbles, tertiary text, buttons and draft cards included.
+      child: Builder(builder: _scaffold),
+    ),
+  );
+
+  Widget _scaffold(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final session = widget.session;
     final active =
         session.status == VoiceSessionStatus.connecting ||
         session.status == VoiceSessionStatus.live;
+    // `_fail` adds no entry, so on an error the log would otherwise be
+    // empty and the only account of what went wrong would be the header
+    // label — which clamps to two lines. So the error rides the log as its
+    // last line, where it wraps as far as it needs to: as the whole of it
+    // after a failed connect, at the end after a mid-session drop.
+    final errorText = session.status == VoiceSessionStatus.error
+        ? _statusLabel(l10n, session)
+        : null;
+    // Holds, not draws: a pending draft's row renders nothing, but a draft
+    // always trails the tool entry that created it (`voice_session.dart`
+    // adds one per call before running it), so entries are never all
+    // invisible outside a test that pushes drafts straight into VoiceDrafts.
+    // The error counts as content: the greeting invites the user to talk,
+    // and there is nothing listening.
+    final empty =
+        session.entries.isEmpty &&
+        session.partialUser == null &&
+        session.partialAssistant == null &&
+        errorText == null;
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // No AppBar, so this is the only labelled way back while live
-            // (macOS, VoiceOver); leaving disposes the session as before.
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(padding: EdgeInsets.all(8), child: BackButton()),
-            ),
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child: _showTranscript
-                    ? KeyedSubtree(
-                        key: const ValueKey('transcript'),
-                        child: _transcript(context, l10n),
-                      )
-                    : KeyedSubtree(
-                        key: const ValueKey('stage'),
-                        child: _stage(context, l10n),
-                      ),
-              ),
-            ),
-            _controls(context, l10n, active),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _stage(BuildContext context, AppLocalizations l10n) {
-    final session = widget.session;
-    final tertiary = DroverColors.of(context).tertiaryText;
-    return LayoutBuilder(
-      builder: (context, constraints) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      // The glow is the whole body's bottom edge, not the transcript's: put
+      // it under the SafeArea so it bleeds past the controls into the very
+      // edge of the screen, and out of the hit test so it can't eat a tap.
+      body: Stack(
         children: [
-          Expanded(
-            // Takes what the cards leave; scrolls once that is less than
-            // the orb, status and caption need.
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _Orb(
-                      status: session.status,
-                      level: session.level,
-                      listening: session.partialUser != null,
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      _statusLabel(l10n, session),
-                      key: const ValueKey('voice_status'),
-                      textAlign: TextAlign.center,
-                      style: droverLabelStyle(context, color: tertiary),
-                    ),
-                    const SizedBox(height: 10),
-                    DefaultTextStyle.merge(
-                      textAlign: TextAlign.center,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      child: Column(children: _caption(context, l10n)),
-                    ),
-                  ],
+          // RepaintBoundary: the glow repaints at audio rate, and without
+          // one every frame re-records the header, log and controls too.
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: IgnorePointer(
+                child: _EdgeGlow(
+                  level: session.level,
+                  speaking: session.speaking,
                 ),
               ),
             ),
           ),
-          // The cards are the actionable part, so they win over the orb: as
-          // tall as they need up to most of the stage, then they scroll. Not
-          // a Flexible — a loose flex child never hands its unused share
-          // back to the Expanded above, which would leave a gap under one
-          // short card.
-          ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: constraints.maxHeight * 0.7),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final draft in session.drafts.pending)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: _draftCard(context, l10n, draft.id, stretch: true),
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    // No AppBar, so this is the only labelled way back while
+                    // live (macOS, VoiceOver); leaving disposes the session.
+                    const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: BackButton(),
                     ),
-                ],
-              ),
+                    // Expanded, end-aligned: the error status carries the
+                    // error text, which is any length, so it takes every
+                    // pixel the back button leaves rather than half of it.
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 8, right: 20),
+                        child: Text(
+                          _statusLabel(l10n, session),
+                          key: const ValueKey('voice_status'),
+                          textAlign: TextAlign.end,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: droverLabelStyle(
+                            context,
+                            color: DroverColors.of(context).tertiaryText,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                // LayoutBuilder inside the Expanded, not around the
+                // Column: a non-flex child of a Column is measured with an
+                // unbounded main axis, so a cap taken out there would be
+                // infinity. Here `constraints.maxHeight` is the
+                // header-to-controls region, which is what gets split.
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) => Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: empty
+                              ? _empty(context, l10n)
+                              : _transcript(context, l10n, errorText),
+                        ),
+                        _pending(context, l10n, constraints.maxHeight),
+                      ],
+                    ),
+                  ),
+                ),
+                _controls(context, l10n, active),
+              ],
             ),
           ),
         ],
@@ -178,111 +226,126 @@ class _VoiceScreenState extends State<VoiceScreen> {
     );
   }
 
-  /// What sits under the status label: the live transcription while someone
-  /// is speaking; otherwise the trailing system notices (why the session
-  /// ended, that it resumed); otherwise the greeting on a fresh live session.
-  /// While live, notices about the previous session's end stay off the
-  /// stage — after Restart the caption must not read "Session ended".
-  List<Widget> _caption(BuildContext context, AppLocalizations l10n) {
-    final session = widget.session;
-    final scheme = Theme.of(context).colorScheme;
-    final body = TextStyle(color: scheme.onSurface, fontSize: 17, height: 1.4);
-    final muted = TextStyle(
-      color: DroverColors.of(context).tertiaryText,
-      fontSize: 13,
-      height: 1.4,
+  /// Before anything has been said: the greeting and what to try, centred in
+  /// the transcript's place. Goes as soon as the first line lands.
+  // Scrolls once the region is shorter than the two paragraphs need — at an
+  // accessibility text size the hint alone can outgrow a phone's height, and
+  // the stage this replaced scrolled for the same reason.
+  Widget _empty(BuildContext context, AppLocalizations l10n) => Center(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            l10n.voiceGreeting,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
+              fontSize: 17,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            l10n.voiceHint,
+            textAlign: TextAlign.center,
+            style: _mutedStyle.copyWith(fontSize: 13, height: 1.4),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  /// Pending draft cards, pinned between the log and the controls. They are
+  /// the actionable part — the manual Send is the ground truth when the model
+  /// narrates having sent something it never sent — so they must not be
+  /// scrollable away: the model talking on, or the user scrolling up to
+  /// re-read, would otherwise carry the button off screen and the only notice
+  /// left would be "unsent drafts" at the end of the session.
+  ///
+  /// Half of the region, not the old stage's 0.7: what gets squeezed now is
+  /// the transcript, which is real content, so the log keeps the larger half
+  /// while two cards still fit whole on a phone. `reverse`, so the cards sit
+  /// on the controls and the newest card's button is the one on screen —
+  /// scrolled from the top instead, a single over-long brief would push its
+  /// own button out of the viewport. Order is unaffected: the scroll view has
+  /// one child, so only where it starts changes.
+  Widget _pending(BuildContext context, AppLocalizations l10n, double height) {
+    final pending = widget.session.drafts.pending;
+    if (pending.isEmpty) return const SizedBox.shrink();
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: height * 0.5),
+      child: SingleChildScrollView(
+        key: const ValueKey('voice_pending_drafts'),
+        reverse: true,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final draft in pending)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: _draftCard(context, l10n, draft.id),
+              ),
+          ],
+        ),
+      ),
     );
-    if (session.partialAssistant case final text?) {
-      return [Text(text, style: body)];
-    }
-    if (session.partialUser case final text?) {
-      return [Text(text, style: body.copyWith(color: scheme.onSurfaceVariant))];
-    }
-    final notices = session.entries.reversed
-        .takeWhile((e) => e.kind == VoiceEntryKind.system)
-        .toList()
-        .reversed
-        .toList();
-    const previousSession = {
-      VoiceSession.endedCode,
-      VoiceSession.capReachedCode,
-      VoiceSession.unsentDraftsCode,
-    };
-    final stale =
-        session.status == VoiceSessionStatus.live &&
-        notices.isNotEmpty &&
-        previousSession.contains(notices.last.text);
-    if (notices.isNotEmpty && !stale) {
-      return [
-        for (final entry in notices)
-          Text(_systemLabel(l10n, entry.text), style: muted),
-      ];
-    }
-    if (session.status == VoiceSessionStatus.live && session.entries.isEmpty) {
-      return [
-        Text(l10n.voiceGreeting, style: body),
-        const SizedBox(height: 8),
-        Text(l10n.voiceHint, style: muted),
-      ];
-    }
-    // Between turns the last thing said stays up, so an answer can still be
-    // glanced at once the model has stopped speaking.
-    final spoken = session.entries.lastWhere(
-      (e) =>
-          e.kind == VoiceEntryKind.user || e.kind == VoiceEntryKind.assistant,
-      orElse: () => const VoiceEntry(VoiceEntryKind.system, ''),
-    );
-    return switch (spoken.kind) {
-      VoiceEntryKind.assistant => [
-        Text(spoken.text, style: body.copyWith(color: scheme.onSurfaceVariant)),
-      ],
-      VoiceEntryKind.user => [
-        Text(spoken.text, style: muted.copyWith(fontSize: 15)),
-      ],
-      _ => const [],
-    };
   }
 
-  Widget _transcript(BuildContext context, AppLocalizations l10n) {
+  Widget _transcript(
+    BuildContext context,
+    AppLocalizations l10n,
+    String? errorText,
+  ) {
     final session = widget.session;
-    return ListView(
+    // builder, not ListView(children:): the session notifies several times a
+    // second during a turn, and the log grows across Restarts.
+    final partials = [
+      if (session.partialUser case final text?)
+        VoiceEntry(VoiceEntryKind.user, text),
+      if (session.partialAssistant case final text?)
+        VoiceEntry(VoiceEntryKind.assistant, text),
+    ];
+    final entries = session.entries;
+    final rows = entries.length + partials.length;
+    return ListView.builder(
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      children: [
-        for (final entry in session.entries) _entryRow(context, l10n, entry),
-        if (session.partialUser case final text?)
-          _entryRow(context, l10n, VoiceEntry(VoiceEntryKind.user, text)),
-        if (session.partialAssistant case final text?)
-          _entryRow(context, l10n, VoiceEntry(VoiceEntryKind.assistant, text)),
-      ],
+      itemCount: rows + (errorText == null ? 0 : 1),
+      itemBuilder: (context, i) => i == rows
+          // No maxLines: the header's copy of this is clamped to two, so
+          // the rest of a long host error has to be readable somewhere.
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                errorText!,
+                key: const ValueKey('voice_error_body'),
+                textAlign: TextAlign.center,
+                style: _mutedStyle,
+              ),
+            )
+          : _entryRow(
+              context,
+              l10n,
+              i < entries.length ? entries[i] : partials[i - entries.length],
+            ),
     );
   }
 
-  /// Transcript toggle on the left, Restart in the middle once the session
-  /// is over, and the ink-filled End/Close on the right. Exactly one button
-  /// carries `voice_action_button`: End while active, Restart after.
+  /// Restart in the middle once the session is over, and the ink-filled
+  /// End/Close on the right. Exactly one button carries
+  /// `voice_action_button`: End while active, Restart after.
   Widget _controls(BuildContext context, AppLocalizations l10n, bool active) {
     final session = widget.session;
-    final tertiary = DroverColors.of(context).tertiaryText;
     final tonal = IconButton.styleFrom(fixedSize: const Size.square(52));
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Center(
-              child: IconButton.filledTonal(
-                key: const ValueKey('voice_transcript_button'),
-                style: tonal,
-                isSelected: _showTranscript,
-                icon: const Icon(Icons.notes),
-                selectedIcon: const Icon(Icons.graphic_eq),
-                tooltip: l10n.voiceTranscript,
-                onPressed: _toggleTranscript,
-              ),
-            ),
-          ),
+          // Empty slot, so Restart stays centred and Close stays right.
+          const Spacer(),
           Expanded(
             child: active
                 ? const SizedBox.shrink()
@@ -302,7 +365,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
                       const SizedBox(height: 6),
                       Text(
                         l10n.voiceRestart,
-                        style: droverLabelStyle(context, color: tertiary),
+                        style: droverLabelStyle(context, color: _mutedInk),
                       ),
                     ],
                   ),
@@ -365,9 +428,17 @@ class _VoiceScreenState extends State<VoiceScreen> {
     AppLocalizations l10n,
     VoiceEntry entry,
   ) {
+    final drafts = widget.session.drafts;
+    // While pending, the card lives pinned above the controls, so the log
+    // skips it — one card, one place. Once resolved it takes its
+    // chronological place here. Returns above the row's padding, so a
+    // suppressed draft leaves no gap either.
+    if (entry.kind == VoiceEntryKind.draft &&
+        drafts.isPending(drafts.byId(entry.text)!)) {
+      return const SizedBox.shrink();
+    }
     final scheme = Theme.of(context).colorScheme;
     final colors = DroverColors.of(context);
-    final muted = TextStyle(color: colors.tertiaryText, fontSize: 12.5);
     final maxWidth = MediaQuery.sizeOf(context).width * 0.8;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -388,15 +459,15 @@ class _VoiceScreenState extends State<VoiceScreen> {
         ),
         VoiceEntryKind.tool => Row(
           children: [
-            Icon(Icons.build, size: 14, color: colors.tertiaryText),
+            const Icon(Icons.build, size: 14, color: _mutedInk),
             const SizedBox(width: 6),
-            Text(l10n.voiceToolCalled(entry.text), style: muted),
+            Text(l10n.voiceToolCalled(entry.text), style: _mutedStyle),
           ],
         ),
         VoiceEntryKind.system => Text(
           _systemLabel(l10n, entry.text),
           textAlign: TextAlign.center,
-          style: muted,
+          style: _mutedStyle,
         ),
         VoiceEntryKind.draft => _draftCard(context, l10n, entry.text),
         VoiceEntryKind.sent => Text(
@@ -410,18 +481,16 @@ class _VoiceScreenState extends State<VoiceScreen> {
             ),
           },
           textAlign: TextAlign.center,
-          style: muted,
+          style: _mutedStyle,
         ),
         VoiceEntryKind.event => Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.notifications_none,
-              size: 14,
-              color: colors.tertiaryText,
-            ),
+            const Icon(Icons.notifications_none, size: 14, color: _mutedInk),
             const SizedBox(width: 6),
-            Flexible(child: Text(_eventLabel(l10n, entry.text), style: muted)),
+            Flexible(
+              child: Text(_eventLabel(l10n, entry.text), style: _mutedStyle),
+            ),
           ],
         ),
       },
@@ -432,16 +501,9 @@ class _VoiceScreenState extends State<VoiceScreen> {
   /// button while it is still pending — Send for a message, Launch for a new
   /// agent. Once acted on the button goes and the header shows a check; the
   /// "sent" statement itself is the [VoiceEntryKind.sent] line, so it appears
-  /// exactly once. In the transcript it sits like an assistant bubble; on the
-  /// stage ([stretch]) it spans the width like a sheet.
-  Widget _draftCard(
-    BuildContext context,
-    AppLocalizations l10n,
-    String id, {
-    bool stretch = false,
-  }) {
+  /// exactly once. It sits in the log like an assistant bubble.
+  Widget _draftCard(BuildContext context, AppLocalizations l10n, String id) {
     final scheme = Theme.of(context).colorScheme;
-    final colors = DroverColors.of(context);
     final drafts = widget.session.drafts;
     final draft = drafts.byId(id)!;
     final pending = drafts.isPending(draft);
@@ -486,13 +548,13 @@ class _VoiceScreenState extends State<VoiceScreen> {
                           : Icons.schedule_send)
                     : Icons.check,
                 size: 14,
-                color: colors.tertiaryText,
+                color: _mutedInk,
               ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   header,
-                  style: droverLabelStyle(context, color: colors.tertiaryText),
+                  style: droverLabelStyle(context, color: _mutedInk),
                 ),
               ),
             ],
@@ -524,7 +586,6 @@ class _VoiceScreenState extends State<VoiceScreen> {
         ],
       ),
     );
-    if (stretch) return card;
     return Align(
       alignment: Alignment.centerLeft,
       child: ConstrainedBox(
@@ -576,76 +637,173 @@ class _VoiceScreenState extends State<VoiceScreen> {
   );
 }
 
-/// The stage's centre: a soft glow of the page's ink, no hue. Dim while
-/// connecting and once the session is over; lit while live, and gains a thin
-/// ring while the user is being heard ([listening]). Its size follows
-/// [level] — the voice actually in the room — so it is completely still when
-/// nothing is being said, and fixed when the platform asks for no animation.
-class _Orb extends StatelessWidget {
-  const _Orb({
-    required this.status,
-    required this.level,
-    required this.listening,
-  });
-
-  final VoiceSessionStatus status;
+/// The assistant's presence: light bleeding in from the edges of the screen
+/// — a wash of the page's ink rising off the whole bottom edge, wrapping
+/// round both bottom corners and climbing part-way up the sides, the way a
+/// lamp on the floor lights the foot of a wall. A vignette, not a shape: no
+/// outline, nothing that reads as an object, and nothing that moves on its
+/// own. [level] — the voice actually in the room — is the only thing that
+/// drives it: how bright it is, how far up it reaches, and how much of the
+/// speaker's colour it carries.
+class _EdgeGlow extends StatelessWidget {
+  const _EdgeGlow({required this.level, required this.speaking});
 
   /// The session's smoothed 0..1 audio level. Already smoothed upstream, so
-  /// it drives the scale directly — no second easing layer here.
+  /// it drives the glow directly — no second easing layer here.
   final ValueListenable<double> level;
 
-  final bool listening;
+  /// Whether the assistant holds the floor, which picks the tint. A plain
+  /// field, not a listenable: the screen rebuilds on every session notify,
+  /// and the session notifies at both ends of a turn.
+  final bool speaking;
 
-  static const _size = 168.0;
+  /// ponytail: all of these are a by-eye knob, not derived — to be tuned on
+  /// a device. [_alphaMin] is the resting presence (never zero: silence is
+  /// still someone in the room); [_reachMin]/[_reachMax] are the fraction of
+  /// the body the bottom wash climbs, [_sideReachMin]/[_sideReachMax] the
+  /// fraction the side glow climbs, and [_sideWidth] how far in from the
+  /// side edge it reaches, as a fraction of the width.
+  static const _alphaMin = 0.45;
+  static const _alphaMax = 1.0;
+  static const _reachMin = 0.3;
+  static const _reachMax = 0.52;
+  static const _sideReachMin = 0.32;
+  static const _sideReachMax = 0.4;
+  static const _sideWidth = 0.25;
 
-  /// ponytail: [_scaleMin] and [_scaleMax] are a by-eye knob, not derived —
-  /// the union of the old idle/speaking tweens, to be tuned on a device.
-  static const _scaleMin = 0.96;
-  static const _scaleMax = 1.08;
+  /// Alpha of the ink along the bottom edge, and of the side glow at the
+  /// very corner. They overlap only in the corners, so the most ink any
+  /// pixel carries is `1 - (1 - 0.22)(1 - 0.10)` ≈ 0.30, and that is what
+  /// text has to be read against; [_mutedInk] clears it.
+  static const _washAlpha = 0.22;
+  static const _sideAlpha = 0.10;
+
+  /// The side glow's alpha at 0, ¼, ½, ¾ and all of its radius, as a
+  /// fraction of [_sideAlpha]: `(1 + cos(πr)) / 2`.
+  static const _sideFalloff = [1.0, 0.85, 0.5, 0.15, 0.0];
+
+  /// How long the tint takes to follow the floor changing hands. [speaking]
+  /// flips in one step, and light that snapped colour would read as a cut.
+  static const _tintDuration = Duration(milliseconds: 400);
 
   @override
   Widget build(BuildContext context) {
     final ink = Theme.of(context).colorScheme.onSurface;
-    // Reduce motion reads as a permanently silent room: fixed at rest size.
-    final still = MediaQuery.disableAnimationsOf(context);
-    return ValueListenableBuilder<double>(
-      valueListenable: level,
-      builder: (context, value, child) => Transform.scale(
-        key: const ValueKey('voice_orb_scale'),
-        scale: _scaleMin + (_scaleMax - _scaleMin) * (still ? 0 : value),
-        child: child,
-      ),
-      child: AnimatedOpacity(
-        opacity: status == VoiceSessionStatus.live ? 1 : 0.45,
-        duration: const Duration(milliseconds: 400),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: ink.withValues(alpha: listening ? 0.35 : 0),
-              width: 1.5,
-            ),
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                // A body with a soft rim rather than a fog: opaque well past
-                // the centre, then a short fall-off.
-                colors: [
-                  ink.withValues(alpha: 0.92),
-                  ink.withValues(alpha: 0.85),
-                  ink.withValues(alpha: 0),
-                ],
-                stops: const [0, 0.62, 1],
-              ),
-            ),
-            child: const SizedBox.square(dimension: _size),
-          ),
-        ),
+    // Reduce motion reads as a permanently silent room: fixed at rest, not
+    // subscribed to the level at all. The tint rides the level, so at 0 it is
+    // exactly the neutral ink — this path never shows a colour, and there is
+    // no animation on it to disable.
+    if (MediaQuery.disableAnimationsOf(context)) return _glow(ink, 0);
+    // A finite implicit tween on a state flip — no controller, no ticker
+    // outliving the transition: the glow is still driven by the level alone.
+    return TweenAnimationBuilder<Color?>(
+      tween: ColorTween(end: speaking ? _speakingInk : _listeningInk),
+      duration: _tintDuration,
+      builder: (context, tint, _) => ValueListenableBuilder<double>(
+        valueListenable: level,
+        builder: (context, value, _) {
+          final v = value.clamp(0.0, 1.0);
+          // The colour arrives with the voice: neutral ink in silence,
+          // saturating to the speaker's tint as the level rises, so a hue
+          // never appears out of a quiet room.
+          return _glow(Color.lerp(ink, tint, v)!, v);
+        },
       ),
     );
+  }
+
+  /// The glow at level [v] in [ink] — the neutral page ink already lerped
+  /// towards the speaker's tint by the caller — where [v] scales both the
+  /// alpha and how far up the body the light climbs. The alpha is
+  /// multiplied into the gradients
+  /// rather than applied with an [Opacity]: these washes overlap, so group
+  /// opacity cannot fold into one draw and would cost a screen-wide
+  /// offscreen layer on every audio frame, uncacheable because the boxes
+  /// resize on the same tick.
+  Widget _glow(Color ink, double v) {
+    final k = _alphaMin + (_alphaMax - _alphaMin) * v;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: FractionallySizedBox(
+            key: const ValueKey('voice_edge_glow'),
+            widthFactor: 1,
+            heightFactor: _reachMin + (_reachMax - _reachMin) * v,
+            // Light off an edge is a vertical fade, so the wash is a
+            // LinearGradient: full strength along the whole bottom edge, 0
+            // at the box's top, so there is no hard line and no readable arc.
+            child: DecoratedBox(
+              key: const ValueKey('voice_edge_wash'),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    ink.withValues(alpha: _washAlpha * k),
+                    ink.withValues(alpha: 0),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        // The sides: one quarter-ellipse of light in each bottom corner,
+        // brightest at the corner and fading both inward and upward, so the
+        // wash wraps the corner and climbs the side edge instead of stopping
+        // in a straight line. A RadialGradient sizes its circle off the
+        // box's *shortest* side, so on its own it would stop well short of
+        // the top of a tall strip; [_CornerEllipse] stretches it to the box.
+        for (final corner in const [
+          Alignment.bottomLeft,
+          Alignment.bottomRight,
+        ])
+          Align(
+            alignment: corner,
+            child: FractionallySizedBox(
+              widthFactor: _sideWidth,
+              heightFactor: _sideReachMin + (_sideReachMax - _sideReachMin) * v,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: corner,
+                    radius: 1,
+                    // A raised cosine, not a straight ramp: a soft foot at
+                    // the corner, the drop in the middle, and a tail that
+                    // meets zero flat, so there is no rim to read as a disc.
+                    colors: [
+                      for (final f in _sideFalloff)
+                        ink.withValues(alpha: _sideAlpha * k * f),
+                    ],
+                    stops: const [0, 0.25, 0.5, 0.75, 1],
+                    transform: _CornerEllipse(corner),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Stretches a [RadialGradient] anchored at [corner] — whose circle has the
+/// radius of the box's shortest side — into the ellipse that fills the box,
+/// by scaling about the corner. No layer: it is just the shader's matrix.
+class _CornerEllipse extends GradientTransform {
+  const _CornerEllipse(this.corner);
+
+  final Alignment corner;
+
+  @override
+  Matrix4 transform(Rect bounds, {TextDirection? textDirection}) {
+    final c = corner.withinRect(bounds);
+    final short = bounds.shortestSide;
+    return Matrix4.translationValues(c.dx, c.dy, 0)
+      ..multiply(
+        Matrix4.diagonal3Values(bounds.width / short, bounds.height / short, 1),
+      )
+      ..multiply(Matrix4.translationValues(-c.dx, -c.dy, 0));
   }
 }

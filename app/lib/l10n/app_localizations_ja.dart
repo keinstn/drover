@@ -564,9 +564,6 @@ class AppLocalizationsJa extends AppLocalizations {
   String get voiceGreeting => 'エージェントについて話しましょう';
 
   @override
-  String get voiceTranscript => '文字起こし';
-
-  @override
   String get voiceClose => '閉じる';
 
   @override
