@@ -108,6 +108,21 @@ void main() {
     expect(speaker.initCalls, 0);
   });
 
+  test('a call that ends in error still reports what it billed for', () async {
+    mic = FakeMic(permitted: false);
+    final s = session();
+    await s.start();
+
+    // Whatever killed the call, what it spent before that is still spent, and
+    // a measurement that drops the calls that went wrong measures the wrong
+    // population.
+    expect(s.status, VoiceSessionStatus.error);
+    expect(
+      s.entries.where((e) => e.kind == VoiceEntryKind.system).last.text,
+      startsWith('usage · '),
+    );
+  });
+
   test('a tool call is answered with the same id and logged', () async {
     final s = session();
     await s.start();
