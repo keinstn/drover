@@ -583,9 +583,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceGreeting => 'Let\'s talk about your agents';
 
   @override
-  String get voiceTranscript => 'Transcript';
-
-  @override
   String get voiceClose => 'Close';
 
   @override
