@@ -25,6 +25,8 @@ class SettingsScreen extends StatelessWidget {
     required this.onNotifyOnDoneChanged,
     required this.voiceAssistantEnabled,
     required this.onVoiceAssistantChanged,
+    required this.appleSignedIn,
+    required this.onSignInWithApple,
     required this.onManageHosts,
     this.onEnterDemo,
     this.appVersion,
@@ -45,6 +47,16 @@ class SettingsScreen extends StatelessWidget {
   final ValueChanged<bool> onNotifyOnDoneChanged;
   final bool voiceAssistantEnabled;
   final ValueChanged<bool> onVoiceAssistantChanged;
+
+  /// Whether an Apple ID is already attached to the Firebase account. A bool,
+  /// not a user object: no identifier is requested from Apple, so there is
+  /// none to render — and none this screen could leak.
+  final bool appleSignedIn;
+
+  /// Links the Apple ID, throwing if it could not be done. The row renders
+  /// that failure itself; flipping [appleSignedIn] on success is the
+  /// caller's job, same as every other value on this screen.
+  final Future<void> Function() onSignInWithApple;
   final VoidCallback onManageHosts;
 
   /// Enters the scripted demo session. The first-run setup screen offers it
@@ -186,6 +198,8 @@ class SettingsScreen extends StatelessWidget {
             value: voiceAssistantEnabled,
             onChanged: onVoiceAssistantChanged,
           ),
+          _sectionHeader(context, l10n.settingsAccount),
+          _AccountTile(signedIn: appleSignedIn, onSignIn: onSignInWithApple),
           if (version != null && version.isNotEmpty) ...[
             // Detaches the row from the section above, so a footer doesn't
             // read as one of its settings.
@@ -208,6 +222,70 @@ class SettingsScreen extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// The account row: signed out it offers Sign in with Apple, signed in it
+/// says so and does nothing else. No sign-out — once a balance hangs off the
+/// account, signing out would strand it.
+///
+/// Stateful only for what a tap produces (in-flight, failed); whether the
+/// account is linked comes from the caller, like every other value here.
+class _AccountTile extends StatefulWidget {
+  const _AccountTile({required this.signedIn, required this.onSignIn});
+
+  final bool signedIn;
+  final Future<void> Function() onSignIn;
+
+  @override
+  State<_AccountTile> createState() => _AccountTileState();
+}
+
+class _AccountTileState extends State<_AccountTile> {
+  bool _busy = false;
+  bool _failed = false;
+
+  Future<void> _signIn() async {
+    setState(() {
+      _busy = true;
+      _failed = false;
+    });
+    var failed = false;
+    try {
+      await widget.onSignIn();
+    } catch (_) {
+      // Rendered on the row rather than reported: the user asked for this
+      // and is looking at it, and an Apple sheet they dismissed themselves
+      // arrives here too.
+      failed = true;
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _failed = failed;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    if (widget.signedIn) {
+      return ListTile(
+        key: const ValueKey('settings_account_tile'),
+        leading: const Icon(Icons.check_circle_outline),
+        title: Text(l10n.settingsAccountSignedIn),
+      );
+    }
+    return ListTile(
+      key: const ValueKey('settings_account_tile'),
+      leading: const Icon(Icons.apple),
+      title: Text(l10n.settingsAccountSignIn),
+      subtitle: _failed ? Text(l10n.settingsAccountSignInFailed) : null,
+      trailing: const Icon(Icons.chevron_right),
+      // Null while in flight: the Apple sheet takes a moment to appear, and
+      // a second tap would start a second link.
+      onTap: _busy ? null : _signIn,
     );
   }
 }

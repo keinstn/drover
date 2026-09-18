@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
+import 'package:drover/src/firebase/apple_account.dart';
 import 'package:drover/src/notifications/notify_plugin_version.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:drover/src/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,6 +21,8 @@ Widget _app({
   ValueChanged<bool>? onNotifyOnDoneChanged,
   bool voiceAssistantEnabled = false,
   ValueChanged<bool>? onVoiceAssistantChanged,
+  bool appleSignedIn = false,
+  Future<void> Function()? onSignInWithApple,
   VoidCallback? onManageHosts,
   VoidCallback? onEnterDemo,
   String? appVersion,
@@ -40,6 +44,8 @@ Widget _app({
       onNotifyOnDoneChanged: onNotifyOnDoneChanged ?? (_) {},
       voiceAssistantEnabled: voiceAssistantEnabled,
       onVoiceAssistantChanged: onVoiceAssistantChanged ?? (_) {},
+      appleSignedIn: appleSignedIn,
+      onSignInWithApple: onSignInWithApple ?? () async {},
       onManageHosts: onManageHosts ?? () {},
       onEnterDemo: onEnterDemo,
       appVersion: appVersion,
@@ -64,6 +70,8 @@ class _SettingsHost extends StatefulWidget {
     required this.onNotifyOnDoneChanged,
     required this.voiceAssistantEnabled,
     required this.onVoiceAssistantChanged,
+    required this.appleSignedIn,
+    required this.onSignInWithApple,
     required this.onManageHosts,
     required this.onEnterDemo,
     required this.appVersion,
@@ -80,6 +88,8 @@ class _SettingsHost extends StatefulWidget {
   final ValueChanged<bool> onNotifyOnDoneChanged;
   final bool voiceAssistantEnabled;
   final ValueChanged<bool> onVoiceAssistantChanged;
+  final bool appleSignedIn;
+  final Future<void> Function() onSignInWithApple;
   final VoidCallback onManageHosts;
   final VoidCallback? onEnterDemo;
   final String? appVersion;
@@ -93,6 +103,7 @@ class _SettingsHostState extends State<_SettingsHost> {
   late bool _notifyOnBlocked = widget.notifyOnBlocked;
   late bool _notifyOnDone = widget.notifyOnDone;
   late bool _voiceAssistantEnabled = widget.voiceAssistantEnabled;
+  late bool _appleSignedIn = widget.appleSignedIn;
 
   @override
   Widget build(BuildContext context) {
@@ -116,6 +127,13 @@ class _SettingsHostState extends State<_SettingsHost> {
         setState(() => _voiceAssistantEnabled = value);
         widget.onVoiceAssistantChanged(value);
       },
+      appleSignedIn: _appleSignedIn,
+      // Models `main.dart`'s contract: the caller flips the flag only after
+      // the link succeeds, and a throw leaves the row signed out.
+      onSignInWithApple: () async {
+        await widget.onSignInWithApple();
+        setState(() => _appleSignedIn = true);
+      },
       onManageHosts: widget.onManageHosts,
       onEnterDemo: widget.onEnterDemo,
       appVersion: widget.appVersion,
@@ -123,6 +141,14 @@ class _SettingsHostState extends State<_SettingsHost> {
     );
   }
 }
+
+/// The sections above push the account row past the fold, and a lazy
+/// ListView never builds an off-screen row.
+Future<void> _revealAccountRow(WidgetTester tester) =>
+    tester.scrollUntilVisible(
+      find.byKey(const ValueKey('settings_account_tile')),
+      200,
+    );
 
 bool _renderedSwitch(WidgetTester tester, String tileKey) => tester
     .widget<Switch>(
@@ -602,6 +628,145 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('signed out, the account row offers Sign in with Apple', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app());
+    await _revealAccountRow(tester);
+
+    expect(find.text('ACCOUNT'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_account_tile')),
+        matching: find.text('Sign in with Apple'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('signed in, the account row says so and renders no identifier', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app(appleSignedIn: true));
+    await _revealAccountRow(tester);
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_account_tile')),
+        matching: find.text('Signed in with Apple'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Sign in with Apple'), findsNothing);
+    // No scopes are requested, so no address can reach the screen. The
+    // guard is cheap; the seam — a bool, not a user — is the real proof.
+    expect(find.textContaining('@'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a failed sign-in is rendered on the row, which stays tappable', (
+    tester,
+  ) async {
+    var attempts = 0;
+    await tester.pumpWidget(
+      _app(
+        onSignInWithApple: () async {
+          attempts++;
+          throw Exception('the user dismissed the Apple sheet');
+        },
+      ),
+    );
+    await _revealAccountRow(tester);
+
+    await tester.tap(find.byKey(const ValueKey('settings_account_tile')));
+    await tester.pumpAndSettle();
+
+    expect(attempts, 1);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_account_tile')),
+        matching: find.text("Couldn't sign in. Tap to try again."),
+      ),
+      findsOneWidget,
+    );
+    // Still the signed-out row: a failure must not read as an account.
+    expect(find.text('Sign in with Apple'), findsOneWidget);
+    expect(find.text('Signed in with Apple'), findsNothing);
+
+    // And the retry the subtitle promises actually fires.
+    await tester.tap(find.byKey(const ValueKey('settings_account_tile')));
+    await tester.pumpAndSettle();
+    expect(attempts, 2);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'an Apple ID already attached to another account ends signed in: the '
+    'link fails with credential-already-in-use and the older uid is adopted',
+    (tester) async {
+      var signedInWithProvider = false;
+      await tester.pumpWidget(
+        _app(
+          onSignInWithApple: () => linkAppleAccount(
+            // What a reinstalled device gets: its anonymous uid is new, but
+            // the Apple ID still belongs to the uid from before.
+            link: () async => throw FirebaseException(
+              plugin: 'firebase_auth',
+              code: 'credential-already-in-use',
+            ),
+            signIn: () async => signedInWithProvider = true,
+          ),
+        ),
+      );
+      await _revealAccountRow(tester);
+
+      await tester.tap(find.byKey(const ValueKey('settings_account_tile')));
+      await tester.pumpAndSettle();
+
+      expect(signedInWithProvider, isTrue);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('settings_account_tile')),
+          matching: find.text('Signed in with Apple'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text("Couldn't sign in. Tap to try again."), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('any other link failure is reported, not swallowed', (
+    tester,
+  ) async {
+    var signedInWithProvider = false;
+    await tester.pumpWidget(
+      _app(
+        onSignInWithApple: () => linkAppleAccount(
+          link: () async => throw FirebaseException(
+            plugin: 'firebase_auth',
+            code: 'network-request-failed',
+          ),
+          signIn: () async => signedInWithProvider = true,
+        ),
+      ),
+    );
+    await _revealAccountRow(tester);
+
+    await tester.tap(find.byKey(const ValueKey('settings_account_tile')));
+    await tester.pumpAndSettle();
+
+    expect(signedInWithProvider, isFalse);
+    expect(find.text("Couldn't sign in. Tap to try again."), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
 }
 
 const _staleEntry = StaleNotifyPlugin(

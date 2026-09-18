@@ -514,6 +514,18 @@ class AppLocalizationsJa extends AppLocalizations {
       'エージェントについて drover と話せます。会話のため、エージェントの状態と返答の短い要約が Google の Gemini Live API に送信されます。';
 
   @override
+  String get settingsAccount => 'アカウント';
+
+  @override
+  String get settingsAccountSignIn => 'Apple でサインイン';
+
+  @override
+  String get settingsAccountSignedIn => 'Apple でサインイン済み';
+
+  @override
+  String get settingsAccountSignInFailed => 'サインインできませんでした。タップしてやり直してください。';
+
+  @override
   String get herdVoiceButton => '音声アシスタント';
 
   @override
