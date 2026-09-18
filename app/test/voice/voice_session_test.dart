@@ -1172,6 +1172,20 @@ void main() {
       },
     );
 
+    test('parking with a pending draft does not warn about it', () async {
+      final s = session(herd: herd, inbox: VoiceInbox(), drafts: drafts);
+      await s.start();
+      await draftViaTool();
+
+      await s.background();
+
+      // The call is coming back to send it; the warning belongs at the end
+      // that finishes the call, not at a pause in the middle of it.
+      expect(s.entries.map((e) => e.text).skip(2), [
+        VoiceSession.backgroundedCode,
+      ]);
+    });
+
     test('stopping with a pending draft logs unsent_drafts once', () async {
       final s = session(herd: herd, inbox: VoiceInbox(), drafts: drafts);
       await s.start();
@@ -1369,6 +1383,39 @@ void main() {
       await s.stop();
     });
 
+    testWidgets('it survives a park made before the first handle', (
+      tester,
+    ) async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      // No SessionResumptionUpdate ever arrives, so nothing is resumable —
+      // but it is still one call, and one cap.
+      await s.start();
+      await advance(tester, const Duration(minutes: 2));
+      await s.background();
+      await advance(tester, const Duration(minutes: 2));
+      await s.start();
+
+      expect(s.resumable, isFalse);
+      expect(connector.handles, [null, null], reason: 'a new conversation');
+      expect(s.status, VoiceSessionStatus.live);
+
+      // One minute of the five is left. A deadline that keyed on the handle
+      // would have handed this call a whole fresh cap.
+      await advance(tester, const Duration(minutes: 1, seconds: 1));
+      await tester.pump();
+
+      expect(s.status, VoiceSessionStatus.ended);
+      expect(
+        s.entries.map((e) => e.text),
+        containsAllInOrder([
+          VoiceSession.backgroundedCode,
+          VoiceSession.capReachedCode,
+          VoiceSession.endedCode,
+        ]),
+      );
+    });
+
     testWidgets('the handle dies with the call the cap ended', (tester) async {
       final connector = FakeConnector();
       final s = session(connect: connector.call);
@@ -1406,6 +1453,38 @@ void main() {
 
       expect(s.entries.map((e) => e.text), [VoiceSession.endedCode, noUsage]);
     });
+  });
+
+  // testWidgets for the FakeAsync zone: the bound is a real Timer.
+  testWidgets('a wedged release does not strand the next start', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    speaker = FakeSpeaker(disposeGate: gate);
+    final connector = FakeConnector();
+    final s = session(connect: connector.call);
+    await s.start();
+    connector.last.pushResumption('h1');
+    await tester.pump();
+
+    // The speaker never finishes releasing — voice_transport.dart documents
+    // the same shape for a socket close.
+    final parking = s.background();
+    await tester.pump();
+    expect(s.status, VoiceSessionStatus.live, reason: 'stuck in the release');
+
+    await advance(tester, const Duration(seconds: 3));
+    await parking;
+    expect(s.status, VoiceSessionStatus.ended, reason: 'the bound gave up');
+
+    // Which is the point: an unbounded release parks every later start on it
+    // forever, while the herd screen keeps handing the session back as live.
+    await s.start();
+    expect(s.status, VoiceSessionStatus.live);
+    expect(connector.handles, [null, 'h1']);
+
+    gate.complete();
+    await s.stop();
   });
 
   group('usage readout', () {
@@ -1487,12 +1566,10 @@ void main() {
       expect(connector.handles, [null, 'h1']);
       expect(s.status, VoiceSessionStatus.live);
       expect(s.resumable, isFalse, reason: 'one suspension, one continuation');
-      // Without this the log reads "ended" and then simply goes live again,
-      // and the reader cannot tell the conversation survived.
+      // One uninterrupted call: no "Session ended" and no usage readout in
+      // the middle of it — only why it paused and that it came back.
       expect(s.entries.map((e) => e.text), [
         VoiceSession.suspendedCode,
-        VoiceSession.endedCode,
-        noUsage,
         VoiceSession.resumedCode,
       ]);
 
@@ -1519,6 +1596,27 @@ void main() {
       expect(s.entries.map((e) => e.text), contains(VoiceSession.resumedCode));
 
       await s.stop();
+    });
+
+    test('a disposed session is neither resumable nor startable', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await settle();
+      await s.suspend();
+      expect(s.resumable, isTrue);
+
+      // HerdScreen can drop a retained session while a pushed VoiceScreen
+      // still holds the object and acts on its `resumable`.
+      s.dispose();
+      await settle();
+
+      expect(s.resumable, isFalse);
+      await s.start();
+
+      expect(connector.handles, [null], reason: 'nothing reconnected');
+      expect(mic.startCalls, 1, reason: 'no mic on a released audio path');
     });
 
     test('with no handle yet, the next start is a fresh one', () async {
@@ -1560,9 +1658,10 @@ void main() {
       clock = clock.add(const Duration(minutes: 1));
       await s.stop();
 
-      // A continuation that reset the totals would report one turn and the
-      // minute since it started, not the whole three-minute call.
-      expect(s.entries.last.text, startsWith('usage · 2 turns · 3m 0s · '));
+      // Both turns, because the totals were kept — but two minutes, not
+      // three: the minute spent parked is not connected time, and cost per
+      // minute is read off this line.
+      expect(s.entries.last.text, startsWith('usage · 2 turns · 2m 0s · '));
     });
 
     test('stop then start does not continue', () async {
@@ -1644,7 +1743,17 @@ void main() {
       expect(connector.handles, [null], reason: 'never reconnected');
       expect(mic.startCalls, 1);
       expect(s.status, VoiceSessionStatus.ended);
-      expect(s.entries.last.text, VoiceSession.capReachedCode);
+      // The park left the call open; coming back to a dead cap is where it
+      // really ends, so this is where the readout lands.
+      expect(
+        s.entries.map((e) => e.text),
+        containsAllInOrder([
+          VoiceSession.suspendedCode,
+          VoiceSession.capReachedCode,
+          VoiceSession.endedCode,
+        ]),
+      );
+      expect(s.entries.last.text, startsWith('usage · '));
       expect(s.resumable, isFalse);
     });
   });
@@ -1656,12 +1765,10 @@ void main() {
 
       await s.background();
 
+      // Ended as far as the screen is concerned, but the call is parked, not
+      // finished: the log says why it stopped and nothing more.
       expect(s.status, VoiceSessionStatus.ended);
-      expect(s.entries.map((e) => e.text), [
-        VoiceSession.backgroundedCode,
-        VoiceSession.endedCode,
-        noUsage,
-      ]);
+      expect(s.entries.map((e) => e.text), [VoiceSession.backgroundedCode]);
       expect(mic.stopCalls, 1);
       expect(speaker.disposeCalls, 1);
       expect(transport.closeCalls, 1);

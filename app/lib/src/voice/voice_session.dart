@@ -268,21 +268,30 @@ class VoiceSession extends ChangeNotifier {
   Future<void> _ending = Future.value();
 
   /// What this call has billed for, summed over every transport it used and
-  /// read back by [_end] behind [kVoiceUsageReadout]. Reset by a [start] that
-  /// begins a conversation, so a Restart measures its own — but not by one
-  /// that continues a suspended conversation, which bills on across the gap.
+  /// read back behind [kVoiceUsageReadout]. Reset by a [start] that begins a
+  /// call, so a Restart measures its own — but not by one that resumes a
+  /// parked call, which bills on across the gap.
   var _usage = VoiceUsage();
-  DateTime? _usageStart;
+
+  /// How long this call has actually been connected, summed over its
+  /// segments — a parked call resumes into a new one, and the time spent
+  /// away is not call time. Cost per minute is read off this line
+  /// (`docs/voice-billing.md`), so counting the gap would under-report it.
+  var _connected = Duration.zero;
+
+  /// When the current segment began; null while nothing is connected.
+  DateTime? _segmentStart;
 
   /// Latest resumption handle the server offered. While it is set a dropped
   /// connection is resumed instead of ending the session.
   String? _resumeHandle;
 
-  /// Set by [suspend] / [background], cleared by [start], [stop] and [_fail]:
-  /// the difference between an end that keeps the conversation and one that
-  /// drops it — [_end] reads it to decide whether [_resumeHandle] outlives
-  /// the teardown. Paired with [_resumeHandle] by [resumable]: a session
-  /// suspended before the server ever offered a handle starts fresh.
+  /// Set by [suspend] / [background], cleared by [start], [stop], [_fail] and
+  /// [dispose]: the difference between an end that parks the call and one
+  /// that finishes it. It is what the cap deadline, the usage totals and the
+  /// quiet end in [_endAndSettle] all key on. Paired with [_resumeHandle] by
+  /// [resumable], which answers the narrower question of whether the Live
+  /// *conversation* can be picked up too.
   bool _suspended = false;
   bool _disposed = false;
 
@@ -291,8 +300,11 @@ class VoiceSession extends ChangeNotifier {
   Timer? _capTimer;
 
   /// When [kVoiceSessionCap] runs out, fixed at the [start] that began the
-  /// conversation. A continuation re-arms [_capTimer] for what is left of it,
-  /// so the time spent suspended is spent, not given back.
+  /// call. Every [start] that resumes a parked call re-arms [_capTimer] for
+  /// what is left of it, so the time spent away is spent, not given back.
+  /// Keyed on the park, never on [resumable]: a call parked before the server
+  /// ever offered a handle is still the same call, and a deadline that only
+  /// survived a resumable park would hand it a whole fresh cap.
   DateTime? _capDeadline;
 
   /// Fires [_notify] at [_playbackEnd] so listeners see [speaking] flip back.
@@ -342,41 +354,51 @@ class VoiceSession extends ChangeNotifier {
   /// usage totals, and only what is left of [kVoiceSessionCap] — whether it
   /// is Restart or re-entering the screen that calls it.
   Future<void> start() async {
+    // A disposed session has already released its mic and speaker, and
+    // [HerdScreen] can drop one while a pushed [VoiceScreen] still holds the
+    // object and acts on its [resumable].
+    if (_disposed) return;
     // [_active], not the status: an end still tearing down leaves the status
     // live while it releases the mic, the socket and the speaker.
     if (_active) return;
-    // Which is what this waits out. Both come from the same gesture pair —
+    // Which is what this waits out — bounded, because [_teardown] bounds
+    // every release it awaits. Both come from the same gesture pair —
     // `paused` then `resumed`, or leaving the screen and coming straight
     // back — and a start dropped here would land the user on "Ended".
     await _ending;
-    if (_active ||
+    if (_disposed ||
+        _active ||
         _status == VoiceSessionStatus.connecting ||
         _status == VoiceSessionStatus.live) {
       return;
     }
-    // Read before the mark is consumed, and consumed whatever happens next:
-    // one suspension buys one continuation.
+    // Two different questions, and only the first one bounds the call: is
+    // this the same call (parked, so its cap and its usage carry on), and can
+    // the same Live conversation be picked up (which needs a handle, and only
+    // decides what [_connect] is given). Both marks are consumed here —
+    // one park buys one resume.
+    final parked = _suspended;
     final continuing = resumable;
     _suspended = false;
     final deadline =
-        (continuing ? _capDeadline : null) ?? _now().add(kVoiceSessionCap);
+        (parked ? _capDeadline : null) ?? _now().add(kVoiceSessionCap);
     _capDeadline = deadline;
     if (!deadline.isAfter(_now())) {
-      // Came back after the cap ran out while away. Nothing is connected, and
-      // [_end] stays quiet because the suspension already left the status
-      // ended — so the entry is notified by hand. The mark is already off, so
-      // [_end] drops the handle with the conversation.
+      // Came back after the cap ran out while away. Nothing is active, so
+      // there is nothing to tear down — but the park left the call open, and
+      // this is where it really ends.
+      _resumeHandle = null;
       _entries.add(const VoiceEntry(VoiceEntryKind.system, capReachedCode));
-      await _end();
-      _notify();
+      _closeOut();
       return;
     }
     final gen = ++_generation;
     _active = true;
-    if (!continuing) {
+    if (!parked) {
       _usage = VoiceUsage();
-      _usageStart = _now();
+      _connected = Duration.zero;
     }
+    _segmentStart = _now();
     _capTimer?.cancel();
     _capTimer = Timer(deadline.difference(_now()), () {
       _entries.add(const VoiceEntry(VoiceEntryKind.system, capReachedCode));
@@ -399,7 +421,7 @@ class VoiceSession extends ChangeNotifier {
       _speakerLevelSub = _speaker.level.listen((value) {
         if (speaking) _setLevel(value);
       });
-      // Only a continuation carries the handle: after any other end — the
+      // Only a resumable park carries the handle: after any other end — the
       // cap, a stop — a handle left behind would silently resume the
       // conversation that end was meant to finish.
       final transport = await _connect(continuing ? _resumeHandle : null);
@@ -789,10 +811,7 @@ class VoiceSession extends ChangeNotifier {
   /// locales.
   void _appendUsage() {
     if (!kVoiceUsageReadout) return;
-    final line = voiceUsageLine(
-      _usage,
-      _now().difference(_usageStart ?? _now()),
-    );
+    final line = voiceUsageLine(_usage, _connected);
     _entries.add(VoiceEntry(VoiceEntryKind.system, line));
     debugPrint(line);
   }
@@ -802,27 +821,50 @@ class VoiceSession extends ChangeNotifier {
   Future<void> _end() => _ending = _endAndSettle();
 
   Future<void> _endAndSettle() async {
+    final parked = _suspended;
     await _teardown();
     // After the teardown, not before: a SessionResumptionUpdate already
     // queued on the [_rx] chain can land while it runs and re-arm the handle.
     // A handle must not outlive the conversation it belongs to — left behind
-    // by, say, the cap, a later suspension would stitch the killed
-    // conversation back onto the next call.
-    if (!_suspended) _resumeHandle = null;
-    if (_status != VoiceSessionStatus.ended &&
-        _status != VoiceSessionStatus.error) {
-      _entries.add(const VoiceEntry(VoiceEntryKind.system, endedCode));
-      if (drafts.pending.isNotEmpty) {
-        _entries.add(const VoiceEntry(VoiceEntryKind.system, unsentDraftsCode));
-      }
-      _appendUsage();
-      _setStatus(VoiceSessionStatus.ended);
+    // by, say, the cap, a later park would stitch the killed conversation
+    // back onto the next call.
+    if (!parked) _resumeHandle = null;
+    if (_status == VoiceSessionStatus.ended ||
+        _status == VoiceSessionStatus.error) {
+      return;
     }
+    // A parked call is not over: no "Session ended", no warning about drafts
+    // it is about to come back and send, and no usage readout — that lands
+    // once, at the end that finishes the call, and covers all of it. The
+    // status still flips, because the screen and [start] both key on it.
+    if (parked) {
+      _setStatus(VoiceSessionStatus.ended);
+      return;
+    }
+    _closeOut();
+  }
+
+  /// The lines that close a call out: that it ended, any draft left unsent,
+  /// and what the whole call billed for.
+  void _closeOut() {
+    _entries.add(const VoiceEntry(VoiceEntryKind.system, endedCode));
+    if (drafts.pending.isNotEmpty) {
+      _entries.add(const VoiceEntry(VoiceEntryKind.system, unsentDraftsCode));
+    }
+    _appendUsage();
+    _setStatus(VoiceSessionStatus.ended);
   }
 
   Future<void> _teardown() async {
     if (!_active) return;
     _active = false;
+    // Counted here, where the call stopped being connected — not after the
+    // releases below, which are awaited and can take seconds.
+    final segment = _segmentStart;
+    if (segment != null) {
+      _connected += _now().difference(segment);
+      _segmentStart = null;
+    }
     // Cancelled before the first await: dispose() does not await _end(), and
     // a timer left armed would fire into a torn-down session.
     _capTimer?.cancel();
@@ -846,13 +888,39 @@ class VoiceSession extends ChangeNotifier {
     _playbackEnd = DateTime.fromMillisecondsSinceEpoch(0);
     if (!_disposed) _level.value = 0;
     try {
-      await _mic.stop();
+      await _bounded(_mic.stop());
     } catch (_) {}
     _takeUsage(transport);
     try {
-      await transport?.close();
+      await _bounded(transport?.close());
     } catch (_) {}
-    await _speaker.dispose();
+    await _bounded(_speaker.dispose());
+  }
+
+  /// How long one release is given before the teardown carries on without it.
+  static const _releaseBound = Duration(seconds: 3);
+
+  /// Bounds [work], which is a release that may never complete: `close()` on
+  /// a dead socket is documented to hang (see `voice_transport.dart`), and an
+  /// end that never finishes strands every later [start] on [_ending] — the
+  /// session then reads live forever, the herd screen keeps handing it back,
+  /// and the screen wake is never released.
+  ///
+  /// Not once [dispose] has run: nothing can start a disposed session again,
+  /// so a hung release there strands nobody — and dispose's teardown is
+  /// fire-and-forget, so the bound's timer would outlive whatever dropped the
+  /// session (a widget test fails on exactly that).
+  ///
+  /// ponytail: what hangs is leaked, not recovered — the mic engine or the
+  /// socket stays as it is and the next call builds fresh ones beside it, and
+  /// a teardown of three wedged releases takes 9 s before the next start gets
+  /// through. A leak beats a session that can never be started again; give it
+  /// a real release path if one ever shows up on device. Errors are left to
+  /// the caller, as before.
+  Future<void> _bounded(Future<void>? work) {
+    final release = work ?? Future<void>.value();
+    if (_disposed) return release;
+    return release.timeout(_releaseBound, onTimeout: () {});
   }
 
   void _setStatus(VoiceSessionStatus status, {String? error}) {
@@ -869,6 +937,14 @@ class VoiceSession extends ChangeNotifier {
 
   @override
   void dispose() {
+    // Over, not parked: a disposed session must not read [resumable] true and
+    // invite a [start] onto a mic and speaker it has already released.
+    _suspended = false;
+    _resumeHandle = null;
+    // Set before the end below, not after it: [_bounded] reads it, and the
+    // only thing it changes here is that [_teardown] skips zeroing a [_level]
+    // this same call is about to dispose.
+    _disposed = true;
     unawaited(
       _end().then((_) async {
         await _mic.dispose();
@@ -877,7 +953,6 @@ class VoiceSession extends ChangeNotifier {
         _level.dispose();
       }),
     );
-    _disposed = true;
     super.dispose();
   }
 

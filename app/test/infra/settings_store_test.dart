@@ -1,4 +1,5 @@
 import 'package:drover/src/infra/settings_store.dart';
+import 'package:drover/src/voice/voice_consent_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,7 +20,7 @@ void main() {
     expect(settings.notifyOnBlocked, isTrue);
     expect(settings.notifyOnDone, isTrue);
     expect(settings.voiceAssistantEnabled, isTrue);
-    expect(settings.voiceConsentAccepted, isFalse);
+    expect(settings.voiceConsentVersion, 0);
   });
 
   test('a stored voice-assistant opt-out survives the on-by-default', () async {
@@ -29,11 +30,19 @@ void main() {
     expect((await store.load()).voiceAssistantEnabled, isFalse);
   });
 
-  test('saveVoiceConsentAccepted()/load() roundtrips', () async {
+  test('saveVoiceConsentVersion()/load() roundtrips', () async {
     SharedPreferences.setMockInitialValues({});
-    await store.saveVoiceConsentAccepted(true);
+    await store.saveVoiceConsentVersion(kVoiceConsentVersion);
 
-    expect((await store.load()).voiceConsentAccepted, isTrue);
+    expect((await store.load()).voiceConsentVersion, kVoiceConsentVersion);
+  });
+
+  test('an accept of the old disclosure does not read as consent', () async {
+    // What installs from before the consent was versioned carry. The copy has
+    // changed since, so the only safe reading of it is "not yet accepted".
+    SharedPreferences.setMockInitialValues({'voice_consent_accepted': true});
+
+    expect((await store.load()).voiceConsentVersion, 0);
   });
 
   test('saveNotifyPreferences()/load() roundtrips both switches', () async {

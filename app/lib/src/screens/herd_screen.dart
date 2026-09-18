@@ -891,17 +891,19 @@ class _HerdScreenState extends State<HerdScreen> {
     return bucket == null || (bucket.agents.isEmpty && bucket.error == null);
   });
 
-  /// Opens the voice assistant, gated on the one-time consent to stream
-  /// speech and agent context to Google. Declining returns before any session
-  /// is built, so nothing is recorded, no microphone opens and no socket is
-  /// dialled. Read straight from [SettingsStore] rather than threaded through
-  /// `main.dart`: this is the only place that needs it.
+  /// Opens the voice assistant, gated on consent to stream speech and agent
+  /// context to Google — held as the version of the disclosure the user
+  /// accepted, so a sheet that starts describing different behaviour asks
+  /// again rather than riding on the old yes. Declining returns before any
+  /// session is built, so nothing is recorded, no microphone opens and no
+  /// socket is dialled. Read straight from [SettingsStore] rather than
+  /// threaded through `main.dart`: this is the only place that needs it.
   Future<void> _openVoice(BuildContext context) async {
     final store = SettingsStore();
-    if (!(await store.load()).voiceConsentAccepted) {
+    if ((await store.load()).voiceConsentVersion < kVoiceConsentVersion) {
       if (!context.mounted) return;
       if (!await showVoiceConsentSheet(context)) return;
-      await store.saveVoiceConsentAccepted(true);
+      await store.saveVoiceConsentVersion(kVoiceConsentVersion);
     }
     // The poll keeps running behind the sheet and can empty the scope.
     if (!context.mounted || _hostsInScope.isEmpty) return;

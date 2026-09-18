@@ -867,10 +867,10 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
               unawaited(
                 runBestEffort(() async {
                   await widget.settingsStore.saveVoiceAssistantEnabled(enabled);
-                  // Off is the revoke: clearing the consent makes turning it
-                  // back on ask again before anything is sent.
+                  // Off is the revoke: clearing the accepted version makes
+                  // turning it back on ask again before anything is sent.
                   if (!enabled) {
-                    await widget.settingsStore.saveVoiceConsentAccepted(false);
+                    await widget.settingsStore.saveVoiceConsentVersion(0);
                   }
                 }, context: 'persist voice assistant'),
               );

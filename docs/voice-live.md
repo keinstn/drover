@@ -380,15 +380,24 @@ Consent is taken before anything is sent (2026-09-17): the first tap on the
 voice button opens a sheet naming Google and listing what crosses to it, and
 only an accept builds the session — declining returns to the herd screen with
 no microphone opened and no socket dialled. The answer persists as
-`voice_consent_accepted`, so later taps go straight to the session. The
-Settings toggle ships **on** (2026-09-18) and decides whether the voice entry
-point and its on-device inbox are live at all: the sheet, not the toggle, is
-the opt-in, and it gates every transmission, so a fresh install still sends
-nothing until the user taps the voice button and accepts. Switching the toggle
-off is the revoke — it clears `voice_consent_accepted`, so turning it back on
-asks again. The tools return only agent status and short assistant prose.
-This is a deliberate policy: drover is otherwise SSH-local, and the voice
-path is the only place its data leaves the device for a third-party model, so
+`voice_consent_version` — the version of the disclosure that was accepted,
+not a yes/no (2026-09-19) — so later taps go straight to the session only
+while that version is still current. Bumping `kVoiceConsentVersion`, next to the
+copy in `voice_consent_sheet.dart`, is what re-asks, and copy that describes
+new behaviour has to bump it: this round's own change (leaving the app parks
+the call, and returning re-opens the microphone with no tap of the user's)
+would otherwise have run on a yes given to a sheet that said the opposite.
+Installs from before carry the old `voice_consent_accepted` boolean, which
+nothing reads any more, so they read as "not yet accepted" and are asked
+again. The Settings toggle ships **on** (2026-09-18) and decides whether the
+voice entry point and its on-device inbox are live at all: the sheet, not the
+toggle, is the opt-in, and it gates every transmission, so a fresh install
+still sends nothing until the user taps the voice button and accepts.
+Switching the toggle off is the revoke — it clears the stored version, so
+turning it back on asks again. The tools return only agent status and short
+assistant prose. This is a deliberate policy: drover is otherwise SSH-local,
+and the voice path is the only place its data leaves the device for a
+third-party model, so
 the surface sent there stays as small as the feature allows.
 
 Concretely, what crosses to Gemini Live: the user's microphone audio, and the

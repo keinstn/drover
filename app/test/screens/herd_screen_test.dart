@@ -10,6 +10,7 @@ import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/screens/herd_screen.dart';
 import 'package:drover/src/screens/launch_agent_sheet.dart';
+import 'package:drover/src/voice/voice_consent_sheet.dart';
 import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_screen.dart';
 import 'package:drover/src/voice/voice_session.dart';
@@ -442,8 +443,8 @@ void main() {
       expect(find.text('Voice uses Google Gemini'), findsNothing);
       expect(find.byKey(const ValueKey('voice_button')), findsOneWidget);
       expect(
-        (await SettingsStore().load()).voiceConsentAccepted,
-        isFalse,
+        (await SettingsStore().load()).voiceConsentVersion,
+        0,
         reason: 'a decline must not be remembered as consent',
       );
 
@@ -460,7 +461,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(VoiceScreen), findsOneWidget);
-      expect((await SettingsStore().load()).voiceConsentAccepted, isTrue);
+      expect(
+        (await SettingsStore().load()).voiceConsentVersion,
+        kVoiceConsentVersion,
+      );
 
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
@@ -469,12 +473,50 @@ void main() {
     testWidgets('a later tap goes straight to the session, no sheet', (
       tester,
     ) async {
-      SharedPreferences.setMockInitialValues({'voice_consent_accepted': true});
+      SharedPreferences.setMockInitialValues({
+        'voice_consent_version': kVoiceConsentVersion,
+      });
 
       await openHerd(tester);
 
       expect(find.text('Voice uses Google Gemini'), findsNothing);
       expect(find.byType(VoiceScreen), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('an accept of the old disclosure is asked again', (
+      tester,
+    ) async {
+      // What installs from before the consent was versioned carry: a bare
+      // boolean under the old key. They accepted a sheet that said leaving
+      // the app ends the session, and would otherwise get the microphone
+      // re-opening by itself on a yes they never gave.
+      SharedPreferences.setMockInitialValues({'voice_consent_accepted': true});
+
+      await openHerd(tester);
+
+      expect(find.text('Voice uses Google Gemini'), findsOneWidget);
+      expect(find.byType(VoiceScreen), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('an accept of an older disclosure version is asked again', (
+      tester,
+    ) async {
+      // Written against the constant rather than a literal, so the next bump
+      // is covered by this test the day it lands.
+      SharedPreferences.setMockInitialValues({
+        'voice_consent_version': kVoiceConsentVersion - 1,
+      });
+
+      await openHerd(tester);
+
+      expect(find.text('Voice uses Google Gemini'), findsOneWidget);
+      expect(find.byType(VoiceScreen), findsNothing);
 
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
@@ -488,7 +530,9 @@ void main() {
       sessions = FakeVoiceSessions();
       // Consent is a separate gate, exercised above; here it is out of the
       // way so the first tap goes straight to the screen.
-      SharedPreferences.setMockInitialValues({'voice_consent_accepted': true});
+      SharedPreferences.setMockInitialValues({
+        'voice_consent_version': kVoiceConsentVersion,
+      });
     });
 
     /// Opens the voice screen, lets the server offer a resumption handle —
