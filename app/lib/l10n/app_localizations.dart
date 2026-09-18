@@ -1124,12 +1124,6 @@ abstract class AppLocalizations {
   /// **'Let\'s talk about your agents'**
   String get voiceGreeting;
 
-  /// No description provided for @voiceTranscript.
-  ///
-  /// In en, this message translates to:
-  /// **'Transcript'**
-  String get voiceTranscript;
-
   /// No description provided for @voiceClose.
   ///
   /// In en, this message translates to:

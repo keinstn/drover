@@ -183,7 +183,6 @@
   "voiceEnd": "終了",
   "voiceRestart": "再開",
   "voiceGreeting": "エージェントについて話しましょう",
-  "voiceTranscript": "文字起こし",
   "voiceClose": "閉じる",
   "voiceHint": "エージェントについて聞いてみましょう。例:「どのエージェントが私を待っている？」「claude にテストも追加するよう伝えて」",
   "voiceEventFinished": "{name} が完了しました",

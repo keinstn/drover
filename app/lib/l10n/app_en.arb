@@ -263,7 +263,6 @@
   "voiceEnd": "End",
   "voiceRestart": "Restart",
   "voiceGreeting": "Let's talk about your agents",
-  "voiceTranscript": "Transcript",
   "voiceClose": "Close",
   "voiceHint": "Ask about your agents, e.g. \u201cWhich agent is waiting for me?\u201d, or say \u201cTell claude to add tests too\u201d.",
   "voiceEventFinished": "{name} finished",
