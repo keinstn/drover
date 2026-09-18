@@ -67,7 +67,15 @@ class _FakeLive {
   /// the connection expires (measured 2026-09-18).
   Future<void> expire() => socket!.close(1011, 'auth token has expired');
 
-  Future<void> stop() => _server.close(force: true);
+  /// Kills the TCP connections under the sockets, which is a transport
+  /// failure rather than a close handshake. Idempotent.
+  Future<void> stop() async {
+    if (_stopped) return;
+    _stopped = true;
+    await _server.close(force: true);
+  }
+
+  var _stopped = false;
 }
 
 /// Hands out `token-1`, `token-2`, … each expiring soon enough that the
@@ -200,6 +208,60 @@ void main() {
     expect(seen.last, isA<LiveServerContent>());
   });
 
+  test('the handle the caller passed crosses the first boundary', () async {
+    // A transport VoiceSession rebuilt after a genuine drop starts on the
+    // session's handle; without it, an expiry before the server's own first
+    // update would end the session instead of crossing invisibly.
+    final transport = await connect(resumeHandle: 'handle-0');
+    addTearDown(transport.close);
+
+    var done = false;
+    final seen = <LiveServerMessage>[];
+    transport.receive().listen(
+      (r) => seen.add(r.message),
+      onDone: () => done = true,
+    );
+
+    live.push({
+      'serverContent': {'turnComplete': true},
+    });
+    await until(() => seen.length == 1);
+    await live.expire();
+
+    await until(() => live.setups.length == 2, reason: 'never reconnected');
+    expect(done, isFalse);
+    expect(live.setups.last['session_resumption'], {'handle': 'handle-0'});
+  });
+
+  test(
+    'a server error frame reaches the session and ends its window',
+    () async {
+      final transport = await connect(resumeHandle: 'handle-0');
+      addTearDown(transport.close);
+
+      Object? error;
+      var done = false;
+      transport.receive().listen(
+        (_) {},
+        onError: (Object e) => error = e,
+        onDone: () => done = true,
+      );
+      live.push({
+        'error': {'code': 429, 'message': 'resource exhausted'},
+      });
+
+      // Dropping it would leave the session waiting, microphone open, for a
+      // turn that is never coming.
+      await until(() => error != null, reason: 'the error frame was dropped');
+
+      // And it does not count as a window that carried a conversation, so the
+      // close that follows is not treated as a boundary to resume across.
+      await live.expire();
+      await until(() => done);
+      expect(live.setups, hasLength(1));
+    },
+  );
+
   test('a frame that will not parse becomes a stream error', () async {
     final transport = await connect();
     addTearDown(transport.close);
@@ -209,6 +271,32 @@ void main() {
     live.socket!.add('not json');
 
     await until(() => error != null, reason: 'the bad frame vanished');
+  });
+
+  test('a failed reconnect is handed up as an error, not an end', () async {
+    final transport = await connect();
+    addTearDown(transport.close);
+
+    Object? error;
+    var done = false;
+    transport.receive().listen(
+      (_) {},
+      onError: (Object e) => error = e,
+      onDone: () => done = true,
+    );
+
+    live.push({
+      'sessionResumptionUpdate': {'newHandle': 'handle-1', 'resumable': true},
+    });
+    await until(() => minter.minted >= 2);
+    // The next window is refused. The session has to hear about it — it still
+    // has its own reconnect to spend — rather than see the call simply end.
+    live.refuse.add('token-2');
+    await live.expire();
+
+    await until(() => error != null, reason: 'the failure was swallowed');
+    await until(() => done);
+    expect('$error', isNot(contains('token-2')));
   });
 
   test('any other close ends the stream, as a genuine drop must', () async {

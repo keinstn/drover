@@ -11,6 +11,10 @@ import 'voice_tools.dart';
 
 /// Gemini Live model used for the voice assistant (Firebase AI Logic, Gemini
 /// Developer API backend — no API key ships in the app).
+///
+/// On the minted-token path this has to stay equal to `voiceModel` in
+/// `functions/src/index.ts`, which the token's `fieldMask` freezes: bump one
+/// without the other and the constrained endpoint refuses every session.
 const kVoiceModel = 'gemini-3.1-flash-live-preview';
 
 const kVoiceSystemPrompt = '''
@@ -235,7 +239,12 @@ class TokenVoiceTransport implements VoiceTransport {
       'contextWindowCompression': config.contextWindowCompression!.toJson(),
     };
     final transport = TokenVoiceTransport._(mint, setup, endpoint)
-      .._onRawFrame = onRawFrame;
+      .._onRawFrame = onRawFrame
+      // Seeded, not waited for: without it the first window of a transport
+      // built by `VoiceSession._lost` has no handle of its own, so a token
+      // expiry arriving before the server's first update would end the
+      // session instead of crossing invisibly.
+      .._handle = resumeHandle;
     await transport._open(resumeHandle);
     return transport;
   }
@@ -284,7 +293,17 @@ class TokenVoiceTransport implements VoiceTransport {
         (frame) => _onFrame(frame, ready),
         onDone: () => _onDone(opened, ready),
         onError: (Object e) {
-          if (!ready.isCompleted) ready.completeError(e);
+          if (!ready.isCompleted) {
+            ready.completeError(e);
+            return;
+          }
+          // After the handshake there is nobody left to hand a socket error
+          // to but the session, and a hard transport failure must not reach
+          // it as an ordinary end of conversation. Same as firebase_ai's own
+          // session: add the error, then let it close.
+          if (_out.isClosed) return;
+          _out.addError(e);
+          unawaited(_out.close());
         },
       );
       opened.add(jsonEncode({'setup': _setup(handle)}));
@@ -344,8 +363,10 @@ class TokenVoiceTransport implements VoiceTransport {
       if (!ready.isCompleted) ready.complete();
       return;
     }
-    _framesThisWindow++;
+    // After the mapping, so an error frame — which throws — is not counted as
+    // a window that carried something.
     final message = voiceServerMessage(json);
+    _framesThisWindow++;
     if (message == null || _out.isClosed) return;
     if (message is SessionResumptionUpdate &&
         message.resumable == true &&
@@ -374,6 +395,10 @@ class TokenVoiceTransport implements VoiceTransport {
     // ponytail: matched on the close the server actually sends. A different
     // wording falls through to the ordinary drop path, which reconnects once
     // on the session's own handle — one spent budget, not a broken session.
+    // And the reconnect itself is uncapped: a server that kept handing out
+    // already-expiring tokens would mint and reopen in a loop, bounded only
+    // by [kVoiceSessionCap]. Add a backoff if that ever happens; a counter
+    // for a case that means the mint's clock is broken would be guesswork.
     if (_handle != null &&
         _framesThisWindow > 0 &&
         socket.closeCode == 1011 &&
@@ -456,6 +481,12 @@ class TokenVoiceTransport implements VoiceTransport {
 /// not exported; the types and their constructors are. Only the frames
 /// [VoiceSession] acts on are mapped.
 LiveServerMessage? voiceServerMessage(Map<String, Object?> json) {
+  // Thrown rather than returned, exactly as the package's parser does: the
+  // server reporting an error has to reach the session, or it sits with an
+  // open microphone waiting for a turn that will never come.
+  if (json['error'] case final Object error) {
+    throw StateError('live server error: ${jsonEncode(error)}');
+  }
   if (json['serverContent'] case final Map<String, Object?> content) {
     return LiveServerContent(
       modelTurn: switch (content['modelTurn']) {

@@ -436,6 +436,10 @@ const voiceTokenNewSessionLifetimeMs = 60 * 1000;
 // the server; everything else in the client's setup (system prompt, tools,
 // speech config, transcription, context-window compression) stays the
 // client's, and `fieldMask` names exactly what is frozen.
+//
+// Must stay equal to `kVoiceModel` in app/lib/src/voice/voice_transport.dart,
+// which the client sends in its own setup: bump one without the other and the
+// constrained endpoint refuses every session.
 const voiceModel = "models/gemini-3.1-flash-live-preview";
 
 // Mints a short-lived Gemini Live API token for a signed-in app install.

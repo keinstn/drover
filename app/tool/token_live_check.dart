@@ -56,6 +56,9 @@ void main() {
       }
 
       final raw = <String>[];
+      // In a teardown, so a run that fails halfway still leaves behind the
+      // frames it did see.
+      addTearDown(() => _writeFixtures(raw));
       var errored = false;
       var closed = false;
 
@@ -169,7 +172,6 @@ void main() {
       expect(recalled.toLowerCase(), contains('pomegranate'));
 
       await transport.close();
-      _writeFixtures(raw);
     },
     timeout: const Timeout(Duration(minutes: 6)),
   );
@@ -209,7 +211,9 @@ Future<VoiceToken> _mint(String key, Duration window) async {
     final response = await request.close();
     final body = await response.transform(utf8.decoder).join();
     if (response.statusCode != 200) {
-      throw StateError('mint failed: HTTP ${response.statusCode} $body');
+      // Status only, like the Function's own failure log: the error body
+      // echoes the request back.
+      throw StateError('mint failed: HTTP ${response.statusCode}');
     }
     final decoded = jsonDecode(body) as Map<String, Object?>;
     return VoiceToken(
