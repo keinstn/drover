@@ -533,6 +533,19 @@ class AppLocalizationsEn extends AppLocalizations {
       'Talk to drover about your agents. Agent status and short summaries of their replies are sent to Google\'s Gemini Live API for the conversation.';
 
   @override
+  String get settingsAccount => 'Account';
+
+  @override
+  String get settingsAccountSignIn => 'Sign in with Apple';
+
+  @override
+  String get settingsAccountSignedIn => 'Signed in with Apple';
+
+  @override
+  String get settingsAccountSignInFailed =>
+      'Couldn\'t sign in. Tap to try again.';
+
+  @override
   String get herdVoiceButton => 'Voice assistant';
 
   @override
