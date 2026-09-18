@@ -1,0 +1,81 @@
+{
+  "audioContent": {
+    "serverContent": {
+      "modelTurn": {
+        "parts": [
+          {
+            "inlineData": {
+              "mimeType": "audio/pcm;rate=24000",
+              "data": "ywHeAdMB0wGyAY8BYwFQATIB6gClAHUANQD7/+z/2P+f/4f/h/+G/4//iP+D/4T/",
+              "_truncated": true
+            }
+          }
+        ]
+      },
+      "outputTranscription": {
+        "text": "ok"
+      }
+    }
+  },
+  "outputTranscription": {
+    "serverContent": {
+      "modelTurn": {
+        "parts": [
+          {
+            "inlineData": {
+              "mimeType": "audio/pcm;rate=24000",
+              "data": "ywHeAdMB0wGyAY8BYwFQATIB6gClAHUANQD7/+z/2P+f/4f/h/+G/4//iP+D/4T/",
+              "_truncated": true
+            }
+          }
+        ]
+      },
+      "outputTranscription": {
+        "text": "ok"
+      }
+    }
+  },
+  "turnComplete": {
+    "serverContent": {
+      "turnComplete": true
+    },
+    "usageMetadata": {
+      "promptTokenCount": 982,
+      "responseTokenCount": 20,
+      "totalTokenCount": 1002,
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 742
+        },
+        {
+          "modality": "AUDIO",
+          "tokenCount": 201
+        }
+      ],
+      "responseTokensDetails": [
+        {
+          "modality": "AUDIO",
+          "tokenCount": 20
+        }
+      ]
+    }
+  },
+  "toolCall": {
+    "toolCall": {
+      "functionCalls": [
+        {
+          "name": "favourite_colour",
+          "args": {},
+          "id": "fc_3899343134923827222"
+        }
+      ]
+    }
+  },
+  "sessionResumptionUpdate": {
+    "sessionResumptionUpdate": {
+      "newHandle": "REDACTED-HANDLE",
+      "resumable": true
+    }
+  }
+}
