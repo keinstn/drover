@@ -247,6 +247,12 @@ class TokenVoiceTransport implements VoiceTransport {
   Timer? _mintTimer;
   var _closed = false;
 
+  /// Server frames seen on the current socket. A window that ends after
+  /// carrying nothing is not a window boundary, whatever it closes with, and
+  /// resuming it would be a mint-and-reconnect loop against a token the
+  /// server refuses on sight.
+  var _framesThisWindow = 0;
+
   Future<void> _open(String? handle) async {
     final token = _nextToken ?? await _mint();
     _nextToken = null;
@@ -269,6 +275,7 @@ class TokenVoiceTransport implements VoiceTransport {
       rethrow;
     }
     _socket = socket;
+    _framesThisWindow = 0;
     _armMint(token);
   }
 
@@ -297,6 +304,7 @@ class TokenVoiceTransport implements VoiceTransport {
       if (!ready.isCompleted) ready.complete();
       return;
     }
+    _framesThisWindow++;
     final message = voiceServerMessage(json);
     if (message == null || _out.isClosed) return;
     if (message is SessionResumptionUpdate &&
@@ -327,6 +335,7 @@ class TokenVoiceTransport implements VoiceTransport {
     // wording falls through to the ordinary drop path, which reconnects once
     // on the session's own handle — one spent budget, not a broken session.
     if (_handle != null &&
+        _framesThisWindow > 0 &&
         socket.closeCode == 1011 &&
         (socket.closeReason ?? '').toLowerCase().contains('expire')) {
       unawaited(_reopen());

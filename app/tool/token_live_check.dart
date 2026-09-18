@@ -75,13 +75,15 @@ void main() {
         ),
       ];
 
-      var expiry = DateTime.now().toUtc();
+      // The FIRST token's expiry: the transport mints the next one ahead of
+      // the boundary, and waiting for that one's would step over two windows.
+      DateTime? expiry;
       final transport = await TokenVoiceTransport.connect(
         tools: tools,
         languageCode: 'en-US',
         mint: () async {
           final token = await _mint(key, _window);
-          expiry = token.expiresAt;
+          expiry ??= token.expiresAt;
           _say(
             'minted a token expiring at ${token.expiresAt.toIso8601String()}',
           );
@@ -151,10 +153,9 @@ void main() {
       );
       expect(colour.toLowerCase(), contains('ultramarine'));
 
-      _say('waiting for the window to end at ${expiry.toIso8601String()}');
-      while (DateTime.now().toUtc().isBefore(
-        expiry.add(const Duration(seconds: 10)),
-      )) {
+      final boundary = expiry!.add(const Duration(seconds: 10));
+      _say('waiting for the window to end at ${expiry!.toIso8601String()}');
+      while (DateTime.now().toUtc().isBefore(boundary)) {
         await Future<void>.delayed(const Duration(seconds: 5));
       }
       _say('past the boundary; errored=$errored closed=$closed');

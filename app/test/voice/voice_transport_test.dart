@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -63,18 +62,16 @@ class _FakeLive {
   Future<void> stop() => _server.close(force: true);
 }
 
-/// Hands out `token-1`, `token-2`, … each expiring after [lifetime].
+/// Hands out `token-1`, `token-2`, … each expiring soon enough that the
+/// transport's pre-mint fires straight away.
 class _FakeMinter {
-  _FakeMinter({this.lifetime = const Duration(milliseconds: 50)});
-
-  final Duration lifetime;
   var minted = 0;
 
   Future<VoiceToken> call() async {
     minted++;
     return VoiceToken(
       token: 'token-$minted',
-      expiresAt: DateTime.now().toUtc().add(lifetime),
+      expiresAt: DateTime.now().toUtc().add(const Duration(milliseconds: 50)),
     );
   }
 }
@@ -191,6 +188,29 @@ void main() {
 
     await until(() => done, reason: 'the drop never reached the session');
     expect(live.setups, hasLength(1));
+  });
+
+  test('a window that carried nothing is not resumed again', () async {
+    final transport = await connect();
+    addTearDown(transport.close);
+
+    var seen = 0;
+    var done = false;
+    transport.receive().listen((_) => seen++, onDone: () => done = true);
+
+    live.push({
+      'sessionResumptionUpdate': {'newHandle': 'handle-1', 'resumable': true},
+    });
+    await until(() => seen == 1);
+    await live.expire();
+    await until(() => live.setups.length == 2);
+
+    // The second window dies having carried nothing. A token the server
+    // refuses on sight looks exactly like this, and resuming it again would
+    // be a mint-and-reconnect loop, so the drop goes up to the session.
+    await live.expire();
+    await until(() => done, reason: 'the transport kept reconnecting');
+    expect(live.setups, hasLength(2));
   });
 
   test('an expiry close with no handle yet ends the stream', () async {
