@@ -675,7 +675,25 @@ class VoiceSession extends ChangeNotifier {
   Future<void> _fail(String message) async {
     if (!_active) return;
     await _teardown();
+    // A call that died still burned tokens, and a cost measurement that drops
+    // exactly the calls that went wrong measures the wrong population.
+    _appendUsage();
     _setStatus(VoiceSessionStatus.error, error: message);
+  }
+
+  /// Logs what this call billed for, once, at whichever end it reached.
+  ///
+  /// Carries its own text rather than a code: the screen renders an unknown
+  /// system code as it stands, and a developer readout is not worth two
+  /// locales.
+  void _appendUsage() {
+    if (!kVoiceUsageReadout) return;
+    final line = voiceUsageLine(
+      _usage,
+      _now().difference(_usageStart ?? _now()),
+    );
+    _entries.add(VoiceEntry(VoiceEntryKind.system, line));
+    debugPrint(line);
   }
 
   Future<void> _end() async {
@@ -686,17 +704,7 @@ class VoiceSession extends ChangeNotifier {
       if (drafts.pending.isNotEmpty) {
         _entries.add(const VoiceEntry(VoiceEntryKind.system, unsentDraftsCode));
       }
-      if (kVoiceUsageReadout) {
-        // Carries its own text rather than a code: the screen renders an
-        // unknown system code as it stands, and a developer readout is not
-        // worth two locales.
-        final line = voiceUsageLine(
-          _usage,
-          _now().difference(_usageStart ?? _now()),
-        );
-        _entries.add(VoiceEntry(VoiceEntryKind.system, line));
-        debugPrint(line);
-      }
+      _appendUsage();
       _setStatus(VoiceSessionStatus.ended);
     }
   }
