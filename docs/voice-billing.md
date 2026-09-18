@@ -2,20 +2,30 @@
 
 A design note, not a built feature. Nothing here is implemented; the voice
 assistant is free while it lives on the `voice-live` branch. Written
-2026-09-13.
+2026-09-13, revised 2026-09-18 after the ephemeral-token measurements below.
 
 If voice is ever sold, it is sold as prepaid **Voice Credits** through an Apple
-consumable in-app purchase, and that needs two pieces of backend that drover
-does not have:
+consumable in-app purchase. One piece of backend is needed whatever else is
+decided:
 
 - **Firebase Functions v2 + Firestore** for purchase verification, the wallet,
   an immutable ledger, and refunds.
+
+How a session is gated against that wallet is a separate choice, and there are
+two designs rather than one:
+
+- **An ephemeral Live API token**, minted by a Function that checks the balance
+  first. The app still connects to Gemini itself, with a credential that is
+  good for one bounded window. Measured 2026-09-18 and it holds — see "Gating
+  a direct connection with an ephemeral token". What it sells is time granted.
 - **Cloud Run** as a Voice Gateway: the app connects there instead of to Gemini,
   and the relay meters the session and cuts it off when the balance runs out.
+  This is the only design that meters what was actually consumed.
 
-Today the client talks to Firebase AI Logic directly. That is fine for a free
-or invite-only beta, but it is not a boundary anyone can be charged against —
-see "Why the direct connection cannot enforce a balance" below.
+Today the client talks to Firebase AI Logic with no gate at all. That is fine
+for a free or invite-only beta, but it is not a boundary anyone can be charged
+against. What changes that is a minted token; a relay is required only to sell
+consumption rather than time.
 
 ## Credits, not minutes
 
@@ -28,8 +38,16 @@ text tokens and on accumulated context, so wall-clock time and real cost do not
 track each other closely enough to sell by the minute.
 
 Under App Store Review Guideline 3.1.1, purchased credits never expire. The
-only thing with an expiry is the lease a session takes out against the balance
-while it runs.
+only thing with an expiry is what a session holds while it runs — a lease
+against the balance under the relay design, the minted token itself under the
+other.
+
+The ephemeral-token design cuts across this and the tension is real rather than
+cosmetic. A minted token bounds a window of time, so time is the only thing it
+can meter; but cost is quadratic in turn count (below), so a window of fixed
+length costs a variable amount. Under that design the session cap
+(`kVoiceSessionCap`) stops being only a safety rail and becomes the thing that
+bounds the variance. Credits that drain with measured use need the relay.
 
 ## Purchase
 
@@ -58,7 +76,9 @@ balance may not survive a reinstall or a new device.
 
 ## Voice Gateway
 
-A paid session runs through Cloud Run, not straight to Gemini:
+Needed only if credits are denominated in consumption rather than in time
+granted; the token design above covers the latter without any of this. Where it
+is needed, a paid session runs through Cloud Run rather than straight to Gemini:
 
 ```text
 1. App connects to Cloud Run
@@ -80,6 +100,12 @@ connections as a first-class case. It still caps connection lifetime, so the
 relay has to implement Live API session resumption and reconnect.
 
 ## Firestore model
+
+The wallet and the ledger are needed either way. The reservation fields and
+the whole `voiceSessions` collection below belong to the relay: they exist to
+settle a session against what it actually consumed, which is the thing a
+minted token cannot tell you. Under the token design a session records the
+window it was granted instead, and there is nothing to settle.
 
 ```text
 users/{uid}/wallet
@@ -112,45 +138,123 @@ If a refund lands after the credits were already spent, do not delete history.
 Write a negative ledger event, and if that leaves the balance short, either
 stop new sessions or hand it to support.
 
-## Why the direct connection cannot enforce a balance
+## What a long-lived credential cannot enforce
 
 The shortcut — check the balance in Functions, let the client connect to AI
-Logic itself, report usage afterwards — reads like it works and does not. A
-modified client skips the check, an old build ignores whatever limit was added
-later, the server never sees the audio it is billing for, and nothing can hang
-up on a session whose credits ran out. It is fine for a free beta and unusable
-as a paywall.
+Logic on its own long-lived credential, report usage afterwards — reads like
+it works and does not. A modified client skips the check, an old build ignores
+whatever limit was added later, the server never sees the audio it is billing
+for, and nothing can hang up on a session whose credits ran out. It is fine for
+a free beta and unusable as a paywall.
 
-Underneath that sits a harder limit. As of `firebase_ai` 4.0.0, checked
-2026-09-17, the SDK never surfaces `usageMetadata` on the Live path: `api.dart`
-parses it for `generateContent`, but `LiveServerResponse` carries nothing but a
-`LiveServerMessage`, no variant of that sealed type holds usage, and the string
-does not appear in `live_api.dart`, `live_session.dart` or `live_model.dart` at
-all. The app therefore cannot see what a voice session cost, at any point on
-the client path. So the relay is not only where a balance can be enforced — it
-is the only place a meter can exist, because only a raw Live WebSocket sees the
-field. Re-check this against a newer `firebase_ai` before relying on it.
+Every one of those failures comes from the same place: the client holds a
+credential that outlives the check. An ephemeral token removes exactly that, and
+the section below is the measurement. A modified client cannot skip a check it
+has to pass to obtain a credential at all; an old build cannot ignore a limit
+that is enforced server-side at mint time; and a session does get hung up on,
+because the token's expiry ends it in flight — though that hangs up at the end
+of a granted window rather than at the moment credits run out, which is a
+weaker promise than the relay's. What survives untouched is the third item: the
+server still never sees the audio, so it still cannot bill for what was
+consumed, only for what was granted.
+
+Underneath that sits a separate limit, about the SDK rather than the design. As
+of `firebase_ai` 4.0.0, checked 2026-09-17, the SDK never surfaces
+`usageMetadata` on the Live path: `api.dart` parses it for `generateContent`,
+but `LiveServerResponse` carries nothing but a `LiveServerMessage`, no variant
+of that sealed type holds usage, and the string does not appear in
+`live_api.dart`, `live_session.dart` or `live_model.dart` at all. Only a raw
+Live WebSocket sees the field. That fact stands, but it does not make the relay
+the only possible meter: under the token design the app itself holds the raw
+socket, and `usageMetadata` arrives on it normally — confirmed over a token
+connection on 2026-09-18. What the relay uniquely offers is a meter the *user's
+device does not control*, which is a different property from seeing the number.
+Re-check the SDK side against a newer `firebase_ai` before relying on it.
+
+## Gating a direct connection with an ephemeral token
+
+Measured 2026-09-18 against `models/gemini-3.1-flash-live-preview`, minting on
+`v1alpha` and connecting on `v1beta`, with `app/tool/token_probe.dart`. A
+Function can check the wallet and mint a short-lived Live API token; the app
+connects to Google with it and no relay sits in the audio path.
+
+**`uses` counts session starts, not messages, and a resumption reconnect does
+not consume one.** This is the trap that would quietly make a wallet check
+useless. Three turns ran fine on a `uses: 1` token; a second connect without a
+resumption handle was refused with `1011 "Token has been used too many times"`.
+But the same spent token kept accepting reconnects that carried a resumption
+handle, one after another, with the context growing each time. Do not treat
+`uses` as a budget — it bounds only the first unhandled connect.
+
+**`expireTime` is the real boundary.** It ends a session already in flight: a
+session taking a turn every twenty seconds across its token's expiry was closed
+by the server within a second of the stated time, with `1011 "auth token has
+expired"`, and nothing after that was answered. It also refuses resumption
+afterwards — reconnecting on a valid handle with the expired token gave `1011
+"Token has expired"`. A freshly minted token resumed the same handle
+immediately, and the conversation's context was still there. The mint will not
+issue a token living longer than 20 hours (`expire_time is too far in the
+future. Maximum lifetime is 20h`).
+
+**So a mint is a genuine meter tick.** Each one grants exactly the window it was
+minted for, the client cannot extend that window from inside it, and
+continuing past it means coming back through the Function — which is another
+balance check. The unit this can sell is time granted, not tokens consumed.
+
+**Session resumption survives all of it**, including being handed to a token
+that did not create the handle. The app's existing reconnect
+(`VoiceSession`) is compatible with a paid path; this was the risk that would
+have killed the design outright, and it did not materialise.
+
+What it does not give you is a closed loop. One granted window is a blank cheque
+at whatever rate the client drives it, and there is no usage API on the token
+resource at all — list and get, on both API versions, all return 404 with an
+empty body. Reconciliation can therefore only come from the Cloud Billing
+export, after the fact.
+
+Two things the official documentation gets wrong, both of which cost an hour to
+find and neither of which is written down anywhere else:
+
+- An ephemeral token is **not** accepted on the `BidiGenerateContent` RPC that
+  an API key uses. It goes to **`BidiGenerateContentConstrained`**, with the
+  token's resource name in an `?access_token=` query parameter. Every form the
+  docs suggest — `access_token` on the plain RPC, an `Authorization: Token`
+  header, the token as an API key — is rejected, on both API versions.
+- The mint field the docs call `liveConnectConstraints` does not exist over
+  REST; sending it is a 400. The real field is **`bidiGenerateContentSetup`**
+  plus a **`fieldMask`** naming which of its fields are frozen. That lock is
+  enforced: on a token whose `model` is masked, a setup asking for a model that
+  does not exist still connects, while the same request on an unconstrained
+  token is refused with `1008 "models/... is not found"`. The client's value is
+  ignored rather than honoured, which is what makes it a real constraint.
+
+Re-check all of this before relying on it; ephemeral tokens are a preview
+feature of a preview API, and the documentation is already out of step with the
+behaviour.
 
 ## Before setting a price
 
 Measure first: input audio tokens, output audio tokens, input and output text
 tokens, session length, usage after context compression, Cloud Run's
 concurrency and egress, and the gap between reported usage and what Cloud
-Billing settles at. None of it can be measured from the app, for the reason
-above — it takes either a raw Live WebSocket probe, which is the relay's first
-slice rather than throwaway work, or cost deltas read out of the billing
-export. See [billing-cli-setup.md](billing-cli-setup.md) for the latter.
+Billing settles at. None of it is visible through `firebase_ai`, for the reason
+above — it takes either a raw Live WebSocket, which both the relay and the
+token design end up holding, or cost deltas read out of the billing export. See
+[billing-cli-setup.md](billing-cli-setup.md) for the latter.
 
-The first slice of that exists: `app/tool/live_probe.dart` opens the raw Live
-WebSocket, bypassing `firebase_ai`, and dumps every `usageMetadata` verbatim.
+Two probes do this already, neither of them throwaway work:
+`app/tool/live_probe.dart` opens the raw Live WebSocket, bypassing
+`firebase_ai`, and dumps every `usageMetadata` verbatim;
+`app/tool/token_probe.dart` does the same over an ephemeral token and is where
+the section above was measured.
 
-What it measured against `gemini-3.1-flash-live-preview` on 2026-09-18, over
-five text-input turns with audio responses: **accumulated context is re-billed
-at the modality it arrived in.** Each turn's `promptTokensDetails` carried an
-AUDIO count equal to the running sum of every prior response's audio tokens —
-25, then 48, then 71, then 96 — while its TEXT count grew separately. Audio
-history stays audio; it is not folded into text. That was the open question,
-and it resolved to the expensive branch.
+What `live_probe.dart` measured against `gemini-3.1-flash-live-preview` on
+2026-09-18, over five text-input turns with audio responses: **accumulated
+context is re-billed at the modality it arrived in.** Each turn's
+`promptTokensDetails` carried an AUDIO count equal to the running sum of every
+prior response's audio tokens — 25, then 48, then 71, then 96 — while its
+TEXT count grew separately. Audio history stays audio; it is not folded into
+text. That was the open question, and it resolved to the expensive branch.
 
 A separate single audio-input turn reported a prompt of TEXT 132 + AUDIO 72
 for 2.95 s of speech — about **25 tokens per second of input audio** — and a
@@ -191,11 +295,17 @@ export, and verify the production App Check configuration. Explicit consent for
 sending audio to an AI service and a session cap both shipped in #254. Then the
 billing control plane — `in_app_purchase`, consumable products, transaction
 verification, `appAccountToken` binding, the wallet and ledger, Server
-Notifications V2, refund and revoke handling. The paid gateway comes last:
-the Cloud Run relay, auth and App Check checks, reserve/settle/return, stored
-`usageMetadata`, disconnect on empty balance, crash recovery, and a daily
-reconciliation against Cloud Billing. All three are validated in the StoreKit
-sandbox and on TestFlight.
+Notifications V2, refund and revoke handling. Then the gate: a Function that
+checks the balance and mints an ephemeral token per window, which is a small
+piece of work and enough to sell time.
+
+The Cloud Run relay is no longer on that path. It is what you build if credits
+have to be denominated in consumption — the relay itself, auth and App Check
+checks, reserve/settle/return, stored `usageMetadata`, disconnect on empty
+balance, crash recovery, and a daily reconciliation against Cloud Billing. That
+is a large, always-on service in the audio path, so decide what is being sold
+before committing to it. Whatever ships is validated in the StoreKit sandbox and
+on TestFlight.
 
 ## References
 
@@ -203,3 +313,5 @@ sandbox and on TestFlight.
 - [App Store Server API](https://developer.apple.com/documentation/appstoreserverapi)
 - [App Store Server Notifications](https://developer.apple.com/documentation/appstoreservernotifications)
 - [Cloud Run WebSockets](https://cloud.google.com/run/docs/triggering/websockets)
+- [Live API ephemeral tokens](https://ai.google.dev/gemini-api/docs/live-api/ephemeral-tokens)
+  — wrong about how a token is presented; see the section above.
