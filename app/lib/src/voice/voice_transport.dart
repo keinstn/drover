@@ -1,12 +1,20 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' show Locale;
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_ai/firebase_ai.dart';
 
 import 'voice_tools.dart';
 
 /// Gemini Live model used for the voice assistant (Firebase AI Logic, Gemini
 /// Developer API backend — no API key ships in the app).
+///
+/// On the minted-token path this has to stay equal to `voiceModel` in
+/// `functions/src/index.ts`, which the token's `fieldMask` freezes: bump one
+/// without the other and the constrained endpoint refuses every session.
 const kVoiceModel = 'gemini-3.1-flash-live-preview';
 
 const kVoiceSystemPrompt = '''
@@ -39,6 +47,26 @@ abstract interface class VoiceTransport {
   Future<void> close();
 }
 
+/// The live generation config both transports connect with. Only
+/// `responseModalities` is frozen server side when the session runs on a
+/// minted token; the rest is the client's, and stays here so the two
+/// transports cannot drift apart.
+LiveGenerationConfig voiceGenerationConfig(String languageCode) =>
+    LiveGenerationConfig(
+      responseModalities: [ResponseModalities.audio],
+      speechConfig: SpeechConfig(
+        voiceName: 'Aoede',
+        languageCode: languageCode,
+      ),
+      inputAudioTranscription: AudioTranscriptionConfig(),
+      outputAudioTranscription: AudioTranscriptionConfig(),
+      // Keeps the conversation inside the model's context window across a
+      // resumed connection by dropping the oldest turns.
+      contextWindowCompression: ContextWindowCompressionConfig(
+        slidingWindow: SlidingWindow(),
+      ),
+    );
+
 /// [VoiceTransport] over a Firebase AI [LiveSession].
 class FirebaseVoiceTransport implements VoiceTransport {
   FirebaseVoiceTransport._(this._session);
@@ -59,20 +87,7 @@ class FirebaseVoiceTransport implements VoiceTransport {
       model: kVoiceModel,
       systemInstruction: Content.text(kVoiceSystemPrompt),
       tools: [voiceToolsToFirebase(tools)],
-      liveGenerationConfig: LiveGenerationConfig(
-        responseModalities: [ResponseModalities.audio],
-        speechConfig: SpeechConfig(
-          voiceName: 'Aoede',
-          languageCode: languageCode,
-        ),
-        inputAudioTranscription: AudioTranscriptionConfig(),
-        outputAudioTranscription: AudioTranscriptionConfig(),
-        // Keeps the conversation inside the model's context window across a
-        // resumed connection by dropping the oldest turns.
-        contextWindowCompression: ContextWindowCompressionConfig(
-          slidingWindow: SlidingWindow(),
-        ),
-      ),
+      liveGenerationConfig: voiceGenerationConfig(languageCode),
     );
     return FirebaseVoiceTransport._(
       await model.connect(
@@ -101,3 +116,439 @@ class FirebaseVoiceTransport implements VoiceTransport {
   @override
   Future<void> close() => _session.close();
 }
+
+// --------------------------------------------------------------- minted token
+
+/// Which transport a production [VoiceSession] builds.
+///
+/// `false` keeps today's path: the app opens the Live session itself through
+/// Firebase AI Logic. `true` moves it behind `mintVoiceToken`, a Cloud
+/// Function that mints a short-lived Live API token the app then connects
+/// with — the only shape in which a server-side check can ever gate a
+/// session. Defaults to `false` because the Function is not deployed yet, so
+/// a `true` here would ship an app that cannot start a session at all.
+const kVoiceUseMintedToken = false;
+
+/// The RPC an ephemeral token connects to.
+///
+/// NOT the documented `BidiGenerateContent`: every documented way of
+/// presenting a minted token to that RPC is rejected with 1008, and the token
+/// belongs on `BidiGenerateContentConstrained` as `?access_token=`
+/// (measured 2026-09-18, `app/tool/token_probe.dart`).
+const kVoiceLiveEndpoint =
+    'wss://generativelanguage.googleapis.com/ws/'
+    'google.ai.generativelanguage.v1beta.GenerativeService'
+    '.BidiGenerateContentConstrained';
+
+/// How far ahead of [VoiceToken.expiresAt] the next token is minted, so the
+/// socket can be reopened the instant the server closes the expired one.
+const kVoiceTokenMintLead = Duration(seconds: 15);
+
+/// A minted Live API token and the instant the server stops honouring it.
+class VoiceToken {
+  const VoiceToken({required this.token, required this.expiresAt});
+
+  /// The token's resource name, which is what `?access_token=` carries. A
+  /// bearer credential: never log it.
+  final String token;
+
+  /// When the session is closed with 1011 "auth token has expired" and the
+  /// token stops opening new ones.
+  final DateTime expiresAt;
+}
+
+/// Removes a minted token from [text], which is on its way to a log, an error
+/// string or the voice transcript.
+///
+/// `dart:io` puts the entire request URI into a [WebSocketException]'s
+/// message, and the token rides in that URI's query string — so the failure
+/// path that fires when a token expires or is refused, which this design
+/// walks routinely, is exactly the one that would write a live credential
+/// into the device log. The query parameter is scrubbed as well as the token
+/// itself, in case the text carries a URI this caller did not mint.
+String scrubVoiceToken(String text, String token) => text
+    .replaceAll(token, '<token>')
+    .replaceAll(RegExp(r'access_token=[^&\s,)"]+'), 'access_token=<token>');
+
+/// Mints one token. Production calls the Cloud Function; the live check under
+/// `app/tool/` mints straight from the Gemini API with a key, which is why
+/// this is injectable at all.
+typedef VoiceTokenMinter = Future<VoiceToken> Function();
+
+/// Asks `mintVoiceToken` for a token. Firebase Auth and App Check are carried
+/// and verified by the callable itself.
+Future<VoiceToken> mintVoiceTokenFromFunctions() async {
+  final result = await FirebaseFunctions.instanceFor(
+    region: 'us-central1',
+  ).httpsCallable('mintVoiceToken').call<Map<String, Object?>>();
+  return VoiceToken(
+    token: result.data['token']! as String,
+    expiresAt: DateTime.parse(result.data['expireTime']! as String),
+  );
+}
+
+/// [VoiceTransport] over a raw Live WebSocket opened with a minted token.
+///
+/// Speaks the wire protocol directly and hands [VoiceSession] the same
+/// `firebase_ai` types [FirebaseVoiceTransport] does, so nothing above it
+/// knows which one it got.
+///
+/// The token's expiry — not the server's own connection cap — is what ends
+/// these connections, and it is expected rather than exceptional: the next
+/// token is minted [kVoiceTokenMintLead] ahead, and when the socket closes at
+/// expiry the transport reopens it on the stored resumption handle
+/// *underneath* [receive], which never closes. The session above therefore
+/// sees no drop at all: nothing is logged, and the one reconnect
+/// `VoiceSession._lost` allows a genuine drop is left unspent. Any other
+/// close ends the stream, exactly as before.
+class TokenVoiceTransport implements VoiceTransport {
+  TokenVoiceTransport._(this._mint, this._setup, this._endpoint);
+
+  static const _handshakeTimeout = Duration(seconds: 30);
+
+  /// Opens a session on a freshly minted token.
+  ///
+  /// [mint], [endpoint] and [onRawFrame] are seams for the live check under
+  /// `app/tool/` and for tests; nothing in the app passes them. [onRawFrame]
+  /// sees every server frame as it arrived, which is where the test fixtures
+  /// come from.
+  static Future<TokenVoiceTransport> connect({
+    required List<VoiceTool> tools,
+    required String languageCode,
+    String? resumeHandle,
+    VoiceTokenMinter mint = mintVoiceTokenFromFunctions,
+    String endpoint = kVoiceLiveEndpoint,
+    void Function(String frame)? onRawFrame,
+  }) async {
+    final config = voiceGenerationConfig(languageCode);
+    final firebaseTools = [voiceToolsToFirebase(tools)];
+    // The same setup `LiveSession` sends, bar the Firebase model path. Only
+    // `model` and `generationConfig.responseModalities` are frozen by the
+    // token, so the prompt, tools, speech config, transcription and
+    // compression below are all still the client's to send.
+    Map<String, Object?> setup(String? handle) => {
+      'model': 'models/$kVoiceModel',
+      'system_instruction': Content.text(kVoiceSystemPrompt).toJson(),
+      'tools': firebaseTools.map((t) => t.toJson()).toList(),
+      'session_resumption': handle == null
+          ? <String, Object?>{}
+          : {'handle': handle},
+      'generation_config': config.toJson(),
+      'input_audio_transcription': <String, Object?>{},
+      'output_audio_transcription': <String, Object?>{},
+      'contextWindowCompression': config.contextWindowCompression!.toJson(),
+    };
+    final transport = TokenVoiceTransport._(mint, setup, endpoint)
+      .._onRawFrame = onRawFrame
+      // Seeded, not waited for: without it the first window of a transport
+      // built by `VoiceSession._lost` has no handle of its own, so a token
+      // expiry arriving before the server's first update would end the
+      // session instead of crossing invisibly.
+      .._handle = resumeHandle;
+    await transport._open(resumeHandle);
+    return transport;
+  }
+
+  final VoiceTokenMinter _mint;
+  final Map<String, Object?> Function(String? handle) _setup;
+  final String _endpoint;
+  void Function(String frame)? _onRawFrame;
+
+  /// Survives every reconnect: closing it is what tells the session the
+  /// conversation is over.
+  final _out = StreamController<LiveServerResponse>();
+
+  WebSocket? _socket;
+
+  /// Latest handle the server offered, tracked here as well as in the session
+  /// because the expiry reconnect happens behind the session's back.
+  String? _handle;
+
+  /// Minted ahead of the boundary by [_mintTimer], spent by the next [_open].
+  VoiceToken? _nextToken;
+  Timer? _mintTimer;
+  var _closed = false;
+
+  /// Server frames seen on the current socket. A window that ends after
+  /// carrying nothing is not a window boundary, whatever it closes with, and
+  /// resuming it would be a mint-and-reconnect loop against a token the
+  /// server refuses on sight.
+  var _framesThisWindow = 0;
+
+  /// Opens one window. Everything that can throw is inside the try, because
+  /// every error out of here is scrubbed before it leaves: `dart:io` puts the
+  /// whole request URI — token and all — into a [WebSocketException], and
+  /// [VoiceSession] renders what it catches into the on-screen transcript.
+  Future<void> _open(String? handle) async {
+    final token = _nextToken ?? await _mint();
+    _nextToken = null;
+    WebSocket? socket;
+    try {
+      final opened = await WebSocket.connect(
+        '$_endpoint?access_token=${token.token}',
+      );
+      socket = opened;
+      final ready = Completer<void>();
+      opened.listen(
+        (frame) => _onFrame(frame, ready),
+        onDone: () => _onDone(opened, ready),
+        onError: (Object e) {
+          if (!ready.isCompleted) {
+            ready.completeError(e);
+            return;
+          }
+          // After the handshake there is nobody left to hand a socket error
+          // to but the session, and a hard transport failure must not reach
+          // it as an ordinary end of conversation. Same as firebase_ai's own
+          // session: add the error, then let it close. Scrubbed like every
+          // other way out of here — whether a given `dart:io` error type
+          // happens to carry the request URI is not a thing the code on the
+          // other side of this stream should have to know.
+          if (_out.isClosed) return;
+          _out.addError(StateError(scrubVoiceToken('$e', token.token)));
+          unawaited(_out.close());
+        },
+      );
+      opened.add(jsonEncode({'setup': _setup(handle)}));
+      await ready.future.timeout(_handshakeTimeout);
+      // A close that landed while this window was opening: the session is
+      // gone and this socket must not outlive it. Thrown rather than
+      // returned, so neither `connect` nor `_reopen` is handed a transport
+      // with no socket under it.
+      if (_closed) {
+        await opened.close().catchError((Object _) {});
+        throw StateError('closed while connecting');
+      }
+      _socket = opened;
+      _framesThisWindow = 0;
+      _armMint(token);
+    } catch (e) {
+      await socket?.close().catchError((Object _) {});
+      throw StateError(scrubVoiceToken('$e', token.token));
+    }
+  }
+
+  /// Mints the next token shortly before this one expires, so the reconnect
+  /// at the boundary costs a socket and not a round trip to the Function. A
+  /// failure is swallowed: [_open] mints on demand.
+  void _armMint(VoiceToken token) {
+    _mintTimer?.cancel();
+    final ahead =
+        token.expiresAt.difference(DateTime.now()) - kVoiceTokenMintLead;
+    _mintTimer = Timer(ahead.isNegative ? Duration.zero : ahead, () async {
+      try {
+        _nextToken = await _mint();
+      } catch (_) {}
+    });
+  }
+
+  void _onFrame(Object? frame, Completer<void> ready) {
+    try {
+      _readFrame(frame, ready);
+    } catch (e) {
+      // The boundary firebase_ai's own session keeps: a frame that will not
+      // parse becomes a stream error the session can fail on, rather than an
+      // unhandled zone error that leaves it wedged and silent.
+      if (!ready.isCompleted) {
+        ready.completeError(e);
+      } else if (!_out.isClosed) {
+        _out.addError(e);
+      }
+    }
+  }
+
+  void _readFrame(Object? frame, Completer<void> ready) {
+    final text = frame is String ? frame : utf8.decode(frame! as List<int>);
+    _onRawFrame?.call(text);
+    final json = jsonDecode(text) as Map<String, Object?>;
+    // LiveServerSetupComplete is not exported by firebase_ai and the session
+    // has nothing to do with it, so it is swallowed here and only opens the
+    // handshake gate.
+    if (json.containsKey('setupComplete')) {
+      if (!ready.isCompleted) ready.complete();
+      return;
+    }
+    // After the mapping, so an error frame — which throws — is not counted as
+    // a window that carried something.
+    final message = voiceServerMessage(json);
+    _framesThisWindow++;
+    if (message == null || _out.isClosed) return;
+    if (message is SessionResumptionUpdate &&
+        message.resumable == true &&
+        (message.newHandle ?? '').isNotEmpty) {
+      _handle = message.newHandle;
+    }
+    _out.add(LiveServerResponse(message: message));
+  }
+
+  void _onDone(WebSocket socket, Completer<void> ready) {
+    if (!ready.isCompleted) {
+      ready.completeError(
+        StateError(
+          'live socket closed before setup: '
+          '${socket.closeCode} ${socket.closeReason}',
+        ),
+      );
+      return;
+    }
+    if (!identical(socket, _socket) || _closed || _out.isClosed) return;
+    _socket = null;
+    // The window ended. Expected, so it stays invisible to the session — but
+    // only with a handle to resume on: without one there is no conversation
+    // to carry over, and ending is honest.
+    //
+    // ponytail: matched on the close the server actually sends. A different
+    // wording falls through to the ordinary drop path, which reconnects once
+    // on the session's own handle — one spent budget, not a broken session.
+    // And the reconnect itself is uncapped: a server that kept handing out
+    // already-expiring tokens would mint and reopen in a loop, bounded only
+    // by [kVoiceSessionCap]. Add a backoff if that ever happens; a counter
+    // for a case that means the mint's clock is broken would be guesswork.
+    if (_handle != null &&
+        _framesThisWindow > 0 &&
+        socket.closeCode == 1011 &&
+        (socket.closeReason ?? '').toLowerCase().contains('expire')) {
+      unawaited(_reopen());
+      return;
+    }
+    unawaited(_out.close());
+  }
+
+  Future<void> _reopen() async {
+    try {
+      await _open(_handle);
+    } catch (e) {
+      // Reconnecting under the session failed; hand the drop up so it takes
+      // its ordinary one reconnect, and ends if that fails too.
+      if (_out.isClosed) return;
+      _out.addError(e);
+      unawaited(_out.close());
+    }
+  }
+
+  /// Sends one client frame, or drops it if the socket is between windows.
+  ///
+  /// ponytail: a tool response that lands in that gap is lost and the model
+  /// waits for it. The gap is one socket setup wide; buffer if it bites.
+  Future<void> _send(Map<String, Object?> frame) async =>
+      _socket?.add(jsonEncode(frame));
+
+  @override
+  Stream<LiveServerResponse> receive() => _out.stream;
+
+  @override
+  Future<void> sendAudio(Uint8List pcm16k) => _send({
+    'realtime_input': {
+      'audio': {
+        'mimeType': 'audio/pcm;rate=16000',
+        'data': base64Encode(pcm16k),
+      },
+    },
+  });
+
+  @override
+  Future<void> sendText(String text) => _send({
+    'realtime_input': {'text': text},
+  });
+
+  @override
+  Future<void> sendToolResponse(List<FunctionResponse> responses) => _send({
+    'toolResponse': {
+      'functionResponses': [
+        for (final r in responses)
+          {
+            'name': r.name,
+            'response': r.response,
+            if (r.id != null) 'id': r.id,
+          },
+      ],
+    },
+  });
+
+  @override
+  Future<void> close() async {
+    _closed = true;
+    _mintTimer?.cancel();
+    final socket = _socket;
+    _socket = null;
+    await socket?.close().catchError((Object _) {});
+    // Not awaited: the session cancels its subscription before closing the
+    // transport, and closing a single-subscription controller nobody listens
+    // to hands back a future that never completes.
+    if (!_out.isClosed) unawaited(_out.close());
+  }
+}
+
+/// Maps one decoded Live server frame onto the `firebase_ai` message the
+/// session consumes, or null for a frame it has nothing to do with.
+///
+/// A re-implementation of the package's own `parseServerResponse`, which is
+/// not exported; the types and their constructors are. Only the frames
+/// [VoiceSession] acts on are mapped.
+LiveServerMessage? voiceServerMessage(Map<String, Object?> json) {
+  // Thrown rather than returned, exactly as the package's parser does: the
+  // server reporting an error has to reach the session, or it sits with an
+  // open microphone waiting for a turn that will never come.
+  if (json['error'] case final Object error) {
+    throw StateError('live server error: ${jsonEncode(error)}');
+  }
+  if (json['serverContent'] case final Map<String, Object?> content) {
+    return LiveServerContent(
+      modelTurn: switch (content['modelTurn']) {
+        final Map<String, Object?> turn => Content(turn['role'] as String?, [
+          for (final part in turn['parts'] as List<Object?>? ?? const [])
+            ?_voicePart(part! as Map<String, Object?>),
+        ]),
+        _ => null,
+      },
+      turnComplete: content['turnComplete'] as bool?,
+      interrupted: content['interrupted'] as bool?,
+      inputTranscription: _voiceTranscription(content['inputTranscription']),
+      outputTranscription: _voiceTranscription(content['outputTranscription']),
+    );
+  }
+  if (json['toolCall'] case final Map<String, Object?> call) {
+    return LiveServerToolCall(
+      functionCalls: [
+        for (final c in call['functionCalls'] as List<Object?>? ?? const [])
+          FunctionCall(
+            (c! as Map<String, Object?>)['name']! as String,
+            ((c as Map<String, Object?>)['args'] as Map<String, Object?>?) ??
+                const {},
+            id: c['id'] as String?,
+          ),
+      ],
+    );
+  }
+  if (json['goAway'] case final Map<String, Object?> goAway) {
+    return GoingAwayNotice(timeLeft: goAway['timeLeft'] as String?);
+  }
+  if (json['sessionResumptionUpdate'] case final Map<String, Object?> update) {
+    return SessionResumptionUpdate(
+      newHandle: update['newHandle'] as String?,
+      resumable: update['resumable'] as bool?,
+      lastConsumedClientMessageIndex:
+          update['lastConsumedClientMessageIndex'] as int?,
+    );
+  }
+  return null;
+}
+
+Part? _voicePart(Map<String, Object?> part) {
+  if (part['inlineData'] case final Map<String, Object?> data) {
+    return InlineDataPart(
+      data['mimeType']! as String,
+      base64Decode(data['data']! as String),
+    );
+  }
+  if (part['text'] case final String text) return TextPart(text);
+  return null;
+}
+
+Transcription? _voiceTranscription(Object? json) => switch (json) {
+  final Map<String, Object?> t => Transcription(
+    text: t['text'] as String?,
+    finished: t['finished'] as bool?,
+  ),
+  _ => null,
+};

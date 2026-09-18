@@ -120,11 +120,19 @@ class VoiceSession extends ChangeNotifier {
     final drafts = VoiceDrafts();
     final tools = droverVoiceTools(herd, drafts);
     return VoiceSession(
-      connect: (resumeHandle) => FirebaseVoiceTransport.connect(
-        tools: tools,
-        languageCode: voiceLanguageCodeFor(locale),
-        resumeHandle: resumeHandle,
-      ),
+      // One const decides which wire the conversation runs on; see
+      // [kVoiceUseMintedToken].
+      connect: (resumeHandle) => kVoiceUseMintedToken
+          ? TokenVoiceTransport.connect(
+              tools: tools,
+              languageCode: voiceLanguageCodeFor(locale),
+              resumeHandle: resumeHandle,
+            )
+          : FirebaseVoiceTransport.connect(
+              tools: tools,
+              languageCode: voiceLanguageCodeFor(locale),
+              resumeHandle: resumeHandle,
+            ),
       mic: RecordVoiceMic(),
       speaker: SoLoudVoiceSpeaker(),
       muteMicWhileSpeaking: voiceMicGateNeeded,
