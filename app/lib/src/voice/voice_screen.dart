@@ -71,8 +71,9 @@ const _speakingInkLight = Color(0xFFDC6338);
 /// one log, pending draft cards pinned above the controls until they are
 /// acted on — with the assistant's presence as light bleeding in from the
 /// bottom edge, and round controls along the bottom.
-/// Owns the [session] lifecycle: starts it on first frame, disposes it with
-/// the screen.
+/// Drives the [session] but does not own it: it starts it on first frame and
+/// suspends it when the screen goes, leaving the conversation — and the
+/// disposing — to whoever built it.
 class VoiceScreen extends StatefulWidget {
   const VoiceScreen({super.key, required this.session, this.screenWake});
 
@@ -108,7 +109,10 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.session.removeListener(_onSessionChanged);
-    widget.session.dispose();
+    // Suspended, not disposed: the session outlives this screen so the same
+    // conversation continues when the user comes back. What must not outlive
+    // it is the mic and the socket, which is exactly what [suspend] closes.
+    unawaited(widget.session.suspend());
     _scroll.dispose();
     // Unconditional, not gated on `_wakeOn`: whatever tore this screen down
     // must not leave the device pinned awake behind it.
@@ -122,9 +126,21 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
   /// incoming-call banner, and ending a live conversation for those would be
   /// worse than the bug this fixes (same distinction as `main.dart`'s own
   /// `didChangeAppLifecycleState`).
+  ///
+  /// Coming back to the foreground continues the conversation, the same way
+  /// re-entering the screen does — [initState]'s post-frame `start()` is the
+  /// other half of the same rule. Both can fire for one return (a `resumed`
+  /// landing on a freshly built screen) without opening a second
+  /// conversation, because the session serialises them itself: a `start()`
+  /// on a session that is still going returns having done nothing, and one
+  /// that arrives while an end is still releasing the mic and the socket
+  /// waits that end out before deciding.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) widget.session.background();
+    if (state == AppLifecycleState.resumed && widget.session.resumable) {
+      widget.session.start();
+    }
   }
 
   /// True while connecting or live — shared by [_syncWake] and [_scaffold]
@@ -134,8 +150,9 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
       widget.session.status == VoiceSessionStatus.live;
 
   /// Turns the wake on/off on a `connecting`/`live` transition — see
-  /// [_wakeOn]. Every session-end path (manual stop, cap, error, background)
-  /// notifies through here, so this alone also covers releasing it.
+  /// [_wakeOn]. Every session-end path (manual stop, cap, error, leaving the
+  /// app, leaving the screen) notifies through here, so this alone also
+  /// covers releasing it.
   void _syncWake() {
     final active = _isActive;
     if (active == _wakeOn) return;
@@ -224,8 +241,9 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
               children: [
                 Row(
                   children: [
-                    // No AppBar, so this is the only labelled way back while
-                    // live (macOS, VoiceOver); leaving disposes the session.
+                    // No AppBar, so this is the only labelled way back
+                    // while live (macOS, VoiceOver); leaving suspends the
+                    // session, which End is still there to finish for good.
                     const Padding(
                       padding: EdgeInsets.all(8),
                       child: BackButton(),
@@ -482,6 +500,7 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     VoiceSession.launchFailedCode => l10n.voiceLaunchFailed,
     VoiceSession.capReachedCode => l10n.voiceCapReached,
     VoiceSession.backgroundedCode => l10n.voiceBackgrounded,
+    VoiceSession.suspendedCode => l10n.voiceSuspended,
     _ => code,
   };
 
