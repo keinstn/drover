@@ -289,6 +289,12 @@ class TokenVoiceTransport implements VoiceTransport {
       );
       opened.add(jsonEncode({'setup': _setup(handle)}));
       await ready.future.timeout(_handshakeTimeout);
+      // A close that landed while this window was opening: the session is
+      // gone and this socket must not outlive it.
+      if (_closed) {
+        await opened.close().catchError((Object _) {});
+        return;
+      }
       _socket = opened;
       _framesThisWindow = 0;
       _armMint(token);
