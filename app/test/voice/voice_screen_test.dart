@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 
@@ -410,6 +412,36 @@ void main() {
     expect(find.byTooltip('End'), findsNothing);
     expect(find.byKey(const ValueKey('voice_close_button')), findsOneWidget);
     expect(find.byTooltip('Close'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('the usage readout is rendered when the session ends', (
+    tester,
+  ) async {
+    // The `usageMetadata` of one real turn, from the capture the transport
+    // tests replay; here it stands for what the socket counted.
+    final turn =
+        (jsonDecode(File('test/voice/live_frames.json').readAsStringSync())
+                as Map<String, Object?>)['turnComplete']!
+            as Map<String, Object?>;
+    transport.usage.add(turn['usageMetadata']);
+    await tester.pumpWidget(app());
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+    await tester.pumpAndSettle();
+
+    // Two halves of the one line, so a clock that ticked mid-test cannot
+    // make this flaky.
+    expect(find.textContaining('usage · 1 turn · '), findsOneWidget);
+    expect(
+      find.textContaining(
+        ' · prompt 982 (TEXT 742, AUDIO 201) · response 20 (AUDIO 20)',
+      ),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
