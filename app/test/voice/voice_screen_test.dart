@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
+import 'package:drover/src/infra/screen_wake.dart';
 import 'package:drover/src/voice/voice_drafts.dart';
 import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_screen.dart';
@@ -36,6 +37,7 @@ void main() {
     Future<VoiceTransport> Function(String?)? connect,
     bool reduceMotion = false,
     ThemeData? theme,
+    ScreenWake? screenWake,
   }) {
     final screen = VoiceScreen(
       session: VoiceSession(
@@ -54,6 +56,7 @@ void main() {
           ),
         ],
       ),
+      screenWake: screenWake,
     );
     return MaterialApp(
       theme: theme ?? droverDarkTheme,
@@ -1399,6 +1402,166 @@ void main() {
         await tester.pump();
       }
     });
+  });
+
+  group('screen wake', () {
+    testWidgets('turns on once the session goes live, off once it ends', (
+      tester,
+    ) async {
+      final wake = FakeScreenWake();
+      await tester.pumpWidget(app(screenWake: wake));
+      await tester.pump();
+
+      expect(wake.calls, [true]);
+
+      await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+      await tester.pumpAndSettle();
+
+      expect(wake.calls, [true, false]);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('Restart turns the wake back on', (tester) async {
+      final wake = FakeScreenWake();
+      // A connector that hands out a fresh transport per connect, not the
+      // shared `transport` `app()` defaults to: that one's stream controller
+      // is closed for good on the first end, so reconnecting to it would
+      // fire `onDone` immediately and end the restarted session right back
+      // off — this test needs the restart to genuinely stay live.
+      final connector = FakeConnector();
+      await tester.pumpWidget(app(connect: connector.call, screenWake: wake));
+      await tester.pump();
+
+      expect(wake.calls, [true]);
+
+      await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+      await tester.pumpAndSettle();
+
+      expect(wake.calls, [true, false]);
+
+      await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+      await tester.pump();
+      await tester.pump();
+
+      expect(connector.transports, hasLength(2));
+      expect(wake.calls, [true, false, true]);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('is released when the screen is disposed', (tester) async {
+      final wake = FakeScreenWake();
+      // A pushed route, not `app()`'s bare `MaterialApp(home: ...)`: popping
+      // it is what exercises `State.dispose` — `pumpWidget(SizedBox())`
+      // would also dispose the screen, but that path already runs at the
+      // end of every other test in this file, so it proves nothing on its
+      // own about *this* screen's dispose specifically.
+      final session = VoiceSession(
+        connect: (_) async => transport,
+        mic: mic,
+        speaker: speaker,
+        tools: const [],
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      VoiceScreen(session: session, screenWake: wake),
+                ),
+              ),
+              child: const Text('voice'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('voice'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(wake.calls, [true]);
+
+      tester.state<NavigatorState>(find.byType(Navigator).last).pop();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(wake.calls, [true, false]);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+  });
+
+  group('app lifecycle', () {
+    testWidgets('paused ends the live session, rendering why it ended', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app());
+      await tester.pump();
+
+      // Drives the real state machine end to end (resumed -> inactive ->
+      // hidden -> paused) rather than jumping straight there:
+      // `AppLifecycleListener` asserts on invalid transitions.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+
+      // Flutter suppresses frame production while paused — same as a real OS
+      // backgrounding the app — so `background()`'s rebuild is pending but
+      // unpainted until frames come back; walk back to resumed (also the
+      // only legal way onward from `paused`) before reading the render.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump();
+
+      // Asserted on the rendered transcript, not the session's status
+      // alone — a prior bug here shipped because a test asserted backend
+      // state while the screen rendered nothing a user could see.
+      expect(find.text('App went to the background'), findsOneWidget);
+      expect(find.text('Ended'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets(
+      'inactive alone neither ends the session nor renders anything',
+      (tester) async {
+        await tester.pumpWidget(app());
+        await tester.pump();
+
+        // A Control Centre glance, an app-switcher flick and an incoming-call
+        // banner all land here; ending a live conversation for any of them
+        // would be worse than the auto-lock bug this unit fixes.
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.text('App went to the background'), findsNothing);
+        expect(
+          tester.widget<Text>(find.byKey(const ValueKey('voice_status'))).data,
+          'Listening',
+        );
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump();
+      },
+    );
   });
 }
 

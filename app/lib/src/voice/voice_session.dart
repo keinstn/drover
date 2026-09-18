@@ -160,6 +160,11 @@ class VoiceSession extends ChangeNotifier {
   /// itself.
   static const capReachedCode = 'cap_reached';
 
+  /// System code logged when the app left the foreground and [background]
+  /// ended the session: iOS silently kills the microphone on backgrounding,
+  /// so an open mic streaming to a third party must not survive it.
+  static const backgroundedCode = 'backgrounded';
+
   /// Drafts of this session; the screen renders them and can act on a
   /// pending one via [sendDraft] / [launchDraft].
   final VoiceDrafts drafts;
@@ -419,6 +424,16 @@ class VoiceSession extends ChangeNotifier {
 
   /// Tears everything down. Safe to call repeatedly.
   Future<void> stop() => _end();
+
+  /// Ends the session because the app left the foreground. No-op unless the
+  /// session is currently active: the caller is a lifecycle observer that
+  /// can fire after the session already ended on its own (a manual stop, an
+  /// error, the cap) and must not log a spurious backgrounding line then.
+  Future<void> background() async {
+    if (!_active) return;
+    _entries.add(const VoiceEntry(VoiceEntryKind.system, backgroundedCode));
+    await _end();
+  }
 
   /// Sends the pending draft [id] to its agent — the manual fallback when the
   /// model never called send_message. Needs only the herd, so it works after

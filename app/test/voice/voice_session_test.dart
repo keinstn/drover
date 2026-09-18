@@ -1321,4 +1321,33 @@ void main() {
       expect(s.entries.map((e) => e.text), [VoiceSession.endedCode]);
     });
   });
+
+  group('background()', () {
+    test('ends a live session and logs why', () async {
+      final s = session();
+      await s.start();
+
+      await s.background();
+
+      expect(s.status, VoiceSessionStatus.ended);
+      expect(s.entries.map((e) => e.text), [
+        VoiceSession.backgroundedCode,
+        VoiceSession.endedCode,
+      ]);
+      expect(mic.stopCalls, 1);
+      expect(speaker.disposeCalls, 1);
+      expect(transport.closeCalls, 1);
+    });
+
+    test('is a no-op once the session already ended', () async {
+      final s = session();
+      await s.start();
+      await s.stop();
+
+      await s.background();
+
+      expect(s.status, VoiceSessionStatus.ended);
+      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode]);
+    });
+  });
 }
