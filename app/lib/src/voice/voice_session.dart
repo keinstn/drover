@@ -72,10 +72,19 @@ const kVoiceAecWarmUp = Duration(seconds: 10);
 /// nothing: an open mic streaming to a third party has to have an end.
 /// Restart begins a fresh conversation and a fresh cap.
 ///
+/// Five minutes rather than ten because this cap is what bounds the cost of a
+/// call, and cost grows with speech seconds *times* turn count: halving the
+/// cap quarters the worst case. A call is meant to be "what is my herd doing"
+/// or a message left for an agent, not a working session.
+///
+/// `voiceTokenLifetimeMs` in `functions/src/index.ts` must stay longer than
+/// this, so a minted token outlives the session it was minted for and no
+/// window boundary ever falls inside a conversation.
+///
 /// ponytail: it just ends, with no warning beforehand — the log line and the
-/// Restart button are the whole story. Add a countdown only if ten minutes
+/// Restart button are the whole story. Add a countdown only if five minutes
 /// turns out to cut real conversations short.
-const kVoiceSessionCap = Duration(minutes: 10);
+const kVoiceSessionCap = Duration(minutes: 5);
 
 /// Drives one full-duplex voice conversation: mic -> transport -> speaker,
 /// with tool calls answered from [tools]. UI-agnostic; the screen listens.

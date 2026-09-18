@@ -419,13 +419,19 @@ export const revokeHost = onCall({ enforceAppCheck: true }, async (request) => {
 // is the whole point of minting server side.
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
 
-// How long a minted Live token lives. Deliberately short, so the window
-// boundary is crossed in ordinary use and the client's reconnect across it
-// cannot rot unnoticed. It is not a product decision and carries no billing
-// meaning. `expireTime` is the only bound that matters: `uses` counts session
-// starts and is not consumed by a resumption reconnect (measured 2026-09-18,
-// see app/tool/token_probe.dart).
-const voiceTokenLifetimeMs = 3 * 60 * 1000;
+// How long a minted Live token lives. It must stay LONGER than
+// `kVoiceSessionCap` in app/lib/src/voice/voice_session.dart (5 minutes), so
+// the session always ends before its token does and no window boundary ever
+// falls inside a conversation — on a device the reconnect across one is
+// audible as a gap in the talk, which is not worth a finer meter.
+//
+// So one mint is one call, and that is the unit a wallet will charge for: the
+// balance is checked here, once, at the start of a session.
+//
+// `expireTime` is the only bound that matters. `uses` counts session starts
+// and is not consumed by a resumption reconnect, so it bounds nothing
+// (measured 2026-09-18, see app/tool/token_probe.dart).
+const voiceTokenLifetimeMs = 6 * 60 * 1000;
 
 // How long the token may be used to open a session at all. Short: the app
 // connects right after minting, or holds the token for the few seconds until
