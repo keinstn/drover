@@ -141,6 +141,41 @@ above — it takes either a raw Live WebSocket probe, which is the relay's first
 slice rather than throwaway work, or cost deltas read out of the billing
 export. See [billing-cli-setup.md](billing-cli-setup.md) for the latter.
 
+The first slice of that exists: `app/tool/live_probe.dart` opens the raw Live
+WebSocket, bypassing `firebase_ai`, and dumps every `usageMetadata` verbatim.
+
+What it measured against `gemini-3.1-flash-live-preview` on 2026-09-18, over
+five text-input turns with audio responses: **accumulated context is re-billed
+at the modality it arrived in.** Each turn's `promptTokensDetails` carried an
+AUDIO count equal to the running sum of every prior response's audio tokens —
+25, then 48, then 71, then 96 — while its TEXT count grew separately. Audio
+history stays audio; it is not folded into text. That was the open question,
+and it resolved to the expensive branch.
+
+A separate single audio-input turn reported a prompt of TEXT 132 + AUDIO 72
+for 2.95 s of speech — about **25 tokens per second of input audio** — and a
+response of AUDIO 263 whose duration was not captured, so the output rate is
+assumed symmetric until it is. The user's own speech therefore enters the
+prompt as audio, and by the rule above is re-billed as audio for the rest of
+the session.
+
+The consequence that matters for pricing: a session's cost is **quadratic in
+turn count**, at the audio rate, because every turn re-pays for all the audio
+before it. This is why a credit cannot be denominated in minutes — the same
+minute costs more the later in a conversation it falls. The session cap
+(`kVoiceSessionCap`) is what bounds the quadratic.
+
+Not yet measured: a multi-turn run with real audio *input*. Those runs are
+closed by the server with `1008 The operation was aborted.` while text turns
+succeed at the same moment, so it is not quota; the cause is unknown after
+three attempts, most likely the VAD/activity signalling. It does not affect
+the re-billing conclusion, but no end-to-end figure for a real session exists
+yet. Nor does the check against Cloud Billing that this note asks for — the
+billing export's tables stop at 2026-08-23 and have no September rows.
+
+Re-check all of this against a newer model before relying on it; the behaviour
+above is that of a preview model and may change.
+
 The price then has to cover the Gemini cost plus Apple's cut, Firebase and
 Cloud Run, headroom for refunds and abuse, and headroom for model price and
 exchange-rate moves.
@@ -151,10 +186,10 @@ voice stays on an invite-only TestFlight beta.
 
 ## Order of work
 
-Free beta first: measure the real cost, add explicit consent for sending audio
-to an AI service, turn on AI monitoring and the billing export, verify the
-production App Check configuration, and cap session length. Then the billing
-control plane — `in_app_purchase`, consumable products, server-side transaction
+Free beta first: measure the real cost, turn on AI monitoring and the billing
+export, and verify the production App Check configuration. Explicit consent for
+sending audio to an AI service and a session cap both shipped in #254. Then the
+billing control plane — `in_app_purchase`, consumable products, transaction
 verification, `appAccountToken` binding, the wallet and ledger, Server
 Notifications V2, refund and revoke handling. The paid gateway comes last:
 the Cloud Run relay, auth and App Check checks, reserve/settle/return, stored
