@@ -181,14 +181,16 @@ Already done for this project; recorded so a fresh setup can repeat it.
   clock, not per connection — a cap that restarted with every reconnect would
   bound nothing, and an open mic streaming to a third party has to have an
   end. Only the user's End begins a fresh conversation on a fresh cap; a
-  session that was merely suspended keeps the deadline it already had (see
-  2026-09-19 below). It just ends, with no warning beforehand; raise or lower
+  session that `background()` merely parked keeps the deadline it already had
+  (see 2026-09-19 below). It just ends, with no warning beforehand; raise or lower
   the constant if five minutes turns out to cut real conversations short.
-- The screen is held awake for as long as a session is open (2026-09-18).
-  `ScreenWake` (`app/lib/src/infra/screen_wake.dart`) drives
+- The screen is held awake for as long as a session is open (2026-09-18;
+  owner moved 2026-09-19, below). `ScreenWake`
+  (`app/lib/src/infra/screen_wake.dart`) drives
   `UIApplication.isIdleTimerDisabled` over the `com.keinstn.drover/screen`
-  method channel, and the voice screen turns it on while the session is
-  connecting or live and releases it on every end path. Without it the device
+  method channel. `HerdScreen` — which owns the call — turns it on while the
+  session is connecting or live and releases it on every end path, whether or
+  not the voice screen is showing. Without it the device
   auto-locked mid-conversation — the user is talking, not touching the screen
   — and that alone broke the session: backgrounding interrupts the audio
   session, `record` defaults to `AudioInterruptionMode.pause` with no
@@ -196,11 +198,12 @@ Already done for this project; recorded so a fresh setup can repeat it.
   audio flowing and looked frozen. The call is best-effort, so macOS, which
   registers no such handler, silently no-ops.
 - Leaving the app ends the session, logged as `backgroundedCode` (2026-09-18;
-  since 2026-09-19 it suspends the conversation rather than dropping it, see
+  since 2026-09-19 it parks the conversation rather than dropping it, see
   below). Keeping the screen awake does not cover a manual lock, an answered
   call or a notification tap that opens something else, and the half-dead
-  state above is the worst possible outcome, so the voice screen observes the
-  app lifecycle and ends the session through the normal end path instead.
+  state above is the worst possible outcome, so the app lifecycle is observed
+  — by the herd screen and, while it is showing, the voice screen (2026-09-19,
+  below) — and the session ended through the normal end path instead.
   Same reasoning as `kVoiceSessionCap`: an open mic streaming to a third
   party must not outlive the foreground. Only `AppLifecycleState.paused` ends
   it — `inactive` fires on a Control Centre glance or an app-switcher flick,
@@ -217,12 +220,11 @@ Already done for this project; recorded so a fresh setup can repeat it.
   to observe the interruption itself: `AudioRecorder.onStateChanged()` carries
   `RecordState.pause` out of the plugin's own interruption handler, which is
   also where resuming a session after a real call would hook in.
-- A call now survives leaving, and is continued rather than restarted
-  (2026-09-19). Leaving the voice screen suspends the session
-  (`VoiceSession.suspend`, logged as `suspendedCode`), the app leaving the
-  foreground does the same through `background()`, and both close the mic and
-  the socket while keeping the resumption handle. Coming back — re-entering
-  the screen, or `AppLifecycleState.resumed` while the session is `resumable`
+- A call now survives leaving the app, and is continued rather than restarted
+  (2026-09-19). `VoiceSession.background()` parks the session — it closes the
+  mic and the socket, logs `backgroundedCode`, and keeps the resumption
+  handle. Coming back — re-entering the screen, or `AppLifecycleState.resumed`
+  while the session is `resumable`
   — reconnects on that handle and logs the same "Reconnected, continuing" line
   a dropped connection does; to the user the two are the same event, because
   they are. The conversation is the thing kept, so what carried over carries
@@ -238,9 +240,81 @@ Already done for this project; recorded so a fresh setup can repeat it.
   the one it is handed. The retained session is dropped when it can no longer
   apply — the first host in scope changes (by id or revision: its tools talk
   to that host's client alone), the Settings toggle goes off, or the herd
-  screen itself goes. This does NOT keep the mic open while the user is on
-  another drover screen; the call is suspended the whole time the voice screen
-  is not shown, and a live-elsewhere indicator is a separate question.
+  screen itself goes.
+- The call stays live while the user moves around drover (2026-09-19, the
+  second change that day). Leaving the voice screen does not touch the session
+  at all: mic, socket and speaker keep running, and re-entering finds the same
+  call on the same socket — no reconnect, nothing logged. Leaving the *app* is
+  the only thing that closes the microphone, so `background()` is the single
+  parking path; there is deliberately no second one keyed to the screen.
+  - **The "we are listening" signal moved to the herd screen.** With the voice
+    screen popped and the mic open, the OS indicator would otherwise be the
+    only sign, so the voice FAB carries drover's own: while the session is
+    `connecting` or `live` it wears the voice screen's listening ink
+    (`voiceListeningInk`, `0xFF8FC0F2` dark / `0xFF388ADC` light — the same
+    colour that screen's glow uses for a listening room) in place of
+    `colorScheme.primary`, and an open microphone in place of the waveform,
+    with `herdVoiceButtonLive` as its tooltip. Colour *and* glyph change, so
+    the state survives greyscale and a screenshot. The pending-events badge
+    still rides on top of it, and tapping the button re-enters the call.
+  - **The screen wake follows the call, not the screen.** `_HerdScreenState`
+    holds it and keys it on the same `_voiceOnTheWire`, attaching a listener
+    when a session is built and dropping it in `_dropVoiceSession()`;
+    `VoiceScreen` no longer knows about `ScreenWake` at all. It has to be this
+    way round, or the feature guts itself: a wake released with the voice
+    screen would start the idle timer on a call that is still going, the
+    device would auto-lock about thirty seconds later, `paused` would fire and
+    the call would end — exactly the user who steps back to the herd screen
+    mid-conversation to look at their agents and keeps talking. It is released
+    on every end path the session notifies, plus the two it cannot: the
+    retained session being dropped or replaced, and the herd screen itself
+    going.
+  - **The lifecycle observer now lives in two places.** `_HerdScreenState` is
+    a `WidgetsBindingObserver` as well and calls `background()` on the
+    retained session on `paused`; `VoiceScreen` keeps its own for when it is
+    showing. Both firing for one backgrounding is harmless — `background()`
+    is a no-op unless the session is active — and with the voice screen
+    popped the herd screen's is the only one left, without which a call would
+    sit `live` on a microphone iOS has already killed. `resumed` was
+    deliberately *not* copied over: re-opening the microphone stays in
+    `VoiceScreen`, because that is the boundary the consent copy is written
+    to. Foregrounding onto the herd screen must never re-open a mic by
+    itself.
+  - `_openVoice` reuses the retained session whenever it is still usable —
+    `connecting`, `live`, or `resumable` — not only when `resumable`, which
+    would have disposed and replaced a live call mid-sentence on the way back
+    in.
+  - Still foreground-only: `UIBackgroundModes: audio` remains rejected (next
+    bullet). What changed is which drover screen the user may be on, not
+    whether drover has to be in front.
+  - The consent sheet says so — "A call keeps listening while you use the rest
+    of drover; leaving the app closes the microphone and stops sending, and
+    returning to the conversation re-opens the microphone by itself…" — and
+    `kVoiceConsentVersion` went to **2** with it. That is what the constant is
+    for: version 1 promised the microphone closed when the voice screen was
+    left, so everyone who accepted it is asked again rather than having the
+    new behaviour start on an old yes.
+  - **The composer's dictation button yields while a call is up.** With the
+    call surviving the voice screen, this is two taps away: call → Back →
+    an agent → the composer's mic. That mic drives `speech_to_text`, which
+    puts `SFSpeechRecognizer`'s tap on the same `AVAudioSession` that
+    `record`'s engine holds and `flutter_soloud` plays through. The expected
+    loser is the call's microphone, with nothing to tell `VoiceSession`, which
+    would sit `live` over a dead mic — the half-dead state above. So
+    `HerdScreen` passes `canDictate: !_voiceOnTheWire` to `AgentScreen`, and
+    the composer renders without the button at all — the same way a missing
+    images capability hides attach. A flag rather than a withheld
+    `SpeechInput`: null already means "build the shared controller", which is
+    what demo mode and `lib/previews/` rely on, and re-plumbing who owns the
+    speech plugin is not this change's business.
+    The call wins because it is the one the user is in the middle of;
+    dictation is one tap of a keyboard alternative. **Not verified on a
+    device** — this is reasoning about a shared audio session, not a measured
+    failure; if it turns out the two coexist, this is cheap to undo.
+    Deliberate ceiling: the decision is made once, when the agent screen is
+    pushed, so a call that ends while that screen is open leaves the mic
+    missing until the user goes back and in again. A listenable that flips it
+    live is only worth it if that annoys in use.
 - `UIBackgroundModes: audio` was considered for this and rejected
   (2026-09-18). It would let the mic keep streaming from a locked phone in a
   pocket, which contradicts the data boundary below and the reasoning behind
