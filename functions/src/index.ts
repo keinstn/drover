@@ -10,6 +10,7 @@ import {
 import { getMessaging } from "firebase-admin/messaging";
 import { setGlobalOptions } from "firebase-functions";
 import * as logger from "firebase-functions/logger";
+import { defineSecret } from "firebase-functions/params";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 
 import {
@@ -412,6 +413,92 @@ export const revokeHost = onCall({ enforceAppCheck: true }, async (request) => {
   await batch.commit();
   return { hostId: pairing.hostId };
 });
+
+// The Gemini API key. It stays in Secret Manager, is bound to this one
+// function, and never reaches the client or a log line — keeping the key here
+// is the whole point of minting server side.
+const geminiApiKey = defineSecret("GEMINI_API_KEY");
+
+// How long a minted Live token lives. Deliberately short, so the window
+// boundary is crossed in ordinary use and the client's reconnect across it
+// cannot rot unnoticed. It is not a product decision and carries no billing
+// meaning. `expireTime` is the only bound that matters: `uses` counts session
+// starts and is not consumed by a resumption reconnect (measured 2026-09-18,
+// see app/tool/token_probe.dart).
+const voiceTokenLifetimeMs = 3 * 60 * 1000;
+
+// How long the token may be used to open a session at all. Short: the app
+// connects right after minting, or holds the token for the few seconds until
+// the current window ends.
+const voiceTokenNewSessionLifetimeMs = 60 * 1000;
+
+// Locked into the token. The model is the cost-relevant field and belongs to
+// the server; everything else in the client's setup (system prompt, tools,
+// speech config, transcription, context-window compression) stays the
+// client's, and `fieldMask` names exactly what is frozen.
+const voiceModel = "models/gemini-3.1-flash-live-preview";
+
+// Mints a short-lived Gemini Live API token for a signed-in app install.
+//
+// Auth and App Check are verified by the callable itself. No wallet, no
+// ledger, no per-user limit — this slice only moves the connection behind a
+// server-side gate that a later one can check something in.
+//
+// Over REST the constraint field is `bidiGenerateContentSetup` plus a
+// `fieldMask`; the documented `liveConnectConstraints` is the SDK name and a
+// 400 here (measured 2026-09-18).
+export const mintVoiceToken = onCall(
+  { enforceAppCheck: true, secrets: [geminiApiKey] },
+  async (request) => {
+    requireUid(request.auth);
+    const expireTime = new Date(
+      Date.now() + voiceTokenLifetimeMs,
+    ).toISOString();
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1alpha/auth_tokens",
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": geminiApiKey.value(),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          uses: 1,
+          expireTime,
+          newSessionExpireTime: new Date(
+            Date.now() + voiceTokenNewSessionLifetimeMs,
+          ).toISOString(),
+          bidiGenerateContentSetup: {
+            model: voiceModel,
+            generationConfig: { responseModalities: ["AUDIO"] },
+          },
+          fieldMask: "model,generationConfig.responseModalities",
+        }),
+      },
+    );
+    if (!response.ok) {
+      // Status only. The error body echoes the request, and nothing in it is
+      // worth logging next to the risk of logging the key.
+      logger.error("Minting a voice token failed.", {
+        status: response.status,
+      });
+      throw new HttpsError("unavailable", "Could not mint a voice token.");
+    }
+    const minted = (await response.json()) as {
+      name?: unknown;
+      expireTime?: unknown;
+    };
+    if (typeof minted.name !== "string" || minted.name.length === 0) {
+      throw new HttpsError("unavailable", "Could not mint a voice token.");
+    }
+    // The token name is a bearer credential; it is returned, never logged.
+    return {
+      token: minted.name,
+      expireTime:
+        typeof minted.expireTime === "string" ? minted.expireTime : expireTime,
+    };
+  },
+);
 
 function requestBody(request: { body: unknown }): unknown {
   return request.body;
