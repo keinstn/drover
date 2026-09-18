@@ -1,11 +1,16 @@
 // Live check: does a real conversation over [TokenVoiceTransport] survive the
 // token window boundary with the conversation intact?
 //
-// Usage, from `app/`:
+// Usage, from `app/`, either way round:
+//   GEMINI_API_KEY_FILE=<path to the key file> fvm flutter test tool/token_live_check.dart
 //   GEMINI_API_KEY=$(cat <key file>) fvm flutter test tool/token_live_check.dart
 //
+// Prefer the first: the key then never enters this process's environment, so
+// it cannot be read out of `ps` or inherited by anything this spawns. Either
+// way the key itself is never an argument and never written anywhere.
+//
 // It dials the real Gemini Live API, so it is deliberately NOT under `test/`
-// and never runs in `fvm flutter test`. Without `GEMINI_API_KEY` it skips.
+// and never runs in `fvm flutter test`. Without a key it fails immediately.
 //
 // It is a `flutter_test` file rather than a `dart run` script only because
 // `voice_transport.dart` reaches `dart:ui` and `package:flutter/foundation`
@@ -27,9 +32,8 @@
 //
 // It also writes one exemplar of each server frame it saw to
 // `test/voice/live_frames.json`, which is where the fixtures in
-// `test/voice/voice_transport_test.dart` come from. The key is read from the
-// environment only, never a file or an argument, and no token, key or
-// resumption handle is printed or written.
+// `test/voice/voice_transport_test.dart` come from. No token, key or
+// resumption handle is ever printed or written.
 import 'dart:convert';
 import 'dart:io';
 
@@ -45,14 +49,25 @@ const _window = Duration(seconds: 75);
 /// Where the fixtures for the frame-mapping test are written.
 const _fixtures = 'test/voice/live_frames.json';
 
+/// The key, from a file named by `GEMINI_API_KEY_FILE` or straight out of
+/// `GEMINI_API_KEY`. Trailing newline trimmed either way.
+String? _key() {
+  final path = Platform.environment['GEMINI_API_KEY_FILE'];
+  final value = path != null && path.isNotEmpty
+      ? File(path).readAsStringSync()
+      : Platform.environment['GEMINI_API_KEY'];
+  final key = value?.trim();
+  return key == null || key.isEmpty ? null : key;
+}
+
 void main() {
-  final key = Platform.environment['GEMINI_API_KEY'];
+  final key = _key();
 
   test(
     'a conversation over TokenVoiceTransport survives the token window',
     () async {
-      if (key == null || key.isEmpty) {
-        fail('set GEMINI_API_KEY (see the header of this file)');
+      if (key == null) {
+        fail('set GEMINI_API_KEY_FILE (see the header of this file)');
       }
 
       final raw = <String>[];

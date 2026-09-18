@@ -300,9 +300,12 @@ class TokenVoiceTransport implements VoiceTransport {
           // After the handshake there is nobody left to hand a socket error
           // to but the session, and a hard transport failure must not reach
           // it as an ordinary end of conversation. Same as firebase_ai's own
-          // session: add the error, then let it close.
+          // session: add the error, then let it close. Scrubbed like every
+          // other way out of here — whether a given `dart:io` error type
+          // happens to carry the request URI is not a thing the code on the
+          // other side of this stream should have to know.
           if (_out.isClosed) return;
-          _out.addError(e);
+          _out.addError(StateError(scrubVoiceToken('$e', token.token)));
           unawaited(_out.close());
         },
       );

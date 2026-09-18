@@ -379,4 +379,85 @@ void main() {
       },
     });
   });
+
+  group('frames captured from a real session', () {
+    // Written verbatim by `tool/token_live_check.dart` against
+    // `gemini-3.1-flash-live-preview` on 2026-09-18, bar two redactions the
+    // file marks: the resumption handle (a credential) and the tail of the
+    // audio payload. Nothing here is hand-written — a mapper tested against
+    // invented JSON only proves the invention self-consistent, and a wrong
+    // key in the audio branch fails silently: the session simply never
+    // plays anything.
+    late Map<String, Object?> frames;
+
+    setUpAll(() {
+      frames =
+          jsonDecode(File('test/voice/live_frames.json').readAsStringSync())
+              as Map<String, Object?>;
+    });
+
+    /// Pushes the captured frame [name] and returns what the session got.
+    Future<LiveServerMessage> replay(String name) async {
+      final transport = await connect();
+      addTearDown(transport.close);
+      final seen = <LiveServerMessage>[];
+      transport.receive().listen((r) => seen.add(r.message));
+      live.push(frames[name]!);
+      await until(() => seen.isNotEmpty, reason: '$name mapped to nothing');
+      return seen.single;
+    }
+
+    test('a model turn carries its audio and the transcript of it', () async {
+      // One frame, both branches: the server sends the audio and its
+      // transcription together.
+      final message = await replay('audioContent') as LiveServerContent;
+
+      final part = message.modelTurn!.parts.single as InlineDataPart;
+      expect(part.mimeType, 'audio/pcm;rate=24000');
+      expect(part.bytes, isNotEmpty);
+      expect(message.outputTranscription?.text, 'ok');
+    });
+
+    test('the end of a turn is carried, and its usage ignored', () async {
+      // This frame also carries `usageMetadata` — the field the SDK never
+      // surfaces, and the reason a raw socket is worth having. Nothing above
+      // reads it yet, so it must pass through without upsetting the mapping.
+      final message = await replay('turnComplete') as LiveServerContent;
+
+      expect(message.turnComplete, isTrue);
+      expect(message.modelTurn, isNull);
+    });
+
+    test('a tool call keeps its name, arguments and id', () async {
+      final message = await replay('toolCall') as LiveServerToolCall;
+
+      final call = message.functionCalls!.single;
+      expect(call.name, 'favourite_colour');
+      expect(call.args, isEmpty);
+      expect(call.id, isNotNull);
+    });
+
+    test('a resumption update carries the handle to reconnect on', () async {
+      final message = await replay('sessionResumptionUpdate');
+
+      expect(
+        message,
+        isA<SessionResumptionUpdate>()
+            .having((u) => u.resumable, 'resumable', isTrue)
+            .having((u) => u.newHandle, 'newHandle', isNotEmpty),
+      );
+    });
+
+    test('every captured frame maps to something', () async {
+      // A shape added to the file by a later capture gets a mapping or a
+      // failing test, rather than being silently dropped.
+      for (final name in frames.keys) {
+        expect(
+          voiceServerMessage(frames[name]! as Map<String, Object?>),
+          isNotNull,
+          reason: '$name was dropped by the mapper',
+        );
+      }
+    });
+  });
 }
