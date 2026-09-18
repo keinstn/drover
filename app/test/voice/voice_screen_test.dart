@@ -155,10 +155,11 @@ void main() {
   }
 
   /// A premultiplied glow pixel as it actually lands on the page: the
-  /// screen's own ground showing through whatever alpha the light left.
-  Color onGround((int, int, int, int) pixel) {
+  /// screen's own ground showing through whatever alpha the light left. The
+  /// page follows the ambient theme now, so the ground does too.
+  Color onGround((int, int, int, int) pixel, [ThemeData? theme]) {
     final (r, g, b, a) = pixel;
-    final ground = droverDarkTheme.scaffoldBackgroundColor;
+    final ground = (theme ?? droverDarkTheme).scaffoldBackgroundColor;
     final through = 1 - a / 255;
     int mix(int light, double base) =>
         (light + base * 255 * through).round().clamp(0, 255);
@@ -174,7 +175,10 @@ void main() {
   /// the glow's strongest pixel, over the page. Where that pixel is — and
   /// what colour it is — is measured, not assumed, so retuning the shape or
   /// the tint moves it. Returns the ground and that peak alpha.
-  Future<(Color, int)> worstGround(WidgetTester tester) async {
+  Future<(Color, int)> worstGround(
+    WidgetTester tester, [
+    ThemeData? theme,
+  ]) async {
     final (data, _, _) = await glowPixels(tester);
     final bytes = data.buffer.asUint8List();
     var best = 3;
@@ -187,7 +191,7 @@ void main() {
         bytes[best - 2],
         bytes[best - 1],
         bytes[best],
-      )),
+      ), theme),
       bytes[best],
     );
   }
@@ -910,81 +914,42 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('renders on the dark ground even under the light theme', (
-    tester,
-  ) async {
-    await tester.pumpWidget(app(theme: droverLightTheme));
-    await tester.pump();
+  testWidgets('the page follows the ambient theme', (tester) async {
+    // Replaces the pair that pinned the forced dark ground and the status-bar
+    // flip. The screen no longer forces `droverDarkTheme` — the glow carries
+    // the speaker's colour now, and chroma is something a white page *can*
+    // gain — so the only thing left to pin is that the page is the theme's.
+    // The overlay style went with it: the host route's AppBar publishes the
+    // one that matches whichever theme is on.
+    for (final theme in [droverLightTheme, droverDarkTheme]) {
+      transport = FakeTransport();
+      await tester.pumpWidget(app(theme: theme));
+      await tester.pump();
 
-    // The page itself...
-    final page = tester.widget<Material>(
-      find
-          .descendant(
-            of: find.byType(Scaffold),
-            matching: find.byType(Material),
-          )
-          .first,
-    );
-    expect(page.color, droverDarkTheme.scaffoldBackgroundColor);
-    // ...and what is painted on it: the DroverColors extension resolves to
-    // the dark set, which only happens for a context taken below the Theme.
-    expect(
-      statusParagraph(tester).text.style?.color,
-      DroverColors.dark.tertiaryText,
-    );
+      // What the page is actually filled with...
+      final page = tester.widget<Material>(
+        find
+            .descendant(
+              of: find.byType(Scaffold),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      expect(page.color, theme.scaffoldBackgroundColor);
+      // ...and what is painted on it: the screen's muted ink follows the
+      // ambient brightness, which it cannot if a Theme is being forced. The
+      // literals are the screen's own per-theme inks, not the theme's
+      // tertiary (3.6:1 on the light page at label size).
+      expect(
+        statusParagraph(tester).text.style?.color,
+        theme == droverLightTheme
+            ? const Color(0xFF4F4F55)
+            : const Color(0xFFDBDAE1),
+      );
 
-    await tester.pumpWidget(const SizedBox());
-    await tester.pump();
-  });
-
-  testWidgets('takes the status bar light, and hands it back on pop', (
-    tester,
-  ) async {
-    // Mirrors the call site: a light-theme route with an AppBar, which is
-    // what publishes the overlay style the voice screen borrows — and, being
-    // an annotation rather than a `SystemChrome` call, gives back on pop.
-    // VoiceScreen owns the session's lifecycle, so nothing else disposes it.
-    final session = VoiceSession(
-      connect: (_) async => transport,
-      mic: mic,
-      speaker: speaker,
-      tools: const [],
-    );
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: droverLightTheme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(
-          appBar: AppBar(title: const Text('herd')),
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => VoiceScreen(session: session),
-                ),
-              ),
-              child: const Text('voice'),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
-    expect(SystemChrome.latestStyle?.statusBarIconBrightness, Brightness.dark);
-
-    await tester.tap(find.text('voice'));
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
-    expect(SystemChrome.latestStyle?.statusBarIconBrightness, Brightness.light);
-
-    tester.state<NavigatorState>(find.byType(Navigator).last).pop();
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
-    expect(SystemChrome.latestStyle?.statusBarIconBrightness, Brightness.dark);
-
-    await tester.pumpWidget(const SizedBox());
-    await tester.pump();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    }
   });
 
   group('edge glow', () {
@@ -1050,6 +1015,26 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
     });
+
+    testWidgets(
+      'under reduce motion the light still changes hands, in a step',
+      (tester) async {
+        // Colour is state, not motion: with animations off the glow stays at
+        // rest strength and never tweens, but it is still the floor-holder's
+        // colour, so a speaker flip is an instant hue change — not invariance.
+        await tester.pumpWidget(app(reduceMotion: true));
+        await tester.pump();
+        final (r0, _, b0, _) = await cornerPixel(tester);
+        expect(b0, greaterThan(r0), reason: 'cool while listening');
+
+        await pushSpeaker(tester, 1.0);
+        final (r1, _, b1, _) = await cornerPixel(tester);
+        expect(r1, greaterThan(b1), reason: 'warm while the model talks');
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump();
+      },
+    );
 
     testWidgets('washes the whole bottom edge on a wide window', (
       tester,
@@ -1176,20 +1161,24 @@ void main() {
       await tester.pump();
     });
 
-    testWidgets('at rest the glow carries no colour, only the page ink', (
+    testWidgets('at rest the light is the listening one, only fainter', (
       tester,
     ) async {
       await onPhone(tester);
       await tester.pumpWidget(app());
       await tester.pump();
 
-      // The tint rides the level, so a silent room is exactly the neutral
-      // ink it has always been.
+      // Silence is not a third, neutral state: nobody talking means the
+      // assistant is listening, so a quiet room is the cool light — faint.
+      // (It used to be the page's own neutral ink; that is the change.)
       final (r, g, b, a) = await cornerPixel(tester);
       debugPrint('rest corner rgba=$r,$g,$b,$a');
       expect(a, greaterThan(20), reason: 'no light to read a colour off');
-      expect((r - g).abs(), lessThanOrEqualTo(3));
-      expect((b - r).abs(), lessThanOrEqualTo(3));
+      expect(b - r, greaterThan(15), reason: 'not cool at rest: $r,$g,$b');
+
+      await pushMic(tester, 0.99, times: 40);
+      final (_, _, _, loud) = await cornerPixel(tester);
+      expect(a, lessThan(loud), reason: 'rest is not the fainter light');
 
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
@@ -1223,23 +1212,96 @@ void main() {
       await tester.pump();
     });
 
-    testWidgets('the assistant is never a dimmer light than silence', (
+    testWidgets('neither speaker is the brighter light, on either theme', (
+      tester,
+    ) async {
+      // Was "the assistant is never dimmer than silence", which compared a
+      // loud warm turn against the *resting* glow. That no longer
+      // discriminates: rest is the same cool ink at a third of the alpha, so
+      // the alpha gap alone carries it whatever the warm ink is. And it does
+      // not generalise — on the light theme a loud glow is *darker* than a
+      // quiet one, because the white page loses luminance instead of gaining
+      // it. What the two inks actually have to satisfy is the same thing on
+      // both themes: at one level they are the same light, differing only in
+      // hue. So compare them at the same level.
+      for (final (name, theme) in [
+        ('dark', droverDarkTheme),
+        ('light', droverLightTheme),
+      ]) {
+        transport = FakeTransport();
+        await onPhone(tester);
+        await tester.pumpWidget(app(theme: theme));
+        await tester.pump();
+
+        await pushMic(tester, 0.99, times: 40);
+        final cool = (await worstGround(tester, theme)).$1.computeLuminance();
+        await pushSpeaker(tester, 1);
+        final warm = (await worstGround(tester, theme)).$1.computeLuminance();
+
+        debugPrint('$name loud luminance: cool=$cool warm=$warm');
+        // 5% of the cool one: the inks are picked at an identical HSL S and
+        // L per theme, which lands them inside 1.5%. A warm ink dark enough
+        // to read as the room going out when the assistant starts talking —
+        // the failure this has always guarded — is far outside it.
+        expect((warm - cool).abs() / cool, lessThan(0.05));
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump();
+      }
+    });
+
+    testWidgets('the wash is the strengthened one', (tester) async {
+      await tester.pumpWidget(app());
+      await tester.pump();
+      final rest = glowAlpha(tester);
+      await pushMic(tester, 0.99, times: 40);
+      final loud = glowAlpha(tester);
+      debugPrint('wash alpha: rest=$rest loud=$loud');
+
+      // The first pass painted 0.22 * 0.45 = 0.099 at rest and 0.22 loud,
+      // and read as weak on a device. 1.4x the wash and the side glow, and a
+      // higher resting presence: 0.31 * 0.52 = 0.161 and 0.31.
+      expect(rest, greaterThan(0.15));
+      expect(loud, greaterThan(0.30));
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('on the light theme the wash is a tint, not a grey smudge', (
       tester,
     ) async {
       await onPhone(tester);
-      await tester.pumpWidget(app());
+      await tester.pumpWidget(app(theme: droverLightTheme));
       await tester.pump();
-      final rest = onGround(await cornerPixel(tester)).computeLuminance();
+      final page = droverLightTheme.scaffoldBackgroundColor;
+      int delta(Color c) => [
+        ((c.r - page.r) * 255).abs().round(),
+        ((c.g - page.g) * 255).abs().round(),
+        ((c.b - page.b) * 255).abs().round(),
+      ].reduce(max);
 
+      await pushMic(tester, 0.99, times: 40);
+      final cool = onGround(await cornerPixel(tester), droverLightTheme);
       await pushSpeaker(tester, 1);
-      final loud = onGround(await cornerPixel(tester)).computeLuminance();
+      final warm = onGround(await cornerPixel(tester), droverLightTheme);
+      debugPrint(
+        'light corner on page: cool=#${cool.toARGB32().toRadixString(16)} '
+        'delta=${delta(cool)} warm=#${warm.toARGB32().toRadixString(16)} '
+        'delta=${delta(warm)}',
+      );
 
-      // The warm ink is a *colour* the light takes on, not a darker light:
-      // a low-lightness warm at these alphas would leave the assistant's
-      // glow dimmer than the resting one, which reads as the room going out
-      // when it starts talking.
-      debugPrint('bottom-edge luminance: rest=$rest loud speaking=$loud');
-      expect(loud, greaterThanOrEqualTo(rest));
+      // A hue on the page, read after compositing: the white page cannot
+      // gain luminance, so the tint is the only thing that separates this
+      // from the achromatic smudge that used to keep the screen dark.
+      expect((cool.b - cool.r) * 255, greaterThan(15), reason: 'not cool');
+      expect((warm.r - warm.b) * 255, greaterThan(15), reason: 'not warm');
+      // And enough of it to see. 70/255 is ~27% of the range; it is also
+      // what separates the light ink pair from the dark one — the dark
+      // theme's pale #8FC0F2/#F2A98F composited onto white only reach 46,
+      // which is the faint paper-fold reading this screen had to escape.
+      expect(delta(cool), greaterThanOrEqualTo(70));
+      expect(delta(warm), greaterThanOrEqualTo(70));
 
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
@@ -1248,71 +1310,94 @@ void main() {
     testWidgets('every text clears 4.5:1 over the brightest glow there is', (
       tester,
     ) async {
-      final drafts = VoiceDrafts();
-      await tester.pumpWidget(app(herd: FakeVoiceHerd(), drafts: drafts));
-      await tester.pump();
-      transport.push(
-        LiveServerToolCall(
-          functionCalls: const [FunctionCall('list_agents', {}, id: 'c1')],
-        ),
-      );
-      drafts.add(fakeAgent(kind: 'claude'), 'add tests too');
-      await tester.pump();
-      await tester.pump();
-      // Read off what is painted, not off the source: both the ink and the
-      // ground have to come from the render for this to pin anything.
-      Color colorOf(Finder f) =>
-          tester.renderObject<RenderParagraph>(f).text.style!.color!;
-      final texts = {
-        'tool line': colorOf(find.text('Called list_agents')),
-        'draft card header': colorOf(find.text('Waiting to send to claude')),
-        'draft card body': colorOf(find.text('add tests too')),
-      };
-      void clears(String state, Color ground) {
-        debugPrint('$state ground=#${ground.toARGB32().toRadixString(16)}');
-        for (final MapEntry(key: what, value: color) in texts.entries) {
-          expect(
-            contrastRatio(color, ground),
-            greaterThanOrEqualTo(4.5),
-            reason:
-                '$what at ${color.toARGB32().toRadixString(16)} over the '
-                '$state glow',
+      // Both themes, three states each. There is no synthetic "neutral
+      // ceiling" any more: the glow is only ever painted in a speaker ink,
+      // so every ground it can make is one of these six, read off the render.
+      for (final (name, theme) in [
+        ('dark', droverDarkTheme),
+        ('light', droverLightTheme),
+      ]) {
+        transport = FakeTransport();
+        final drafts = VoiceDrafts();
+        await tester.pumpWidget(
+          app(herd: FakeVoiceHerd(), drafts: drafts, theme: theme),
+        );
+        await tester.pump();
+        transport.push(
+          LiveServerToolCall(
+            functionCalls: const [FunctionCall('list_agents', {}, id: 'c1')],
+          ),
+        );
+        transport.push(
+          LiveServerContent(
+            outputTranscription: const Transcription(
+              text: 'One agent is blocked.',
+            ),
+            turnComplete: true,
+          ),
+        );
+        drafts.add(fakeAgent(kind: 'claude'), 'add tests too');
+        await tester.pump();
+        await tester.pump();
+        // Read off what is painted, not off the source: both the ink and the
+        // ground have to come from the render for this to pin anything.
+        Color colorOf(Finder f) =>
+            tester.renderObject<RenderParagraph>(f).text.style!.color!;
+        final texts = {
+          'tool line': colorOf(find.text('Called list_agents')),
+          'draft card header': colorOf(find.text('Waiting to send to claude')),
+          'draft card body': colorOf(find.text('add tests too')),
+          // Bubbles have an opaque fill, so their text never meets the glow;
+          // the header label has none and is the smallest text on the page.
+          'status label': colorOf(find.byKey(const ValueKey('voice_status'))),
+        };
+        var worstRatio = double.infinity;
+        var worstCase = '';
+        void clears(String state, Color ground) {
+          debugPrint(
+            '$name $state ground=#${ground.toARGB32().toRadixString(16)}',
           );
+          for (final MapEntry(key: what, value: color) in texts.entries) {
+            final ratio = contrastRatio(color, ground);
+            if (ratio < worstRatio) {
+              worstRatio = ratio;
+              worstCase =
+                  '$what #${color.toARGB32().toRadixString(16)} over the '
+                  '$state ground #${ground.toARGB32().toRadixString(16)} = '
+                  '${ratio.toStringAsFixed(2)}:1';
+            }
+            expect(
+              ratio,
+              greaterThanOrEqualTo(4.5),
+              reason:
+                  '$name: $what at ${color.toARGB32().toRadixString(16)} '
+                  'over the $state glow',
+            );
+          }
         }
+
+        // Rest is the listening ink at the resting alpha, not a neutral.
+        final (resting, restPeak) = await worstGround(tester, theme);
+        clears('resting', resting);
+
+        // Full level, and it stays there: the level only moves when a frame
+        // lands, so each scan is one loudness throughout.
+        await pushMic(tester, 0.99, times: 40);
+        final (cool, peak) = await worstGround(tester, theme);
+        clears('loud listening', cool);
+
+        await pushSpeaker(tester, 1);
+        final (warm, _) = await worstGround(tester, theme);
+        clears('loud speaking', warm);
+
+        debugPrint(
+          '$name peak alpha rest=$restPeak/255 loud=$peak/255 — '
+          'worst case: $worstCase',
+        );
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump();
       }
-
-      // The glow now has a colour, and the colour changes the ground under
-      // every unbubbled line — so all three of them get checked, off the
-      // render each time rather than computed from the constants.
-      final (resting, _) = await worstGround(tester);
-      clears('resting', resting);
-
-      // Full level, and it stays there: the level only moves when a frame
-      // lands, so each scan is one loudness throughout.
-      await pushMic(tester, 0.99, times: 40);
-      final (cool, peak) = await worstGround(tester);
-      clears('loud listening', cool);
-
-      await pushSpeaker(tester, 1);
-      final (warm, _) = await worstGround(tester);
-      clears('loud speaking', warm);
-
-      // And the ceiling: the neutral ink is more luminous than either tint,
-      // so the page's own ink at that same peak alpha is the brightest
-      // ground this glow could ever make. The screen never paints it — a
-      // loud glow always carries a tint — but the text is designed against
-      // it, so it stays asserted.
-      debugPrint('glow peak alpha=$peak/255');
-      clears(
-        'neutral ceiling',
-        Color.alphaBlend(
-          droverDarkTheme.colorScheme.onSurface.withValues(alpha: peak / 255),
-          droverDarkTheme.scaffoldBackgroundColor,
-        ),
-      );
-
-      await tester.pumpWidget(const SizedBox());
-      await tester.pump();
     });
   });
 }

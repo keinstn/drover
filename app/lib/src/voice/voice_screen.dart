@@ -11,38 +11,58 @@ import 'voice_herd.dart';
 import 'voice_session.dart';
 
 /// Secondary text on this screen, lifted off [DroverColors.tertiaryText].
-/// The edge glow lays up to ~0.30 of the page's ink over the ground behind
-/// every unbubbled line — in the bottom corners, where the 0.22 wash along
-/// the bottom edge and the 0.10 side glow meet — which leaves `#908F96` far
-/// under the 4.5:1 WCAG AA wants for text this size. This clears that worst
-/// case (the contrast test reads it off the render) and holds 11.5:1 over
-/// the bare ground. The screen forces the dark ground in both themes, so the
-/// headroom above the theme's tertiary ink is always there to take.
-const _mutedInk = Color(0xFFCFCED5);
+/// The edge glow lays up to ~0.41 of its ink over the ground behind every
+/// unbubbled line — in the bottom corners, where the 0.31 wash along the
+/// bottom edge and the 0.14 side glow meet — which leaves both themes'
+/// tertiary ink (`#908F96` / `#86868B`) far under the 4.5:1 WCAG AA wants
+/// for text this size. These clear that worst case (the contrast test reads
+/// the ground off the render, per theme and per speaker) with margin.
+///
+/// Dark is a lift off `#CFCED5`, which the stronger glow no longer clears;
+/// light is a *darkening* of the theme's tertiary ink, because on the white
+/// page the glow subtracts luminance instead of adding it.
+const _mutedInkDark = Color(0xFFDBDAE1);
+const _mutedInkLight = Color(0xFF4F4F55);
+
+Color _mutedInk(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? _mutedInkDark
+    : _mutedInkLight;
 
 /// The unbubbled lines — tool, system, sent, event and the error — in that
 /// ink.
-const _mutedStyle = TextStyle(color: _mutedInk, fontSize: 12.5);
+TextStyle _mutedStyle(BuildContext context) =>
+    TextStyle(color: _mutedInk(context), fontSize: 12.5);
 
-/// Who holds the floor, as light: [_listeningInk] while the user talks,
-/// [_speakingInk] while the assistant does. Colour on a drover screen means
-/// *which agent* or *what state* and never decoration (see the doc on
-/// [droverDarkTheme]); who is talking is a state of the voice session, so
-/// this is inside that rule.
+/// Who holds the floor, as light: the cool ink whenever the assistant is
+/// listening — which includes a silent room, because waiting *is* the user's
+/// turn — and the warm one while the assistant talks. Colour on a drover
+/// screen means *which agent* or *what state* and never decoration (see the
+/// doc on [droverDarkTheme]); who holds the floor is a state of the voice
+/// session, so this is inside that rule.
 ///
-/// Screen-local and not a [ThemeExtension]: the voice screen forces
-/// [droverDarkTheme] in both themes, so a themed field would be one constant
-/// written out twice.
+/// These are the only inks the glow is ever painted in: no `onSurface`
+/// reaches it on either theme, so the light theme's white page never takes
+/// the grey haze that used to keep this screen dark.
 ///
-/// ponytail: both are a by-eye knob, to be tuned on a device against the
-/// reference. They are the same HSL saturation (79%) and lightness (75.5%)
-/// and differ only in hue — 210° and 16° — so a tint reads as the same light
-/// taking on a colour, never as a dimmer or brighter one. Keep the lightness
-/// high if you retune them: a dark warm ink at these alphas would make the
-/// assistant's glow dimmer than the resting one, and the tests check it is
-/// not.
-const _listeningInk = Color(0xFF8FC0F2);
-const _speakingInk = Color(0xFFF2A98F);
+/// Screen-local and not a [ThemeExtension]: nothing outside this screen has
+/// a use for them.
+///
+/// ponytail: all four are a by-eye knob, to be tuned on a device against the
+/// reference. Within a pair they share an HSL saturation and lightness and
+/// differ only in hue — 210° and 16° — so a tint reads as the same light
+/// taking on a colour, never as a dimmer or brighter one; the tests check
+/// the assistant's glow is never dimmer than the resting one.
+///
+/// Dark: S 79%, L 75.5% — a pale light on a near-black page, which *adds*
+/// luminance. Light: S 70%, L 54% — the same two hues, dark and saturated
+/// enough that on white they subtract luminance as *chroma* (the page gains
+/// a colour) rather than as grey. Their relative luminances match to within
+/// 1% (0.242 / 0.244), so neither speaker's light is the brighter one.
+const _listeningInkDark = Color(0xFF8FC0F2);
+const _speakingInkDark = Color(0xFFF2A98F);
+const _listeningInkLight = Color(0xFF388ADC);
+const _speakingInkLight = Color(0xFFDC6338);
 
 /// The voice-assistant screen: the transcript *is* the screen — every line in
 /// one log, pending draft cards pinned above the controls until they are
@@ -100,28 +120,17 @@ class _VoiceScreenState extends State<VoiceScreen> {
     });
   }
 
-  /// The voice screen is dark in both themes. Light can only be *depicted*
-  /// by adding luminance, and on the light theme's white page every version
-  /// of the edge glow subtracted it — measured on device it read as a smudge
-  /// or a paper fold, never as light arriving. So this joins the live
-  /// terminal and the code/diff panels: a surface showing live machine
-  /// output stays dark whatever the app's theme is.
+  /// The screen follows the ambient theme. It used to force the dark one:
+  /// an *achromatic* glow can only depict light by adding luminance, and on a
+  /// white page it subtracted it — measured on device it read as a smudge or
+  /// a paper fold. The speaker tint changed that premise: a white page cannot
+  /// gain luminance but it can gain chroma, so on light the glow is a pale
+  /// cool or warm wash instead of a grey one. Nothing here annotates the
+  /// status bar either: once this route is opaque the host's AppBar is no
+  /// longer built, and with no annotation in the tree the status bar simply
+  /// keeps the last style it was given — the host's, under the same theme.
   @override
-  Widget build(BuildContext context) => Theme(
-    data: droverDarkTheme,
-    // There is no AppBar to carry the overlay style, so annotate it here:
-    // light glyphs for a dark ground. Being an annotation and not a
-    // `SystemChrome` call, it reverts by itself once this route is popped.
-    child: AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
-      // Builder: every helper below is handed a context, and one taken
-      // above the Theme would still resolve the ambient (possibly light)
-      // colours — bubbles, tertiary text, buttons and draft cards included.
-      child: Builder(builder: _scaffold),
-    ),
-  );
-
-  Widget _scaffold(BuildContext context) {
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final session = widget.session;
     final active =
@@ -188,9 +197,13 @@ class _VoiceScreenState extends State<VoiceScreen> {
                           textAlign: TextAlign.end,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
+                          // The screen's muted ink, not the theme's tertiary:
+                          // on the light page the latter is 3.6:1 at label
+                          // size, and this screen was 5.6:1 before it
+                          // followed the theme.
                           style: droverLabelStyle(
                             context,
-                            color: DroverColors.of(context).tertiaryText,
+                            color: _mutedInk(context),
                           ),
                         ),
                       ),
@@ -250,7 +263,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
           Text(
             l10n.voiceHint,
             textAlign: TextAlign.center,
-            style: _mutedStyle.copyWith(fontSize: 13, height: 1.4),
+            style: _mutedStyle(context).copyWith(fontSize: 13, height: 1.4),
           ),
         ],
       ),
@@ -322,7 +335,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
                 errorText!,
                 key: const ValueKey('voice_error_body'),
                 textAlign: TextAlign.center,
-                style: _mutedStyle,
+                style: _mutedStyle(context),
               ),
             )
           : _entryRow(
@@ -365,7 +378,10 @@ class _VoiceScreenState extends State<VoiceScreen> {
                       const SizedBox(height: 6),
                       Text(
                         l10n.voiceRestart,
-                        style: droverLabelStyle(context, color: _mutedInk),
+                        style: droverLabelStyle(
+                          context,
+                          color: _mutedInk(context),
+                        ),
                       ),
                     ],
                   ),
@@ -459,15 +475,15 @@ class _VoiceScreenState extends State<VoiceScreen> {
         ),
         VoiceEntryKind.tool => Row(
           children: [
-            const Icon(Icons.build, size: 14, color: _mutedInk),
+            Icon(Icons.build, size: 14, color: _mutedInk(context)),
             const SizedBox(width: 6),
-            Text(l10n.voiceToolCalled(entry.text), style: _mutedStyle),
+            Text(l10n.voiceToolCalled(entry.text), style: _mutedStyle(context)),
           ],
         ),
         VoiceEntryKind.system => Text(
           _systemLabel(l10n, entry.text),
           textAlign: TextAlign.center,
-          style: _mutedStyle,
+          style: _mutedStyle(context),
         ),
         VoiceEntryKind.draft => _draftCard(context, l10n, entry.text),
         VoiceEntryKind.sent => Text(
@@ -481,15 +497,18 @@ class _VoiceScreenState extends State<VoiceScreen> {
             ),
           },
           textAlign: TextAlign.center,
-          style: _mutedStyle,
+          style: _mutedStyle(context),
         ),
         VoiceEntryKind.event => Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.notifications_none, size: 14, color: _mutedInk),
+            Icon(Icons.notifications_none, size: 14, color: _mutedInk(context)),
             const SizedBox(width: 6),
             Flexible(
-              child: Text(_eventLabel(l10n, entry.text), style: _mutedStyle),
+              child: Text(
+                _eventLabel(l10n, entry.text),
+                style: _mutedStyle(context),
+              ),
             ),
           ],
         ),
@@ -548,13 +567,13 @@ class _VoiceScreenState extends State<VoiceScreen> {
                           : Icons.schedule_send)
                     : Icons.check,
                 size: 14,
-                color: _mutedInk,
+                color: _mutedInk(context),
               ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   header,
-                  style: droverLabelStyle(context, color: _mutedInk),
+                  style: droverLabelStyle(context, color: _mutedInk(context)),
                 ),
               ),
             ],
@@ -663,7 +682,7 @@ class _EdgeGlow extends StatelessWidget {
   /// the body the bottom wash climbs, [_sideReachMin]/[_sideReachMax] the
   /// fraction the side glow climbs, and [_sideWidth] how far in from the
   /// side edge it reaches, as a fraction of the width.
-  static const _alphaMin = 0.45;
+  static const _alphaMin = 0.52;
   static const _alphaMax = 1.0;
   static const _reachMin = 0.3;
   static const _reachMax = 0.52;
@@ -673,10 +692,12 @@ class _EdgeGlow extends StatelessWidget {
 
   /// Alpha of the ink along the bottom edge, and of the side glow at the
   /// very corner. They overlap only in the corners, so the most ink any
-  /// pixel carries is `1 - (1 - 0.22)(1 - 0.10)` ≈ 0.30, and that is what
-  /// text has to be read against; [_mutedInk] clears it.
-  static const _washAlpha = 0.22;
-  static const _sideAlpha = 0.10;
+  /// pixel carries is `1 - (1 - 0.31)(1 - 0.14)` ≈ 0.41, and that is what
+  /// text has to be read against; [_mutedInk] clears it on both themes.
+  ///
+  /// 1.4x the first pass's 0.22/0.10 — the glow read as weak on a device.
+  static const _washAlpha = 0.31;
+  static const _sideAlpha = 0.14;
 
   /// The side glow's alpha at 0, ¼, ½, ¾ and all of its radius, as a
   /// fraction of [_sideAlpha]: `(1 + cos(πr)) / 2`.
@@ -688,35 +709,35 @@ class _EdgeGlow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ink = Theme.of(context).colorScheme.onSurface;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    // The glow is only ever the floor-holder's colour. Silence is not a
+    // separate, neutral state: nobody talking means the assistant is
+    // listening, so a quiet room is the cool light, faint. The level scales
+    // the alpha, never the hue.
+    final ink = speaking
+        ? (dark ? _speakingInkDark : _speakingInkLight)
+        : (dark ? _listeningInkDark : _listeningInkLight);
     // Reduce motion reads as a permanently silent room: fixed at rest, not
-    // subscribed to the level at all. The tint rides the level, so at 0 it is
-    // exactly the neutral ink — this path never shows a colour, and there is
-    // no animation on it to disable.
+    // subscribed to the level at all, and no tween to disable.
     if (MediaQuery.disableAnimationsOf(context)) return _glow(ink, 0);
     // A finite implicit tween on a state flip — no controller, no ticker
     // outliving the transition: the glow is still driven by the level alone.
     return TweenAnimationBuilder<Color?>(
-      tween: ColorTween(end: speaking ? _speakingInk : _listeningInk),
+      tween: ColorTween(end: ink),
       duration: _tintDuration,
       builder: (context, tint, _) => ValueListenableBuilder<double>(
         valueListenable: level,
-        builder: (context, value, _) {
-          final v = value.clamp(0.0, 1.0);
-          // The colour arrives with the voice: neutral ink in silence,
-          // saturating to the speaker's tint as the level rises, so a hue
-          // never appears out of a quiet room.
-          return _glow(Color.lerp(ink, tint, v)!, v);
-        },
+        builder: (context, value, _) =>
+            _glow(tint ?? ink, value.clamp(0.0, 1.0)),
       ),
     );
   }
 
-  /// The glow at level [v] in [ink] — the neutral page ink already lerped
-  /// towards the speaker's tint by the caller — where [v] scales both the
-  /// alpha and how far up the body the light climbs. The alpha is
-  /// multiplied into the gradients
-  /// rather than applied with an [Opacity]: these washes overlap, so group
+  /// The glow at level [v] in [ink] — the floor-holder's colour, mid-tween
+  /// between the two when the floor has just changed hands. [v] scales both
+  /// the alpha and how far up the body the light climbs. The alpha is
+  /// multiplied into the gradients rather than applied with an [Opacity]:
+  /// these washes overlap, so group
   /// opacity cannot fold into one draw and would cost a screen-wide
   /// offscreen layer on every audio frame, uncacheable because the boxes
   /// resize on the same tick.
