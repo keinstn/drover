@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
+import '../infra/screen_wake.dart';
 import '../models/agent_preset.dart';
 import '../utils/path.dart';
 import 'voice_drafts.dart';
@@ -51,30 +54,73 @@ const _speakingInk = Color(0xFFF2A98F);
 /// Owns the [session] lifecycle: starts it on first frame, disposes it with
 /// the screen.
 class VoiceScreen extends StatefulWidget {
-  const VoiceScreen({super.key, required this.session});
+  const VoiceScreen({super.key, required this.session, this.screenWake});
 
   final VoiceSession session;
+
+  /// Defaults to [PlatformScreenWake]; overridable so tests can fake it.
+  /// Nullable rather than defaulted inline: a `const` constructor's default
+  /// values must be constants, and [PlatformScreenWake] isn't one.
+  final ScreenWake? screenWake;
 
   @override
   State<VoiceScreen> createState() => _VoiceScreenState();
 }
 
-class _VoiceScreenState extends State<VoiceScreen> {
+class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
   final _scroll = ScrollController();
+  late final ScreenWake _screenWake = widget.screenWake ?? PlatformScreenWake();
+
+  /// Last value sent to [_screenWake], so a wake call goes out only on a
+  /// transition — the session notifies on every transcript delta and
+  /// playback tick, far too often to re-send the same value each time.
+  var _wakeOn = false;
 
   @override
   void initState() {
     super.initState();
     widget.session.addListener(_onSessionChanged);
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => widget.session.start());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.session.removeListener(_onSessionChanged);
     widget.session.dispose();
     _scroll.dispose();
+    // Unconditional, not gated on `_wakeOn`: whatever tore this screen down
+    // must not leave the device pinned awake behind it.
+    unawaited(_screenWake.setEnabled(false));
     super.dispose();
+  }
+
+  /// iOS silently kills the mic on backgrounding, so a live conversation must
+  /// end explicitly rather than sit half-dead. Only `paused`: `inactive` also
+  /// fires for a Control Centre glance, an app-switcher flick and an
+  /// incoming-call banner, and ending a live conversation for those would be
+  /// worse than the bug this fixes (same distinction as `main.dart`'s own
+  /// `didChangeAppLifecycleState`).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) widget.session.background();
+  }
+
+  /// True while connecting or live — shared by [_syncWake] and [_scaffold]
+  /// so the two can't drift apart when a status is added.
+  bool get _isActive =>
+      widget.session.status == VoiceSessionStatus.connecting ||
+      widget.session.status == VoiceSessionStatus.live;
+
+  /// Turns the wake on/off on a `connecting`/`live` transition — see
+  /// [_wakeOn]. Every session-end path (manual stop, cap, error, background)
+  /// notifies through here, so this alone also covers releasing it.
+  void _syncWake() {
+    final active = _isActive;
+    if (active == _wakeOn) return;
+    _wakeOn = active;
+    unawaited(_screenWake.setEnabled(active));
   }
 
   bool get _wasAtBottom {
@@ -85,6 +131,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
 
   void _onSessionChanged() {
     if (!mounted) return;
+    _syncWake();
     // Follow new entries only if the user hasn't scrolled up to read.
     final stick = _wasAtBottom;
     setState(() {});
@@ -124,9 +171,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
   Widget _scaffold(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final session = widget.session;
-    final active =
-        session.status == VoiceSessionStatus.connecting ||
-        session.status == VoiceSessionStatus.live;
+    final active = _isActive;
     // `_fail` adds no entry, so on an error the log would otherwise be
     // empty and the only account of what went wrong would be the header
     // label — which clamps to two lines. So the error rides the log as its
@@ -420,6 +465,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
     VoiceSession.sendFailedCode => l10n.voiceSendFailed,
     VoiceSession.launchFailedCode => l10n.voiceLaunchFailed,
     VoiceSession.capReachedCode => l10n.voiceCapReached,
+    VoiceSession.backgroundedCode => l10n.voiceBackgrounded,
     _ => code,
   };
 
