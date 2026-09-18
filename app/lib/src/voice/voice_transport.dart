@@ -309,10 +309,12 @@ class TokenVoiceTransport implements VoiceTransport {
       opened.add(jsonEncode({'setup': _setup(handle)}));
       await ready.future.timeout(_handshakeTimeout);
       // A close that landed while this window was opening: the session is
-      // gone and this socket must not outlive it.
+      // gone and this socket must not outlive it. Thrown rather than
+      // returned, so neither `connect` nor `_reopen` is handed a transport
+      // with no socket under it.
       if (_closed) {
         await opened.close().catchError((Object _) {});
-        return;
+        throw StateError('closed while connecting');
       }
       _socket = opened;
       _framesThisWindow = 0;
