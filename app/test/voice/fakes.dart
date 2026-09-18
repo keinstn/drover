@@ -8,7 +8,12 @@ import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_transport.dart';
 import 'package:firebase_ai/firebase_ai.dart';
 
-class FakeTransport implements VoiceTransport {
+class FakeTransport implements VoiceTransport, VoiceUsageReporter {
+  /// Usage totals a test can fill in, standing in for what the real socket
+  /// reads off `usageMetadata`.
+  @override
+  final usage = VoiceUsage();
+
   final server = StreamController<LiveServerResponse>();
   final sentAudio = <Uint8List>[];
   final sentText = <String>[];

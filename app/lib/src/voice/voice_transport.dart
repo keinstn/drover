@@ -134,6 +134,105 @@ class FirebaseVoiceTransport implements VoiceTransport {
 /// behind it yet.
 const kVoiceUseMintedToken = true;
 
+/// Whether a finished session shows what it billed for.
+///
+/// A developer readout, not a feature: the totals reach the transcript and
+/// the debug log and nowhere else. Nothing about a session leaves the device,
+/// which is what keeps drover's App Privacy declaration ("Usage data: No")
+/// true. **Turn this off before 1.1.0 reaches the App Store** — the session
+/// and screen tests that assert the line go with it. The counting itself is
+/// not gated: it costs nothing, and the transport's own tests stay green
+/// either way.
+const kVoiceUsageReadout = true;
+
+/// What one call billed for, summed over its turns.
+///
+/// The Live server reports `usageMetadata` on each `turnComplete` frame and
+/// `firebase_ai` 4.0.0 drops it (see `docs/voice-billing.md`), so only a raw
+/// socket can fill this in: [TokenVoiceTransport] does, and [VoiceSession]
+/// adds up the transports one call used.
+class VoiceUsage {
+  /// Frames that carried usage: one per model turn.
+  ///
+  /// ponytail: the server puts usage on the `turnComplete` frame, so the two
+  /// are counted as one. If it ever reports usage on its own frame, this
+  /// drifts from the turn count and wants counting separately.
+  var turns = 0;
+  var promptTokens = 0;
+  var responseTokens = 0;
+
+  /// Modality ('TEXT', 'AUDIO', ...) -> tokens. Kept apart because the
+  /// modalities are priced apart, and accumulated context is re-billed at the
+  /// modality it arrived in — the reason this readout is worth reading.
+  final promptByModality = <String, int>{};
+  final responseByModality = <String, int>{};
+
+  /// Folds one frame's `usageMetadata` in. Every field is read defensively
+  /// and a value that is not the number it should be counts as nothing: a
+  /// statistic must not cost a conversation.
+  void add(Object? metadata) {
+    if (metadata is! Map) return;
+    turns++;
+    promptTokens += _count(metadata['promptTokenCount']);
+    responseTokens += _count(metadata['responseTokenCount']);
+    _details(promptByModality, metadata['promptTokensDetails']);
+    _details(responseByModality, metadata['responseTokensDetails']);
+  }
+
+  /// Takes over [other]'s totals, which is how a call that reconnected onto a
+  /// second transport still reports one number.
+  void absorb(VoiceUsage other) {
+    turns += other.turns;
+    promptTokens += other.promptTokens;
+    responseTokens += other.responseTokens;
+    _merge(promptByModality, other.promptByModality);
+    _merge(responseByModality, other.responseByModality);
+  }
+
+  // isFinite as well as num: JSON is happy to carry 1e400, `jsonDecode`
+  // hands that back as `double.infinity`, and `infinity.toInt()` throws.
+  static int _count(Object? value) =>
+      value is num && value.isFinite ? value.toInt() : 0;
+
+  static void _merge(Map<String, int> into, Map<String, int> from) {
+    from.forEach((key, value) => into[key] = (into[key] ?? 0) + value);
+  }
+
+  static void _details(Map<String, int> into, Object? details) {
+    if (details is! List) return;
+    for (final detail in details) {
+      if (detail is! Map) continue;
+      if (detail['modality'] case final String modality) {
+        into[modality] = (into[modality] ?? 0) + _count(detail['tokenCount']);
+      }
+    }
+  }
+}
+
+/// A transport that counts what it billed for.
+///
+/// Apart from [VoiceTransport] because only the raw socket sees
+/// `usageMetadata`; the Firebase transport has nothing to report.
+abstract interface class VoiceUsageReporter {
+  VoiceUsage get usage;
+}
+
+/// The readout itself: one English line, rendered as it stands by the voice
+/// screen's system-code fall-through. Not localised — it ships behind
+/// [kVoiceUsageReadout] and is deleted before release.
+String voiceUsageLine(VoiceUsage usage, Duration elapsed) {
+  final clock = '${elapsed.inMinutes}m ${elapsed.inSeconds % 60}s';
+  if (usage.turns == 0) return 'usage · $clock · no usage reported';
+  return 'usage · ${usage.turns} turn${usage.turns == 1 ? '' : 's'} · $clock · '
+      'prompt ${usage.promptTokens}${_modalities(usage.promptByModality)} · '
+      'response ${usage.responseTokens}'
+      '${_modalities(usage.responseByModality)}';
+}
+
+String _modalities(Map<String, int> tokens) => tokens.isEmpty
+    ? ''
+    : ' (${tokens.entries.map((e) => '${e.key} ${e.value}').join(', ')})';
+
 /// The RPC an ephemeral token connects to.
 ///
 /// NOT the documented `BidiGenerateContent`: every documented way of
@@ -206,7 +305,7 @@ Future<VoiceToken> mintVoiceTokenFromFunctions() async {
 /// sees no drop at all: nothing is logged, and the one reconnect
 /// `VoiceSession._lost` allows a genuine drop is left unspent. Any other
 /// close ends the stream, exactly as before.
-class TokenVoiceTransport implements VoiceTransport {
+class TokenVoiceTransport implements VoiceTransport, VoiceUsageReporter {
   TokenVoiceTransport._(this._mint, this._setup, this._endpoint);
 
   static const _handshakeTimeout = Duration(seconds: 30);
@@ -273,6 +372,11 @@ class TokenVoiceTransport implements VoiceTransport {
   VoiceToken? _nextToken;
   Timer? _mintTimer;
   var _closed = false;
+
+  /// What this transport has billed for so far, across every window it
+  /// reopened on its own.
+  @override
+  final usage = VoiceUsage();
 
   /// Server frames seen on the current socket. A window that ends after
   /// carrying nothing is not a window boundary, whatever it closes with, and
@@ -373,6 +477,12 @@ class TokenVoiceTransport implements VoiceTransport {
       if (!ready.isCompleted) ready.complete();
       return;
     }
+    // A top-level sibling of `serverContent`, and read inside a guard of its
+    // own as well as [VoiceUsage.add]'s: whatever the server puts here,
+    // counting it must not turn into a stream error that ends the call.
+    try {
+      usage.add(json['usageMetadata']);
+    } catch (_) {}
     // After the mapping, so an error frame — which throws — is not counted as
     // a window that carried something.
     final message = voiceServerMessage(json);
