@@ -1034,6 +1034,30 @@ abstract class AppLocalizations {
   /// **'Talk to drover about your agents. Agent status and short summaries of their replies are sent to Google\'s Gemini Live API for the conversation.'**
   String get settingsVoiceAssistantSubtitle;
 
+  /// No description provided for @settingsAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get settingsAccount;
+
+  /// No description provided for @settingsAccountSignIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with Apple'**
+  String get settingsAccountSignIn;
+
+  /// No description provided for @settingsAccountSignedIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in with Apple'**
+  String get settingsAccountSignedIn;
+
+  /// No description provided for @settingsAccountSignInFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t sign in. Tap to try again.'**
+  String get settingsAccountSignInFailed;
+
   /// No description provided for @herdVoiceButton.
   ///
   /// In en, this message translates to:

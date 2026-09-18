@@ -16,6 +16,7 @@ import 'src/demo/demo_backend.dart';
 import 'src/demo/demo_content.dart';
 import 'src/demo/demo_screen.dart';
 import 'src/firebase/app_check.dart';
+import 'src/firebase/apple_account.dart';
 import 'src/herdr/herdr_client.dart';
 import 'src/herdr/host_platform.dart';
 import 'src/infra/best_effort.dart';
@@ -48,6 +49,10 @@ Future<void> main() async {
   } else {
     WidgetsFlutterBinding.ensureInitialized();
   }
+  // Read inside the bootstrap below and passed down, rather than read from
+  // the widget tree: touching FirebaseAuth there would make the whole app
+  // need Firebase initialized to build.
+  var appleSignedIn = false;
   await runBestEffort(() async {
     await Firebase.initializeApp();
     final appleProvider = appleAppCheckProvider(
@@ -61,6 +66,11 @@ Future<void> main() async {
     if (FirebaseAuth.instance.currentUser == null) {
       await FirebaseAuth.instance.signInAnonymously();
     }
+    appleSignedIn =
+        FirebaseAuth.instance.currentUser?.providerData.any(
+          (provider) => provider.providerId == AppleAuthProvider.PROVIDER_ID,
+        ) ??
+        false;
   }, context: 'firebase bootstrap');
   final store = HostStore();
   var hostsState = const HostsState(hosts: []);
@@ -105,6 +115,7 @@ Future<void> main() async {
       initialActiveHostId: hostsState.activeHostId,
       initialSettings: settings,
       appVersion: appVersion,
+      initialAppleSignedIn: appleSignedIn,
     ),
   );
 }
@@ -124,6 +135,7 @@ class DroverApp extends StatefulWidget {
     this.hostConnectionRegistry,
     this.appVersion,
     this.clock,
+    this.initialAppleSignedIn = false,
   });
 
   final HostStore hostStore;
@@ -157,6 +169,11 @@ class DroverApp extends StatefulWidget {
   /// real clock; production always uses [DateTime.now].
   final DateTime Function()? clock;
 
+  /// Whether an Apple ID was already linked to the Firebase account when
+  /// [main] read it at startup. Passed in rather than read here so the app
+  /// still builds without Firebase (tests do exactly that).
+  final bool initialAppleSignedIn;
+
   @override
   State<DroverApp> createState() => _DroverAppState();
 }
@@ -180,6 +197,10 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
   /// null = follow the device locale (see [build] for how that resolves).
   Locale? _locale;
   bool _voiceAssistantEnabled = false;
+
+  /// Flipped once the Apple link succeeds; never back — there is no
+  /// sign-out, because a balance signed out of is stranded.
+  bool _appleSignedIn = false;
 
   /// Per-device push opt-ins, mirrored to the backend on every change.
   bool _notifyOnBlocked = true;
@@ -265,6 +286,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     _notifyOnBlocked = widget.initialSettings.notifyOnBlocked;
     _notifyOnDone = widget.initialSettings.notifyOnDone;
     _voiceAssistantEnabled = widget.initialSettings.voiceAssistantEnabled;
+    _appleSignedIn = widget.initialAppleSignedIn;
     if (_hosts.isNotEmpty) {
       _scheduleNotificationRegistration();
     }
@@ -874,6 +896,22 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
                   }
                 }, context: 'persist voice assistant'),
               );
+            },
+            appleSignedIn: _appleSignedIn,
+            onSignInWithApple: () async {
+              await linkAppleAccount(
+                // No scopes on either provider: the account needs the stable
+                // identifier only, and asking for a name or an email would
+                // make drover collect contact information it has no use for.
+                link: () => FirebaseAuth.instance.currentUser!.linkWithProvider(
+                  AppleAuthProvider(),
+                ),
+                signIn: () => FirebaseAuth.instance.signInWithProvider(
+                  AppleAuthProvider(),
+                ),
+              );
+              setState(() => _appleSignedIn = true);
+              rebuildRoute(() {});
             },
             onManageHosts: _openHostList,
             // Hidden while the demo is already showing — settings is reached
