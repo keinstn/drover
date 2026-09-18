@@ -121,13 +121,18 @@ class FirebaseVoiceTransport implements VoiceTransport {
 
 /// Which transport a production [VoiceSession] builds.
 ///
-/// `false` keeps today's path: the app opens the Live session itself through
-/// Firebase AI Logic. `true` moves it behind `mintVoiceToken`, a Cloud
+/// `false` keeps the original path: the app opens the Live session itself
+/// through Firebase AI Logic. `true` moves it behind `mintVoiceToken`, a Cloud
 /// Function that mints a short-lived Live API token the app then connects
 /// with — the only shape in which a server-side check can ever gate a
-/// session. Defaults to `false` because the Function is not deployed yet, so
-/// a `true` here would ship an app that cannot start a session at all.
-const kVoiceUseMintedToken = false;
+/// session.
+///
+/// `true` since the Function was deployed (2026-09-18, `us-central1`, the
+/// region [mintVoiceTokenFromFunctions] pins). Flipping this back is the whole
+/// revert: both transports are kept, and nothing else chooses between them.
+/// The Function still mints for anyone it will talk to — there is no wallet
+/// behind it yet.
+const kVoiceUseMintedToken = true;
 
 /// The RPC an ephemeral token connects to.
 ///
