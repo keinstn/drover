@@ -319,6 +319,21 @@ class TokenVoiceTransport implements VoiceTransport {
   }
 
   void _onFrame(Object? frame, Completer<void> ready) {
+    try {
+      _readFrame(frame, ready);
+    } catch (e) {
+      // The boundary firebase_ai's own session keeps: a frame that will not
+      // parse becomes a stream error the session can fail on, rather than an
+      // unhandled zone error that leaves it wedged and silent.
+      if (!ready.isCompleted) {
+        ready.completeError(e);
+      } else if (!_out.isClosed) {
+        _out.addError(e);
+      }
+    }
+  }
+
+  void _readFrame(Object? frame, Completer<void> ready) {
     final text = frame is String ? frame : utf8.decode(frame! as List<int>);
     _onRawFrame?.call(text);
     final json = jsonDecode(text) as Map<String, Object?>;

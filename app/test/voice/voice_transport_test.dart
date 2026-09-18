@@ -200,6 +200,17 @@ void main() {
     expect(seen.last, isA<LiveServerContent>());
   });
 
+  test('a frame that will not parse becomes a stream error', () async {
+    final transport = await connect();
+    addTearDown(transport.close);
+
+    Object? error;
+    transport.receive().listen((_) {}, onError: (Object e) => error = e);
+    live.socket!.add('not json');
+
+    await until(() => error != null, reason: 'the bad frame vanished');
+  });
+
   test('any other close ends the stream, as a genuine drop must', () async {
     final transport = await connect();
     addTearDown(transport.close);
