@@ -153,6 +153,19 @@ class VoiceToken {
   final DateTime expiresAt;
 }
 
+/// Removes a minted token from [text], which is on its way to a log, an error
+/// string or the voice transcript.
+///
+/// `dart:io` puts the entire request URI into a [WebSocketException]'s
+/// message, and the token rides in that URI's query string — so the failure
+/// path that fires when a token expires or is refused, which this design
+/// walks routinely, is exactly the one that would write a live credential
+/// into the device log. The query parameter is scrubbed as well as the token
+/// itself, in case the text carries a URI this caller did not mint.
+String scrubVoiceToken(String text, String token) => text
+    .replaceAll(token, '<token>')
+    .replaceAll(RegExp(r'access_token=[^&\s,)"]+'), 'access_token=<token>');
+
 /// Mints one token. Production calls the Cloud Function; the live check under
 /// `app/tool/` mints straight from the Gemini API with a key, which is why
 /// this is injectable at all.
@@ -253,30 +266,36 @@ class TokenVoiceTransport implements VoiceTransport {
   /// server refuses on sight.
   var _framesThisWindow = 0;
 
+  /// Opens one window. Everything that can throw is inside the try, because
+  /// every error out of here is scrubbed before it leaves: `dart:io` puts the
+  /// whole request URI — token and all — into a [WebSocketException], and
+  /// [VoiceSession] renders what it catches into the on-screen transcript.
   Future<void> _open(String? handle) async {
     final token = _nextToken ?? await _mint();
     _nextToken = null;
-    final socket = await WebSocket.connect(
-      '$_endpoint?access_token=${token.token}',
-    );
-    final ready = Completer<void>();
-    socket.listen(
-      (frame) => _onFrame(frame, ready),
-      onDone: () => _onDone(socket, ready),
-      onError: (Object e) {
-        if (!ready.isCompleted) ready.completeError(e);
-      },
-    );
-    socket.add(jsonEncode({'setup': _setup(handle)}));
+    WebSocket? socket;
     try {
+      final opened = await WebSocket.connect(
+        '$_endpoint?access_token=${token.token}',
+      );
+      socket = opened;
+      final ready = Completer<void>();
+      opened.listen(
+        (frame) => _onFrame(frame, ready),
+        onDone: () => _onDone(opened, ready),
+        onError: (Object e) {
+          if (!ready.isCompleted) ready.completeError(e);
+        },
+      );
+      opened.add(jsonEncode({'setup': _setup(handle)}));
       await ready.future.timeout(_handshakeTimeout);
-    } catch (_) {
-      await socket.close().catchError((Object _) {});
-      rethrow;
+      _socket = opened;
+      _framesThisWindow = 0;
+      _armMint(token);
+    } catch (e) {
+      await socket?.close().catchError((Object _) {});
+      throw StateError(scrubVoiceToken('$e', token.token));
     }
-    _socket = socket;
-    _framesThisWindow = 0;
-    _armMint(token);
   }
 
   /// Mints the next token shortly before this one expires, so the reconnect

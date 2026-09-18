@@ -22,6 +22,11 @@ class _FakeLive {
     server.listen((request) async {
       final token = request.uri.queryParameters['access_token'] ?? '';
       live.tokens.add(token);
+      if (live.rejectHandshake) {
+        request.response.statusCode = HttpStatus.forbidden;
+        await request.response.close();
+        return;
+      }
       final socket = await WebSocketTransformer.upgrade(request);
       live.socket = socket;
       socket.listen((frame) {
@@ -46,6 +51,9 @@ class _FakeLive {
 
   /// Tokens to refuse at setup, by value.
   final refuse = <String>{};
+
+  /// Refuses the WebSocket upgrade itself, as a rejected token does.
+  var rejectHandshake = false;
   final tokens = <String>[];
   final setups = <Map<String, Object?>>[];
   final received = <Map<String, Object?>>[];
@@ -134,6 +142,20 @@ void main() {
   test('a refused token fails the connect instead of looking live', () async {
     live.refuse.add('token-1');
     await expectLater(connect(), throwsA(isA<StateError>()));
+  });
+
+  test('a refused handshake never carries the token out', () async {
+    // dart:io puts the whole request URI into a WebSocketException, and
+    // VoiceSession renders what it catches into the transcript on screen.
+    live.rejectHandshake = true;
+    await expectLater(
+      connect(),
+      throwsA(
+        isA<StateError>()
+            .having((e) => e.message, 'message', isNot(contains('token-1')))
+            .having((e) => e.message, 'message', contains('<token>')),
+      ),
+    );
   });
 
   test('an expiry close reconnects on the held token and handle, without '
