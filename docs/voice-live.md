@@ -183,6 +183,44 @@ Already done for this project; recorded so a fresh setup can repeat it.
   end. Restart begins a fresh conversation and a fresh cap. It just ends,
   with no warning beforehand; raise or lower the constant if ten minutes
   turns out to cut real conversations short.
+- The screen is held awake for as long as a session is open (2026-09-18).
+  `ScreenWake` (`app/lib/src/infra/screen_wake.dart`) drives
+  `UIApplication.isIdleTimerDisabled` over the `com.keinstn.drover/screen`
+  method channel, and the voice screen turns it on while the session is
+  connecting or live and releases it on every end path. Without it the device
+  auto-locked mid-conversation — the user is talking, not touching the screen
+  — and that alone broke the session: backgrounding interrupts the audio
+  session, `record` defaults to `AudioInterruptionMode.pause` with no
+  auto-resume, and nothing told `VoiceSession`, so it sat in `live` with no
+  audio flowing and looked frozen. The call is best-effort, so macOS, which
+  registers no such handler, silently no-ops.
+- Leaving the app ends the session, logged as `backgroundedCode` (2026-09-18).
+  Keeping the screen awake does not cover a manual lock, an answered call or a
+  notification tap that opens something else, and the half-dead state above is
+  the worst possible outcome, so the voice screen observes the app lifecycle
+  and ends the session through the normal end path instead. Same reasoning as
+  `kVoiceSessionCap`: an open mic streaming to a third party must not outlive
+  the foreground. Only `AppLifecycleState.paused` ends it — `inactive` fires
+  on a Control Centre glance or an app-switcher flick, the same `paused`-only
+  choice `main.dart`'s own `didChangeAppLifecycleState` doc comment argues for.
+- Still NOT handled (2026-09-18): an audio-session interruption that never
+  backgrounds the app. Siri on iOS 14+ is a compact overlay, and a ringing or
+  declined call is a banner; both stop at `inactive`, so `background()` never
+  fires — yet both take the audio session, and `record`'s default
+  `AudioInterruptionMode.pause` (the config in `voice_audio.dart` leaves it
+  unset) stops the mic with no auto-resume and no signal to `VoiceSession`.
+  That is the same half-dead state, still reachable. Ending on `inactive` is
+  not the answer, because a Control Centre glance lands there too. The fix is
+  to observe the interruption itself: `AudioRecorder.onStateChanged()` carries
+  `RecordState.pause` out of the plugin's own interruption handler, which is
+  also where resuming a session after a real call would hook in.
+- `UIBackgroundModes: audio` was considered for this and rejected
+  (2026-09-18). It would let the mic keep streaming from a locked phone in a
+  pocket, which contradicts the data boundary below and the reasoning behind
+  `kVoiceSessionCap`, and background audio in an app whose main job is not
+  playback invites questions at review time — on the `1.1.0` submission this
+  branch is heading for. Resuming a session interrupted by a real call is a
+  separate feature: hold the resumption handle and reconnect on `resumed`.
 
 ## Voicemail and callback model
 

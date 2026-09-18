@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:drover/src/infra/screen_wake.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/voice/voice_audio.dart';
 import 'package:drover/src/voice/voice_herd.dart';
@@ -62,6 +63,15 @@ class FakeConnector {
     transports.add(transport);
     return transport;
   }
+}
+
+/// Records every `setEnabled` call in order, so a test can assert on
+/// transitions rather than just the final state.
+class FakeScreenWake implements ScreenWake {
+  final calls = <bool>[];
+
+  @override
+  Future<void> setEnabled(bool enabled) async => calls.add(enabled);
 }
 
 class FakeMic implements VoiceMic {
