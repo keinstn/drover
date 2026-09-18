@@ -22,7 +22,14 @@ import {
   parseDeviceRegistration,
   parsePairingCodeRequest,
   parsePairingCompletion,
+  parseVoiceSessionId,
 } from "./validation.js";
+import {
+  debitedMint,
+  voiceCallCost,
+  voiceMintDecision,
+  walletCredits,
+} from "./wallet.js";
 
 initializeApp();
 
@@ -448,11 +455,127 @@ const voiceTokenNewSessionLifetimeMs = 60 * 1000;
 // constrained endpoint refuses every session.
 const voiceModel = "models/gemini-3.1-flash-live-preview";
 
+// The wallet and its ledger.
+//
+// `users/{uid}/wallet` names a collection rather than a document — a Firestore
+// document path has an odd number of segments — so the balance lives in the
+// one document inside it. `firestore.rules` denies every client read and
+// write, so this Function's admin SDK is the only writer and no device can
+// read its own balance, let alone change it.
+//
+// Credits get in by hand for now: edit `credits` here in the Firebase console.
+// That leaves no ledger row, so reconciliation shows such a grant as
+// unexplained — the real purchase path will write both together.
+function walletRef(uid: string) {
+  return db.collection("users").doc(uid).collection("wallet").doc("credits");
+}
+
+// One immutable row per movement, under an auto-ID: nothing ever rewrites one,
+// so the ledger is the history and the wallet is only the running total.
+function ledgerRef(uid: string) {
+  return db.collection("users").doc(uid).collection("ledger").doc();
+}
+
+// ponytail: one document per call and nothing reaps them. A stale one is
+// harmless — it is older than the window, so the next mint under that id pays
+// — but they accumulate. A Firestore TTL policy on `startedAt` clears them
+// without any code here.
+function voiceSessionRef(sessionId: string) {
+  return db.collection("voiceSessions").doc(sessionId);
+}
+
+// Claims one voice call against the balance and says whether it took a credit.
+//
+// One conversation re-mints — shortly before its token expires, and again
+// after a genuine drop — and every one of those carries the session ID the app
+// made when the call started. So the first mint pays and the rest are free:
+// charging each of them would bill a single conversation several times over.
+async function claimVoiceCall(
+  uid: string,
+  sessionId: string,
+): Promise<boolean> {
+  const wallet = walletRef(uid);
+  const session = voiceSessionRef(sessionId);
+  const nowMs = Date.now();
+  return db.runTransaction(async (transaction) => {
+    const [walletDocument, sessionDocument] = await Promise.all([
+      transaction.get(wallet),
+      transaction.get(session),
+    ]);
+    const startedAt = sessionDocument.get("startedAt");
+    const credits = walletDocument.get("credits");
+    const decision = voiceMintDecision({
+      uid,
+      credits,
+      session: sessionDocument.exists
+        ? {
+            uid: sessionDocument.get("uid"),
+            startedAtMs:
+              startedAt instanceof Timestamp ? startedAt.toMillis() : null,
+          }
+        : null,
+      nowMs,
+    });
+    if (decision === "reuse") {
+      return false;
+    }
+    if (decision === "foreign") {
+      throw new HttpsError(
+        "permission-denied",
+        "Voice session ID belongs to another account.",
+      );
+    }
+    if (decision === "empty") {
+      throw new HttpsError("resource-exhausted", "No voice credits left.");
+    }
+
+    transaction.set(
+      wallet,
+      {
+        credits: walletCredits(credits) - voiceCallCost,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    transaction.set(ledgerRef(uid), {
+      type: "voiceCall",
+      credits: -voiceCallCost,
+      sessionId,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    transaction.set(session, { uid, startedAt: Timestamp.fromMillis(nowMs) });
+    return true;
+  });
+}
+
+// Hands one credit back when the mint that it paid for failed.
+//
+// The session document goes with it: left behind, it would make the retry on
+// the same session ID a free mint, which is the double charge's mirror image.
+async function refundVoiceCall(uid: string, sessionId: string): Promise<void> {
+  const batch = db.batch();
+  batch.set(
+    walletRef(uid),
+    {
+      credits: FieldValue.increment(voiceCallCost),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  batch.set(ledgerRef(uid), {
+    type: "voiceCallRefund",
+    credits: voiceCallCost,
+    sessionId,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  batch.delete(voiceSessionRef(sessionId));
+  await batch.commit();
+}
+
 // Mints a short-lived Gemini Live API token for a signed-in app install.
 //
-// Auth and App Check are verified by the callable itself. No wallet, no
-// ledger, no per-user limit — this slice only moves the connection behind a
-// server-side gate that a later one can check something in.
+// Auth and App Check are verified by the callable itself; the balance is
+// checked here, and one call costs `voiceCallCost`.
 //
 // Over REST the constraint field is `bidiGenerateContentSetup` plus a
 // `fieldMask`; the documented `liveConnectConstraints` is the SDK name and a
@@ -460,55 +583,75 @@ const voiceModel = "models/gemini-3.1-flash-live-preview";
 export const mintVoiceToken = onCall(
   { enforceAppCheck: true, secrets: [geminiApiKey] },
   async (request) => {
-    requireUid(request.auth);
-    const expireTime = new Date(
-      Date.now() + voiceTokenLifetimeMs,
-    ).toISOString();
-    const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1alpha/auth_tokens",
-      {
-        method: "POST",
-        headers: {
-          "x-goog-api-key": geminiApiKey.value(),
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          uses: 1,
-          expireTime,
-          newSessionExpireTime: new Date(
-            Date.now() + voiceTokenNewSessionLifetimeMs,
-          ).toISOString(),
-          bidiGenerateContentSetup: {
-            model: voiceModel,
-            generationConfig: { responseModalities: ["AUDIO"] },
-          },
-          fieldMask: "model,generationConfig.responseModalities",
-        }),
+    const uid = requireUid(request.auth);
+    const sessionId = parseVoiceSessionId(request.data);
+    if (sessionId == null) {
+      throw new HttpsError("invalid-argument", "Invalid voice session ID.");
+    }
+    return debitedMint(
+      () => claimVoiceCall(uid, sessionId),
+      () => mintLiveToken(),
+      async () => {
+        // The mint's own failure is what the caller should see, so a failed
+        // compensation is logged rather than thrown. It means one lost credit.
+        await refundVoiceCall(uid, sessionId).catch((error: unknown) => {
+          logger.error("Returning a voice credit failed.", {
+            uid,
+            sessionId,
+            error,
+          });
+        });
       },
     );
-    if (!response.ok) {
-      // Status only. The error body echoes the request, and nothing in it is
-      // worth logging next to the risk of logging the key.
-      logger.error("Minting a voice token failed.", {
-        status: response.status,
-      });
-      throw new HttpsError("unavailable", "Could not mint a voice token.");
-    }
-    const minted = (await response.json()) as {
-      name?: unknown;
-      expireTime?: unknown;
-    };
-    if (typeof minted.name !== "string" || minted.name.length === 0) {
-      throw new HttpsError("unavailable", "Could not mint a voice token.");
-    }
-    // The token name is a bearer credential; it is returned, never logged.
-    return {
-      token: minted.name,
-      expireTime:
-        typeof minted.expireTime === "string" ? minted.expireTime : expireTime,
-    };
   },
 );
+
+async function mintLiveToken(): Promise<{ token: string; expireTime: string }> {
+  const expireTime = new Date(Date.now() + voiceTokenLifetimeMs).toISOString();
+  const response = await fetch(
+    "https://generativelanguage.googleapis.com/v1alpha/auth_tokens",
+    {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": geminiApiKey.value(),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        uses: 1,
+        expireTime,
+        newSessionExpireTime: new Date(
+          Date.now() + voiceTokenNewSessionLifetimeMs,
+        ).toISOString(),
+        bidiGenerateContentSetup: {
+          model: voiceModel,
+          generationConfig: { responseModalities: ["AUDIO"] },
+        },
+        fieldMask: "model,generationConfig.responseModalities",
+      }),
+    },
+  );
+  if (!response.ok) {
+    // Status only. The error body echoes the request, and nothing in it is
+    // worth logging next to the risk of logging the key.
+    logger.error("Minting a voice token failed.", {
+      status: response.status,
+    });
+    throw new HttpsError("unavailable", "Could not mint a voice token.");
+  }
+  const minted = (await response.json()) as {
+    name?: unknown;
+    expireTime?: unknown;
+  };
+  if (typeof minted.name !== "string" || minted.name.length === 0) {
+    throw new HttpsError("unavailable", "Could not mint a voice token.");
+  }
+  // The token name is a bearer credential; it is returned, never logged.
+  return {
+    token: minted.name,
+    expireTime:
+      typeof minted.expireTime === "string" ? minted.expireTime : expireTime,
+  };
+}
 
 function requestBody(request: { body: unknown }): unknown {
   return request.body;

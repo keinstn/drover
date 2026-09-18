@@ -444,7 +444,7 @@ VoiceSession _voiceSession(String scenario) {
   final drafts = VoiceDrafts();
   var connects = 0;
   return VoiceSession(
-    connect: (_) async {
+    connect: (_, _) async {
       final server = StreamController<LiveServerResponse>();
       _scriptVoice(server, scenario, drafts, first: connects++ == 0);
       return _StubVoiceTransport(server);

@@ -4,6 +4,7 @@ import 'dart:ui' show Locale;
 
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import 'voice_audio.dart';
 import 'voice_drafts.dart';
@@ -136,11 +137,16 @@ class VoiceSession extends ChangeNotifier {
     return VoiceSession(
       // One const decides which wire the conversation runs on; see
       // [kVoiceUseMintedToken].
-      connect: (resumeHandle) => kVoiceUseMintedToken
+      connect: (resumeHandle, sessionId) => kVoiceUseMintedToken
           ? TokenVoiceTransport.connect(
               tools: tools,
               languageCode: voiceLanguageCodeFor(locale),
               resumeHandle: resumeHandle,
+              // Every mint this transport makes — the first one and each
+              // re-mint at a token boundary — carries the conversation's id,
+              // so the Function charges the call once. A reconnect that
+              // builds a NEW transport gets the same id through [_connect].
+              mint: () => mintVoiceTokenFromFunctions(sessionId),
             )
           : FirebaseVoiceTransport.connect(
               tools: tools,
@@ -195,6 +201,16 @@ class VoiceSession extends ChangeNotifier {
   /// [error] value when the microphone permission is missing.
   static const micPermissionDenied = 'mic_permission_denied';
 
+  /// [error] value when `mintVoiceToken` refused because the account is out
+  /// of voice credits. The balance itself is unreadable from the device, so
+  /// the refused mint is the only signal there is.
+  static const outOfCredits = 'out_of_credits';
+
+  /// The [error] value for a failed connect: a refused mint gets its own copy
+  /// on screen, everything else renders as itself.
+  static String _failure(Object error) =>
+      error is VoiceOutOfCredits ? outOfCredits : '$error';
+
   /// Permanent half-duplex gate: the mic is dropped while the model's audio
   /// is estimated to still be playing (queued bytes at 24 kHz PCM16 mono)
   /// plus a 1.5 s tail, so the model cannot hear itself. It also kills
@@ -212,7 +228,8 @@ class VoiceSession extends ChangeNotifier {
   static const _muteTail = Duration(milliseconds: 1500);
   static const _playbackBytesPerSecond = 48000;
 
-  final Future<VoiceTransport> Function(String? resumeHandle) _connect;
+  final Future<VoiceTransport> Function(String? resumeHandle, String sessionId)
+  _connect;
   final VoiceMic _mic;
   final VoiceSpeaker _speaker;
   final List<VoiceTool> _tools;
@@ -277,6 +294,12 @@ class VoiceSession extends ChangeNotifier {
 
   /// When the current segment began; null while nothing is connected.
   DateTime? _segmentStart;
+
+  /// Identifies this conversation to `mintVoiceToken`, which charges the
+  /// first mint under an id and lets the re-mints — a token boundary, a
+  /// dropped connection — through free. Fresh per [start], so a Restart is a
+  /// new call and pays for itself.
+  var _sessionId = '';
 
   /// Latest resumption handle the server offered. While it is set a dropped
   /// connection is resumed instead of ending the session.
@@ -393,6 +416,17 @@ class VoiceSession extends ChangeNotifier {
     if (!parked) {
       _usage = VoiceUsage();
       _connected = Duration.zero;
+      // One conversation, one id, however many times it reconnects — and so
+      // one debit. Resuming a parked call is the same conversation and keeps
+      // its id; a Restart is a new one and pays again.
+      //
+      // ponytail: a start that mints and then fails to open the socket has
+      // paid for nothing, and the retry — a fresh id — pays again. Reusing
+      // the id when the last attempt never went live would make that retry
+      // free, inside the window the Function already charged for; worth doing
+      // if it ever bites, but it is state to carry for a case that costs one
+      // credit.
+      _sessionId = const Uuid().v4();
     }
     _segmentStart = _now();
     _capTimer?.cancel();
@@ -420,7 +454,10 @@ class VoiceSession extends ChangeNotifier {
       // Only a resumable park carries the handle: after any other end — the
       // cap, a stop — a handle left behind would silently resume the
       // conversation that end was meant to finish.
-      final transport = await _connect(continuing ? _resumeHandle : null);
+      final transport = await _connect(
+        continuing ? _resumeHandle : null,
+        _sessionId,
+      );
       if (_stale(gen)) {
         await transport.close().catchError((Object _) {});
         return;
@@ -472,7 +509,10 @@ class VoiceSession extends ChangeNotifier {
       _setStatus(VoiceSessionStatus.live);
     } catch (e) {
       if (_stale(gen)) return;
-      await _fail('$e');
+      // _failure maps a refused mint to [outOfCredits] so the screen can say
+      // so; everything else keeps its own text. The stale-handle case needs
+      // no clearing here — only a resumable park passes the handle at all.
+      await _fail(_failure(e));
     }
   }
 
@@ -521,7 +561,7 @@ class VoiceSession extends ChangeNotifier {
         _takeUsage(dropped);
         await dropped?.close();
       } catch (_) {}
-      final transport = await _connect(handle);
+      final transport = await _connect(handle, _sessionId);
       if (_stale(next)) {
         await transport.close().catchError((Object _) {});
         return;
@@ -534,7 +574,7 @@ class VoiceSession extends ChangeNotifier {
     } catch (e) {
       if (_stale(next)) return;
       // The handle was refused; Restart starts fresh (it was consumed above).
-      await _fail('$e');
+      await _fail(_failure(e));
     }
   }
 

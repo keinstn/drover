@@ -463,9 +463,11 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
           session.speaking ? l10n.voiceStatusSpeaking : l10n.voiceStatusLive,
         VoiceSessionStatus.ended => l10n.voiceStatusEnded,
         VoiceSessionStatus.error => l10n.voiceStatusError(
-          session.error == VoiceSession.micPermissionDenied
-              ? l10n.voiceMicPermissionDenied
-              : session.error ?? '',
+          switch (session.error) {
+            VoiceSession.micPermissionDenied => l10n.voiceMicPermissionDenied,
+            VoiceSession.outOfCredits => l10n.voiceOutOfCredits,
+            final error => error ?? '',
+          },
         ),
       };
 

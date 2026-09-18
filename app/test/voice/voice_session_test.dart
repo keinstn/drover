@@ -32,13 +32,13 @@ void main() {
   VoiceSession session({
     bool muteMicWhileSpeaking = true,
     Duration aecWarmUp = Duration.zero,
-    Future<VoiceTransport> Function(String?)? connect,
+    Future<VoiceTransport> Function(String?, String)? connect,
     FakeVoiceHerd? herd,
     VoiceInbox? inbox,
     VoiceDrafts? drafts,
     Completer<void>? sleepGate,
   }) => VoiceSession(
-    connect: connect ?? (_) async => transport,
+    connect: connect ?? (_, _) async => transport,
     now: () => clock,
     sleep: (d) async {
       sleeps.add(d);
@@ -114,6 +114,17 @@ void main() {
     expect(s.status, VoiceSessionStatus.error);
     expect(s.error, VoiceSession.micPermissionDenied);
     expect(speaker.initCalls, 0);
+  });
+
+  test('a refused mint ends in the out-of-credits error value', () async {
+    final s = session(connect: (_, _) async => throw const VoiceOutOfCredits());
+    await s.start();
+
+    // The wallet is unreadable from the device, so a refused mint is the only
+    // thing the app ever learns about the balance — and it gets its own copy
+    // rather than a stringified exception.
+    expect(s.status, VoiceSessionStatus.error);
+    expect(s.error, VoiceSession.outOfCredits);
   });
 
   test('a call that ends in error still reports what it billed for', () async {
@@ -241,7 +252,7 @@ void main() {
 
   test('the gate defaults to on, so a caller that omits it stays safe', () {
     final s = VoiceSession(
-      connect: (_) async => transport,
+      connect: (_, _) async => transport,
       mic: mic,
       speaker: speaker,
       tools: const [],
@@ -706,7 +717,7 @@ void main() {
 
   test('stop during connecting wins over the pending start', () async {
     final connecting = Completer<VoiceTransport>();
-    final s = session(connect: (_) => connecting.future);
+    final s = session(connect: (_, _) => connecting.future);
 
     final starting = s.start();
     await settle();
@@ -922,11 +933,11 @@ void main() {
 
     /// A connect that hands out [transport] first and parks every later one
     /// on [gate], so a reconnect can be observed mid-flight.
-    Future<VoiceTransport> Function(String?) gatedConnect(
+    Future<VoiceTransport> Function(String?, String) gatedConnect(
       Completer<VoiceTransport> gate,
     ) {
       var calls = 0;
-      return (_) => ++calls == 1 ? Future.value(transport) : gate.future;
+      return (_, _) => ++calls == 1 ? Future.value(transport) : gate.future;
     }
 
     Future<void> dropAfterHandle(VoiceSession s, {String handle = 'h1'}) async {
@@ -954,6 +965,57 @@ void main() {
       expect(mic.startCalls, 1);
       expect(speaker.initCalls, 1);
       expect(speaker.disposeCalls, 0);
+    });
+
+    test('a resumed conversation keeps its voice session id', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await settle();
+      await connector.transports.first.server.close();
+      await settle();
+
+      expect(connector.sessionIds, hasLength(2));
+      expect(connector.sessionIds.first, isNotEmpty);
+      expect(
+        connector.sessionIds[1],
+        connector.sessionIds.first,
+        reason:
+            'a reconnect re-mints, and mintVoiceToken charges per id — '
+            'a second id would bill one conversation twice',
+      );
+    });
+
+    test('resuming a parked call keeps its voice session id', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      // Backgrounding parks the call rather than ending it, so coming back is
+      // the same conversation — and must not be a second debit.
+      await s.background();
+      await s.start();
+      await settle();
+
+      expect(connector.sessionIds, hasLength(2));
+      expect(
+        connector.sessionIds[1],
+        connector.sessionIds.first,
+        reason: 'an unpark re-mints, and a fresh id would charge again for a '
+            'call the user never ended',
+      );
+    });
+
+    test('a restart is a new call with a new voice session id', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      await s.stop();
+      await s.start();
+      await settle();
+
+      expect(connector.sessionIds, hasLength(2));
+      expect(connector.sessionIds[1], isNot(connector.sessionIds.first));
     });
 
     test('mic audio goes to the resumed transport', () async {

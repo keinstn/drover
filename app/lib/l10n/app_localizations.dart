@@ -1106,6 +1106,12 @@ abstract class AppLocalizations {
   /// **'Microphone access is off. Allow it in Settings to talk to drover.'**
   String get voiceMicPermissionDenied;
 
+  /// No description provided for @voiceOutOfCredits.
+  ///
+  /// In en, this message translates to:
+  /// **'You are out of voice credits.'**
+  String get voiceOutOfCredits;
+
   /// No description provided for @voiceToolCalled.
   ///
   /// In en, this message translates to:

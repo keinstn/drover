@@ -180,6 +180,7 @@
   "voiceStatusEnded": "終了しました",
   "voiceStatusError": "エラー: {error}",
   "voiceMicPermissionDenied": "マイクへのアクセスがオフです。設定で許可すると drover と話せます。",
+  "voiceOutOfCredits": "ボイスクレジットがありません。",
   "voiceToolCalled": "{name} を呼び出しました",
   "voiceInterrupted": "中断されました",
   "voiceGoingAway": "まもなく再接続します",
