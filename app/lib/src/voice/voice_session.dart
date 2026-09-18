@@ -250,6 +250,12 @@ class VoiceSession extends ChangeNotifier {
   /// flight notices it lost to a [stop] and disposes what it just created.
   int _generation = 0;
 
+  /// What this call has billed for, summed over every transport it used and
+  /// read back by [_end] behind [kVoiceUsageReadout]. Reset by [start], so a
+  /// Restart measures its own conversation.
+  var _usage = VoiceUsage();
+  DateTime? _usageStart;
+
   /// Latest resumption handle the server offered. While it is set a dropped
   /// connection is resumed instead of ending the session.
   String? _resumeHandle;
@@ -304,6 +310,8 @@ class VoiceSession extends ChangeNotifier {
     }
     final gen = ++_generation;
     _active = true;
+    _usage = VoiceUsage();
+    _usageStart = _now();
     _capTimer?.cancel();
     _capTimer = Timer(kVoiceSessionCap, () {
       _entries.add(const VoiceEntry(VoiceEntryKind.system, capReachedCode));
@@ -420,6 +428,7 @@ class VoiceSession extends ChangeNotifier {
     _setStatus(VoiceSessionStatus.connecting);
     try {
       try {
+        _takeUsage(dropped);
         await dropped?.close();
       } catch (_) {}
       final transport = await _connect(handle);
@@ -436,6 +445,14 @@ class VoiceSession extends ChangeNotifier {
       if (_stale(next)) return;
       // The handle was refused; Restart starts fresh (it was consumed above).
       await _fail('$e');
+    }
+  }
+
+  /// Keeps a released transport's totals before it goes: a reconnect builds
+  /// a fresh one, and what the call cost is the sum over all of them.
+  void _takeUsage(VoiceTransport? transport) {
+    if (transport case final VoiceUsageReporter reporter) {
+      _usage.absorb(reporter.usage);
     }
   }
 
@@ -669,6 +686,17 @@ class VoiceSession extends ChangeNotifier {
       if (drafts.pending.isNotEmpty) {
         _entries.add(const VoiceEntry(VoiceEntryKind.system, unsentDraftsCode));
       }
+      if (kVoiceUsageReadout) {
+        // Carries its own text rather than a code: the screen renders an
+        // unknown system code as it stands, and a developer readout is not
+        // worth two locales.
+        final line = voiceUsageLine(
+          _usage,
+          _now().difference(_usageStart ?? _now()),
+        );
+        _entries.add(VoiceEntry(VoiceEntryKind.system, line));
+        debugPrint(line);
+      }
       _setStatus(VoiceSessionStatus.ended);
     }
   }
@@ -701,6 +729,7 @@ class VoiceSession extends ChangeNotifier {
     try {
       await _mic.stop();
     } catch (_) {}
+    _takeUsage(transport);
     try {
       await transport?.close();
     } catch (_) {}

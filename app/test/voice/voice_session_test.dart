@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:drover/src/voice/voice_drafts.dart';
@@ -18,6 +20,10 @@ void main() {
   var toolCalls = 0;
   // Injected clock so the mic gate can be tested without sleeping.
   var clock = DateTime(2026, 1, 1);
+
+  // The usage readout every session below ends on: a fake transport reports
+  // no usage, and the injected clock does not move.
+  const noUsage = 'usage · 0m 0s · no usage reported';
 
   // Recorded instead of waited: each call advances the fake clock by the
   // requested duration.
@@ -641,7 +647,10 @@ void main() {
     expect(s.status, VoiceSessionStatus.ended);
     expect(mic.stopCalls, 1);
     expect(speaker.disposeCalls, 1);
-    expect(s.entries.last.text, VoiceSession.endedCode);
+    expect(
+      s.entries.map((e) => e.text),
+      containsAllInOrder([VoiceSession.endedCode, noUsage]),
+    );
   });
 
   test('a stream error ends in error status', () async {
@@ -720,7 +729,7 @@ void main() {
 
     expect(s.status, VoiceSessionStatus.live);
     expect(speaker.initCalls, 2);
-    expect(s.entries.single.text, VoiceSession.endedCode);
+    expect(s.entries.map((e) => e.text), [VoiceSession.endedCode, noUsage]);
   });
 
   test('sends after the session ended are ignored', () async {
@@ -1023,7 +1032,7 @@ void main() {
       await settle();
 
       expect(s.status, VoiceSessionStatus.ended);
-      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode]);
+      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode, noUsage]);
       expect(resumed.closeCalls, 1);
       expect(resumed.server.hasListener, isFalse);
       expect(mic.stopCalls, 1);
@@ -1048,6 +1057,7 @@ void main() {
       expect(s.entries.map((e) => e.text), [
         VoiceSession.resumedCode,
         VoiceSession.endedCode,
+        noUsage,
       ]);
     });
 
@@ -1150,6 +1160,7 @@ void main() {
       expect(s.entries.map((e) => e.text).skip(2), [
         VoiceSession.endedCode,
         VoiceSession.unsentDraftsCode,
+        noUsage,
       ]);
     });
 
@@ -1274,6 +1285,7 @@ void main() {
       expect(s.entries.map((e) => e.text), [
         VoiceSession.capReachedCode,
         VoiceSession.endedCode,
+        noUsage,
       ]);
       expect(mic.stopCalls, 1);
       expect(speaker.disposeCalls, 1);
@@ -1306,6 +1318,7 @@ void main() {
         VoiceSession.resumedCode,
         VoiceSession.capReachedCode,
         VoiceSession.endedCode,
+        noUsage,
       ]);
     });
 
@@ -1318,7 +1331,58 @@ void main() {
 
       await tester.pump(kVoiceSessionCap + const Duration(seconds: 1));
 
-      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode]);
+      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode, noUsage]);
+    });
+  });
+
+  group('usage readout', () {
+    // The `usageMetadata` of one real turn, from the same capture the
+    // transport's own tests replay.
+    final turn =
+        (jsonDecode(File('test/voice/live_frames.json').readAsStringSync())
+                as Map<String, Object?>)['turnComplete']!
+            as Map<String, Object?>;
+
+    test(
+      'a session whose frames carry no usage still ends, and says so',
+      () async {
+        final s = session();
+        await s.start();
+        // A frame that goes through the whole handling path carrying no usage.
+        transport.push(audioChunk());
+        await settle();
+
+        await s.stop();
+
+        expect(s.status, VoiceSessionStatus.ended);
+        expect(s.entries.map((e) => e.text), [VoiceSession.endedCode, noUsage]);
+      },
+    );
+
+    test('the readout sums every transport the call used', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.usage.add(turn['usageMetadata']);
+      connector.last.pushResumption('h1');
+      await settle();
+      // A genuine drop: the session reconnects onto a second transport, and
+      // what the call cost is both of them together.
+      await connector.transports.first.server.close();
+      await settle();
+      connector.last.usage.add(turn['usageMetadata']);
+      clock = clock.add(const Duration(minutes: 2, seconds: 5));
+
+      await s.stop();
+
+      expect(
+        s.entries.last.text,
+        [
+          'usage · 2 turns · 2m 5s',
+          'prompt 1964 (TEXT 1484, AUDIO 402)',
+          'response 40 (AUDIO 40)',
+        ].join(' · '),
+      );
     });
   });
 
@@ -1333,6 +1397,7 @@ void main() {
       expect(s.entries.map((e) => e.text), [
         VoiceSession.backgroundedCode,
         VoiceSession.endedCode,
+        noUsage,
       ]);
       expect(mic.stopCalls, 1);
       expect(speaker.disposeCalls, 1);
@@ -1347,7 +1412,7 @@ void main() {
       await s.background();
 
       expect(s.status, VoiceSessionStatus.ended);
-      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode]);
+      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode, noUsage]);
     });
   });
 }

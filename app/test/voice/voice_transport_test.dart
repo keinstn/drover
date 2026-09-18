@@ -418,14 +418,73 @@ void main() {
       expect(message.outputTranscription?.text, 'ok');
     });
 
-    test('the end of a turn is carried, and its usage ignored', () async {
+    test('the end of a turn is carried, and its usage left off it', () async {
       // This frame also carries `usageMetadata` — the field the SDK never
-      // surfaces, and the reason a raw socket is worth having. Nothing above
-      // reads it yet, so it must pass through without upsetting the mapping.
+      // surfaces, and the reason a raw socket is worth having. The transport
+      // counts it off the raw frame; the mapping must stay clear of it.
       final message = await replay('turnComplete') as LiveServerContent;
 
       expect(message.turnComplete, isTrue);
       expect(message.modelTurn, isNull);
+    });
+
+    test('usage is summed over the turns of a call', () async {
+      final transport = await connect();
+      addTearDown(transport.close);
+      transport.receive().listen((_) {});
+
+      // The captured turn replayed three times, with frames that carry no
+      // usage in between: a longer capture would need a live session, and
+      // identical turns already tell a sum (2946) from the last report (982)
+      // or the largest one.
+      live.push(frames['audioContent']!);
+      live.push(frames['turnComplete']!);
+      live.push(frames['audioContent']!);
+      live.push(frames['turnComplete']!);
+      live.push(frames['turnComplete']!);
+      await until(() => transport.usage.turns == 3, reason: 'no usage seen');
+
+      expect(transport.usage.promptTokens, 982 * 3);
+      expect(transport.usage.responseTokens, 20 * 3);
+      // Asserted against the totals independently: in the capture the
+      // modality details (742 + 201) do not add up to promptTokenCount.
+      expect(transport.usage.promptByModality, {
+        'TEXT': 742 * 3,
+        'AUDIO': 201 * 3,
+      });
+      expect(transport.usage.responseByModality, {'AUDIO': 20 * 3});
+    });
+
+    test('usage of an unexpected shape is skipped, not fatal', () async {
+      final transport = await connect();
+      addTearDown(transport.close);
+      final seen = <LiveServerMessage>[];
+      transport.receive().listen(
+        (r) => seen.add(r.message),
+        onError: (Object e) => fail('the readout ended the call: $e'),
+      );
+
+      live.push({
+        'serverContent': {'turnComplete': true},
+        'usageMetadata': {
+          'promptTokenCount': 'lots',
+          'promptTokensDetails': {'modality': 'TEXT'},
+        },
+      });
+      // Raw, because `jsonEncode` will not write this one: a JSON number too
+      // big to hold decodes as `double.infinity`, whose `toInt()` throws —
+      // the one shape that could take the readout's path into the stream.
+      live.socket!.add(
+        '{"serverContent":{"turnComplete":true},'
+        '"usageMetadata":{"promptTokenCount":1e400}}',
+      );
+      live.push(frames['turnComplete']!);
+      await until(() => seen.length == 3, reason: 'the turns stopped coming');
+
+      // Counted as turns, with nothing readable taken off them.
+      expect(transport.usage.turns, 3);
+      expect(transport.usage.promptTokens, 982);
+      expect(transport.usage.promptByModality, {'TEXT': 742, 'AUDIO': 201});
     });
 
     test('a tool call keeps its name, arguments and id', () async {
