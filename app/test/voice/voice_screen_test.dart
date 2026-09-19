@@ -1531,6 +1531,145 @@ void main() {
     });
   });
 
+  group('continuing a conversation', () {
+    /// The screen behind a pushed [VoiceScreen], so popping it exercises
+    /// `State.dispose` for real — and pushing again re-enters the SAME
+    /// session, which is what the herd screen does once it retains one.
+    Widget host(VoiceSession session) => MaterialApp(
+      // The transcript renders here, and its rows read [DroverColors] off
+      // the theme.
+      theme: droverDarkTheme,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Builder(
+        builder: (context) => TextButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => VoiceScreen(session: session),
+            ),
+          ),
+          child: const Text('voice'),
+        ),
+      ),
+    );
+
+    testWidgets('popping the screen releases the audio but keeps the call', (
+      tester,
+    ) async {
+      // A fresh transport per connect: the shared `transport` closes its
+      // controller for good on the first close, so the continuation would
+      // see `onDone` the moment it connected.
+      final connector = FakeConnector();
+      final session = VoiceSession(
+        connect: connector.call,
+        mic: mic,
+        speaker: speaker,
+        tools: const [],
+      );
+      await tester.pumpWidget(host(session));
+      await tester.tap(find.text('voice'));
+      await tester.pumpAndSettle();
+      // Without a handle there is nothing to come back to; the server offers
+      // one periodically.
+      connector.last.pushResumption('h1');
+      await tester.pump();
+
+      tester.state<NavigatorState>(find.byType(Navigator).last).pop();
+      await tester.pumpAndSettle();
+
+      // Released, not destroyed: `disposeCalls` is what the old
+      // `widget.session.dispose()` bumped, so it fails loudly if that
+      // returns.
+      expect(mic.stopCalls, greaterThan(0));
+      expect(mic.disposeCalls, 0);
+      expect(speaker.disposeCalls, greaterThan(0));
+      expect(session.status, VoiceSessionStatus.ended);
+      expect(session.resumable, isTrue);
+
+      await tester.tap(find.text('voice'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Left the voice screen'), findsOneWidget);
+      expect(find.text('Reconnected, continuing'), findsOneWidget);
+      expect(connector.handles, [null, 'h1']);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('voice_status'))).data,
+        'Listening',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      session.dispose();
+    });
+
+    testWidgets('coming back to the foreground continues the call', (
+      tester,
+    ) async {
+      final connector = FakeConnector();
+      await tester.pumpWidget(app(connect: connector.call));
+      await tester.pump();
+      connector.last.pushResumption('h1');
+      await tester.pump();
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      // Let `background()` finish before coming back: here the two land in
+      // one synchronous sequence, where a real return is minutes later, and
+      // a `start()` on a session still reading as live is a no-op by design.
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('App went to the background'), findsOneWidget);
+      expect(find.text('Reconnected, continuing'), findsOneWidget);
+      expect(connector.handles, [null, 'h1']);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('voice_status'))).data,
+        'Listening',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('coming back after End starts nothing', (tester) async {
+      final connector = FakeConnector();
+      await tester.pumpWidget(app(connect: connector.call));
+      await tester.pump();
+      // A handle in hand, so what stops the continuation is the End alone.
+      connector.last.pushResumption('h1');
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+      await tester.pumpAndSettle();
+      expect(find.text('Session ended'), findsOneWidget);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump();
+
+      expect(connector.transports, hasLength(1));
+      expect(find.text('Reconnected, continuing'), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('voice_status'))).data,
+        'Ended',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+  });
+
   group('app lifecycle', () {
     testWidgets('paused ends the live session, rendering why it ended', (
       tester,

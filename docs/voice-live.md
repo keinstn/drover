@@ -176,13 +176,14 @@ Already done for this project; recorded so a fresh setup can repeat it.
   and keeps the mic and speaker up. The conversation carries on across
   connections.
 - The app sets its own ceiling instead (2026-09-17): `kVoiceSessionCap` in
-  `voice_session.dart`, ten minutes of wall clock from `start()`, after which
+  `voice_session.dart`, five minutes of wall clock from `start()`, after which
   the session ends itself and logs why through the normal end path. Wall
   clock, not per connection — a cap that restarted with every reconnect would
   bound nothing, and an open mic streaming to a third party has to have an
-  end. Restart begins a fresh conversation and a fresh cap. It just ends,
-  with no warning beforehand; raise or lower the constant if ten minutes
-  turns out to cut real conversations short.
+  end. Only the user's End begins a fresh conversation on a fresh cap; a
+  session that was merely suspended keeps the deadline it already had (see
+  2026-09-19 below). It just ends, with no warning beforehand; raise or lower
+  the constant if five minutes turns out to cut real conversations short.
 - The screen is held awake for as long as a session is open (2026-09-18).
   `ScreenWake` (`app/lib/src/infra/screen_wake.dart`) drives
   `UIApplication.isIdleTimerDisabled` over the `com.keinstn.drover/screen`
@@ -194,15 +195,17 @@ Already done for this project; recorded so a fresh setup can repeat it.
   auto-resume, and nothing told `VoiceSession`, so it sat in `live` with no
   audio flowing and looked frozen. The call is best-effort, so macOS, which
   registers no such handler, silently no-ops.
-- Leaving the app ends the session, logged as `backgroundedCode` (2026-09-18).
-  Keeping the screen awake does not cover a manual lock, an answered call or a
-  notification tap that opens something else, and the half-dead state above is
-  the worst possible outcome, so the voice screen observes the app lifecycle
-  and ends the session through the normal end path instead. Same reasoning as
-  `kVoiceSessionCap`: an open mic streaming to a third party must not outlive
-  the foreground. Only `AppLifecycleState.paused` ends it — `inactive` fires
-  on a Control Centre glance or an app-switcher flick, the same `paused`-only
-  choice `main.dart`'s own `didChangeAppLifecycleState` doc comment argues for.
+- Leaving the app ends the session, logged as `backgroundedCode` (2026-09-18;
+  since 2026-09-19 it suspends the conversation rather than dropping it, see
+  below). Keeping the screen awake does not cover a manual lock, an answered
+  call or a notification tap that opens something else, and the half-dead
+  state above is the worst possible outcome, so the voice screen observes the
+  app lifecycle and ends the session through the normal end path instead.
+  Same reasoning as `kVoiceSessionCap`: an open mic streaming to a third
+  party must not outlive the foreground. Only `AppLifecycleState.paused` ends
+  it — `inactive` fires on a Control Centre glance or an app-switcher flick,
+  the same `paused`-only choice `main.dart`'s own `didChangeAppLifecycleState`
+  doc comment argues for.
 - Still NOT handled (2026-09-18): an audio-session interruption that never
   backgrounds the app. Siri on iOS 14+ is a compact overlay, and a ringing or
   declined call is a banner; both stop at `inactive`, so `background()` never
@@ -214,6 +217,30 @@ Already done for this project; recorded so a fresh setup can repeat it.
   to observe the interruption itself: `AudioRecorder.onStateChanged()` carries
   `RecordState.pause` out of the plugin's own interruption handler, which is
   also where resuming a session after a real call would hook in.
+- A call now survives leaving, and is continued rather than restarted
+  (2026-09-19). Leaving the voice screen suspends the session
+  (`VoiceSession.suspend`, logged as `suspendedCode`), the app leaving the
+  foreground does the same through `background()`, and both close the mic and
+  the socket while keeping the resumption handle. Coming back — re-entering
+  the screen, or `AppLifecycleState.resumed` while the session is `resumable`
+  — reconnects on that handle and logs the same "Reconnected, continuing" line
+  a dropped connection does; to the user the two are the same event, because
+  they are. The conversation is the thing kept, so what carried over carries
+  over whole: the model's context, the accumulated usage totals, and the
+  `kVoiceSessionCap` deadline, which is absolute — time spent away is spent,
+  not given back, and coming back after it ran out ends the call with
+  `capReachedCode` instead of dialling. Only the explicit End drops the
+  conversation, and it does so deliberately: it clears the handle, so the next
+  start is a genuinely fresh call on a fresh cap and a fresh usage total. An
+  error does the same, because a handle the server refused would otherwise
+  make Restart loop on it. Ownership moved with the behaviour: `HerdScreen`
+  holds the session between visits and disposes it, `VoiceScreen` only drives
+  the one it is handed. The retained session is dropped when it can no longer
+  apply — the first host in scope changes (by id or revision: its tools talk
+  to that host's client alone), the Settings toggle goes off, or the herd
+  screen itself goes. This does NOT keep the mic open while the user is on
+  another drover screen; the call is suspended the whole time the voice screen
+  is not shown, and a live-elsewhere indicator is a separate question.
 - `UIBackgroundModes: audio` was considered for this and rejected
   (2026-09-18). It would let the mic keep streaming from a locked phone in a
   pocket, which contradicts the data boundary below and the reasoning behind
@@ -353,15 +380,24 @@ Consent is taken before anything is sent (2026-09-17): the first tap on the
 voice button opens a sheet naming Google and listing what crosses to it, and
 only an accept builds the session — declining returns to the herd screen with
 no microphone opened and no socket dialled. The answer persists as
-`voice_consent_accepted`, so later taps go straight to the session. The
-Settings toggle ships **on** (2026-09-18) and decides whether the voice entry
-point and its on-device inbox are live at all: the sheet, not the toggle, is
-the opt-in, and it gates every transmission, so a fresh install still sends
-nothing until the user taps the voice button and accepts. Switching the toggle
-off is the revoke — it clears `voice_consent_accepted`, so turning it back on
-asks again. The tools return only agent status and short assistant prose.
-This is a deliberate policy: drover is otherwise SSH-local, and the voice
-path is the only place its data leaves the device for a third-party model, so
+`voice_consent_version` — the version of the disclosure that was accepted,
+not a yes/no (2026-09-19) — so later taps go straight to the session only
+while that version is still current. Bumping `kVoiceConsentVersion`, next to the
+copy in `voice_consent_sheet.dart`, is what re-asks, and copy that describes
+new behaviour has to bump it: this round's own change (leaving the app parks
+the call, and returning re-opens the microphone with no tap of the user's)
+would otherwise have run on a yes given to a sheet that said the opposite.
+Installs from before carry the old `voice_consent_accepted` boolean, which
+nothing reads any more, so they read as "not yet accepted" and are asked
+again. The Settings toggle ships **on** (2026-09-18) and decides whether the
+voice entry point and its on-device inbox are live at all: the sheet, not the
+toggle, is the opt-in, and it gates every transmission, so a fresh install
+still sends nothing until the user taps the voice button and accepts.
+Switching the toggle off is the revoke — it clears the stored version, so
+turning it back on asks again. The tools return only agent status and short
+assistant prose. This is a deliberate policy: drover is otherwise SSH-local,
+and the voice path is the only place its data leaves the device for a
+third-party model, so
 the surface sent there stays as small as the feature allows.
 
 Concretely, what crosses to Gemini Live: the user's microphone audio, and the
