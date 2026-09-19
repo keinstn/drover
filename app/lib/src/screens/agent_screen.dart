@@ -142,6 +142,7 @@ class AgentScreen extends StatefulWidget {
     this.initialAgents = const [],
     this.initialWorkspaceLabel,
     this.speechInput,
+    this.canDictate = true,
     this.imagePicker,
     this.draftStore,
     this.draftKeyPrefix,
@@ -163,6 +164,13 @@ class AgentScreen extends StatefulWidget {
   final List<AgentInfo> initialAgents;
   final String? initialWorkspaceLabel;
   final SpeechInput? speechInput;
+
+  /// Whether the composer offers dictation at all. Defaults to true; false
+  /// hides the microphone button rather than disabling it. [HerdScreen]
+  /// passes false while a voice call is on the wire — see the comment where
+  /// it does.
+  final bool canDictate;
+
   final ImagePickerPort? imagePicker;
   final AgentDraftStore? draftStore;
 
@@ -1006,6 +1014,7 @@ class _AgentScreenState extends State<AgentScreen> {
           initialAgent: target,
           initialAgents: _agents,
           speechInput: widget.speechInput,
+          canDictate: widget.canDictate,
           imagePicker: widget.imagePicker,
           draftStore: widget.draftStore,
           draftKeyPrefix: widget.draftKeyPrefix,
@@ -1220,6 +1229,7 @@ class _AgentScreenState extends State<AgentScreen> {
                 agentRunning: agent?.status == AgentStatus.working,
                 pendingImages: _pendingImages,
                 canAttachImages: _imagesCapability != null,
+                canDictate: widget.canDictate,
                 onRemoveImage: _removePendingImage,
                 onDictation: _toggleDictation,
                 onAttach: _attachImage,
@@ -2290,6 +2300,7 @@ class _Composer extends StatelessWidget {
     required this.agentRunning,
     required this.pendingImages,
     required this.canAttachImages,
+    required this.canDictate,
     required this.onRemoveImage,
     required this.onDictation,
     required this.onAttach,
@@ -2318,6 +2329,12 @@ class _Composer extends StatelessWidget {
   /// attach-image affordance is hidden entirely when it doesn't, rather than
   /// offering an attach flow that has nowhere to send its upload.
   final bool canAttachImages;
+
+  /// False hides the dictation button entirely, the same way
+  /// [canAttachImages] hides the attach one: an affordance for a microphone
+  /// that must not open is worse than no affordance.
+  final bool canDictate;
+
   final void Function(int index) onRemoveImage;
   final VoidCallback onDictation;
   final void Function(ImageAttachSource source) onAttach;
@@ -2486,12 +2503,14 @@ class _Composer extends StatelessWidget {
                   open: keysRowOpen,
                   onPressed: onToggleKeysRow,
                 ),
-                const SizedBox(width: 8),
-                _MicrophoneButton(
-                  starting: dictationStarting,
-                  dictating: dictating,
-                  onPressed: onDictation,
-                ),
+                if (canDictate) ...[
+                  const SizedBox(width: 8),
+                  _MicrophoneButton(
+                    starting: dictationStarting,
+                    dictating: dictating,
+                    onPressed: onDictation,
+                  ),
+                ],
                 const SizedBox(width: 8),
                 _SendButton(
                   controller: controller,

@@ -6,6 +6,7 @@ import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/infra/settings_store.dart';
+import 'package:drover/src/infra/screen_wake.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/screens/herd_screen.dart';
@@ -14,7 +15,9 @@ import 'package:drover/src/voice/voice_consent_sheet.dart';
 import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_screen.dart';
 import 'package:drover/src/voice/voice_session.dart';
+import 'package:drover/src/voice/voice_transport.dart';
 import 'package:drover/src/widgets/error_message_view.dart';
+import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -168,6 +171,8 @@ Widget _herdApp({
   Locale? locale,
   Stream<void>? networkChanges,
   bool voiceAssistantEnabled = false,
+  ThemeData? theme,
+  ScreenWake? screenWake,
   VoiceSession Function({
     required VoiceHerd herd,
     required VoiceInbox inbox,
@@ -176,7 +181,7 @@ Widget _herdApp({
   voiceSessionFor,
 }) {
   return MaterialApp(
-    theme: droverDarkTheme,
+    theme: theme ?? droverDarkTheme,
     locale: locale,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
@@ -190,6 +195,7 @@ Widget _herdApp({
       networkChanges: networkChanges,
       voiceAssistantEnabled: voiceAssistantEnabled,
       voiceSessionFor: voiceSessionFor,
+      screenWake: screenWake,
     ),
   );
 }
@@ -205,13 +211,23 @@ class FakeVoiceSessions {
   final speaker = FakeSpeaker();
   final built = <VoiceSession>[];
 
+  /// When set, a connect waits for it before landing — a dial still in the
+  /// air, which is the one window where agent events can queue up while the
+  /// call already counts as on the wire.
+  Completer<void>? connectGate;
+
+  Future<VoiceTransport> _connect(String? handle) async {
+    await connectGate?.future;
+    return connector.call(handle);
+  }
+
   VoiceSession call({
     required VoiceHerd herd,
     required VoiceInbox inbox,
     required Locale? locale,
   }) {
     final session = VoiceSession(
-      connect: connector.call,
+      connect: _connect,
       mic: mic,
       speaker: speaker,
       tools: const [],
@@ -413,9 +429,17 @@ void main() {
         find.textContaining('both sides', findRichText: true),
         findsOneWidget,
       );
-      // Coming back re-opens the mic and re-dials Google with no tap of the
-      // user's, so the sheet — which is what the permission rests on — has
-      // to say so rather than leave "you left, it stopped".
+      // The mic stays open while the user walks around drover, and coming
+      // back re-dials with no tap of the user's. The sheet is what the
+      // permission rests on, so it has to say both rather than leave "you
+      // left the voice screen, it stopped".
+      expect(
+        find.textContaining(
+          'keeps listening while you use the rest of drover',
+          findRichText: true,
+        ),
+        findsOneWidget,
+      );
       expect(
         find.textContaining(
           're-opens the microphone by itself and carries on where you left off',
@@ -504,6 +528,29 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('an accept of version 1 is asked again', (tester) async {
+      // A literal, not `kVoiceConsentVersion - 1`: what this pins is the
+      // bump that came with this branch's copy. Version 1 said leaving the
+      // voice screen closed the microphone; it now stays open while the user
+      // is anywhere in drover, which is a yes they have not given.
+      SharedPreferences.setMockInitialValues({'voice_consent_version': 1});
+
+      await openHerd(tester);
+
+      expect(find.text('Voice uses Google Gemini'), findsOneWidget);
+      expect(
+        find.textContaining(
+          'keeps listening while you use the rest of drover',
+          findRichText: true,
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(VoiceScreen), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('an accept of an older disclosure version is asked again', (
       tester,
     ) async {
@@ -535,18 +582,36 @@ void main() {
       });
     });
 
-    /// Opens the voice screen, lets the server offer a resumption handle —
-    /// without one there is nothing to continue — and comes back.
+    FloatingActionButton voiceFab(WidgetTester tester) =>
+        tester.widget(find.byKey(const ValueKey('voice_button')));
+
+    Finder voiceIcon(IconData icon) => find.descendant(
+      of: find.byKey(const ValueKey('voice_button')),
+      matching: find.byIcon(icon),
+    );
+
+    /// Opens the voice screen, puts a line in the log so a conversation that
+    /// carried over is recognisable, lets the server offer a resumption
+    /// handle — the one a call the user *ended* would need — and comes back
+    /// to the herd screen.
     Future<void> callAndLeave(WidgetTester tester) async {
       await tester.tap(find.byKey(const ValueKey('voice_button')));
       await tester.pumpAndSettle();
+      sessions.connector.last.push(
+        LiveServerContent(
+          outputTranscription: const Transcription(
+            text: 'One agent is blocked.',
+          ),
+          turnComplete: true,
+        ),
+      );
       sessions.connector.last.pushResumption('h1');
       await tester.pump();
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
     }
 
-    testWidgets('re-opening continues the call that was left', (tester) async {
+    testWidgets('re-opening returns to the call still running', (tester) async {
       final client = HerdrClient(FakeCommandRunner(_respond));
       await tester.pumpWidget(
         _herdApp(
@@ -561,16 +626,323 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('voice_button')));
       await tester.pumpAndSettle();
 
-      // The log of the first visit is still on screen, and the session is
-      // back on the wire — not a second, empty conversation.
-      expect(find.text('Left the voice screen'), findsOneWidget);
-      expect(find.text('Reconnected, continuing'), findsOneWidget);
+      // The log of the first visit is still on screen and nothing was torn
+      // down in between: one session, one socket, no reconnect and no fresh
+      // call's greeting.
+      expect(find.text('One agent is blocked.'), findsOneWidget);
       expect(find.text("Let's talk about your agents"), findsNothing);
+      expect(find.text('Reconnected, continuing'), findsNothing);
       expect(sessions.built, hasLength(1));
-      expect(sessions.connector.handles, [null, 'h1']);
+      expect(sessions.connector.transports, hasLength(1));
+      expect(sessions.connector.handles, [null]);
 
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
+    });
+
+    for (final (name, theme, ink) in [
+      ('dark', droverDarkTheme, const Color(0xFF8FC0F2)),
+      ('light', droverLightTheme, const Color(0xFF388ADC)),
+    ]) {
+      testWidgets('the voice button wears the live call ($name)', (
+        tester,
+      ) async {
+        final client = HerdrClient(FakeCommandRunner(_respond));
+        await tester.pumpWidget(
+          _herdApp(
+            client: client,
+            theme: theme,
+            voiceAssistantEnabled: true,
+            voiceSessionFor: sessions.call,
+          ),
+        );
+        await tester.pump();
+
+        expect(voiceFab(tester).backgroundColor, theme.colorScheme.primary);
+        expect(voiceIcon(Icons.graphic_eq), findsOneWidget);
+
+        await callAndLeave(tester);
+
+        // With the voice screen gone the only other sign a mic is open is
+        // the OS indicator, so this button carries its own: the voice
+        // screen's listening ink and an open microphone, in place of the
+        // page's accent and a waveform.
+        expect(voiceFab(tester).backgroundColor, ink);
+        expect(
+          voiceFab(tester).backgroundColor,
+          isNot(theme.colorScheme.primary),
+        );
+        expect(voiceIcon(Icons.mic), findsOneWidget);
+        expect(voiceIcon(Icons.graphic_eq), findsNothing);
+        expect(voiceFab(tester).tooltip, 'Voice call in progress');
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      });
+    }
+
+    testWidgets('leaving the app ends the call from the herd screen', (
+      tester,
+    ) async {
+      final client = HerdrClient(FakeCommandRunner(_respond));
+      await tester.pumpWidget(
+        _herdApp(
+          client: client,
+          voiceAssistantEnabled: true,
+          voiceSessionFor: sessions.call,
+        ),
+      );
+      await tester.pump();
+
+      await callAndLeave(tester);
+      expect(voiceIcon(Icons.mic), findsOneWidget);
+
+      // The voice screen is popped, so its observer is gone: this screen's
+      // is the only one left to close the mic. Walked through the real
+      // sequence, and back again — `AppLifecycleListener` asserts on invalid
+      // transitions, and Flutter produces no frames while paused.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump();
+
+      // The button says so: back to idle, with no mic open behind it. And
+      // nothing re-dialled on the way back — re-opening the microphone is
+      // the voice screen's to do.
+      expect(voiceIcon(Icons.graphic_eq), findsOneWidget);
+      expect(voiceIcon(Icons.mic), findsNothing);
+      expect(sessions.connector.transports, hasLength(1));
+
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+
+      // Same conversation, continued on the handle, with why it ended in
+      // the log.
+      expect(find.text('App went to the background'), findsOneWidget);
+      expect(find.text('One agent is blocked.'), findsOneWidget);
+      expect(sessions.built, hasLength(1));
+      expect(sessions.connector.handles, [null, 'h1']);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+
+      // And the button is live again on the way out: it follows the session
+      // it was handed, whether that call was freshly built or resumed.
+      expect(voiceIcon(Icons.mic), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a pending event still badges the live button', (tester) async {
+      var list = _listEnvelope;
+      final client = HerdrClient(
+        FakeCommandRunner(
+          (c) => c.contains("'agent' 'list'") ? ok(list) : _respond(c),
+        ),
+      );
+      await tester.pumpWidget(
+        _herdApp(
+          client: client,
+          voiceAssistantEnabled: true,
+          voiceSessionFor: sessions.call,
+          pollInterval: const Duration(seconds: 1),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // A dial still in the air: the call already counts as on the wire, but
+      // no transport has landed to drain the inbox into, so an event that
+      // arrives now stays pending — the one window where both signs are true
+      // at once.
+      sessions.connectGate = Completer<void>();
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+
+      list = _listEnvelope.replaceFirst(
+        '"agent_status":"working"',
+        '"agent_status":"idle"',
+      );
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+
+      expect(voiceIcon(Icons.mic), findsOneWidget);
+      expect(
+        tester
+            .widget<Badge>(find.byKey(const ValueKey('voice_badge')))
+            .isLabelVisible,
+        isTrue,
+      );
+
+      sessions.connectGate!.complete();
+      await tester.pumpAndSettle();
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    group('the composer microphone', () {
+      // Two microphones, one AVAudioSession: `speech_to_text` would put
+      // SFSpeechRecognizer's tap on the session `record` already holds for
+      // the call. Since the call now survives leaving the voice screen, that
+      // collision is one Back and one tap away, so the composer's mic yields
+      // while a call is up — `AgentScreen.canDictate`, not a withheld
+      // controller, so who owns the speech plugin is unchanged.
+      final composer = find.byKey(const ValueKey('agent_composer'));
+      final dictate = find.byKey(const ValueKey('dictate_button'));
+
+      Future<void> openAgent(WidgetTester tester, {required bool call}) async {
+        await tester.pumpWidget(
+          _herdApp(
+            client: HerdrClient(FakeCommandRunner(_respond)),
+            voiceAssistantEnabled: true,
+            voiceSessionFor: sessions.call,
+          ),
+        );
+        await tester.pump();
+        if (call) await callAndLeave(tester);
+        await tester.tap(find.text('Agent One'));
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('is there when no call is up', (tester) async {
+        await openAgent(tester, call: false);
+
+        expect(composer, findsOneWidget);
+        expect(dictate, findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('is gone while a call is on the wire', (tester) async {
+        await openAgent(tester, call: true);
+
+        // The composer is still there and still types — it is the mic alone
+        // that yields, not the way to send a message.
+        expect(composer, findsOneWidget);
+        expect(dictate, findsNothing);
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      });
+    });
+
+    group('screen wake', () {
+      // The wake follows the call, not the screen that started it: the user
+      // is talking and touching nothing, and an auto-lock backgrounds the
+      // app, which ends the call. Stepping back to the herd screen to look
+      // at the agents must not start that clock.
+      late FakeScreenWake wake;
+
+      setUp(() => wake = FakeScreenWake());
+
+      Future<void> pumpHerd(WidgetTester tester, {bool enabled = true}) async {
+        await tester.pumpWidget(
+          _herdApp(
+            client: HerdrClient(FakeCommandRunner(_respond)),
+            voiceAssistantEnabled: enabled,
+            voiceSessionFor: sessions.call,
+            screenWake: wake,
+          ),
+        );
+        await tester.pump();
+      }
+
+      testWidgets('goes on with the call and off when it ends', (tester) async {
+        await pumpHerd(tester);
+
+        expect(wake.calls, isEmpty, reason: 'no call, nothing to hold');
+
+        await tester.tap(find.byKey(const ValueKey('voice_button')));
+        await tester.pumpAndSettle();
+
+        expect(wake.calls, [true]);
+
+        await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+        await tester.pumpAndSettle();
+
+        expect(wake.calls, [true, false]);
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('is still held after the user leaves the voice screen', (
+        tester,
+      ) async {
+        await pumpHerd(tester);
+
+        await callAndLeave(tester);
+
+        // The whole point: the call is live on the herd screen, so the idle
+        // timer must still be held off. One `true`, never released.
+        expect(voiceIcon(Icons.mic), findsOneWidget);
+        expect(wake.calls, [true]);
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('Restart turns the wake back on', (tester) async {
+        await pumpHerd(tester);
+        await tester.tap(find.byKey(const ValueKey('voice_button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+        await tester.pumpAndSettle();
+
+        expect(wake.calls, [true, false]);
+
+        await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+        await tester.pumpAndSettle();
+
+        expect(sessions.connector.transports, hasLength(2));
+        expect(wake.calls, [true, false, true]);
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('is released when the retained call is dropped', (
+        tester,
+      ) async {
+        await pumpHerd(tester);
+        await callAndLeave(tester);
+
+        expect(wake.calls, [true]);
+
+        // The Settings toggle going off drops a call that is still live —
+        // the session goes, and the wake must go with it rather than pin the
+        // device awake behind a call that no longer exists.
+        await pumpHerd(tester, enabled: false);
+
+        expect(wake.calls, [true, false]);
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('is released when the herd screen is disposed', (
+        tester,
+      ) async {
+        await pumpHerd(tester);
+        await callAndLeave(tester);
+
+        expect(wake.calls, [true]);
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+
+        expect(wake.calls, [true, false]);
+      });
     });
 
     testWidgets('a call the user ended is replaced by a fresh one', (
@@ -633,7 +1005,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text("Let's talk about your agents"), findsOneWidget);
-      expect(find.text('Left the voice screen'), findsNothing);
+      expect(find.text('One agent is blocked.'), findsNothing);
       expect(sessions.built, hasLength(2));
 
       await tester.pumpWidget(const SizedBox());
@@ -665,7 +1037,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text("Let's talk about your agents"), findsOneWidget);
-      expect(find.text('Left the voice screen'), findsNothing);
+      expect(find.text('One agent is blocked.'), findsNothing);
       expect(sessions.built, hasLength(2));
 
       await tester.pumpWidget(const SizedBox());

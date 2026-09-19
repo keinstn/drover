@@ -6,7 +6,11 @@ import '../../l10n/app_localizations.dart';
 /// herd screen shows the sheet again to anyone who accepted an older one, so
 /// a change to `voiceConsentBody` that describes new behaviour belongs with a
 /// bump here, not on its own.
-const kVoiceConsentVersion = 1;
+///
+/// 2: the call keeps listening while the user is on the rest of drover, so
+/// the microphone now stays open on screens the version-1 sheet said it
+/// would be closed on.
+const kVoiceConsentVersion = 2;
 
 /// Asks for consent before the first voice session, naming Google as the
 /// third party the microphone audio and agent context go to — App Store

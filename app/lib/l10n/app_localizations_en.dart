@@ -549,6 +549,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get herdVoiceButton => 'Voice assistant';
 
   @override
+  String get herdVoiceButtonLive => 'Voice call in progress';
+
+  @override
   String get voiceStatusConnecting => 'Connecting…';
 
   @override
@@ -663,14 +666,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceBackgrounded => 'App went to the background';
 
   @override
-  String get voiceSuspended => 'Left the voice screen';
-
-  @override
   String get voiceConsentTitle => 'Voice uses Google Gemini';
 
   @override
   String get voiceConsentBody =>
-      'The voice assistant runs on Google\'s Gemini Live. While a session is open, your microphone audio and transcripts of both sides of the conversation are sent to Google, along with the context it needs to answer you: your agents\' status, session titles and kinds, project folder names, any question an agent is waiting on with its options, and an agent\'s last reply as prose — which is also sent on its own when an agent finishes, even if you have said nothing. Code is stripped from that reply, fenced or inline, and a failed action reports a short code instead of the terminal\'s output. Prose is sent as written, so a path an agent typed in a sentence, or in the wording of a question, goes with it. Nothing is sent while no session is open. Leaving the voice screen or the app closes the microphone and stops sending; returning to the conversation re-opens the microphone by itself and carries on where you left off. A session ends on its own after a time limit, and time spent away counts against it. Only End finishes a call for good, and you can tap it whenever you like.';
+      'The voice assistant runs on Google\'s Gemini Live. While a session is open, your microphone audio and transcripts of both sides of the conversation are sent to Google, along with the context it needs to answer you: your agents\' status, session titles and kinds, project folder names, any question an agent is waiting on with its options, and an agent\'s last reply as prose — which is also sent on its own when an agent finishes, even if you have said nothing. Code is stripped from that reply, fenced or inline, and a failed action reports a short code instead of the terminal\'s output. Prose is sent as written, so a path an agent typed in a sentence, or in the wording of a question, goes with it. Nothing is sent while no session is open. A call keeps listening while you use the rest of drover; leaving the app closes the microphone and stops sending, and returning to the conversation re-opens the microphone by itself and carries on where you left off. A session ends on its own after a time limit, and time spent away counts against it. Only End finishes a call for good, and you can tap it whenever you like.';
 
   @override
   String get voiceConsentAccept => 'Allow and continue';

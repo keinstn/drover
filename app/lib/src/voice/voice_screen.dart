@@ -1,12 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
-import '../infra/screen_wake.dart';
 import '../models/agent_preset.dart';
 import '../utils/path.dart';
 import 'voice_drafts.dart';
@@ -67,22 +64,26 @@ const _speakingInkDark = Color(0xFFF2A98F);
 const _listeningInkLight = Color(0xFF388ADC);
 const _speakingInkLight = Color(0xFFDC6338);
 
+/// The listening ink for [context]'s theme. Public because a call now stays
+/// live while the user is elsewhere in drover, and the herd screen's voice
+/// button wears this same ink to say so — one "we are listening" colour, not
+/// two that drift apart.
+Color voiceListeningInk(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? _listeningInkDark
+    : _listeningInkLight;
+
 /// The voice-assistant screen: the transcript *is* the screen — every line in
 /// one log, pending draft cards pinned above the controls until they are
 /// acted on — with the assistant's presence as light bleeding in from the
 /// bottom edge, and round controls along the bottom.
 /// Drives the [session] but does not own it: it starts it on first frame and
-/// suspends it when the screen goes, leaving the conversation — and the
-/// disposing — to whoever built it.
+/// leaves it running when the screen goes — the call outlives this route, so
+/// the conversation, and the disposing, belong to whoever built it.
 class VoiceScreen extends StatefulWidget {
-  const VoiceScreen({super.key, required this.session, this.screenWake});
+  const VoiceScreen({super.key, required this.session});
 
   final VoiceSession session;
-
-  /// Defaults to [PlatformScreenWake]; overridable so tests can fake it.
-  /// Nullable rather than defaulted inline: a `const` constructor's default
-  /// values must be constants, and [PlatformScreenWake] isn't one.
-  final ScreenWake? screenWake;
 
   @override
   State<VoiceScreen> createState() => _VoiceScreenState();
@@ -90,12 +91,6 @@ class VoiceScreen extends StatefulWidget {
 
 class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
   final _scroll = ScrollController();
-  late final ScreenWake _screenWake = widget.screenWake ?? PlatformScreenWake();
-
-  /// Last value sent to [_screenWake], so a wake call goes out only on a
-  /// transition — the session notifies on every transcript delta and
-  /// playback tick, far too often to re-send the same value each time.
-  var _wakeOn = false;
 
   @override
   void initState() {
@@ -109,14 +104,12 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.session.removeListener(_onSessionChanged);
-    // Suspended, not disposed: the session outlives this screen so the same
-    // conversation continues when the user comes back. What must not outlive
-    // it is the mic and the socket, which is exactly what [suspend] closes.
-    unawaited(widget.session.suspend());
+    // The session is left alone: not disposed, not ended, and the screen
+    // wake not released. The call keeps listening while the user is on
+    // another drover screen, and both the things that must not outlive the
+    // foreground — the open mic and the held-off auto-lock — now belong to
+    // the herd screen, which is still there when this one is gone.
     _scroll.dispose();
-    // Unconditional, not gated on `_wakeOn`: whatever tore this screen down
-    // must not leave the device pinned awake behind it.
-    unawaited(_screenWake.setEnabled(false));
     super.dispose();
   }
 
@@ -143,22 +136,11 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// True while connecting or live — shared by [_syncWake] and [_scaffold]
-  /// so the two can't drift apart when a status is added.
+  /// True while connecting or live, which is what [_scaffold] renders the
+  /// screen as active for.
   bool get _isActive =>
       widget.session.status == VoiceSessionStatus.connecting ||
       widget.session.status == VoiceSessionStatus.live;
-
-  /// Turns the wake on/off on a `connecting`/`live` transition — see
-  /// [_wakeOn]. Every session-end path (manual stop, cap, error, leaving the
-  /// app, leaving the screen) notifies through here, so this alone also
-  /// covers releasing it.
-  void _syncWake() {
-    final active = _isActive;
-    if (active == _wakeOn) return;
-    _wakeOn = active;
-    unawaited(_screenWake.setEnabled(active));
-  }
 
   bool get _wasAtBottom {
     if (!_scroll.hasClients) return true;
@@ -168,7 +150,6 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
 
   void _onSessionChanged() {
     if (!mounted) return;
-    _syncWake();
     // Follow new entries only if the user hasn't scrolled up to read.
     final stick = _wasAtBottom;
     setState(() {});
@@ -242,8 +223,8 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
                 Row(
                   children: [
                     // No AppBar, so this is the only labelled way back
-                    // while live (macOS, VoiceOver); leaving suspends the
-                    // session, which End is still there to finish for good.
+                    // while live (macOS, VoiceOver); leaving leaves the call
+                    // running, which End is still there to finish for good.
                     const Padding(
                       padding: EdgeInsets.all(8),
                       child: BackButton(),
@@ -500,7 +481,6 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     VoiceSession.launchFailedCode => l10n.voiceLaunchFailed,
     VoiceSession.capReachedCode => l10n.voiceCapReached,
     VoiceSession.backgroundedCode => l10n.voiceBackgrounded,
-    VoiceSession.suspendedCode => l10n.voiceSuspended,
     _ => code,
   };
 
@@ -781,7 +761,7 @@ class _EdgeGlow extends StatelessWidget {
     // the alpha, never the hue.
     final ink = speaking
         ? (dark ? _speakingInkDark : _speakingInkLight)
-        : (dark ? _listeningInkDark : _listeningInkLight);
+        : voiceListeningInk(context);
     // Reduce motion reads as a permanently silent room: fixed at rest, not
     // subscribed to the level at all, and no tween to disable.
     if (MediaQuery.disableAnimationsOf(context)) return _glow(ink, 0);

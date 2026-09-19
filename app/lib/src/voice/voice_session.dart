@@ -72,10 +72,10 @@ const kVoiceAecWarmUp = Duration(seconds: 10);
 /// nothing: an open mic streaming to a third party has to have an end.
 /// A call that ended for good — [VoiceSession.stop], this cap, an error —
 /// begins a fresh conversation and a fresh cap next time it is started. A
-/// [VoiceSession.suspend] does not: the deadline is absolute, so the time
+/// [VoiceSession.background] does not: the deadline is absolute, so the time
 /// spent away is spent, and the [VoiceSession.start] that comes back
-/// continues the same call on what is left of it — Restart and re-entering
-/// the screen alike.
+/// continues the same call on what is left of it — Restart and returning to
+/// the foreground alike.
 ///
 /// Five minutes rather than ten because this cap is what bounds the cost of a
 /// call, and cost grows with speech seconds *times* turn count: halving the
@@ -163,7 +163,7 @@ class VoiceSession extends ChangeNotifier {
   static const endedCode = 'ended';
 
   /// System code logged when the conversation carried on after an
-  /// interruption — a dropped connection that was resumed, or a [suspend]
+  /// interruption — a dropped connection that was resumed, or a [background]
   /// that [start] continued.
   static const resumedCode = 'resumed';
 
@@ -187,10 +187,6 @@ class VoiceSession extends ChangeNotifier {
   /// ended the session: iOS silently kills the microphone on backgrounding,
   /// so an open mic streaming to a third party must not survive it.
   static const backgroundedCode = 'backgrounded';
-
-  /// System code logged when [suspend] ended the session with its
-  /// conversation kept — the voice screen was left, not the app.
-  static const suspendedCode = 'suspended';
 
   /// Drafts of this session; the screen renders them and can act on a
   /// pending one via [sendDraft] / [launchDraft].
@@ -286,12 +282,12 @@ class VoiceSession extends ChangeNotifier {
   /// connection is resumed instead of ending the session.
   String? _resumeHandle;
 
-  /// Set by [suspend] / [background], cleared by [start], [stop], [_fail] and
-  /// [dispose]: the difference between an end that parks the call and one
-  /// that finishes it. It is what the cap deadline, the usage totals and the
-  /// quiet end in [_endAndSettle] all key on. Paired with [_resumeHandle] by
-  /// [resumable], which answers the narrower question of whether the Live
-  /// *conversation* can be picked up too.
+  /// Set by [background], cleared by [start], [stop], [_fail] and [dispose]:
+  /// the difference between an end that parks the call and one that finishes
+  /// it. It is what the cap deadline, the usage totals and the quiet end in
+  /// [_endAndSettle] all key on. Paired with [_resumeHandle] by [resumable],
+  /// which answers the narrower question of whether the Live *conversation*
+  /// can be picked up too.
   bool _suspended = false;
   bool _disposed = false;
 
@@ -342,15 +338,15 @@ class VoiceSession extends ChangeNotifier {
       aecWarmUp.inMicroseconds * _playbackBytesPerSecond ~/ 1000000;
 
   /// Whether the next [start] would continue this conversation rather than
-  /// begin one: the session was suspended *and* the server had offered a
-  /// handle to resume it on.
+  /// begin one: the session was parked by [background] *and* the server had
+  /// offered a handle to resume it on.
   bool get resumable => _suspended && _resumeHandle != null;
 
   bool _stale(int generation) => generation != _generation || !_active;
 
   /// Connects and goes live. Callable again after [stop]; a stopped
   /// session keeps its log and appends to it. While [resumable] it continues
-  /// the suspended conversation instead of beginning one — same handle, same
+  /// the parked conversation instead of beginning one — same handle, same
   /// usage totals, and only what is left of [kVoiceSessionCap] — whether it
   /// is Restart or re-entering the screen that calls it.
   Future<void> start() async {
@@ -553,7 +549,7 @@ class VoiceSession extends ChangeNotifier {
   /// Tears everything down and drops the conversation with it — the user's
   /// explicit End, and the only end that throws the conversation away: the
   /// next [start] is a fresh call, on a fresh cap and a fresh usage total,
-  /// wherever it is pressed. [suspend] parks it instead. Safe to call
+  /// wherever it is pressed. [background] parks it instead. Safe to call
   /// repeatedly.
   Future<void> stop() async {
     // Off before the end, because [_end] keeps the handle only for a
@@ -564,23 +560,19 @@ class VoiceSession extends ChangeNotifier {
 
   /// Ends the session because the app left the foreground: iOS silently kills
   /// the microphone on backgrounding, so an open mic streaming to a third
-  /// party must not survive it. The conversation is kept — see [suspend].
-  Future<void> background() => _suspend(backgroundedCode);
-
-  /// Ends the session the way [background] does, but because the voice screen
-  /// was left rather than the app.
-  Future<void> suspend() => _suspend(suspendedCode);
-
-  /// Ends the audio path and the socket while keeping the conversation: the
-  /// resumption handle survives the teardown, so [start] continues where this
-  /// left off for what is left of [kVoiceSessionCap]. No-op unless the session
-  /// is currently active: a lifecycle observer can fire after the session
-  /// already ended on its own (a manual stop, an error, the cap) and must not
-  /// log a spurious line then.
-  Future<void> _suspend(String code) async {
+  /// party must not survive it. The only end that parks a conversation rather
+  /// than dropping it, and the only one the user did not ask for.
+  ///
+  /// The audio path and the socket go, but the resumption handle survives the
+  /// teardown, so [start] continues where this left off for what is left of
+  /// [kVoiceSessionCap]. No-op unless the session is currently active: an
+  /// observer can fire after the session already ended on its own (a manual
+  /// stop, an error, the cap) and must not log a spurious line then — and two
+  /// screens observe the lifecycle, so one backgrounding can arrive twice.
+  Future<void> background() async {
     if (!_active) return;
     _suspended = true;
-    _entries.add(VoiceEntry(VoiceEntryKind.system, code));
+    _entries.add(const VoiceEntry(VoiceEntryKind.system, backgroundedCode));
     await _end();
   }
 
