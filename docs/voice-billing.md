@@ -2,7 +2,8 @@
 
 A design note, not a built feature. Nothing here is implemented; the voice
 assistant is free while it lives on the `voice-live` branch. Written
-2026-09-13, revised 2026-09-18 after the ephemeral-token measurements below.
+2026-09-13, revised 2026-09-18 after the ephemeral-token measurements below,
+and 2026-09-19 with the four flows drawn.
 
 If voice is ever sold, it is sold as prepaid **Voice Credits** through an Apple
 consumable in-app purchase. One piece of backend is needed whatever else is
@@ -17,7 +18,8 @@ two designs rather than one:
 - **An ephemeral Live API token**, minted by a Function that checks the balance
   first. The app still connects to Gemini itself, with a credential that is
   good for one bounded window. Measured 2026-09-18 and it holds — see "Gating
-  a direct connection with an ephemeral token". What it sells is time granted.
+  a direct connection with an ephemeral token". What it sells is one call: one
+  mint grants one window, and nothing inside it can extend it.
 - **Cloud Run** as a Voice Gateway: the app connects there instead of to Gemini,
   and the relay meters the session and cuts it off when the balance runs out.
   This is the only design that meters what was actually consumed.
@@ -25,17 +27,64 @@ two designs rather than one:
 Today the client talks to Firebase AI Logic with no gate at all. That is fine
 for a free or invite-only beta, but it is not a boundary anyone can be charged
 against. What changes that is a minted token; a relay is required only to sell
-consumption rather than time.
+consumption rather than calls.
+
+## Shape
+
+```mermaid
+flowchart LR
+  subgraph device[Device]
+    App[drover app]
+    SK[StoreKit]
+  end
+  subgraph ours[Ours]
+    Verify[verifyPurchase Function]
+    Notify[appleNotifications Function]
+    Mint[mintVoiceToken Function]
+    FS[(Firestore wallet and ledger)]
+  end
+  subgraph apple[Apple]
+    ASS[App Store Server]
+  end
+  Auth[Gemini auth tokens endpoint]
+  Gemini[[Gemini Live API]]
+
+  SK -->|signed transaction| App
+  App -->|signed transaction| Verify
+  Verify -->|check the transaction| ASS
+  ASS -.->|Server Notification, late| Notify
+  Verify --> FS
+  Notify --> FS
+  App -->|balance check and one mint| Mint
+  Mint --> FS
+  Mint -->|mint a token before the call| Auth
+  Auth -.->|token| Mint
+  App <-->|audio| Gemini
+```
+
+Of those boxes only the app, `mintVoiceToken` and Gemini exist today, and the
+mint checks nothing but auth and App Check. Everything else is this note.
+
+The only hop we own is the mint, and it happens once, before the call. The
+audio itself runs from the device to Gemini with no server of ours in the path
+— which is the whole reason the relay below is optional rather than assumed.
 
 ## Credits, not minutes
 
-Sell consumables (`drover_voice_credits_100`, `_500`, `_1200`), not a
-subscription: this is a prepaid balance that drains with use, it needs no
-monthly contract or renewal handling, and the user buys only when they need to.
+Sell consumables (`drover_voice_credits_<count>`), not a subscription: this is
+a prepaid balance that drains with use, it needs no monthly contract or renewal
+handling, and the user buys only when they need to.
 
 Denominate in credits rather than minutes. Gemini Live is priced on audio and
 text tokens and on accumulated context, so wall-clock time and real cost do not
 track each other closely enough to sell by the minute.
+
+The count a pack grants lives in its product id; what a credit *buys* lives on
+the server. Apple's product ids are immutable, so a number of minutes baked
+into one is a promise the runtime cannot keep — the model changes price, the
+cap moves, and the cost of a turn depends on how late in the conversation it
+falls. Keeping the conversion server-side means what a credit buys can change
+without an App Store release.
 
 Under App Store Review Guideline 3.1.1, purchased credits never expire. The
 only thing with an expiry is what a session holds while it runs — a lease
@@ -65,6 +114,62 @@ credits nothing twice.
 App Store Server Notifications V2 feed the same ledger code path. Assume they
 arrive late, duplicated, and out of order.
 
+```mermaid
+sequenceDiagram
+    participant App as drover app
+    participant SK as StoreKit
+    participant Fn as verifyPurchase
+    participant ASS as App Store Server
+    participant FS as Firestore
+
+    App->>SK: buy a pack, carrying appAccountToken
+    SK-->>App: signed transaction
+    App->>Fn: signed transaction
+    Fn->>ASS: verify signature, product and state
+    ASS-->>Fn: genuine, not refunded, not revoked
+    Fn->>FS: one transaction keyed on transactionId
+    Note over Fn,FS: grant the credits and write the ledger row together, or neither
+    FS-->>Fn: new balance
+    Fn-->>App: new balance
+    App->>SK: finish the transaction
+    Note over App,SK: finishing last is deliberate. A crash before it replays the purchase on next launch, and the replay grants nothing
+    ASS-->>Fn: Server Notification for the same transactionId, later
+    Fn->>FS: same key, nothing changes
+```
+
+Two things that drawing exists to make unmissable: the StoreKit finish comes
+*after* the grant, and `transactionId` is the idempotency key — which is what
+makes the notification arriving later a no-op rather than a second grant.
+
+## A refund that arrives late
+
+Apple can refund a consumable days after it was bought and spent, and the
+notification saying so may land after the user deleted their account.
+
+```mermaid
+sequenceDiagram
+    participant ASS as App Store Server
+    participant Fn as appleNotifications
+    participant FS as Firestore
+    participant App as drover app
+
+    Note over ASS,Fn: days later, out of order, possibly more than once
+    ASS->>Fn: REFUND, carrying its own notificationUUID
+    Fn->>FS: negative ledger row keyed on notificationUUID
+    alt the account still exists
+        FS-->>Fn: balance reduced, possibly below zero
+        App->>Fn: start a call
+        Fn-->>App: refused while the balance is short
+    else the account is gone
+        FS-->>Fn: row recorded anonymised, no wallet to touch
+    end
+    ASS->>Fn: the same notification again
+    Fn->>FS: same key, nothing changes
+```
+
+Money events are idempotent, arrive out of order, and must not require the
+account to still exist.
+
 ## Identity
 
 Drover uses anonymous auth. That is enough to authenticate against Firebase AI
@@ -74,9 +179,57 @@ purchase, and `appAccountToken` bound to the Firebase UID at purchase time. If
 purchasing while anonymous is ever allowed, the app has to say plainly that the
 balance may not survive a reinstall or a new device.
 
+Offering Sign in with Apple obliges in-app account deletion, and deletion has
+to revoke the Apple tokens through Apple's REST API — which needs a Sign in
+with Apple private key, a separate `.p8` from the App Store Connect one `asc`
+already holds. Decided 2026-09-19: a balance at deletion is **lost, not
+refunded**. The confirm dialog states the exact remaining count, and the
+purchase screen says the same thing before the sale rather than at the end. The
+ledger rows stay, anonymised — which is what lets a refund land against a
+deleted account.
+
+One thing is open rather than decided. `linkAppleAccount` falls back to signing
+in when the Apple ID already belongs to an older Firebase user; that is the
+reinstall recovery path, and the anonymous uid created on that launch is
+dropped. Harmless today, because nothing hangs off it. Once a wallet exists,
+whatever that uid accrued before the user signed in is a merge question.
+
+## Starting a session
+
+Session start *is* the balance check and the debit. There is no other moment at
+which either happens.
+
+```mermaid
+sequenceDiagram
+    participant App as drover app
+    participant Fn as mintVoiceToken
+    participant FS as Firestore
+    participant G as Gemini Live
+
+    App->>Fn: start a call
+    Fn->>FS: read the wallet
+    alt balance empty
+        Fn-->>App: refused, nothing minted
+    else credits available
+        Fn->>FS: debit one call's worth of credits and write the ledger row, one transaction
+        Fn->>G: mint a token whose expireTime outlives kVoiceSessionCap
+        G-->>Fn: token
+        Fn-->>App: token
+        App->>G: connect directly and talk
+        G-->>App: audio
+        App->>G: resumption reconnect, same token
+        Note over App,G: the window cannot be extended from inside. Continuing means another mint, which is another balance check and another debit
+    end
+```
+
+One mint is one call is one debit. Nothing the client does inside the session
+extends it — `kVoiceSessionCap` ends it first, and the token's `expireTime`
+ends it regardless — which is why the unit sold is a call rather than a minute.
+How many credits a call costs is the server-side conversion above.
+
 ## Voice Gateway
 
-Needed only if credits are denominated in consumption rather than in time
+Needed only if credits are denominated in consumption rather than in calls
 granted; the token design above covers the latter without any of this. Where it
 is needed, a paid session runs through Cloud Run rather than straight to Gemini:
 
@@ -135,8 +288,8 @@ settlement sequence number. A crashed relay leaves a lease behind; the
 recovery path is to detect expiry and return the unused reservation.
 
 If a refund lands after the credits were already spent, do not delete history.
-Write a negative ledger event, and if that leaves the balance short, either
-stop new sessions or hand it to support.
+Write a negative ledger event; the balance is allowed to go negative, and new
+sessions are refused until it is positive again.
 
 ## What a long-lived credential cannot enforce
 
@@ -199,7 +352,8 @@ future. Maximum lifetime is 20h`).
 **So a mint is a genuine meter tick.** Each one grants exactly the window it was
 minted for, the client cannot extend that window from inside it, and
 continuing past it means coming back through the Function — which is another
-balance check. The unit this can sell is time granted, not tokens consumed.
+balance check. The unit this can sell is a granted window — one call — not
+tokens consumed.
 
 **Session resumption survives all of it**, including being handed to a token
 that did not create the handle. The app's existing reconnect
@@ -296,8 +450,8 @@ sending audio to an AI service and a session cap both shipped in #254. Then the
 billing control plane — `in_app_purchase`, consumable products, transaction
 verification, `appAccountToken` binding, the wallet and ledger, Server
 Notifications V2, refund and revoke handling. Then the gate: a Function that
-checks the balance and mints an ephemeral token per window, which is a small
-piece of work and enough to sell time.
+checks the balance and mints an ephemeral token per call, which is a small
+piece of work and enough to sell calls.
 
 The Cloud Run relay is no longer on that path. It is what you build if credits
 have to be denominated in consumption — the relay itself, auth and App Check
