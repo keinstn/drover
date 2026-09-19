@@ -73,6 +73,14 @@ void main() {
 
   Future<void> settle() => Future<void>.delayed(Duration.zero);
 
+  /// Moves both clocks: the cap timer runs on FakeAsync, the deadline it is
+  /// armed from is read off the injected [clock], and a test that advanced
+  /// only one of them would measure nothing.
+  Future<void> advance(WidgetTester tester, Duration d) async {
+    clock = clock.add(d);
+    await tester.pump(d);
+  }
+
   Future<void> sendMicFrame() async {
     mic.frames.add(Uint8List.fromList([1]));
     await settle();
@@ -1164,6 +1172,20 @@ void main() {
       },
     );
 
+    test('parking with a pending draft does not warn about it', () async {
+      final s = session(herd: herd, inbox: VoiceInbox(), drafts: drafts);
+      await s.start();
+      await draftViaTool();
+
+      await s.background();
+
+      // The call is coming back to send it; the warning belongs at the end
+      // that finishes the call, not at a pause in the middle of it.
+      expect(s.entries.map((e) => e.text).skip(2), [
+        VoiceSession.backgroundedCode,
+      ]);
+    });
+
     test('stopping with a pending draft logs unsent_drafts once', () async {
       final s = session(herd: herd, inbox: VoiceInbox(), drafts: drafts);
       await s.start();
@@ -1337,6 +1359,89 @@ void main() {
       ]);
     });
 
+    testWidgets('a call the cap ended is over: the next start is a new one', (
+      tester,
+    ) async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await tester.pump();
+
+      await advance(tester, kVoiceSessionCap + const Duration(seconds: 1));
+      await tester.pump();
+      expect(s.status, VoiceSessionStatus.ended);
+
+      await s.start();
+
+      // Resuming on the handle the cap outlived would carry the capped
+      // conversation on under a brand new cap.
+      expect(connector.handles, [null, null]);
+      expect(s.status, VoiceSessionStatus.live);
+
+      // The fresh cap is armed; the framework fails the test on a leaked one.
+      await s.stop();
+    });
+
+    testWidgets('it survives a park made before the first handle', (
+      tester,
+    ) async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      // No SessionResumptionUpdate ever arrives, so nothing is resumable —
+      // but it is still one call, and one cap.
+      await s.start();
+      await advance(tester, const Duration(minutes: 2));
+      await s.background();
+      await advance(tester, const Duration(minutes: 2));
+      await s.start();
+
+      expect(s.resumable, isFalse);
+      expect(connector.handles, [null, null], reason: 'a new conversation');
+      expect(s.status, VoiceSessionStatus.live);
+
+      // One minute of the five is left. A deadline that keyed on the handle
+      // would have handed this call a whole fresh cap.
+      await advance(tester, const Duration(minutes: 1, seconds: 1));
+      await tester.pump();
+
+      expect(s.status, VoiceSessionStatus.ended);
+      expect(
+        s.entries.map((e) => e.text),
+        containsAllInOrder([
+          VoiceSession.backgroundedCode,
+          VoiceSession.capReachedCode,
+          VoiceSession.endedCode,
+        ]),
+      );
+    });
+
+    testWidgets('the handle dies with the call the cap ended', (tester) async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await tester.pump();
+
+      // Call A is killed by the cap with its handle still in hand.
+      await advance(tester, kVoiceSessionCap + const Duration(seconds: 1));
+      await tester.pump();
+      expect(s.status, VoiceSessionStatus.ended);
+
+      // Restart begins call B, and the screen is left before the server ever
+      // offers B a handle of its own.
+      await s.start();
+      await s.suspend();
+
+      // A handle left over from A would make B look resumable and stitch the
+      // capped conversation back on — under a cap that just restarted.
+      expect(s.resumable, isFalse);
+      await s.start();
+
+      expect(connector.handles, [null, null, null]);
+      await s.stop();
+    });
+
     testWidgets('stopping before the cap leaves no timer to fire', (
       tester,
     ) async {
@@ -1348,6 +1453,38 @@ void main() {
 
       expect(s.entries.map((e) => e.text), [VoiceSession.endedCode, noUsage]);
     });
+  });
+
+  // testWidgets for the FakeAsync zone: the bound is a real Timer.
+  testWidgets('a wedged release does not strand the next start', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    speaker = FakeSpeaker(disposeGate: gate);
+    final connector = FakeConnector();
+    final s = session(connect: connector.call);
+    await s.start();
+    connector.last.pushResumption('h1');
+    await tester.pump();
+
+    // The speaker never finishes releasing — voice_transport.dart documents
+    // the same shape for a socket close.
+    final parking = s.background();
+    await tester.pump();
+    expect(s.status, VoiceSessionStatus.live, reason: 'stuck in the release');
+
+    await advance(tester, const Duration(seconds: 3));
+    await parking;
+    expect(s.status, VoiceSessionStatus.ended, reason: 'the bound gave up');
+
+    // Which is the point: an unbounded release parks every later start on it
+    // forever, while the herd screen keeps handing the session back as live.
+    await s.start();
+    expect(s.status, VoiceSessionStatus.live);
+    expect(connector.handles, [null, 'h1']);
+
+    gate.complete();
+    await s.stop();
   });
 
   group('usage readout', () {
@@ -1401,6 +1538,226 @@ void main() {
     });
   });
 
+  group('suspend()', () {
+    // The `usageMetadata` of one real turn, as the usage group replays it.
+    final turn =
+        (jsonDecode(File('test/voice/live_frames.json').readAsStringSync())
+                as Map<String, Object?>)['turnComplete']!
+            as Map<String, Object?>;
+
+    /// Starts [s], lets the server offer a handle, then suspends.
+    Future<void> startAndSuspend(VoiceSession s, FakeConnector c) async {
+      await s.start();
+      c.last.pushResumption('h1');
+      await settle();
+      await s.suspend();
+    }
+
+    test('start after it continues the same conversation', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await startAndSuspend(s, connector);
+
+      expect(s.resumable, isTrue);
+      expect(s.entries.map((e) => e.text).first, VoiceSession.suspendedCode);
+
+      await s.start();
+
+      expect(connector.handles, [null, 'h1']);
+      expect(s.status, VoiceSessionStatus.live);
+      expect(s.resumable, isFalse, reason: 'one suspension, one continuation');
+      // One uninterrupted call: no "Session ended" and no usage readout in
+      // the middle of it — only why it paused and that it came back.
+      expect(s.entries.map((e) => e.text), [
+        VoiceSession.suspendedCode,
+        VoiceSession.resumedCode,
+      ]);
+
+      await s.stop();
+    });
+
+    test('a start during its teardown still continues the call', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await settle();
+
+      // Leaving the screen and coming straight back: the second gesture
+      // lands while the teardown is still releasing the mic and the socket,
+      // with the status not yet flipped off live.
+      final suspending = s.suspend();
+      expect(s.status, VoiceSessionStatus.live, reason: 'mid-teardown');
+      await s.start();
+      await suspending;
+
+      expect(connector.handles, [null, 'h1']);
+      expect(s.status, VoiceSessionStatus.live);
+      expect(s.entries.map((e) => e.text), contains(VoiceSession.resumedCode));
+
+      await s.stop();
+    });
+
+    test('a disposed session is neither resumable nor startable', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await settle();
+      await s.suspend();
+      expect(s.resumable, isTrue);
+
+      // HerdScreen can drop a retained session while a pushed VoiceScreen
+      // still holds the object and acts on its `resumable`.
+      s.dispose();
+      await settle();
+
+      expect(s.resumable, isFalse);
+      await s.start();
+
+      expect(connector.handles, [null], reason: 'nothing reconnected');
+      expect(mic.startCalls, 1, reason: 'no mic on a released audio path');
+    });
+
+    test('with no handle yet, the next start is a fresh one', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      await s.suspend();
+
+      expect(s.resumable, isFalse);
+      await s.start();
+
+      expect(connector.handles, [null, null]);
+    });
+
+    test('it is a no-op once the session already ended', () async {
+      final s = session();
+      await s.start();
+      await s.stop();
+
+      await s.suspend();
+
+      expect(s.resumable, isFalse);
+      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode, noUsage]);
+    });
+
+    test('usage covers the whole call, across the gap', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.usage.add(turn['usageMetadata']);
+      connector.last.pushResumption('h1');
+      await settle();
+      clock = clock.add(const Duration(minutes: 1));
+
+      await s.suspend();
+      clock = clock.add(const Duration(minutes: 1));
+      await s.start();
+      connector.last.usage.add(turn['usageMetadata']);
+      clock = clock.add(const Duration(minutes: 1));
+      await s.stop();
+
+      // Both turns, because the totals were kept — but two minutes, not
+      // three: the minute spent parked is not connected time, and cost per
+      // minute is read off this line.
+      expect(s.entries.last.text, startsWith('usage · 2 turns · 2m 0s · '));
+    });
+
+    test('stop then start does not continue', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await settle();
+
+      await s.stop();
+      expect(s.resumable, isFalse);
+      await s.start();
+
+      expect(connector.handles, [null, null]);
+      expect(s.status, VoiceSessionStatus.live);
+    });
+
+    test('a continuation that is refused is not offered again', () async {
+      final connector = FakeConnector()..throwAt.add(1);
+      final s = session(connect: connector.call);
+      await startAndSuspend(s, connector);
+
+      await s.start();
+
+      expect(s.status, VoiceSessionStatus.error);
+      expect(s.resumable, isFalse);
+      expect(
+        s.entries.map((e) => e.text),
+        isNot(contains(VoiceSession.resumedCode)),
+        reason: 'it never got back on the wire',
+      );
+      await s.start();
+      expect(connector.handles, [null, 'h1', null]);
+
+      await s.stop();
+    });
+
+    // testWidgets for the FakeAsync zone: the cap is a real Timer.
+    testWidgets('the cap is spent while suspended, not extended', (
+      tester,
+    ) async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await tester.pump();
+
+      // Two minutes of talking, two minutes away, then back.
+      await advance(tester, const Duration(minutes: 2));
+      await s.suspend();
+      await advance(tester, const Duration(minutes: 2));
+      await s.start();
+      expect(s.status, VoiceSessionStatus.live);
+
+      // One minute of the five is left — a cap re-armed for a full
+      // kVoiceSessionCap would still have four.
+      await advance(tester, const Duration(minutes: 1, seconds: 1));
+      await tester.pump();
+
+      expect(s.status, VoiceSessionStatus.ended);
+      expect(
+        s.entries.map((e) => e.text),
+        containsAllInOrder([
+          VoiceSession.suspendedCode,
+          VoiceSession.capReachedCode,
+          VoiceSession.endedCode,
+        ]),
+      );
+    });
+
+    test('a start after the cap ran out while away does not connect', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await startAndSuspend(s, connector);
+
+      clock = clock.add(kVoiceSessionCap + const Duration(seconds: 1));
+      await s.start();
+
+      expect(connector.handles, [null], reason: 'never reconnected');
+      expect(mic.startCalls, 1);
+      expect(s.status, VoiceSessionStatus.ended);
+      // The park left the call open; coming back to a dead cap is where it
+      // really ends, so this is where the readout lands.
+      expect(
+        s.entries.map((e) => e.text),
+        containsAllInOrder([
+          VoiceSession.suspendedCode,
+          VoiceSession.capReachedCode,
+          VoiceSession.endedCode,
+        ]),
+      );
+      expect(s.entries.last.text, startsWith('usage · '));
+      expect(s.resumable, isFalse);
+    });
+  });
+
   group('background()', () {
     test('ends a live session and logs why', () async {
       final s = session();
@@ -1408,12 +1765,10 @@ void main() {
 
       await s.background();
 
+      // Ended as far as the screen is concerned, but the call is parked, not
+      // finished: the log says why it stopped and nothing more.
       expect(s.status, VoiceSessionStatus.ended);
-      expect(s.entries.map((e) => e.text), [
-        VoiceSession.backgroundedCode,
-        VoiceSession.endedCode,
-        noUsage,
-      ]);
+      expect(s.entries.map((e) => e.text), [VoiceSession.backgroundedCode]);
       expect(mic.stopCalls, 1);
       expect(speaker.disposeCalls, 1);
       expect(transport.closeCalls, 1);

@@ -152,6 +152,7 @@ class HerdScreen extends StatefulWidget {
     this.pollInterval = const Duration(seconds: 2),
     this.networkChanges,
     this.voiceAssistantEnabled = false,
+    this.voiceSessionFor,
   });
 
   /// Every stored host, in display order.
@@ -198,6 +199,19 @@ class HerdScreen extends StatefulWidget {
   /// scope for now; multi-host aggregation is a follow-up.
   final bool voiceAssistantEnabled;
 
+  /// Builds the session a voice screen runs on; defaults to
+  /// [VoiceSession.forHerd]. Overridable only so tests can reach the session
+  /// at all: the real one opens a microphone and dials Firebase on `start()`,
+  /// neither of which exists under `flutter_test`, so every session built
+  /// there fails immediately and no test could otherwise exercise a
+  /// conversation being carried across screens.
+  final VoiceSession Function({
+    required VoiceHerd herd,
+    required VoiceInbox inbox,
+    required Locale? locale,
+  })?
+  voiceSessionFor;
+
   @override
   State<HerdScreen> createState() => _HerdScreenState();
 }
@@ -208,6 +222,17 @@ class _HerdScreenState extends State<HerdScreen> {
   /// Agent events not yet announced by the voice assistant, per host. Kept
   /// outside [_HostHerd] because a voice session outlives a bucket reset.
   final _voiceInboxes = <String, VoiceInbox>{};
+
+  /// The conversation the user last had, kept alive after the voice screen
+  /// was popped so re-opening continues it rather than starting over — this
+  /// screen owns it, [VoiceScreen] only drives it. Null until the first call,
+  /// and again whenever [_dropVoiceSession] decides the retained one can no
+  /// longer apply.
+  VoiceSession? _voiceSession;
+
+  /// The host [_voiceSession] was built for; its tools talk to that host's
+  /// client alone.
+  HerdHostRef? _voiceHost;
   Timer? _timer;
   StreamSubscription<void>? _networkChangesSub;
 
@@ -257,6 +282,19 @@ class _HerdScreenState extends State<HerdScreen> {
         (_) => _onNetworkChange(),
       );
     }
+    // The retained conversation is bound to one host's client and to the
+    // user's standing permission to stream, so it goes the moment either
+    // stops holding. hostId and revision only — NOT `HerdHostRef ==`: a
+    // rename changes displayName, and `hostEverConnected` flips false->true
+    // on the first successful connect, so full equality would drop a live
+    // call for either. Revision is in because a bumped one means the
+    // connection was rebuilt, the same reason the bucket is reset below.
+    final voiceHost = _hostsInScope.firstOrNull;
+    if (!widget.voiceAssistantEnabled ||
+        voiceHost?.hostId != _voiceHost?.hostId ||
+        voiceHost?.revision != _voiceHost?.revision) {
+      _dropVoiceSession();
+    }
     final ids = {for (final host in widget.hosts) host.hostId};
     _byHost.removeWhere((hostId, _) => !ids.contains(hostId));
     for (final host in widget.hosts) {
@@ -288,10 +326,20 @@ class _HerdScreenState extends State<HerdScreen> {
   void dispose() {
     _timer?.cancel();
     _networkChangesSub?.cancel();
+    // Before the inboxes: the session subscribes to its host's inbox events.
+    _dropVoiceSession();
     for (final inbox in _voiceInboxes.values) {
       inbox.dispose();
     }
     super.dispose();
+  }
+
+  /// Ends and forgets the retained conversation. Idempotent — the field is
+  /// cleared, so nothing is ever disposed twice.
+  void _dropVoiceSession() {
+    _voiceSession?.dispose();
+    _voiceSession = null;
+    _voiceHost = null;
   }
 
   /// Starts (or restarts) the periodic poll. A no-op if already running:
@@ -843,33 +891,51 @@ class _HerdScreenState extends State<HerdScreen> {
     return bucket == null || (bucket.agents.isEmpty && bucket.error == null);
   });
 
-  /// Opens the voice assistant, gated on the one-time consent to stream
-  /// speech and agent context to Google. Declining returns before any session
-  /// is built, so nothing is recorded, no microphone opens and no socket is
-  /// dialled. Read straight from [SettingsStore] rather than threaded through
-  /// `main.dart`: this is the only place that needs it.
+  /// Opens the voice assistant, gated on consent to stream speech and agent
+  /// context to Google — held as the version of the disclosure the user
+  /// accepted, so a sheet that starts describing different behaviour asks
+  /// again rather than riding on the old yes. Declining returns before any
+  /// session is built, so nothing is recorded, no microphone opens and no
+  /// socket is dialled. Read straight from [SettingsStore] rather than
+  /// threaded through `main.dart`: this is the only place that needs it.
   Future<void> _openVoice(BuildContext context) async {
     final store = SettingsStore();
-    if (!(await store.load()).voiceConsentAccepted) {
+    if ((await store.load()).voiceConsentVersion < kVoiceConsentVersion) {
       if (!context.mounted) return;
       if (!await showVoiceConsentSheet(context)) return;
-      await store.saveVoiceConsentAccepted(true);
+      await store.saveVoiceConsentVersion(kVoiceConsentVersion);
     }
     // The poll keeps running behind the sheet and can empty the scope.
     if (!context.mounted || _hostsInScope.isEmpty) return;
     // Built once here, not in the route builder, which can run more than once.
     final host = _hostsInScope.first;
-    final herd = HerdVoiceHerd(
-      client: widget.clientFor(host),
-      agents: () => _bucketFor(host.hostId).agents,
-      loadTranscript: (agent) =>
-          _nativeHistoryFor(host, agent.paneId).load(agent),
-    );
-    final session = VoiceSession.forHerd(
-      herd: herd,
-      inbox: _inboxFor(host.hostId),
-      locale: Localizations.localeOf(context),
-    );
+    // A retained conversation is picked up where it was left: the screen
+    // popped suspends it, and [VoiceSession.resumable] is the session's own
+    // word that its next start() would continue rather than begin. Anything
+    // else — the user's End, an error, the cap, a session that was never
+    // offered a handle — is spent, so it goes and a fresh one takes its
+    // place. [didUpdateWidget] has already dropped one that stopped applying
+    // to this host, so whatever survives here belongs to [host].
+    final VoiceSession session;
+    final retained = _voiceSession;
+    if (retained != null && retained.resumable) {
+      session = retained;
+    } else {
+      _dropVoiceSession();
+      final herd = HerdVoiceHerd(
+        client: widget.clientFor(host),
+        agents: () => _bucketFor(host.hostId).agents,
+        loadTranscript: (agent) =>
+            _nativeHistoryFor(host, agent.paneId).load(agent),
+      );
+      session = (widget.voiceSessionFor ?? VoiceSession.forHerd)(
+        herd: herd,
+        inbox: _inboxFor(host.hostId),
+        locale: Localizations.localeOf(context),
+      );
+      _voiceSession = session;
+      _voiceHost = host;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => VoiceScreen(session: session)),
     );

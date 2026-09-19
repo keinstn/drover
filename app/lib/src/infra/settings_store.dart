@@ -6,7 +6,7 @@ const _localeKey = 'locale';
 const _notifyOnBlockedKey = 'notify_on_blocked';
 const _notifyOnDoneKey = 'notify_on_done';
 const _voiceAssistantKey = 'voice_assistant_enabled';
-const _voiceConsentKey = 'voice_consent_accepted';
+const _voiceConsentVersionKey = 'voice_consent_version';
 
 /// The user's app-level preferences.
 class AppSettings {
@@ -16,7 +16,7 @@ class AppSettings {
     this.notifyOnBlocked = true,
     this.notifyOnDone = true,
     this.voiceAssistantEnabled = true,
-    this.voiceConsentAccepted = false,
+    this.voiceConsentVersion = 0,
   });
 
   final ThemeMode themeMode;
@@ -31,14 +31,18 @@ class AppSettings {
   final bool notifyOnDone;
 
   /// The off switch: shows the voice-assistant entry point on the herd
-  /// screen. Not the opt-in — [voiceConsentAccepted] gates everything that
+  /// screen. Not the opt-in — [voiceConsentVersion] gates everything that
   /// leaves the device, and turning this off clears it.
   final bool voiceAssistantEnabled;
 
-  /// Whether the user has accepted that a voice session streams their speech
-  /// and agent context to Google (Gemini Live). False blocks the session
-  /// before anything is recorded or sent — App Store guideline 5.1.2(i).
-  final bool voiceConsentAccepted;
+  /// Which version of the voice disclosure the user accepted; 0 is "none
+  /// yet". Anything below `kVoiceConsentVersion` blocks the session before
+  /// anything is recorded or sent and puts the sheet back up — App Store
+  /// guideline 5.1.2(i) wants the disclosure the user agreed to to be the
+  /// one describing what the app now does. A version rather than a flag
+  /// because the copy changes: installs carrying the old `bool` under the
+  /// old key read 0 here and are asked again, which is the safe direction.
+  final int voiceConsentVersion;
 }
 
 /// Persists [AppSettings] in shared_preferences.
@@ -51,7 +55,7 @@ class SettingsStore {
       notifyOnBlocked: prefs.getBool(_notifyOnBlockedKey) ?? true,
       notifyOnDone: prefs.getBool(_notifyOnDoneKey) ?? true,
       voiceAssistantEnabled: prefs.getBool(_voiceAssistantKey) ?? true,
-      voiceConsentAccepted: prefs.getBool(_voiceConsentKey) ?? false,
+      voiceConsentVersion: prefs.getInt(_voiceConsentVersionKey) ?? 0,
     );
   }
 
@@ -83,9 +87,10 @@ class SettingsStore {
     await prefs.setBool(_voiceAssistantKey, enabled);
   }
 
-  Future<void> saveVoiceConsentAccepted(bool accepted) async {
+  /// Records the accepted disclosure version, or 0 to revoke.
+  Future<void> saveVoiceConsentVersion(int version) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_voiceConsentKey, accepted);
+    await prefs.setInt(_voiceConsentVersionKey, version);
   }
 
   // Unrecognised/missing values fall back to the default rather than

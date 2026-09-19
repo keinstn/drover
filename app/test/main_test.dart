@@ -18,6 +18,7 @@ import 'package:drover/src/notifications/host_pairing.dart';
 import 'package:drover/src/notifications/notification_registration.dart';
 import 'package:drover/src/screens/host_setup_screen.dart';
 import 'package:drover/src/speech/speech_input.dart';
+import 'package:drover/src/voice/voice_consent_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -372,7 +373,9 @@ void main() {
   testWidgets('switching the voice assistant off clears the stored consent', (
     tester,
   ) async {
-    SharedPreferences.setMockInitialValues({'voice_consent_accepted': true});
+    SharedPreferences.setMockInitialValues({
+      'voice_consent_version': kVoiceConsentVersion,
+    });
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -404,7 +407,7 @@ void main() {
     expect(tester.widget<Switch>(voiceSwitch).value, isFalse);
     var stored = await SettingsStore().load();
     expect(stored.voiceAssistantEnabled, isFalse);
-    expect(stored.voiceConsentAccepted, isFalse);
+    expect(stored.voiceConsentVersion, 0);
 
     // Back on must not re-grant what the user just revoked — the herd
     // screen's consent sheet has to ask again.
@@ -416,7 +419,16 @@ void main() {
     expect(tester.widget<Switch>(voiceSwitch).value, isTrue);
     stored = await SettingsStore().load();
     expect(stored.voiceAssistantEnabled, isTrue);
-    expect(stored.voiceConsentAccepted, isFalse);
+    expect(stored.voiceConsentVersion, 0);
+
+    // Rendered proof that the revoke bites: back on the herd screen, the
+    // voice button meets the sheet again rather than opening a session.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('voice_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Voice uses Google Gemini'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

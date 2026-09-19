@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
 
+/// The version of the disclosure below. Bumping it is what re-asks: the
+/// herd screen shows the sheet again to anyone who accepted an older one, so
+/// a change to `voiceConsentBody` that describes new behaviour belongs with a
+/// bump here, not on its own.
+const kVoiceConsentVersion = 1;
+
 /// Asks for consent before the first voice session, naming Google as the
 /// third party the microphone audio and agent context go to — App Store
 /// guideline 5.1.2(i) wants that disclosure *before* anything is sent.

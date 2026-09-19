@@ -10,11 +10,16 @@ import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/screens/herd_screen.dart';
 import 'package:drover/src/screens/launch_agent_sheet.dart';
+import 'package:drover/src/voice/voice_consent_sheet.dart';
+import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_screen.dart';
+import 'package:drover/src/voice/voice_session.dart';
 import 'package:drover/src/widgets/error_message_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../voice/fakes.dart';
 
 class FakeCommandRunner extends CommandRunner {
   FakeCommandRunner(this._response);
@@ -163,6 +168,12 @@ Widget _herdApp({
   Locale? locale,
   Stream<void>? networkChanges,
   bool voiceAssistantEnabled = false,
+  VoiceSession Function({
+    required VoiceHerd herd,
+    required VoiceInbox inbox,
+    required Locale? locale,
+  })?
+  voiceSessionFor,
 }) {
   return MaterialApp(
     theme: droverDarkTheme,
@@ -178,8 +189,38 @@ Widget _herdApp({
       pollInterval: pollInterval,
       networkChanges: networkChanges,
       voiceAssistantEnabled: voiceAssistantEnabled,
+      voiceSessionFor: voiceSessionFor,
     ),
   );
+}
+
+/// Stands in for [VoiceSession.forHerd] so the voice screen can be opened in
+/// a widget test at all: the real one opens a microphone and dials Firebase
+/// on `start()`, neither of which exists here, so every session it builds
+/// fails at once and could never be resumable. Records what it built, so a
+/// test can tell a continued conversation from a replaced one.
+class FakeVoiceSessions {
+  final connector = FakeConnector();
+  final mic = FakeMic();
+  final speaker = FakeSpeaker();
+  final built = <VoiceSession>[];
+
+  VoiceSession call({
+    required VoiceHerd herd,
+    required VoiceInbox inbox,
+    required Locale? locale,
+  }) {
+    final session = VoiceSession(
+      connect: connector.call,
+      mic: mic,
+      speaker: speaker,
+      tools: const [],
+      herd: herd,
+      inbox: inbox,
+    );
+    built.add(session);
+    return session;
+  }
 }
 
 /// A [CommandRunner] backing two Claude agent panes with genuine native
@@ -372,6 +413,16 @@ void main() {
         find.textContaining('both sides', findRichText: true),
         findsOneWidget,
       );
+      // Coming back re-opens the mic and re-dials Google with no tap of the
+      // user's, so the sheet — which is what the permission rests on — has
+      // to say so rather than leave "you left, it stopped".
+      expect(
+        find.textContaining(
+          're-opens the microphone by itself and carries on where you left off',
+          findRichText: true,
+        ),
+        findsOneWidget,
+      );
       expect(find.text('Allow and continue'), findsOneWidget);
       expect(find.text('Not now'), findsOneWidget);
       expect(find.byType(VoiceScreen), findsNothing);
@@ -392,8 +443,8 @@ void main() {
       expect(find.text('Voice uses Google Gemini'), findsNothing);
       expect(find.byKey(const ValueKey('voice_button')), findsOneWidget);
       expect(
-        (await SettingsStore().load()).voiceConsentAccepted,
-        isFalse,
+        (await SettingsStore().load()).voiceConsentVersion,
+        0,
         reason: 'a decline must not be remembered as consent',
       );
 
@@ -410,7 +461,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(VoiceScreen), findsOneWidget);
-      expect((await SettingsStore().load()).voiceConsentAccepted, isTrue);
+      expect(
+        (await SettingsStore().load()).voiceConsentVersion,
+        kVoiceConsentVersion,
+      );
 
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
@@ -419,12 +473,200 @@ void main() {
     testWidgets('a later tap goes straight to the session, no sheet', (
       tester,
     ) async {
-      SharedPreferences.setMockInitialValues({'voice_consent_accepted': true});
+      SharedPreferences.setMockInitialValues({
+        'voice_consent_version': kVoiceConsentVersion,
+      });
 
       await openHerd(tester);
 
       expect(find.text('Voice uses Google Gemini'), findsNothing);
       expect(find.byType(VoiceScreen), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('an accept of the old disclosure is asked again', (
+      tester,
+    ) async {
+      // What installs from before the consent was versioned carry: a bare
+      // boolean under the old key. They accepted a sheet that said leaving
+      // the app ends the session, and would otherwise get the microphone
+      // re-opening by itself on a yes they never gave.
+      SharedPreferences.setMockInitialValues({'voice_consent_accepted': true});
+
+      await openHerd(tester);
+
+      expect(find.text('Voice uses Google Gemini'), findsOneWidget);
+      expect(find.byType(VoiceScreen), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('an accept of an older disclosure version is asked again', (
+      tester,
+    ) async {
+      // Written against the constant rather than a literal, so the next bump
+      // is covered by this test the day it lands.
+      SharedPreferences.setMockInitialValues({
+        'voice_consent_version': kVoiceConsentVersion - 1,
+      });
+
+      await openHerd(tester);
+
+      expect(find.text('Voice uses Google Gemini'), findsOneWidget);
+      expect(find.byType(VoiceScreen), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+  });
+
+  group('retaining the conversation', () {
+    late FakeVoiceSessions sessions;
+
+    setUp(() {
+      sessions = FakeVoiceSessions();
+      // Consent is a separate gate, exercised above; here it is out of the
+      // way so the first tap goes straight to the screen.
+      SharedPreferences.setMockInitialValues({
+        'voice_consent_version': kVoiceConsentVersion,
+      });
+    });
+
+    /// Opens the voice screen, lets the server offer a resumption handle —
+    /// without one there is nothing to continue — and comes back.
+    Future<void> callAndLeave(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+      sessions.connector.last.pushResumption('h1');
+      await tester.pump();
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('re-opening continues the call that was left', (tester) async {
+      final client = HerdrClient(FakeCommandRunner(_respond));
+      await tester.pumpWidget(
+        _herdApp(
+          client: client,
+          voiceAssistantEnabled: true,
+          voiceSessionFor: sessions.call,
+        ),
+      );
+      await tester.pump();
+
+      await callAndLeave(tester);
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+
+      // The log of the first visit is still on screen, and the session is
+      // back on the wire — not a second, empty conversation.
+      expect(find.text('Left the voice screen'), findsOneWidget);
+      expect(find.text('Reconnected, continuing'), findsOneWidget);
+      expect(find.text("Let's talk about your agents"), findsNothing);
+      expect(sessions.built, hasLength(1));
+      expect(sessions.connector.handles, [null, 'h1']);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a call the user ended is replaced by a fresh one', (
+      tester,
+    ) async {
+      final client = HerdrClient(FakeCommandRunner(_respond));
+      await tester.pumpWidget(
+        _herdApp(
+          client: client,
+          voiceAssistantEnabled: true,
+          voiceSessionFor: sessions.call,
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+      sessions.connector.last.pushResumption('h1');
+      await tester.pump();
+      // End, then leave: a handle is in hand, so the End alone is what makes
+      // this conversation spent.
+      await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('voice_close_button')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Let's talk about your agents"), findsOneWidget);
+      expect(find.text('Session ended'), findsNothing);
+      expect(sessions.built, hasLength(2));
+      expect(sessions.connector.handles, [null, null]);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('turning the assistant off drops the retained call', (
+      tester,
+    ) async {
+      final client = HerdrClient(FakeCommandRunner(_respond));
+      Widget app({required bool enabled}) => _herdApp(
+        client: client,
+        voiceAssistantEnabled: enabled,
+        voiceSessionFor: sessions.call,
+      );
+      await tester.pumpWidget(app(enabled: true));
+      await tester.pump();
+
+      await callAndLeave(tester);
+      // The user's revoke, and then a change of mind: what must not survive
+      // the off is the conversation held while it was on.
+      await tester.pumpWidget(app(enabled: false));
+      await tester.pump();
+      await tester.pumpWidget(app(enabled: true));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Let's talk about your agents"), findsOneWidget);
+      expect(find.text('Left the voice screen'), findsNothing);
+      expect(sessions.built, hasLength(2));
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('the host in scope changing drops the retained call', (
+      tester,
+    ) async {
+      final clientA = HerdrClient(FakeCommandRunner(_respond));
+      final clientB = HerdrClient(FakeCommandRunner(_respondB));
+      Widget app(String hostId) => _herdApp(
+        hosts: const [_hostRefA, _hostRefB],
+        clientFor: (ref) => ref.hostId == 'host-a' ? clientA : clientB,
+        filterHostId: hostId,
+        voiceAssistantEnabled: true,
+        voiceSessionFor: sessions.call,
+      );
+      await tester.pumpWidget(app('host-a'));
+      await tester.pump();
+
+      await callAndLeave(tester);
+      // The session's tools talk to host A's client alone, so it cannot
+      // follow the user to host B.
+      await tester.pumpWidget(app('host-b'));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Let's talk about your agents"), findsOneWidget);
+      expect(find.text('Left the voice screen'), findsNothing);
+      expect(sessions.built, hasLength(2));
 
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
