@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -551,6 +552,9 @@ class AppLocalizationsJa extends AppLocalizations {
   @override
   String get voiceMicPermissionDenied =>
       'マイクへのアクセスがオフです。設定で許可すると drover と話せます。';
+
+  @override
+  String get voiceOutOfCredits => 'ボイスクレジットがありません。';
 
   @override
   String voiceToolCalled(String name) {

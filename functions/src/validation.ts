@@ -88,6 +88,17 @@ export function parsePairingCodeRequest(
   return deviceIdPattern.test(input.hostId) ? { hostId: input.hostId } : null;
 }
 
+// The voice session ID the app makes when a call starts and repeats on every
+// mint for that call. Same shape as a device ID — a UUID — and checked for the
+// same reason: it becomes a document path.
+export function parseVoiceSessionId(value: unknown): string | null {
+  const input = record(value);
+  if (input == null || typeof input.sessionId !== "string") {
+    return null;
+  }
+  return deviceIdPattern.test(input.sessionId) ? input.sessionId : null;
+}
+
 export function parsePairingCompletion(
   value: unknown,
 ): PairingCompletion | null {

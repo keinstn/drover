@@ -255,6 +255,7 @@
     }
   },
   "voiceMicPermissionDenied": "Microphone access is off. Allow it in Settings to talk to drover.",
+  "voiceOutOfCredits": "You are out of voice credits.",
   "voiceToolCalled": "Called {name}",
   "@voiceToolCalled": {
     "placeholders": {
