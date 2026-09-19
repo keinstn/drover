@@ -50,19 +50,24 @@ class FakeTransport implements VoiceTransport, VoiceUsageReporter {
 }
 
 /// Hands out a fresh [FakeTransport] per connect and records the resumption
-/// handle each one was asked for.
+/// handle and voice session id each one was asked for.
 class FakeConnector {
   final transports = <FakeTransport>[];
   final handles = <String?>[];
+
+  /// The session id per connect: what production hands `mintVoiceToken`, and
+  /// what decides whether a reconnect is charged again.
+  final sessionIds = <String>[];
 
   /// When set, the connect at that index (0-based) throws instead.
   final throwAt = <int>{};
 
   FakeTransport get last => transports.last;
 
-  Future<VoiceTransport> call(String? resumeHandle) async {
+  Future<VoiceTransport> call(String? resumeHandle, String sessionId) async {
     final index = handles.length;
     handles.add(resumeHandle);
+    sessionIds.add(sessionId);
     if (throwAt.contains(index)) throw StateError('handle refused');
     final transport = FakeTransport();
     transports.add(transport);

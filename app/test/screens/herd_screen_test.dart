@@ -216,9 +216,9 @@ class FakeVoiceSessions {
   /// call already counts as on the wire.
   Completer<void>? connectGate;
 
-  Future<VoiceTransport> _connect(String? handle) async {
+  Future<VoiceTransport> _connect(String? handle, String sessionId) async {
     await connectGate?.future;
-    return connector.call(handle);
+    return connector.call(handle, sessionId);
   }
 
   VoiceSession call({

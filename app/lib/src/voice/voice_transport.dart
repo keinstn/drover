@@ -279,16 +279,39 @@ String scrubVoiceToken(String text, String token) => text
 /// this is injectable at all.
 typedef VoiceTokenMinter = Future<VoiceToken> Function();
 
+/// `mintVoiceToken` refused because the account has no credits left.
+///
+/// The only thing the app can learn about the balance: `firestore.rules`
+/// denies the client every read, so the wallet is invisible until a mint says
+/// no. Its own class rather than the raw [FirebaseFunctionsException] so
+/// [VoiceSession] can render its own copy for it without knowing a thing
+/// about Cloud Functions.
+class VoiceOutOfCredits implements Exception {
+  const VoiceOutOfCredits();
+
+  @override
+  String toString() => 'VoiceOutOfCredits';
+}
+
 /// Asks `mintVoiceToken` for a token. Firebase Auth and App Check are carried
 /// and verified by the callable itself.
-Future<VoiceToken> mintVoiceTokenFromFunctions() async {
-  final result = await FirebaseFunctions.instanceFor(
-    region: 'us-central1',
-  ).httpsCallable('mintVoiceToken').call<Map<String, Object?>>();
-  return VoiceToken(
-    token: result.data['token']! as String,
-    expiresAt: DateTime.parse(result.data['expireTime']! as String),
-  );
+///
+/// [sessionId] is the conversation this mint belongs to, and every re-mint of
+/// the same conversation repeats it: the Function charges the first mint under
+/// an id and lets the rest through free, so a reconnect is not a second call.
+Future<VoiceToken> mintVoiceTokenFromFunctions(String sessionId) async {
+  try {
+    final result = await FirebaseFunctions.instanceFor(region: 'us-central1')
+        .httpsCallable('mintVoiceToken')
+        .call<Map<String, Object?>>({'sessionId': sessionId});
+    return VoiceToken(
+      token: result.data['token']! as String,
+      expiresAt: DateTime.parse(result.data['expireTime']! as String),
+    );
+  } on FirebaseFunctionsException catch (e) {
+    if (e.code == 'resource-exhausted') throw const VoiceOutOfCredits();
+    rethrow;
+  }
 }
 
 /// [VoiceTransport] over a raw Live WebSocket opened with a minted token.
@@ -312,15 +335,18 @@ class TokenVoiceTransport implements VoiceTransport, VoiceUsageReporter {
 
   /// Opens a session on a freshly minted token.
   ///
-  /// [mint], [endpoint] and [onRawFrame] are seams for the live check under
-  /// `app/tool/` and for tests; nothing in the app passes them. [onRawFrame]
-  /// sees every server frame as it arrived, which is where the test fixtures
-  /// come from.
+  /// [mint] mints every token this transport uses, including the ones it
+  /// reopens with at a window boundary; production passes a closure over the
+  /// conversation's session id (see [VoiceSession.forHerd]), which is what
+  /// keeps one conversation to one debit. [endpoint] and [onRawFrame] are
+  /// seams for the live check under `app/tool/` and for tests; nothing in the
+  /// app passes them. [onRawFrame] sees every server frame as it arrived,
+  /// which is where the test fixtures come from.
   static Future<TokenVoiceTransport> connect({
     required List<VoiceTool> tools,
     required String languageCode,
+    required VoiceTokenMinter mint,
     String? resumeHandle,
-    VoiceTokenMinter mint = mintVoiceTokenFromFunctions,
     String endpoint = kVoiceLiveEndpoint,
     void Function(String frame)? onRawFrame,
   }) async {

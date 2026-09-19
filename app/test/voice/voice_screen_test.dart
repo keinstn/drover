@@ -35,12 +35,13 @@ void main() {
     FakeVoiceHerd? herd,
     VoiceInbox? inbox,
     VoiceDrafts? drafts,
-    Future<VoiceTransport> Function(String?)? connect,
+    Future<VoiceTransport> Function(String?, String)? connect,
     bool reduceMotion = false,
     ThemeData? theme,
+    Locale? locale,
   }) {
     final session = VoiceSession(
-      connect: connect ?? (_) async => transport,
+      connect: connect ?? (_, _) async => transport,
       mic: mic,
       speaker: speaker,
       herd: herd,
@@ -58,6 +59,7 @@ void main() {
     final screen = VoiceScreen(session: session);
     return MaterialApp(
       theme: theme ?? droverDarkTheme,
+      locale: locale,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       // copyWith, not a bare MediaQueryData: the screen must still lay out
@@ -486,7 +488,7 @@ void main() {
     await onPhone(tester);
     await tester.pumpWidget(
       app(
-        connect: (_) async =>
+        connect: (_, _) async =>
             throw StateError('failed to connect ${'x' * 200}'),
       ),
     );
@@ -508,11 +510,34 @@ void main() {
     await tester.pump();
   });
 
+  for (final (locale, expected) in [
+    (const Locale('en'), 'Error: You are out of voice credits.'),
+    (const Locale('ja'), 'エラー: ボイスクレジットがありません。'),
+  ]) {
+    testWidgets('an empty balance is rendered in ${locale.languageCode}', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        app(
+          locale: locale,
+          connect: (_, _) async => throw const VoiceOutOfCredits(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // The refused mint is all the app can ever know about the balance, so
+      // what it puts on screen has to be its own sentence — not a stringified
+      // exception, and not nothing.
+      expect(find.text(expected), findsWidgets);
+    });
+  }
+
   testWidgets('an errored session says so in the log, not the greeting', (
     tester,
   ) async {
     await tester.pumpWidget(
-      app(connect: (_) async => throw StateError('no host')),
+      app(connect: (_, _) async => throw StateError('no host')),
     );
     await tester.pump();
     await tester.pump();
@@ -539,7 +564,7 @@ void main() {
     await onPhone(tester);
     await tester.pumpWidget(
       app(
-        connect: (_) async =>
+        connect: (_, _) async =>
             throw StateError('failed to connect ${'x' * 200}'),
       ),
     );
@@ -579,7 +604,7 @@ void main() {
 
     await tester.pumpWidget(
       app(
-        connect: (_) async =>
+        connect: (_, _) async =>
             throw StateError('failed to connect ${'x' * 200}'),
       ),
     );
