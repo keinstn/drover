@@ -9,6 +9,7 @@ import {
   parseDeviceRegistration,
   parsePairingCodeRequest,
   parsePairingCompletion,
+  parseVoiceSessionId,
 } from "./validation.js";
 
 void test("accepts a valid device registration", () => {
@@ -97,6 +98,15 @@ void test("accepts an explicit done status and rejects unknown ones", () => {
     }),
     null,
   );
+});
+
+void test("accepts a voice session ID and rejects a path traversal", () => {
+  assert.equal(
+    parseVoiceSessionId({ sessionId: "9cc2cb08-4d52-4f64-b49b-3580a3edb87b" }),
+    "9cc2cb08-4d52-4f64-b49b-3580a3edb87b",
+  );
+  assert.equal(parseVoiceSessionId({ sessionId: "../other-session" }), null);
+  assert.equal(parseVoiceSessionId({}), null);
 });
 
 void test("maps status to push content", () => {
