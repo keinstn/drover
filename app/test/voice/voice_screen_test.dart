@@ -6,7 +6,6 @@ import 'dart:ui' as ui;
 
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
-import 'package:drover/src/infra/screen_wake.dart';
 import 'package:drover/src/voice/voice_drafts.dart';
 import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_screen.dart';
@@ -39,41 +38,48 @@ void main() {
     Future<VoiceTransport> Function(String?)? connect,
     bool reduceMotion = false,
     ThemeData? theme,
-    ScreenWake? screenWake,
   }) {
-    final screen = VoiceScreen(
-      session: VoiceSession(
-        connect: connect ?? (_) async => transport,
-        mic: mic,
-        speaker: speaker,
-        herd: herd,
-        inbox: inbox,
-        drafts: drafts,
-        tools: [
-          VoiceTool(
-            name: 'list_agents',
-            description: '',
-            parameters: const {},
-            run: (_) async => {'agents': []},
-          ),
-        ],
-      ),
-      screenWake: screenWake,
+    final session = VoiceSession(
+      connect: connect ?? (_) async => transport,
+      mic: mic,
+      speaker: speaker,
+      herd: herd,
+      inbox: inbox,
+      drafts: drafts,
+      tools: [
+        VoiceTool(
+          name: 'list_agents',
+          description: '',
+          parameters: const {},
+          run: (_) async => {'agents': []},
+        ),
+      ],
     );
+    final screen = VoiceScreen(session: session);
     return MaterialApp(
       theme: theme ?? droverDarkTheme,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       // copyWith, not a bare MediaQueryData: the screen must still lay out
       // against a real screen size.
-      home: reduceMotion
-          ? Builder(
-              builder: (context) => MediaQuery(
-                data: MediaQuery.of(context).copyWith(disableAnimations: true),
-                child: screen,
-              ),
-            )
-          : screen,
+      // The screen no longer ends the call when it goes, so in these tests
+      // nobody would: [_SessionOwner] stands in for the herd screen, which
+      // owns the session in the app and disposes it with itself. Without it
+      // every test that tears its tree down while live leaves the cap timer
+      // pending past the end of the test.
+      home: _SessionOwner(
+        session: session,
+        child: reduceMotion
+            ? Builder(
+                builder: (context) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(disableAnimations: true),
+                  child: screen,
+                ),
+              )
+            : screen,
+      ),
     );
   }
 
@@ -1436,101 +1442,6 @@ void main() {
     });
   });
 
-  group('screen wake', () {
-    testWidgets('turns on once the session goes live, off once it ends', (
-      tester,
-    ) async {
-      final wake = FakeScreenWake();
-      await tester.pumpWidget(app(screenWake: wake));
-      await tester.pump();
-
-      expect(wake.calls, [true]);
-
-      await tester.tap(find.byKey(const ValueKey('voice_action_button')));
-      await tester.pumpAndSettle();
-
-      expect(wake.calls, [true, false]);
-
-      await tester.pumpWidget(const SizedBox());
-      await tester.pump();
-    });
-
-    testWidgets('Restart turns the wake back on', (tester) async {
-      final wake = FakeScreenWake();
-      // A connector that hands out a fresh transport per connect, not the
-      // shared `transport` `app()` defaults to: that one's stream controller
-      // is closed for good on the first end, so reconnecting to it would
-      // fire `onDone` immediately and end the restarted session right back
-      // off — this test needs the restart to genuinely stay live.
-      final connector = FakeConnector();
-      await tester.pumpWidget(app(connect: connector.call, screenWake: wake));
-      await tester.pump();
-
-      expect(wake.calls, [true]);
-
-      await tester.tap(find.byKey(const ValueKey('voice_action_button')));
-      await tester.pumpAndSettle();
-
-      expect(wake.calls, [true, false]);
-
-      await tester.tap(find.byKey(const ValueKey('voice_action_button')));
-      await tester.pump();
-      await tester.pump();
-
-      expect(connector.transports, hasLength(2));
-      expect(wake.calls, [true, false, true]);
-
-      await tester.pumpWidget(const SizedBox());
-      await tester.pump();
-    });
-
-    testWidgets('is released when the screen is disposed', (tester) async {
-      final wake = FakeScreenWake();
-      // A pushed route, not `app()`'s bare `MaterialApp(home: ...)`: popping
-      // it is what exercises `State.dispose` — `pumpWidget(SizedBox())`
-      // would also dispose the screen, but that path already runs at the
-      // end of every other test in this file, so it proves nothing on its
-      // own about *this* screen's dispose specifically.
-      final session = VoiceSession(
-        connect: (_) async => transport,
-        mic: mic,
-        speaker: speaker,
-        tools: const [],
-      );
-      await tester.pumpWidget(
-        MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) =>
-                      VoiceScreen(session: session, screenWake: wake),
-                ),
-              ),
-              child: const Text('voice'),
-            ),
-          ),
-        ),
-      );
-      await tester.tap(find.text('voice'));
-      await tester.pump();
-      await tester.pump();
-
-      expect(wake.calls, [true]);
-
-      tester.state<NavigatorState>(find.byType(Navigator).last).pop();
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 1));
-
-      expect(wake.calls, [true, false]);
-
-      await tester.pumpWidget(const SizedBox());
-      await tester.pump();
-    });
-  });
-
   group('continuing a conversation', () {
     /// The screen behind a pushed [VoiceScreen], so popping it exercises
     /// `State.dispose` for real — and pushing again re-enters the SAME
@@ -1553,12 +1464,9 @@ void main() {
       ),
     );
 
-    testWidgets('popping the screen releases the audio but keeps the call', (
-      tester,
-    ) async {
-      // A fresh transport per connect: the shared `transport` closes its
-      // controller for good on the first close, so the continuation would
-      // see `onDone` the moment it connected.
+    testWidgets('popping the screen leaves the call listening', (tester) async {
+      // A fresh transport per connect, so a reconnect would be visible as a
+      // second one — there should be none.
       final connector = FakeConnector();
       final session = VoiceSession(
         connect: connector.call,
@@ -1569,37 +1477,32 @@ void main() {
       await tester.pumpWidget(host(session));
       await tester.tap(find.text('voice'));
       await tester.pumpAndSettle();
-      // Without a handle there is nothing to come back to; the server offers
-      // one periodically.
-      connector.last.pushResumption('h1');
-      await tester.pump();
 
       tester.state<NavigatorState>(find.byType(Navigator).last).pop();
       await tester.pumpAndSettle();
 
-      // Released, not destroyed: `disposeCalls` is what the old
-      // `widget.session.dispose()` bumped, so it fails loudly if that
-      // returns.
-      expect(mic.stopCalls, greaterThan(0));
+      // Nothing was released: the user is on another drover screen, not out
+      // of the app, and the call is still listening there.
+      expect(mic.stopCalls, 0);
       expect(mic.disposeCalls, 0);
-      expect(speaker.disposeCalls, greaterThan(0));
-      expect(session.status, VoiceSessionStatus.ended);
-      expect(session.resumable, isTrue);
+      expect(speaker.disposeCalls, 0);
+      expect(session.status, VoiceSessionStatus.live);
 
       await tester.tap(find.text('voice'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Left the voice screen'), findsOneWidget);
-      expect(find.text('Reconnected, continuing'), findsOneWidget);
-      expect(connector.handles, [null, 'h1']);
+      // Re-entering finds the same call on the same socket. Nothing was torn
+      // down, so there is nothing to reconnect and nothing to log.
+      expect(connector.transports, hasLength(1));
+      expect(find.text('Reconnected, continuing'), findsNothing);
       expect(
         tester.widget<Text>(find.byKey(const ValueKey('voice_status'))).data,
         'Listening',
       );
 
       await tester.pumpWidget(const SizedBox());
-      await tester.pump();
       session.dispose();
+      await tester.pump();
     });
 
     testWidgets('coming back to the foreground continues the call', (
@@ -1742,4 +1645,28 @@ double contrastRatio(Color a, Color b) {
   final la = a.computeLuminance();
   final lb = b.computeLuminance();
   return (max(la, lb) + 0.05) / (min(la, lb) + 0.05);
+}
+
+/// Owns [session] the way `HerdScreen` does in the app: disposes it when it
+/// leaves the tree. [VoiceScreen] itself no longer does — a call outlives its
+/// screen.
+class _SessionOwner extends StatefulWidget {
+  const _SessionOwner({required this.session, required this.child});
+
+  final VoiceSession session;
+  final Widget child;
+
+  @override
+  State<_SessionOwner> createState() => _SessionOwnerState();
+}
+
+class _SessionOwnerState extends State<_SessionOwner> {
+  @override
+  void dispose() {
+    widget.session.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

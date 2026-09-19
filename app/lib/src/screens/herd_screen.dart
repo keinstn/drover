@@ -9,6 +9,7 @@ import '../app_theme.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/herdr_version.dart';
 import '../i18n/status_label.dart';
+import '../infra/screen_wake.dart';
 import '../infra/settings_store.dart';
 import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
@@ -153,6 +154,7 @@ class HerdScreen extends StatefulWidget {
     this.networkChanges,
     this.voiceAssistantEnabled = false,
     this.voiceSessionFor,
+    this.screenWake,
   });
 
   /// Every stored host, in display order.
@@ -212,11 +214,17 @@ class HerdScreen extends StatefulWidget {
   })?
   voiceSessionFor;
 
+  /// Holds off the device's auto-lock while a call is up. Defaults to
+  /// [PlatformScreenWake]; overridable so tests can fake it. Nullable rather
+  /// than defaulted inline: a `const` constructor's default values must be
+  /// constants, and [PlatformScreenWake] isn't one.
+  final ScreenWake? screenWake;
+
   @override
   State<HerdScreen> createState() => _HerdScreenState();
 }
 
-class _HerdScreenState extends State<HerdScreen> {
+class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
   final _byHost = <String, _HostHerd>{};
 
   /// Agent events not yet announced by the voice assistant, per host. Kept
@@ -233,6 +241,13 @@ class _HerdScreenState extends State<HerdScreen> {
   /// The host [_voiceSession] was built for; its tools talk to that host's
   /// client alone.
   HerdHostRef? _voiceHost;
+
+  late final ScreenWake _screenWake = widget.screenWake ?? PlatformScreenWake();
+
+  /// Last value sent to [_screenWake], so a wake call goes out only on a
+  /// transition — the session notifies on every transcript delta and playback
+  /// tick, far too often to re-send the same value each time.
+  var _wakeOn = false;
   Timer? _timer;
   StreamSubscription<void>? _networkChangesSub;
 
@@ -267,6 +282,25 @@ class _HerdScreenState extends State<HerdScreen> {
     _networkChangesSub = widget.networkChanges?.listen(
       (_) => _onNetworkChange(),
     );
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  /// Ends a live call when the app leaves the foreground, wherever the user
+  /// is standing: the call now outlives the voice screen, so that screen's
+  /// own observer no longer covers every place one can be left from — with
+  /// it popped, nothing would fire and the session would sit `live` on a
+  /// microphone iOS has already killed. `paused` only, for the reason
+  /// [VoiceScreen] and `main.dart` both spell out: `inactive` also fires for
+  /// a Control Centre glance or an app-switcher flick. Both observers firing
+  /// for one backgrounding is harmless — `background()` on a session that is
+  /// not active returns having done nothing.
+  ///
+  /// Deliberately nothing for `resumed`: re-opening the microphone is the
+  /// voice screen's to do, because that is the boundary the consent copy is
+  /// written to. Coming back onto this screen must not re-open it.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) _voiceSession?.background();
   }
 
   @override
@@ -324,6 +358,7 @@ class _HerdScreenState extends State<HerdScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _networkChangesSub?.cancel();
     // Before the inboxes: the session subscribes to its host's inbox events.
@@ -334,12 +369,42 @@ class _HerdScreenState extends State<HerdScreen> {
     super.dispose();
   }
 
-  /// Ends and forgets the retained conversation. Idempotent — the field is
-  /// cleared, so nothing is ever disposed twice.
+  /// True while the retained conversation is on the wire — microphone open,
+  /// socket up — whether or not the voice screen is showing. The voice button
+  /// wears its live state for exactly this, and [_openVoice] re-enters such a
+  /// call rather than replacing it mid-sentence.
+  bool get _voiceOnTheWire =>
+      _voiceSession?.status == VoiceSessionStatus.connecting ||
+      _voiceSession?.status == VoiceSessionStatus.live;
+
+  /// Holds the device awake for as long as the call is on the wire, and lets
+  /// it lock again the moment it is not — flipped on a transition only, see
+  /// [_wakeOn]. This lives here rather than on [VoiceScreen] because the call
+  /// does: a user who steps back to the herd screen mid-conversation to look
+  /// at their agents keeps talking, touching nothing, and a wake released
+  /// with that screen would let the device auto-lock about thirty seconds
+  /// later — which backgrounds the app, which ends the call. Every end path
+  /// (the user's End, the cap, an error, leaving the app) notifies through
+  /// here, and [_dropVoiceSession] covers the two that do not.
+  void _syncWake() {
+    final active = _voiceOnTheWire;
+    if (active == _wakeOn) return;
+    _wakeOn = active;
+    unawaited(_screenWake.setEnabled(active));
+  }
+
+  /// Ends and forgets the retained conversation, and lets the device lock
+  /// again. Idempotent — the field is cleared, so nothing is ever disposed
+  /// twice.
   void _dropVoiceSession() {
+    _voiceSession?.removeListener(_syncWake);
     _voiceSession?.dispose();
     _voiceSession = null;
     _voiceHost = null;
+    // After the field is cleared, so [_voiceOnTheWire] reads false: a
+    // disposed session's status would otherwise keep the device awake with
+    // no call behind it.
+    _syncWake();
   }
 
   /// Starts (or restarts) the periodic poll. A no-op if already running:
@@ -716,6 +781,22 @@ class _HerdScreenState extends State<HerdScreen> {
         builder: (_) => AgentScreen(
           client: widget.clientFor(host),
           speechInput: widget.speechInput,
+          // No dictation while a call is on the wire: the composer's mic
+          // drives `speech_to_text`, which would put SFSpeechRecognizer's tap
+          // on the AVAudioSession that `record`'s engine already holds and
+          // `flutter_soloud` plays through. The likely loser is the call's
+          // microphone, and nothing would tell [VoiceSession], leaving it
+          // `live` over a dead mic — the half-dead state `docs/voice-live.md`
+          // calls the worst outcome. The call wins because it is the one the
+          // user is in the middle of; dictation is one tap of a keyboard
+          // alternative. A flag, not a withheld [SpeechInput]: who owns the
+          // speech controller is not this change's business.
+          //
+          // ponytail: decided once, here, when the screen is pushed — a call
+          // that ends while this screen is open leaves the mic missing until
+          // the user goes back and in again. Thread a listenable through if
+          // that turns out to annoy in use.
+          canDictate: !_voiceOnTheWire,
           paneId: agent.paneId,
           initialAgent: agent,
           initialAgents: bucket.agents,
@@ -909,16 +990,17 @@ class _HerdScreenState extends State<HerdScreen> {
     if (!context.mounted || _hostsInScope.isEmpty) return;
     // Built once here, not in the route builder, which can run more than once.
     final host = _hostsInScope.first;
-    // A retained conversation is picked up where it was left: the screen
-    // popped suspends it, and [VoiceSession.resumable] is the session's own
-    // word that its next start() would continue rather than begin. Anything
+    // A retained conversation is picked up where it was left: still on the
+    // wire (the user only walked to another drover screen), or parked with a
+    // handle to continue from ([VoiceSession.resumable] is the session's own
+    // word that its next start() would continue rather than begin). Anything
     // else — the user's End, an error, the cap, a session that was never
     // offered a handle — is spent, so it goes and a fresh one takes its
     // place. [didUpdateWidget] has already dropped one that stopped applying
     // to this host, so whatever survives here belongs to [host].
     final VoiceSession session;
     final retained = _voiceSession;
-    if (retained != null && retained.resumable) {
+    if (retained != null && (_voiceOnTheWire || retained.resumable)) {
       session = retained;
     } else {
       _dropVoiceSession();
@@ -933,8 +1015,15 @@ class _HerdScreenState extends State<HerdScreen> {
         inbox: _inboxFor(host.hostId),
         locale: Localizations.localeOf(context),
       );
-      _voiceSession = session;
-      _voiceHost = host;
+      // setState, because the voice button listens to the session it is
+      // handed and only picks up a new one on a rebuild. The wake listener
+      // is attached here and removed in [_dropVoiceSession], so it lasts as
+      // long as the conversation does, not as long as its screen.
+      session.addListener(_syncWake);
+      setState(() {
+        _voiceSession = session;
+        _voiceHost = host;
+      });
     }
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => VoiceScreen(session: session)),
@@ -1008,8 +1097,14 @@ class _HerdScreenState extends State<HerdScreen> {
           ),
           if (widget.voiceAssistantEnabled && _hostsInScope.isNotEmpty) ...[
             const SizedBox(width: 12),
+            // Both: the badge follows the inbox, the live state follows the
+            // session — which is null until the first call, and is replaced
+            // when a spent one is.
             ListenableBuilder(
-              listenable: _inboxFor(_hostsInScope.first.hostId),
+              listenable: Listenable.merge([
+                _inboxFor(_hostsInScope.first.hostId),
+                _voiceSession,
+              ]),
               builder: (context, _) => SizedBox.square(
                 dimension: 48,
                 child: FloatingActionButton(
@@ -1017,9 +1112,20 @@ class _HerdScreenState extends State<HerdScreen> {
                   // Two FABs on one route: the launch FAB keeps the default
                   // hero tag, so this one opts out of the Hero entirely.
                   heroTag: null,
-                  tooltip: l10n.herdVoiceButton,
+                  tooltip: _voiceOnTheWire
+                      ? l10n.herdVoiceButtonLive
+                      : l10n.herdVoiceButton,
                   onPressed: () => _openVoice(context),
-                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  // With the mic open and the voice screen gone, this button
+                  // is the app's own "we are listening" sign — so while the
+                  // call is up it wears the voice screen's listening ink and
+                  // an open microphone, instead of the page's own accent and
+                  // a waveform. Colour and glyph both change: one of the two
+                  // has to carry it in a screenshot, or for a reader who
+                  // cannot tell the two fills apart.
+                  backgroundColor: _voiceOnTheWire
+                      ? voiceListeningInk(context)
+                      : Theme.of(context).colorScheme.primary,
                   foregroundColor: Theme.of(context).colorScheme.onPrimary,
                   // Waveform, not a mic: the agent composer's mic dictates
                   // text, while this opens a full conversation mode.
@@ -1028,7 +1134,7 @@ class _HerdScreenState extends State<HerdScreen> {
                     isLabelVisible: _inboxFor(
                       _hostsInScope.first.hostId,
                     ).pending.isNotEmpty,
-                    child: const Icon(Icons.graphic_eq),
+                    child: Icon(_voiceOnTheWire ? Icons.mic : Icons.graphic_eq),
                   ),
                 ),
               ),
