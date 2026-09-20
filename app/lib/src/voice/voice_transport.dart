@@ -130,8 +130,9 @@ class FirebaseVoiceTransport implements VoiceTransport {
 /// `true` since the Function was deployed (2026-09-18, `us-central1`, the
 /// region [mintVoiceTokenFromFunctions] pins). Flipping this back is the whole
 /// revert: both transports are kept, and nothing else chooses between them.
-/// The Function still mints for anyone it will talk to — there is no wallet
-/// behind it yet.
+/// Since the wallet landed the Function mints only against a balance, so the
+/// revert is not free: on the AI Logic path a call costs nothing and is
+/// charged to nobody.
 const kVoiceUseMintedToken = true;
 
 /// Whether a finished session shows what it billed for.
