@@ -534,6 +534,28 @@ class AppLocalizationsEn extends AppLocalizations {
       'Talk to drover about your agents. Agent status and short summaries of their replies are sent to Google\'s Gemini Live API for the conversation.';
 
   @override
+  String get settingsVoiceCredits => 'Voice credits';
+
+  @override
+  String get settingsVoiceCreditsSubtitle =>
+      'One credit is one call, up to five minutes.';
+
+  @override
+  String get settingsVoiceCreditsActivity => 'Recent credit activity';
+
+  @override
+  String get settingsVoiceCreditsNone => 'Nothing yet.';
+
+  @override
+  String get settingsVoiceCreditsFailed => 'Couldn\'t load your balance.';
+
+  @override
+  String get voiceLedgerCall => 'Voice call';
+
+  @override
+  String get voiceLedgerRefund => 'Returned';
+
+  @override
   String get settingsAccount => 'Account';
 
   @override
@@ -562,6 +584,17 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get accountDeleteFailed =>
       'Could not delete the account. Tap to try again.';
+
+  @override
+  String accountDeleteBalance(int credits) {
+    String _temp0 = intl.Intl.pluralLogic(
+      credits,
+      locale: localeName,
+      other: '$credits credits go',
+      one: 'One credit goes',
+    );
+    return '$_temp0 with it.';
+  }
 
   @override
   String get herdVoiceButton => 'Voice assistant';

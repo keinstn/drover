@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   debitedMint,
   voiceCallCost,
+  voiceLedgerEntry,
   voiceMintDecision,
   voiceSessionReuseMs,
   walletCredits,
@@ -101,4 +102,49 @@ void test("refunds nothing when the mint was free or succeeded", async () => {
     "token",
   );
   assert.deepEqual(calls, []);
+});
+
+void test("hands the app a ledger row it can render", () => {
+  assert.deepEqual(
+    voiceLedgerEntry({ type: "voiceCall", credits: -1, createdAtMs: now }),
+    { type: "voiceCall", credits: -1, at: now },
+  );
+  assert.deepEqual(
+    voiceLedgerEntry({
+      type: "voiceCallRefund",
+      credits: 1,
+      createdAtMs: now,
+    }),
+    { type: "voiceCallRefund", credits: 1, at: now },
+  );
+});
+
+void test("drops a ledger row the app could not label or count", () => {
+  assert.equal(
+    voiceLedgerEntry({ type: "", credits: -1, createdAtMs: now }),
+    null,
+  );
+  assert.equal(
+    voiceLedgerEntry({ type: undefined, credits: -1, createdAtMs: now }),
+    null,
+  );
+  assert.equal(
+    voiceLedgerEntry({ type: "voiceCall", credits: "-1", createdAtMs: now }),
+    null,
+  );
+  assert.equal(
+    voiceLedgerEntry({
+      type: "voiceCall",
+      credits: Number.POSITIVE_INFINITY,
+      createdAtMs: now,
+    }),
+    null,
+  );
+});
+
+void test("keeps a row whose timestamp is not one", () => {
+  assert.deepEqual(
+    voiceLedgerEntry({ type: "voiceCall", credits: -1, createdAtMs: null }),
+    { type: "voiceCall", credits: -1, at: null },
+  );
 });

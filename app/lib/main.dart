@@ -18,6 +18,7 @@ import 'src/demo/demo_content.dart';
 import 'src/demo/demo_screen.dart';
 import 'src/firebase/app_check.dart';
 import 'src/firebase/apple_account.dart';
+import 'src/firebase/voice_wallet.dart';
 import 'src/herdr/herdr_client.dart';
 import 'src/herdr/host_platform.dart';
 import 'src/infra/best_effort.dart';
@@ -836,6 +837,17 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     // host over SSH each time. Skipped inside the demo, which keeps the
     // stored hosts around but must not reach out to them.
     final staleNotifyPlugins = _demo == null ? _checkNotifyPlugins() : null;
+    // Started here for the same reason, and skipped in the demo for the same
+    // one: the demo must not call out to anything. Also skipped when the
+    // bootstrap above never got Firebase up — there is no wallet to read
+    // then, and the screen hides the balance rather than reporting a failure
+    // nobody can act on.
+    // Not final: deleting the account from this very screen leaves the
+    // balance below describing a uid that no longer exists, so that one
+    // callback replaces the future and the route re-reads it.
+    var voiceWallet = _demo == null && Firebase.apps.isNotEmpty
+        ? fetchVoiceWallet()
+        : null;
     _navKey.currentState?.push(
       MaterialPageRoute<void>(
         // The StatefulBuilder is load-bearing, not noise: a pushed route
@@ -853,6 +865,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
             notifyOnDone: _notifyOnDone,
             appVersion: widget.appVersion,
             staleNotifyPlugins: staleNotifyPlugins,
+            voiceWallet: voiceWallet,
             onThemeModeChanged: (mode) {
               setState(() => _themeMode = mode);
               rebuildRoute(() {});
@@ -941,7 +954,15 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
                 },
               );
               setState(() => _appleSignedIn = false);
-              rebuildRoute(() {});
+              // The screen stays up, and everything it shows about the
+              // wallet belonged to the account that just went. Re-read it
+              // under the fresh uid — an empty balance and an empty ledger,
+              // which is the truth and also the reassurance.
+              rebuildRoute(() {
+                voiceWallet = Firebase.apps.isNotEmpty
+                    ? fetchVoiceWallet()
+                    : null;
+              });
               // The old uid's `users/{uid}/devices` documents went with the
               // account, so this device has to re-register under the fresh
               // one. Unawaited, and through the wrapper that reports its own

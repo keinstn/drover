@@ -1034,6 +1034,48 @@ abstract class AppLocalizations {
   /// **'Talk to drover about your agents. Agent status and short summaries of their replies are sent to Google\'s Gemini Live API for the conversation.'**
   String get settingsVoiceAssistantSubtitle;
 
+  /// No description provided for @settingsVoiceCredits.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice credits'**
+  String get settingsVoiceCredits;
+
+  /// No description provided for @settingsVoiceCreditsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'One credit is one call, up to five minutes.'**
+  String get settingsVoiceCreditsSubtitle;
+
+  /// No description provided for @settingsVoiceCreditsActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent credit activity'**
+  String get settingsVoiceCreditsActivity;
+
+  /// No description provided for @settingsVoiceCreditsNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing yet.'**
+  String get settingsVoiceCreditsNone;
+
+  /// No description provided for @settingsVoiceCreditsFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load your balance.'**
+  String get settingsVoiceCreditsFailed;
+
+  /// No description provided for @voiceLedgerCall.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice call'**
+  String get voiceLedgerCall;
+
+  /// No description provided for @voiceLedgerRefund.
+  ///
+  /// In en, this message translates to:
+  /// **'Returned'**
+  String get voiceLedgerRefund;
+
   /// No description provided for @settingsAccount.
   ///
   /// In en, this message translates to:
@@ -1087,6 +1129,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not delete the account. Tap to try again.'**
   String get accountDeleteFailed;
+
+  /// No description provided for @accountDeleteBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'{credits, plural, =1{One credit goes} other{{credits} credits go}} with it.'**
+  String accountDeleteBalance(int credits);
 
   /// No description provided for @herdVoiceButton.
   ///

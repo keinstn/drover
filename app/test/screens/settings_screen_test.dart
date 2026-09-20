@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/firebase/apple_account.dart';
+import 'package:drover/src/firebase/voice_wallet.dart';
 import 'package:drover/src/notifications/notify_plugin_version.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:drover/src/screens/settings_screen.dart';
@@ -28,6 +29,7 @@ Widget _app({
   VoidCallback? onEnterDemo,
   String? appVersion,
   List<Future<StaleNotifyPlugin?>>? staleNotifyPlugins,
+  Future<VoiceWallet>? voiceWallet,
 }) {
   return MaterialApp(
     // The screen reads DroverColors, so the harness needs the real theme.
@@ -52,6 +54,7 @@ Widget _app({
       onEnterDemo: onEnterDemo,
       appVersion: appVersion,
       staleNotifyPlugins: staleNotifyPlugins,
+      voiceWallet: voiceWallet,
     ),
   );
 }
@@ -79,6 +82,7 @@ class _SettingsHost extends StatefulWidget {
     required this.onEnterDemo,
     required this.appVersion,
     required this.staleNotifyPlugins,
+    required this.voiceWallet,
   });
 
   final ThemeMode themeMode;
@@ -98,6 +102,7 @@ class _SettingsHost extends StatefulWidget {
   final VoidCallback? onEnterDemo;
   final String? appVersion;
   final List<Future<StaleNotifyPlugin?>>? staleNotifyPlugins;
+  final Future<VoiceWallet>? voiceWallet;
 
   @override
   State<_SettingsHost> createState() => _SettingsHostState();
@@ -148,6 +153,7 @@ class _SettingsHostState extends State<_SettingsHost> {
       onEnterDemo: widget.onEnterDemo,
       appVersion: widget.appVersion,
       staleNotifyPlugins: widget.staleNotifyPlugins,
+      voiceWallet: widget.voiceWallet,
     );
   }
 }
@@ -166,6 +172,16 @@ Future<void> _revealAccountRow(WidgetTester tester) =>
 Future<void> _revealDeleteRow(WidgetTester tester) async {
   await tester.scrollUntilVisible(
     find.byKey(const ValueKey('settings_account_delete_tile')),
+    200,
+  );
+  await tester.pumpAndSettle();
+}
+
+/// The credits block sits below the notification switches, same as the
+/// account rows — and a lazy ListView never builds what is off screen.
+Future<void> _revealCreditsRow(WidgetTester tester) async {
+  await tester.scrollUntilVisible(
+    find.byKey(const ValueKey('settings_voice_credits_tile')),
     200,
   );
   await tester.pumpAndSettle();
@@ -964,6 +980,193 @@ void main() {
 
     held.complete();
     await tester.pumpAndSettle();
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the balance renders under the assistant switch', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        voiceWallet: Future.value(const VoiceWallet(credits: 4, entries: [])),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _revealCreditsRow(tester);
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_voice_credits_tile')),
+        matching: find.text('4'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Voice credits'), findsOneWidget);
+    expect(
+      find.text('One credit is one call, up to five minutes.'),
+      findsOneWidget,
+    );
+    // An empty ledger says so rather than leaving a gap under its heading.
+    expect(find.text('RECENT CREDIT ACTIVITY'), findsOneWidget);
+    expect(find.text('Nothing yet.'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('each ledger row names what it was and which way it went', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        voiceWallet: Future.value(
+          VoiceWallet(
+            credits: 2,
+            entries: [
+              VoiceLedgerEntry(
+                type: VoiceLedgerType.call,
+                credits: -1,
+                at: DateTime(2026, 9, 20, 15, 4),
+              ),
+              // No timestamp: the server stamp had not landed when the
+              // callable read the row.
+              const VoiceLedgerEntry(
+                type: VoiceLedgerType.refund,
+                credits: 1,
+                at: null,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _revealCreditsRow(tester);
+
+    final call = find.byKey(const ValueKey('settings_voice_credits_entry_0'));
+    expect(
+      find.descendant(of: call, matching: find.text('Voice call')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: call, matching: find.text('\u22121')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: call, matching: find.text('Sep 20, 2026 3:04 PM')),
+      findsOneWidget,
+    );
+
+    final refund = find.byKey(const ValueKey('settings_voice_credits_entry_1'));
+    expect(
+      find.descendant(of: refund, matching: find.text('Returned')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: refund, matching: find.text('+1')),
+      findsOneWidget,
+    );
+    // The row without a timestamp renders its title and nothing beneath it.
+    expect(tester.widget<ListTile>(refund).subtitle, isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a balance that failed to load says so instead of throwing', (
+    tester,
+  ) async {
+    final wallet = Completer<VoiceWallet>();
+    await tester.pumpWidget(_app(voiceWallet: wallet.future));
+    // Nothing at all while it is in flight — not even a spinner.
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    wallet.completeError(Exception('no network'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('settings_voice_credits_failed_tile')),
+      200,
+    );
+
+    expect(find.text("Couldn't load your balance."), findsOneWidget);
+    expect(find.text('Voice credits'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('an empty balance leaves the delete dialog as it was', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        voiceWallet: Future.value(const VoiceWallet(credits: 0, entries: [])),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _revealDeleteRow(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_account_delete_tile')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Your sign-in, host pairings and any voice credits are deleted for '
+        'good. Credits cannot be refunded or moved to another account. The '
+        'hosts stay set up on this device, and would each need pairing again '
+        'for notifications.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a balance of one is named in the singular', (tester) async {
+    // One credit is one call, so a balance of 1 is the commonest one there
+    // is to lose — and the plural arm would read "1 credits go with it."
+    await tester.pumpWidget(
+      _app(
+        voiceWallet: Future.value(const VoiceWallet(credits: 1, entries: [])),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _revealDeleteRow(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_account_delete_tile')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('One credit goes with it.'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a balance worth losing is named in the delete dialog', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        voiceWallet: Future.value(const VoiceWallet(credits: 7, entries: [])),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _revealDeleteRow(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_account_delete_tile')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Your sign-in, host pairings and any voice credits are deleted for '
+        'good. Credits cannot be refunded or moved to another account. The '
+        'hosts stay set up on this device, and would each need pairing again '
+        'for notifications.\n\n7 credits go with it.',
+      ),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(const SizedBox());
   });
