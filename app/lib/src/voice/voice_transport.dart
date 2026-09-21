@@ -88,23 +88,21 @@ LiveGenerationConfig voiceGenerationConfig(String languageCode) =>
 
 // --------------------------------------------------------------- minted token
 
-/// Whether a finished session shows what it billed for.
-///
-/// A developer readout, not a feature: the totals reach the transcript and
-/// the debug log and nowhere else. Nothing about a session leaves the device,
-/// which is what keeps drover's App Privacy declaration ("Usage data: No")
-/// true. **Turn this off before 1.1.0 reaches the App Store** — the session
-/// and screen tests that assert the line go with it. The counting itself is
-/// not gated: it costs nothing, and the transport's own tests stay green
-/// either way.
-const kVoiceUsageReadout = true;
-
 /// What one call billed for, summed over its turns.
 ///
 /// The Live server reports `usageMetadata` on each `turnComplete` frame and
 /// `firebase_ai` 4.0.0 drops it (see `docs/voice-billing.md`), so only a raw
 /// socket can fill this in: [TokenVoiceTransport] does, and [VoiceSession]
 /// adds up the transports one call used.
+///
+/// Counted, never shown. The developer readout that used to render these
+/// totals as a transcript line is gone — the session receipt answers "what
+/// did that cost" in credits, which is the question a user actually has, and
+/// a raw token count above it was redundant as well as unshippable. The
+/// accounting stays because it is how the next meter would be built and it
+/// is the only thing on the device that can price a call in tokens; nothing
+/// in the app reads it today. Nothing leaves the device either way, which is
+/// what keeps drover's App Privacy declaration ("Usage data: No") true.
 class VoiceUsage {
   /// Frames that carried usage: one per model turn.
   ///
@@ -170,22 +168,6 @@ class VoiceUsage {
 abstract interface class VoiceUsageReporter {
   VoiceUsage get usage;
 }
-
-/// The readout itself: one English line, rendered as it stands by the voice
-/// screen's system-code fall-through. Not localised — it ships behind
-/// [kVoiceUsageReadout] and is deleted before release.
-String voiceUsageLine(VoiceUsage usage, Duration elapsed) {
-  final clock = '${elapsed.inMinutes}m ${elapsed.inSeconds % 60}s';
-  if (usage.turns == 0) return 'usage · $clock · no usage reported';
-  return 'usage · ${usage.turns} turn${usage.turns == 1 ? '' : 's'} · $clock · '
-      'prompt ${usage.promptTokens}${_modalities(usage.promptByModality)} · '
-      'response ${usage.responseTokens}'
-      '${_modalities(usage.responseByModality)}';
-}
-
-String _modalities(Map<String, int> tokens) => tokens.isEmpty
-    ? ''
-    : ' (${tokens.entries.map((e) => '${e.key} ${e.value}').join(', ')})';
 
 /// The RPC an ephemeral token connects to.
 ///

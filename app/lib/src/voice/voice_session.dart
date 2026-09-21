@@ -280,10 +280,16 @@ class VoiceSession extends ChangeNotifier {
   /// out rather than be swallowed by the "already live" early return.
   Future<void> _ending = Future.value();
 
-  /// What this call has billed for, summed over every transport it used and
-  /// read back behind [kVoiceUsageReadout]. Reset by a [start] that begins a
-  /// call, so a Restart measures its own — but not by one that resumes a
-  /// parked call, which bills on across the gap.
+  /// What this call has billed for in tokens, summed over every transport it
+  /// used. Reset by a [start] that begins a call, so a Restart measures its
+  /// own — but not by one that resumes a parked call, which bills on across
+  /// the gap.
+  ///
+  /// Nothing in the app renders this: the user-facing answer to "what did
+  /// that cost" is the receipt, in credits. It is kept, and exposed, because
+  /// it is the accounting a token-priced meter would be built on and the
+  /// only place a call's tokens are summed across its reconnects.
+  VoiceUsage get usage => _usage;
   var _usage = VoiceUsage();
 
   /// How long this call has actually been connected, summed over its
@@ -979,27 +985,12 @@ class VoiceSession extends ChangeNotifier {
     await _teardown();
     _resumeHandle = null;
     _suspended = false;
-    // A call that died still burned tokens, and a cost measurement that drops
-    // exactly the calls that went wrong measures the wrong population.
-    _appendUsage();
     // Over for good: [_suspended] and the handle were both dropped above,
     // so nothing can pick this conversation up again. Whether it owes a
     // receipt is [spent]'s question, not this one's — a mint refused
     // before the call began lands here having cost nothing.
     _finished = true;
     _setStatus(VoiceSessionStatus.error, error: message);
-  }
-
-  /// Logs what this call billed for, once, at whichever end it reached.
-  ///
-  /// Carries its own text rather than a code: the screen renders an unknown
-  /// system code as it stands, and a developer readout is not worth two
-  /// locales.
-  void _appendUsage() {
-    if (!kVoiceUsageReadout) return;
-    final line = voiceUsageLine(_usage, _connected);
-    _entries.add(VoiceEntry(VoiceEntryKind.system, line));
-    debugPrint(line);
   }
 
   /// Ends the session. The future is parked in [_ending] so a [start] that
@@ -1033,14 +1024,13 @@ class VoiceSession extends ChangeNotifier {
     _closeOut();
   }
 
-  /// The lines that close a call out: that it ended, any draft left unsent,
-  /// and what the whole call billed for.
+  /// The lines that close a call out: that it ended, and any draft left
+  /// unsent. What it cost is the screen's receipt, not a line in the log.
   void _closeOut() {
     _entries.add(const VoiceEntry(VoiceEntryKind.system, endedCode));
     if (drafts.pending.isNotEmpty) {
       _entries.add(const VoiceEntry(VoiceEntryKind.system, unsentDraftsCode));
     }
-    _appendUsage();
     _finished = true;
     _setStatus(VoiceSessionStatus.ended);
   }

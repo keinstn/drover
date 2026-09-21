@@ -21,10 +21,6 @@ void main() {
   // Injected clock so the mic gate can be tested without sleeping.
   var clock = DateTime(2026, 1, 1);
 
-  // The usage readout every session below ends on: a fake transport reports
-  // no usage, and the injected clock does not move.
-  const noUsage = 'usage · 0m 0s · no usage reported';
-
   // Recorded instead of waited: each call advances the fake clock by the
   // requested duration.
   final sleeps = <Duration>[];
@@ -225,21 +221,6 @@ void main() {
     // begins a new one.
     expect(s.spent, isTrue);
     expect(connector.handles, [null, 'h1']);
-  });
-
-  test('a call that ends in error still reports what it billed for', () async {
-    mic = FakeMic(permitted: false);
-    final s = session();
-    await s.start();
-
-    // Whatever killed the call, what it spent before that is still spent, and
-    // a measurement that drops the calls that went wrong measures the wrong
-    // population.
-    expect(s.status, VoiceSessionStatus.error);
-    expect(
-      s.entries.where((e) => e.kind == VoiceEntryKind.system).last.text,
-      startsWith('usage · '),
-    );
   });
 
   test('a tool call is answered with the same id and logged', () async {
@@ -783,7 +764,7 @@ void main() {
     expect(speaker.disposeCalls, 1);
     expect(
       s.entries.map((e) => e.text),
-      containsAllInOrder([VoiceSession.endedCode, noUsage]),
+      containsAllInOrder([VoiceSession.endedCode]),
     );
   });
 
@@ -863,7 +844,7 @@ void main() {
 
     expect(s.status, VoiceSessionStatus.live);
     expect(speaker.initCalls, 2);
-    expect(s.entries.map((e) => e.text), [VoiceSession.endedCode, noUsage]);
+    expect(s.entries.map((e) => e.text), [VoiceSession.endedCode]);
   });
 
   test('sends after the session ended are ignored', () async {
@@ -1425,7 +1406,7 @@ void main() {
       await settle();
 
       expect(s.status, VoiceSessionStatus.ended);
-      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode, noUsage]);
+      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode]);
       expect(resumed.closeCalls, 1);
       expect(resumed.server.hasListener, isFalse);
       expect(mic.stopCalls, 1);
@@ -1450,7 +1431,6 @@ void main() {
       expect(s.entries.map((e) => e.text), [
         VoiceSession.resumedCode,
         VoiceSession.endedCode,
-        noUsage,
       ]);
     });
 
@@ -1567,7 +1547,6 @@ void main() {
       expect(s.entries.map((e) => e.text).skip(2), [
         VoiceSession.endedCode,
         VoiceSession.unsentDraftsCode,
-        noUsage,
       ]);
     });
 
@@ -1692,7 +1671,6 @@ void main() {
       expect(s.entries.map((e) => e.text), [
         VoiceSession.capReachedCode,
         VoiceSession.endedCode,
-        noUsage,
       ]);
       expect(mic.stopCalls, 1);
       expect(speaker.disposeCalls, 1);
@@ -1725,7 +1703,6 @@ void main() {
         VoiceSession.resumedCode,
         VoiceSession.capReachedCode,
         VoiceSession.endedCode,
-        noUsage,
       ]);
     });
 
@@ -1821,7 +1798,7 @@ void main() {
 
       await tester.pump(kVoiceSessionCap + const Duration(seconds: 1));
 
-      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode, noUsage]);
+      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode]);
     });
   });
 
@@ -1857,7 +1834,7 @@ void main() {
     await s.stop();
   });
 
-  group('usage readout', () {
+  group('usage accounting', () {
     // The `usageMetadata` of one real turn, from the same capture the
     // transport's own tests replay.
     final turn =
@@ -1865,23 +1842,21 @@ void main() {
                 as Map<String, Object?>)['turnComplete']!
             as Map<String, Object?>;
 
-    test(
-      'a session whose frames carry no usage still ends, and says so',
-      () async {
-        final s = session();
-        await s.start();
-        // A frame that goes through the whole handling path carrying no usage.
-        transport.push(audioChunk());
-        await settle();
+    test('a session whose frames carry no usage still ends', () async {
+      final s = session();
+      await s.start();
+      // A frame that goes through the whole handling path carrying no usage.
+      transport.push(audioChunk());
+      await settle();
 
-        await s.stop();
+      await s.stop();
 
-        expect(s.status, VoiceSessionStatus.ended);
-        expect(s.entries.map((e) => e.text), [VoiceSession.endedCode, noUsage]);
-      },
-    );
+      expect(s.status, VoiceSessionStatus.ended);
+      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode]);
+      expect(s.usage.turns, 0);
+    });
 
-    test('the readout sums every transport the call used', () async {
+    test('the totals sum every transport the call used', () async {
       final connector = FakeConnector();
       final s = session(connect: connector.call);
       await s.start();
@@ -1897,14 +1872,14 @@ void main() {
 
       await s.stop();
 
-      expect(
-        s.entries.last.text,
-        [
-          'usage · 2 turns · 2m 5s',
-          'prompt 1964 (TEXT 1484, AUDIO 402)',
-          'response 40 (AUDIO 40)',
-        ].join(' · '),
-      );
+      // Both transports' turns, added up — the absorb on reconnect is the
+      // only thing that makes a call that dropped report one number.
+      expect(s.usage.turns, 2);
+      expect(s.usage.promptTokens, 982 * 2);
+      expect(s.usage.responseTokens, 20 * 2);
+      expect(s.usage.promptByModality, {'TEXT': 742 * 2, 'AUDIO': 201 * 2});
+      expect(s.usage.responseByModality, {'AUDIO': 20 * 2});
+      expect(s.connected, const Duration(minutes: 2, seconds: 5));
     });
   });
 
@@ -2060,7 +2035,7 @@ void main() {
       await s.background();
 
       expect(s.resumable, isFalse);
-      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode, noUsage]);
+      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode]);
     });
 
     test('usage covers the whole call, across the gap', () async {
@@ -2081,8 +2056,9 @@ void main() {
 
       // Both turns, because the totals were kept — but two minutes, not
       // three: the minute spent parked is not connected time, and cost per
-      // minute is read off this line.
-      expect(s.entries.last.text, startsWith('usage · 2 turns · 2m 0s · '));
+      // minute is read off that.
+      expect(s.usage.turns, 2);
+      expect(s.connected, const Duration(minutes: 2));
     });
 
     test('stop then start does not continue', () async {
@@ -2172,7 +2148,6 @@ void main() {
           VoiceSession.endedCode,
         ]),
       );
-      expect(s.entries.last.text, startsWith('usage · '));
       expect(s.resumable, isFalse);
     });
   });
