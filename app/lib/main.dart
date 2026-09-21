@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -912,6 +913,41 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
               );
               setState(() => _appleSignedIn = true);
               rebuildRoute(() {});
+            },
+            onDeleteAccount: () async {
+              await deleteAccount(
+                appleLinked: _appleSignedIn,
+                reauthenticate: () async {
+                  final credential = await FirebaseAuth.instance.currentUser!
+                      .reauthenticateWithProvider(AppleAuthProvider());
+                  return credential.additionalUserInfo?.authorizationCode;
+                },
+                revoke: (code) => FirebaseAuth.instance
+                    .revokeTokenWithAuthorizationCode(code),
+                // No arguments: the function reads the uid from the auth
+                // context, which is the only account it may ever delete.
+                delete: () => FirebaseFunctions.instanceFor(
+                  region: 'us-central1',
+                ).httpsCallable('deleteAccount').call<void>(),
+                // Signed out first, and that is not a formality:
+                // `signInAnonymously` hands back the *existing* anonymous
+                // user when there is one, and the client has no idea its
+                // account was just deleted server side. Without the sign-out
+                // an anonymous account would carry on under the uid it
+                // asked to be rid of, and re-create rows beneath it.
+                startOver: () async {
+                  await FirebaseAuth.instance.signOut();
+                  await FirebaseAuth.instance.signInAnonymously();
+                },
+              );
+              setState(() => _appleSignedIn = false);
+              rebuildRoute(() {});
+              // The old uid's `users/{uid}/devices` documents went with the
+              // account, so this device has to re-register under the fresh
+              // one. Unawaited, and through the wrapper that reports its own
+              // failure: the delete has already happened, and a push failure
+              // surfacing as a failed delete would be a lie.
+              unawaited(_pushNotifyPreferences());
             },
             onManageHosts: _openHostList,
             // Hidden while the demo is already showing — settings is reached

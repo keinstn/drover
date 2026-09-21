@@ -547,6 +547,23 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn\'t sign in. Tap to try again.';
 
   @override
+  String get settingsAccountDelete => 'Delete account';
+
+  @override
+  String get accountDeleteTitle => 'Delete your account?';
+
+  @override
+  String get accountDeleteBody =>
+      'Your sign-in, host pairings and any voice credits are deleted for good. Credits cannot be refunded or moved to another account. The hosts stay set up on this device, and would each need pairing again for notifications.';
+
+  @override
+  String get accountDeleteConfirm => 'Delete';
+
+  @override
+  String get accountDeleteFailed =>
+      'Could not delete the account. Tap to try again.';
+
+  @override
   String get herdVoiceButton => 'Voice assistant';
 
   @override

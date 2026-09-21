@@ -23,6 +23,7 @@ Widget _app({
   ValueChanged<bool>? onVoiceAssistantChanged,
   bool appleSignedIn = false,
   Future<void> Function()? onSignInWithApple,
+  Future<void> Function()? onDeleteAccount,
   VoidCallback? onManageHosts,
   VoidCallback? onEnterDemo,
   String? appVersion,
@@ -46,6 +47,7 @@ Widget _app({
       onVoiceAssistantChanged: onVoiceAssistantChanged ?? (_) {},
       appleSignedIn: appleSignedIn,
       onSignInWithApple: onSignInWithApple ?? () async {},
+      onDeleteAccount: onDeleteAccount ?? () async {},
       onManageHosts: onManageHosts ?? () {},
       onEnterDemo: onEnterDemo,
       appVersion: appVersion,
@@ -72,6 +74,7 @@ class _SettingsHost extends StatefulWidget {
     required this.onVoiceAssistantChanged,
     required this.appleSignedIn,
     required this.onSignInWithApple,
+    required this.onDeleteAccount,
     required this.onManageHosts,
     required this.onEnterDemo,
     required this.appVersion,
@@ -90,6 +93,7 @@ class _SettingsHost extends StatefulWidget {
   final ValueChanged<bool> onVoiceAssistantChanged;
   final bool appleSignedIn;
   final Future<void> Function() onSignInWithApple;
+  final Future<void> Function() onDeleteAccount;
   final VoidCallback onManageHosts;
   final VoidCallback? onEnterDemo;
   final String? appVersion;
@@ -134,6 +138,12 @@ class _SettingsHostState extends State<_SettingsHost> {
         await widget.onSignInWithApple();
         setState(() => _appleSignedIn = true);
       },
+      // Models `main.dart` again: the caller drops the flag once the
+      // account is gone.
+      onDeleteAccount: () async {
+        await widget.onDeleteAccount();
+        setState(() => _appleSignedIn = false);
+      },
       onManageHosts: widget.onManageHosts,
       onEnterDemo: widget.onEnterDemo,
       appVersion: widget.appVersion,
@@ -149,6 +159,17 @@ Future<void> _revealAccountRow(WidgetTester tester) =>
       find.byKey(const ValueKey('settings_account_tile')),
       200,
     );
+
+/// Settles after the scroll: `scrollUntilVisible` finishes with an
+/// `ensureVisible` jump it never pumps, so a tap straight afterwards hit-tests
+/// against where the row used to be.
+Future<void> _revealDeleteRow(WidgetTester tester) async {
+  await tester.scrollUntilVisible(
+    find.byKey(const ValueKey('settings_account_delete_tile')),
+    200,
+  );
+  await tester.pumpAndSettle();
+}
 
 bool _renderedSwitch(WidgetTester tester, String tileKey) => tester
     .widget<Switch>(
@@ -445,6 +466,10 @@ void main() {
       find.byKey(const ValueKey('settings_version_tile')),
       200,
     );
+    // The row is the last one in a lazy ListView, so the extent it scrolled
+    // against was still an estimate; without settling the layout it ends up
+    // half off the bottom edge and the tap misses.
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('settings_version_tile')));
     await tester.pumpAndSettle();
 
@@ -764,6 +789,181 @@ void main() {
 
     expect(signedInWithProvider, isFalse);
     expect(find.text("Couldn't sign in. Tap to try again."), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the delete row is offered to an anonymous account too', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app());
+    await _revealDeleteRow(tester);
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_account_delete_tile')),
+        matching: find.text('Delete account'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the dialog spells out that credits go with the account', (
+    tester,
+  ) async {
+    var deletes = 0;
+    await tester.pumpWidget(_app(onDeleteAccount: () async => deletes++));
+    await _revealDeleteRow(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_account_delete_tile')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Delete your account?'), findsOneWidget);
+    expect(
+      find.text(
+        'Your sign-in, host pairings and any voice credits are deleted for '
+        'good. Credits cannot be refunded or moved to another account. The '
+        'hosts stay set up on this device, and would each need pairing again '
+        'for notifications.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('account_delete_cancel')), findsOneWidget);
+    // Nothing has happened yet: the dialog asks, it does not act.
+    expect(deletes, 0);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('cancelling the dialog deletes nothing', (tester) async {
+    var deletes = 0;
+    await tester.pumpWidget(_app(onDeleteAccount: () async => deletes++));
+    await _revealDeleteRow(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_account_delete_tile')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('account_delete_cancel')));
+    await tester.pumpAndSettle();
+
+    expect(deletes, 0);
+    expect(find.text('Delete your account?'), findsNothing);
+    // And the row is still there to try again.
+    expect(
+      find.byKey(const ValueKey('settings_account_delete_tile')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('confirming deletes, and the row stops reading as signed in', (
+    tester,
+  ) async {
+    var deletes = 0;
+    await tester.pumpWidget(
+      _app(appleSignedIn: true, onDeleteAccount: () async => deletes++),
+    );
+    await _revealDeleteRow(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_account_delete_tile')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('account_delete_confirm')));
+    await tester.pumpAndSettle();
+
+    expect(deletes, 1);
+    expect(find.text('Delete your account?'), findsNothing);
+    expect(find.text('Signed in with Apple'), findsNothing);
+    expect(find.text('Sign in with Apple'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a failed delete is rendered on the row, which stays tappable', (
+    tester,
+  ) async {
+    var attempts = 0;
+    await tester.pumpWidget(
+      _app(
+        onDeleteAccount: () async {
+          attempts++;
+          throw Exception('the callable failed');
+        },
+      ),
+    );
+    await _revealDeleteRow(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_account_delete_tile')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('account_delete_confirm')));
+    await tester.pumpAndSettle();
+
+    expect(attempts, 1);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_account_delete_tile')),
+        matching: find.text('Could not delete the account. Tap to try again.'),
+      ),
+      findsOneWidget,
+    );
+
+    // The half the title claims: a failure must not leave the row dead. One
+    // more tap has to reach the dialog again.
+    await tester.tap(
+      find.byKey(const ValueKey('settings_account_delete_tile')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('account_delete_confirm')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('account_delete_confirm')));
+    await tester.pumpAndSettle();
+    expect(attempts, 2);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a delete in flight cannot be started twice', (tester) async {
+    final held = Completer<void>();
+    var attempts = 0;
+    await tester.pumpWidget(
+      _app(
+        onDeleteAccount: () {
+          attempts++;
+          return held.future;
+        },
+      ),
+    );
+    await _revealDeleteRow(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_account_delete_tile')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('account_delete_confirm')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_account_delete_tile')),
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+    expect(attempts, 1);
+    // No second confirmation either: the row swallowed the tap outright.
+    expect(find.text('Delete your account?'), findsNothing);
+
+    held.complete();
+    await tester.pumpAndSettle();
 
     await tester.pumpWidget(const SizedBox());
   });

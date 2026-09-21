@@ -1058,6 +1058,36 @@ abstract class AppLocalizations {
   /// **'Couldn\'t sign in. Tap to try again.'**
   String get settingsAccountSignInFailed;
 
+  /// No description provided for @settingsAccountDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get settingsAccountDelete;
+
+  /// No description provided for @accountDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete your account?'**
+  String get accountDeleteTitle;
+
+  /// No description provided for @accountDeleteBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your sign-in, host pairings and any voice credits are deleted for good. Credits cannot be refunded or moved to another account. The hosts stay set up on this device, and would each need pairing again for notifications.'**
+  String get accountDeleteBody;
+
+  /// No description provided for @accountDeleteConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get accountDeleteConfirm;
+
+  /// No description provided for @accountDeleteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not delete the account. Tap to try again.'**
+  String get accountDeleteFailed;
+
   /// No description provided for @herdVoiceButton.
   ///
   /// In en, this message translates to:

@@ -27,6 +27,7 @@ class SettingsScreen extends StatelessWidget {
     required this.onVoiceAssistantChanged,
     required this.appleSignedIn,
     required this.onSignInWithApple,
+    required this.onDeleteAccount,
     required this.onManageHosts,
     this.onEnterDemo,
     this.appVersion,
@@ -57,6 +58,12 @@ class SettingsScreen extends StatelessWidget {
   /// that failure itself; flipping [appleSignedIn] on success is the
   /// caller's job, same as every other value on this screen.
   final Future<void> Function() onSignInWithApple;
+
+  /// Deletes the account, throwing if it could not be done. Called only
+  /// after the confirmation dialog this screen shows, and the row renders a
+  /// failure itself; resetting [appleSignedIn] on success is the caller's
+  /// job, same as [onSignInWithApple].
+  final Future<void> Function() onDeleteAccount;
   final VoidCallback onManageHosts;
 
   /// Enters the scripted demo session. The first-run setup screen offers it
@@ -200,6 +207,9 @@ class SettingsScreen extends StatelessWidget {
           ),
           _sectionHeader(context, l10n.settingsAccount),
           _AccountTile(signedIn: appleSignedIn, onSignIn: onSignInWithApple),
+          // Offered whether or not an Apple ID is attached: an anonymous
+          // account is still an account, with a wallet hanging off its uid.
+          _DeleteAccountTile(onDelete: onDeleteAccount),
           if (version != null && version.isNotEmpty) ...[
             // Detaches the row from the section above, so a footer doesn't
             // read as one of its settings.
@@ -288,6 +298,93 @@ class _AccountTileState extends State<_AccountTile> {
       onTap: _busy ? null : _signIn,
     );
   }
+}
+
+/// The destructive counterpart to [_AccountTile] — not a sign-out: this
+/// throws the uid away, along with everything hanging off it.
+///
+/// Stateful for the same reason [_AccountTile] is: what a tap produces
+/// (in-flight, failed) belongs to the row, not to the caller.
+class _DeleteAccountTile extends StatefulWidget {
+  const _DeleteAccountTile({required this.onDelete});
+
+  final Future<void> Function() onDelete;
+
+  @override
+  State<_DeleteAccountTile> createState() => _DeleteAccountTileState();
+}
+
+class _DeleteAccountTileState extends State<_DeleteAccountTile> {
+  bool _busy = false;
+  bool _failed = false;
+
+  Future<void> _confirmAndDelete() async {
+    if (await _showDeleteAccountDialog(context) != true) return;
+    if (!mounted) return;
+    setState(() {
+      _busy = true;
+      _failed = false;
+    });
+    var failed = false;
+    try {
+      await widget.onDelete();
+    } catch (_) {
+      // Rendered on the row, like a failed sign-in: the user is looking at
+      // it, and an Apple sheet they dismissed on the way arrives here too.
+      failed = true;
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _failed = failed;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final error = Theme.of(context).colorScheme.error;
+    return ListTile(
+      key: const ValueKey('settings_account_delete_tile'),
+      leading: Icon(Icons.delete_forever, color: error),
+      title: Text(l10n.settingsAccountDelete, style: TextStyle(color: error)),
+      subtitle: _failed ? Text(l10n.accountDeleteFailed) : null,
+      // Null while in flight: reauthentication, revoke and the callable are
+      // several round trips, and a second tap would start a second delete.
+      onTap: _busy ? null : _confirmAndDelete,
+    );
+  }
+}
+
+/// Asks before anything is destroyed, and says plainly what "everything"
+/// covers — credits especially, since those were paid for and cannot come
+/// back. Cancel is the default; the destructive action has to be chosen.
+Future<bool?> _showDeleteAccountDialog(BuildContext context) {
+  return showDialog<bool>(
+    context: context,
+    builder: (context) {
+      final l10n = AppLocalizations.of(context)!;
+      return AlertDialog(
+        title: Text(l10n.accountDeleteTitle),
+        content: Text(l10n.accountDeleteBody),
+        actions: [
+          TextButton(
+            key: const ValueKey('account_delete_cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.commonCancel),
+          ),
+          TextButton(
+            key: const ValueKey('account_delete_confirm'),
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: Text(l10n.accountDeleteConfirm),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 /// The reinstall recipe, as two copyable commands. No `-y` on either: the

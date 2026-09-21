@@ -180,13 +180,20 @@ purchasing while anonymous is ever allowed, the app has to say plainly that the
 balance may not survive a reinstall or a new device.
 
 Offering Sign in with Apple obliges in-app account deletion, and deletion has
-to revoke the Apple tokens through Apple's REST API — which needs a Sign in
-with Apple private key, a separate `.p8` from the App Store Connect one `asc`
-already holds. Decided 2026-09-19: a balance at deletion is **lost, not
-refunded**. The confirm dialog states the exact remaining count, and the
-purchase screen says the same thing before the sale rather than at the end. The
-ledger rows stay, anonymised — which is what lets a refund land against a
-deleted account.
+to revoke the Apple token. That turned out to need no key of ours: the app
+hands Firebase the authorization code from a reauthentication and Firebase
+revokes with Apple itself, from the Sign in with Apple key already configured
+on the provider in its console. Decided 2026-09-19: a balance at deletion is
+**lost, not refunded**, and the purchase screen says so before the sale rather
+than at the end.
+
+Built 2026-09-20, and two details moved. The confirm dialog names no count:
+`firestore.rules` denies the client every read, so the device cannot see its
+own balance to quote it, and a vaguer sentence beats a number the app would
+have to fetch to be allowed to say. And the wallet and ledger go with the
+account rather than staying anonymised — a refund arriving for a deleted
+account has nowhere to land and nobody to pay, which is the price of deleting
+on request. Revisit when the purchase path exists, not before.
 
 One thing is open rather than decided. `linkAppleAccount` falls back to signing
 in when the Apple ID already belongs to an older Firebase user; that is the
