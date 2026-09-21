@@ -4,8 +4,10 @@ import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
+import '../models/agent_info.dart';
 import '../models/agent_preset.dart';
 import '../utils/path.dart';
+import '../widgets/agent_switcher_bar.dart';
 import 'voice_drafts.dart';
 import 'voice_herd.dart';
 import 'voice_session.dart';
@@ -81,9 +83,23 @@ Color voiceListeningInk(BuildContext context) =>
 /// leaves it running when the screen goes — the call outlives this route, so
 /// the conversation, and the disposing, belong to whoever built it.
 class VoiceScreen extends StatefulWidget {
-  const VoiceScreen({super.key, required this.session});
+  const VoiceScreen({
+    super.key,
+    required this.session,
+    this.agents,
+    this.onOpenAgent,
+  });
 
   final VoiceSession session;
+
+  /// The herd's agents, live: a poll landing a new list repaints the switcher
+  /// bar's dots under the header. Null — together with [onOpenAgent] — means
+  /// no bar at all, which is what a preview or a test that hands over neither
+  /// gets.
+  final ValueListenable<List<AgentInfo>>? agents;
+
+  /// Opens [agent]'s screen on top of the call, which keeps running.
+  final void Function(AgentInfo agent)? onOpenAgent;
 
   @override
   State<VoiceScreen> createState() => _VoiceScreenState();
@@ -254,6 +270,28 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
                     ),
                   ],
                 ),
+                // The roster under the header: who exists, what their status
+                // dot says, and the names the user can say out loud. Outside
+                // the Expanded below, so it shrinks the transcript region
+                // rather than floating over it.
+                if (widget.agents case final agents?)
+                  if (widget.onOpenAgent case final onOpenAgent?)
+                    ValueListenableBuilder<List<AgentInfo>>(
+                      valueListenable: agents,
+                      builder: (context, list, _) => AgentSwitcherBar(
+                        agents: list,
+                        // This screen is not one of the agents, so nothing in
+                        // the bar is current — and one agent is still worth
+                        // showing, unlike on an agent's own screen.
+                        currentPaneId: null,
+                        onSelect: onOpenAgent,
+                        onOpenHerd: () => Navigator.of(
+                          context,
+                        ).popUntil((route) => route.isFirst),
+                        anchor: AgentSwitcherBarAnchor.top,
+                        minAgents: 1,
+                      ),
+                    ),
                 // LayoutBuilder inside the Expanded, not around the
                 // Column: a non-flex child of a Column is measured with an
                 // unbounded main axis, so a cap taken out there would be
