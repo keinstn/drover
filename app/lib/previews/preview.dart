@@ -60,7 +60,7 @@ const _scenariosByPreview = <String, List<String>>{
   'host-setup': ['idle', 'plugin-detected', 'auto-pair-failure'],
   'errors': ['en', 'ja'],
   'herd': ['idle', 'herdr-too-old'],
-  'voice': ['live', 'speaking', 'draft', 'ended'],
+  'voice': ['live', 'speaking', 'draft', 'ended', 'start'],
 };
 
 HerdrClient _client(
@@ -241,12 +241,22 @@ final _previews = <String, PreviewBuilder>{
   // scenario scripts the same two finished transcripts on the transport's
   // receive() stream, then diverges: 'speaking' leaves an unfinished
   // assistant transcript pending (the glow should read as speaking), 'draft'
-  // adds a pending message draft, 'ended' closes the stream.
-  'voice': (_, scenario) => VoiceScreen(
-    session: _voiceSession(scenario),
-    agents: _voiceBarAgents,
-    onOpenAgent: (_) {},
-  ),
+  // adds a pending message draft, 'ended' closes the stream, and 'start'
+  // leaves the session idle — the screen as it looks before anyone taps Start.
+  'voice': (_, scenario) {
+    final session = _voiceSession(scenario);
+    // The screen only starts a call it can continue for free, so every
+    // scripted scenario needs the tap a user would give it. Post-frame, not
+    // here: start() notifies listeners, and this runs inside a build.
+    if (scenario != 'start') {
+      WidgetsBinding.instance.addPostFrameCallback((_) => session.start());
+    }
+    return VoiceScreen(
+      session: session,
+      agents: _voiceBarAgents,
+      onOpenAgent: (_) {},
+    );
+  },
   'settings': (_, _) => const _SettingsPreview(),
   // Notification pairing: SCENARIO=idle (default) shows the manual dialog,
   // as if drover.notify were not linked on the host. SCENARIO=plugin-detected

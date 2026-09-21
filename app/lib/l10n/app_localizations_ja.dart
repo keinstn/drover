@@ -578,6 +578,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get voiceStatusConnecting => '接続中…';
 
   @override
+  String get voiceStatusReady => '待機中';
+
+  @override
   String get voiceStatusLive => '聞いています';
 
   @override
@@ -620,6 +623,9 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get voiceRestart => '再開';
+
+  @override
+  String get voiceStart => '開始';
 
   @override
   String get voiceGreeting => 'エージェントについて話しましょう';

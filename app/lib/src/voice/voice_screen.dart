@@ -79,9 +79,13 @@ Color voiceListeningInk(BuildContext context) =>
 /// one log, pending draft cards pinned above the controls until they are
 /// acted on — with the assistant's presence as light bleeding in from the
 /// bottom edge, and round controls along the bottom.
-/// Drives the [session] but does not own it: it starts it on first frame and
-/// leaves it running when the screen goes — the call outlives this route, so
-/// the conversation, and the disposing, belong to whoever built it.
+/// Drives the [session] but does not own it: it leaves it running when the
+/// screen goes — the call outlives this route, so the conversation, and the
+/// disposing, belong to whoever built it.
+/// A *new* call waits for the Start button: minting its token spends a voice
+/// credit, so arriving here must not be the charge. Continuing a call that is
+/// already going, or one parked by a backgrounding, costs nothing and so needs
+/// no tap — that is what the post-frame [VoiceSession.start] below is for.
 class VoiceScreen extends StatefulWidget {
   const VoiceScreen({
     super.key,
@@ -113,7 +117,9 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     super.initState();
     widget.session.addListener(_onSessionChanged);
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => widget.session.start());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.session.resumable) widget.session.start();
+    });
   }
 
   @override
@@ -428,12 +434,36 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// Restart in the middle once the session is over, and the ink-filled
-  /// End/Close on the right. Exactly one button carries
-  /// `voice_action_button`: End while active, Restart after.
+  /// The middle slot before and after a call — Start on a screen that has
+  /// never run, Restart once one is over — and the ink-filled End/Close on the
+  /// right. Exactly one button carries `voice_action_button`: End while
+  /// active, Restart after. Start stays off that key rather than becoming a
+  /// third occupant of it: it is the one control that opens a call that was
+  /// never opened, and a test reaching for End has to fail rather than find
+  /// it under the same key.
   Widget _controls(BuildContext context, AppLocalizations l10n, bool active) {
     final session = widget.session;
     final tonal = IconButton.styleFrom(fixedSize: const Size.square(52));
+    Widget starter(Key key, IconData icon, String label) => Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton.filledTonal(
+          key: key,
+          style: tonal,
+          icon: Icon(icon),
+          tooltip: label,
+          onPressed: () {
+            HapticFeedback.lightImpact();
+            session.start();
+          },
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: droverLabelStyle(context, color: _mutedInk(context)),
+        ),
+      ],
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       child: Row(
@@ -444,28 +474,16 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
           Expanded(
             child: active
                 ? const SizedBox.shrink()
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton.filledTonal(
-                        key: const ValueKey('voice_action_button'),
-                        style: tonal,
-                        icon: const Icon(Icons.refresh),
-                        tooltip: l10n.voiceRestart,
-                        onPressed: () {
-                          HapticFeedback.lightImpact();
-                          session.start();
-                        },
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        l10n.voiceRestart,
-                        style: droverLabelStyle(
-                          context,
-                          color: _mutedInk(context),
-                        ),
-                      ),
-                    ],
+                : session.status == VoiceSessionStatus.idle
+                ? starter(
+                    const ValueKey('voice_start_button'),
+                    Icons.mic_none,
+                    l10n.voiceStart,
+                  )
+                : starter(
+                    const ValueKey('voice_action_button'),
+                    Icons.refresh,
+                    l10n.voiceRestart,
                   ),
           ),
           Expanded(
@@ -495,7 +513,10 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
 
   String _statusLabel(AppLocalizations l10n, VoiceSession session) =>
       switch (session.status) {
-        VoiceSessionStatus.idle ||
+        // Only ever the value a session is built with, so it means "never
+        // started" — the screen waiting for the Start tap, not a dial in
+        // progress.
+        VoiceSessionStatus.idle => l10n.voiceStatusReady,
         VoiceSessionStatus.connecting => l10n.voiceStatusConnecting,
         VoiceSessionStatus.live =>
           session.speaking ? l10n.voiceStatusSpeaking : l10n.voiceStatusLive,

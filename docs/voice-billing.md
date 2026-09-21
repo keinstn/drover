@@ -239,6 +239,24 @@ extends it — `kVoiceSessionCap` ends it first, and the token's `expireTime`
 ends it regardless — which is why the unit sold is a call rather than a minute.
 How many credits a call costs is the server-side conversion above.
 
+On the app's side that moment gets a tap of its own. The herd screen's voice
+button opens the voice screen and does nothing else; a new call begins when
+Start is tapped there. Navigation is not a charge, so a mis-tap on the way in
+costs nothing — which matters because there is no undo: a debit is only ever
+given back when the mint that caused it fails. Arriving at a call that is
+still going, or at one parked by a backgrounding that kept its resumption
+handle, continues it with no tap: the session id is the one already paid for,
+so the re-mint lands inside the reuse window and costs nothing.
+
+A park that caught the call without a handle — the first seconds of a call,
+and every mid-call reconnect, since a reconnect consumes the handle it had —
+is the ragged edge. Staying on the screen and tapping Restart continues that
+call for free, because the session id survives in the object. Leaving the
+screen and coming back does not: `_openVoice` keeps a retained session only
+while it is `resumable`, so a handle-less park is discarded and the next
+Start buys a second credit for a call still inside its cap. Worth closing by
+keeping a session that is parked and still inside its cap, handle or not.
+
 ## Voice Gateway
 
 Needed only if credits are denominated in consumption rather than in calls
