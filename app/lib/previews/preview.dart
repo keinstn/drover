@@ -60,7 +60,16 @@ const _scenariosByPreview = <String, List<String>>{
   'host-setup': ['idle', 'plugin-detected', 'auto-pair-failure'],
   'errors': ['en', 'ja'],
   'herd': ['idle', 'herdr-too-old'],
-  'voice': ['live', 'speaking', 'draft', 'ended', 'start'],
+  'voice': [
+    'live',
+    'speaking',
+    'draft',
+    'ended',
+    'start',
+    'receipt',
+    'no-credits',
+    'campaign-over',
+  ],
 };
 
 HerdrClient _client(
@@ -242,7 +251,10 @@ final _previews = <String, PreviewBuilder>{
   // receive() stream, then diverges: 'speaking' leaves an unfinished
   // assistant transcript pending (the glow should read as speaking), 'draft'
   // adds a pending message draft, 'ended' closes the stream, and 'start'
-  // leaves the session idle — the screen as it looks before anyone taps Start.
+  // leaves the session idle — the screen as it looks before anyone taps
+  // Start. 'receipt' ends the call on a clock wound forward, so the receipt
+  // card shows a real length; 'no-credits' and 'campaign-over' refuse the
+  // mint the two ways the server can, which is how their cards get looked at.
   'voice': (_, scenario) {
     final session = _voiceSession(scenario);
     // The screen only starts a call it can continue for free, so every
@@ -253,6 +265,10 @@ final _previews = <String, PreviewBuilder>{
     }
     return VoiceScreen(
       session: session,
+      credits: _voiceCredits(scenario),
+      // Non-null means "still anonymous", which is what puts the sign-in
+      // action on the no-credits card.
+      onSignIn: () async {},
       agents: _voiceBarAgents,
       onOpenAgent: (_) {},
     );
@@ -448,6 +464,15 @@ class _StubVoiceTransport implements VoiceTransport {
   }
 }
 
+/// The balance behind the chip and the receipt: whatever the scenario's
+/// story needs, since no wallet is read in a preview.
+ValueNotifier<int?> _voiceCredits(String scenario) =>
+    ValueNotifier(switch (scenario) {
+      'receipt' => 11,
+      'no-credits' || 'campaign-over' => 0,
+      _ => 12,
+    });
+
 /// A [VoiceSession] wired to stubs (no Firebase, mic or speaker touched),
 /// scripted per [scenario]: after ~800ms every scenario gets one finished
 /// user transcript and one finished assistant transcript, then diverges —
@@ -457,8 +482,21 @@ class _StubVoiceTransport implements VoiceTransport {
 VoiceSession _voiceSession(String scenario) {
   final drafts = VoiceDrafts();
   var connects = 0;
-  return VoiceSession(
+  // A clock the 'receipt' scenario winds forward once the call is live, so
+  // the receipt reads as a call somebody actually had rather than as the
+  // second the preview took to script itself. Everything else reads it as a
+  // stopped clock, which is what a preview wants.
+  final base = DateTime(2026, 1, 1, 9);
+  var elapsed = Duration.zero;
+  final session = VoiceSession(
+    now: () => base.add(elapsed),
     connect: (_, _) async {
+      // The two refusals the server can answer a mint with. Thrown from
+      // connect, which is exactly where the real transport raises them.
+      if (scenario == 'no-credits') throw const VoiceOutOfCredits();
+      if (scenario == 'campaign-over') {
+        throw const VoiceOutOfCredits(campaignOver: true);
+      }
       final server = StreamController<LiveServerResponse>();
       _scriptVoice(server, scenario, drafts, first: connects++ == 0);
       return _StubVoiceTransport(server);
@@ -475,6 +513,14 @@ VoiceSession _voiceSession(String scenario) {
     ],
     drafts: drafts,
   );
+  if (scenario == 'receipt') {
+    session.addListener(() {
+      if (session.status == VoiceSessionStatus.live) {
+        elapsed = const Duration(seconds: 298);
+      }
+    });
+  }
+  return session;
 }
 
 void _scriptVoice(
@@ -537,6 +583,7 @@ void _scriptVoice(
           'Please rerun the failing tests once more.',
         );
       case 'ended':
+      case 'receipt':
         unawaited(server.close());
     }
   });

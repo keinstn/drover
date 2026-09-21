@@ -195,14 +195,21 @@ class VoiceSession extends ChangeNotifier {
   static const micPermissionDenied = 'mic_permission_denied';
 
   /// [error] value when `mintVoiceToken` refused because the account is out
-  /// of voice credits. The balance itself is unreadable from the device, so
-  /// the refused mint is the only signal there is.
+  /// of voice credits.
   static const outOfCredits = 'out_of_credits';
+
+  /// [error] value when `mintVoiceToken` refused because the free campaign
+  /// itself is over. Apart from [outOfCredits] because it is not the user's
+  /// balance and not theirs to fix, and the screen says so differently.
+  static const campaignOver = 'campaign_over';
 
   /// The [error] value for a failed connect: a refused mint gets its own copy
   /// on screen, everything else renders as itself.
-  static String _failure(Object error) =>
-      error is VoiceOutOfCredits ? outOfCredits : '$error';
+  static String _failure(Object error) => switch (error) {
+    VoiceOutOfCredits(campaignOver: true) => campaignOver,
+    VoiceOutOfCredits() => outOfCredits,
+    _ => '$error',
+  };
 
   /// Permanent half-duplex gate: the mic is dropped while the model's audio
   /// is estimated to still be playing (queued bytes at 24 kHz PCM16 mono)
@@ -285,6 +292,12 @@ class VoiceSession extends ChangeNotifier {
   /// (`docs/voice-billing.md`), so counting the gap would under-report it.
   var _connected = Duration.zero;
 
+  /// How long this call was actually connected, summed over its segments.
+  /// Settled by the time [finished] turns true: [_teardown] folds the last
+  /// segment in before the status flips, so the screen's receipt reads a
+  /// final number rather than one still ticking.
+  Duration get connected => _connected;
+
   /// When the current segment began; null while nothing is connected.
   DateTime? _segmentStart;
 
@@ -306,6 +319,14 @@ class VoiceSession extends ChangeNotifier {
   /// can be picked up too.
   bool _suspended = false;
   bool _disposed = false;
+
+  /// Whether this call is over for good, set by the one path that closes a
+  /// call out. The status alone cannot answer it: a [background] that parks
+  /// the call also lands on [VoiceSessionStatus.ended], and so would a
+  /// receipt for a call that is about to carry on. Cleared by the [start]
+  /// that begins the next call.
+  bool get finished => _finished;
+  bool _finished = false;
 
   /// Armed by [start], cancelled by [_teardown]; survives reconnects because
   /// [_lost] never goes back through [start].
@@ -424,6 +445,7 @@ class VoiceSession extends ChangeNotifier {
     }
     final gen = ++_generation;
     _active = true;
+    _finished = false;
     if (!wasParked) {
       _usage = VoiceUsage();
       _connected = Duration.zero;
@@ -996,6 +1018,7 @@ class VoiceSession extends ChangeNotifier {
       _entries.add(const VoiceEntry(VoiceEntryKind.system, unsentDraftsCode));
     }
     _appendUsage();
+    _finished = true;
     _setStatus(VoiceSessionStatus.ended);
   }
 

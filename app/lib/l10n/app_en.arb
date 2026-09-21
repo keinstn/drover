@@ -240,11 +240,16 @@
   "settingsVoiceAssistantSubtitle": "Talk to drover about your agents. Agent status and short summaries of their replies are sent to Google's Gemini Live API for the conversation.",
   "settingsVoiceCredits": "Voice credits",
   "settingsVoiceCreditsSubtitle": "One credit is one call, up to five minutes.",
+  "settingsVoiceCreditsCampaign": "Voice is free for now: sign in with Apple and a few credits are added for you.",
+  "@settingsVoiceCreditsCampaign": {
+    "description": "One line under the balance row explaining the free campaign. There is nothing to buy, so it must not read as an offer."
+  },
   "settingsVoiceCreditsActivity": "Recent credit activity",
   "settingsVoiceCreditsNone": "Nothing yet.",
   "settingsVoiceCreditsFailed": "Couldn't load your balance.",
   "voiceLedgerCall": "Voice call",
   "voiceLedgerRefund": "Returned",
+  "voiceLedgerGrant": "Free credits",
   "settingsAccount": "Account",
   "settingsAccountSignIn": "Sign in with Apple",
   "settingsAccountSignedIn": "Signed in with Apple",
@@ -277,7 +282,37 @@
     }
   },
   "voiceMicPermissionDenied": "Microphone access is off. Allow it in Settings to talk to drover.",
-  "voiceOutOfCredits": "You are out of voice credits.",
+  "voiceNoCreditsTitle": "No credits left",
+  "voiceNoCreditsBody": "A call costs one credit and there are none. Nothing was recorded \u2014 the microphone never opened and no audio left the phone.",
+  "voiceCampaignOverTitle": "The free credits have run out",
+  "voiceCampaignOverBody": "Voice is free while the credits last, and they have run out for everyone \u2014 this is not your balance, and there is nothing on your side to put right. Nothing was recorded: the microphone never opened.",
+  "voiceCredits": "{credits, plural, =1{1 credit} other{{credits} credits}}",
+  "@voiceCredits": {
+    "description": "A balance or a cost, as a count of voice credits. Used by the chip in the voice screen's status row and by the receipt's Cost row.",
+    "placeholders": {
+      "credits": {
+        "type": "int"
+      }
+    }
+  },
+  "voiceReceiptLength": "Length",
+  "voiceReceiptLengthValue": "{minutes} min {seconds} s",
+  "@voiceReceiptLengthValue": {
+    "description": "How long the call was actually connected. Minutes and seconds are always both shown, so a short call reads 0 min 12 s rather than as a bare number.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      },
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "voiceReceiptCost": "Cost",
+  "voiceReceiptBalance": "Balance",
+  "voiceReceiptFootnote": "One credit, one call \u2014 however many times it reconnected along the way.",
+  "voiceSignInTitle": "Sign in for your free credits",
+  "voiceSignInBody": "The voice assistant is free for now, and the free credits go to a signed-in account. Signing in with Apple is what adds them, and it is what keeps them if you reinstall drover. drover asks Apple for nothing but a stable identifier \u2014 no name, no email address.",
   "voiceToolCalled": "Called {name}",
   "@voiceToolCalled": {
     "placeholders": {

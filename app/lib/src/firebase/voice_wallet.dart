@@ -1,9 +1,9 @@
 import 'package:cloud_functions/cloud_functions.dart';
 
-/// What one ledger row records. Only the two the server writes: an unknown
+/// What one ledger row records. Only the three the server writes: an unknown
 /// string is a row this build does not know how to name, and naming it wrong
 /// is worse than leaving it out.
-enum VoiceLedgerType { call, refund }
+enum VoiceLedgerType { call, refund, grant }
 
 /// One row of the credit ledger, as the wallet callable reports it.
 class VoiceLedgerEntry {
@@ -15,7 +15,7 @@ class VoiceLedgerEntry {
 
   final VoiceLedgerType type;
 
-  /// Signed: −1 for a call, +1 for its refund.
+  /// Signed: −1 for a call, +1 for its refund or for the campaign grant.
   final int credits;
 
   /// Null when the row came back without a usable timestamp. The server
@@ -58,6 +58,10 @@ VoiceLedgerEntry? _entry(Object? row) {
   final type = switch (row['type']) {
     'voiceCall' => VoiceLedgerType.call,
     'voiceCallRefund' => VoiceLedgerType.refund,
+    // The free campaign's opening balance, granted server-side on a
+    // signed-in account's first wallet read or first call. A positive row
+    // like a refund, but it has to say where the credits came from.
+    'campaignGrant' => VoiceLedgerType.grant,
     _ => null,
   };
   final credits = _int(row['credits']);

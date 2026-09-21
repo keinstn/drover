@@ -127,6 +127,47 @@ void main() {
     expect(s.error, VoiceSession.outOfCredits);
   });
 
+  test(
+    'a spent campaign is its own error value, not an empty wallet',
+    () async {
+      final s = session(
+        connect: (_, _) async =>
+            throw const VoiceOutOfCredits(campaignOver: true),
+      );
+      await s.start();
+
+      // Same code and same status on the wire; the screen still has to be
+      // able to tell "you have none" from "there are none left for anyone".
+      expect(s.status, VoiceSessionStatus.error);
+      expect(s.error, VoiceSession.campaignOver);
+    },
+  );
+
+  test('a finished call reports the time it was actually connected', () async {
+    final s = session();
+    await s.start();
+    clock = clock.add(const Duration(seconds: 298));
+    await s.stop();
+
+    // Only the End that closes a call out marks it finished, and by then
+    // the connected total is settled — which is what the receipt reads.
+    expect(s.finished, isTrue);
+    expect(s.connected, const Duration(seconds: 298));
+  });
+
+  test('a parked call is not finished and does not stop counting', () async {
+    final s = session();
+    await s.start();
+    clock = clock.add(const Duration(seconds: 60));
+    await s.background();
+    // The gap: time spent away is not call time.
+    clock = clock.add(const Duration(minutes: 2));
+
+    expect(s.status, VoiceSessionStatus.ended);
+    expect(s.finished, isFalse);
+    expect(s.connected, const Duration(seconds: 60));
+  });
+
   test('a call that ends in error still reports what it billed for', () async {
     mic = FakeMic(permitted: false);
     final s = session();
@@ -1208,7 +1249,8 @@ void main() {
       expect(
         connector.sessionIds[1],
         connector.sessionIds.first,
-        reason: 'an unpark re-mints, and a fresh id would charge again for a '
+        reason:
+            'an unpark re-mints, and a fresh id would charge again for a '
             'call the user never ended',
       );
     });

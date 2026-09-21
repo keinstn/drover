@@ -1069,6 +1069,65 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('the campaign grant reads as free credits, added', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        voiceWallet: Future.value(
+          VoiceWallet(
+            credits: 3,
+            entries: [
+              VoiceLedgerEntry(
+                type: VoiceLedgerType.grant,
+                credits: 3,
+                at: DateTime(2026, 9, 20, 15, 4),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _revealCreditsRow(tester);
+
+    final grant = find.byKey(const ValueKey('settings_voice_credits_entry_0'));
+    expect(
+      find.descendant(of: grant, matching: find.text('Free credits')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: grant, matching: find.text('+3')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a line under the balance says where the credits come from', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        voiceWallet: Future.value(const VoiceWallet(credits: 3, entries: [])),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _revealCreditsRow(tester);
+
+    expect(
+      find.text(
+        'Voice is free for now: sign in with Apple and a few credits are '
+        'added for you.',
+      ),
+      findsOneWidget,
+    );
+    // Nothing is for sale, so nothing may offer a purchase.
+    expect(find.textContaining('Buy'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('each ledger row names what it was and which way it went', (
     tester,
   ) async {

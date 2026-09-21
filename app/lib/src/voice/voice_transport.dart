@@ -233,18 +233,23 @@ String scrubVoiceToken(String text, String token) => text
 /// this is injectable at all.
 typedef VoiceTokenMinter = Future<VoiceToken> Function();
 
-/// `mintVoiceToken` refused because the account has no credits left.
+/// `mintVoiceToken` refused because there is no credit to spend.
 ///
-/// The only thing the app can learn about the balance: `firestore.rules`
-/// denies the client every read, so the wallet is invisible until a mint says
-/// no. Its own class rather than the raw [FirebaseFunctionsException] so
+/// Its own class rather than the raw [FirebaseFunctionsException] so
 /// [VoiceSession] can render its own copy for it without knowing a thing
 /// about Cloud Functions.
 class VoiceOutOfCredits implements Exception {
-  const VoiceOutOfCredits();
+  const VoiceOutOfCredits({this.campaignOver = false});
+
+  /// Whether the whole free campaign is spent or switched off, rather than
+  /// this account's balance being empty. The two share a code and a status
+  /// but not a meaning: the campaign ending is nothing the user did and
+  /// nothing they can undo, so the screen must not ask them to act on it.
+  final bool campaignOver;
 
   @override
-  String toString() => 'VoiceOutOfCredits';
+  String toString() =>
+      campaignOver ? 'VoiceOutOfCredits(campaignOver)' : 'VoiceOutOfCredits';
 }
 
 /// Asks `mintVoiceToken` for a token. Firebase Auth and App Check are carried
@@ -263,7 +268,16 @@ Future<VoiceToken> mintVoiceTokenFromFunctions(String sessionId) async {
       expiresAt: DateTime.parse(result.data['expireTime']! as String),
     );
   } on FirebaseFunctionsException catch (e) {
-    if (e.code == 'resource-exhausted') throw const VoiceOutOfCredits();
+    if (e.code == 'resource-exhausted') {
+      // `details` is whatever the Function attached, so it is read
+      // defensively: a refusal that arrives without a reason is still a
+      // refusal, and the account's own empty balance is the safer of the
+      // two to assume — it is the one the user can do something about.
+      final details = e.details;
+      throw VoiceOutOfCredits(
+        campaignOver: details is Map && details['reason'] == 'campaignOver',
+      );
+    }
     rethrow;
   }
 }

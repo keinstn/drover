@@ -44,6 +44,9 @@ void main() {
     Locale? locale,
     ValueListenable<List<AgentInfo>>? agents,
     void Function(AgentInfo agent)? onOpenAgent,
+    ValueListenable<int?>? credits,
+    Future<void> Function()? onSignIn,
+    DateTime Function()? now,
     // The screen no longer starts a new call by itself — a mint spends a
     // credit, so that takes a tap. This stands in for the tap, on the frame
     // the screen used to start itself on, so a test about anything else can
@@ -52,6 +55,7 @@ void main() {
   }) {
     final session = VoiceSession(
       connect: connect ?? (_, _) async => transport,
+      now: now ?? DateTime.now,
       mic: mic,
       speaker: speaker,
       herd: herd,
@@ -73,6 +77,8 @@ void main() {
       session: session,
       agents: agents,
       onOpenAgent: onOpenAgent,
+      credits: credits,
+      onSignIn: onSignIn,
     );
     return MaterialApp(
       theme: theme ?? droverDarkTheme,
@@ -539,28 +545,378 @@ void main() {
     await tester.pump();
   });
 
-  for (final (locale, expected) in [
-    (const Locale('en'), 'Error: You are out of voice credits.'),
-    (const Locale('ja'), 'エラー: ボイスクレジットがありません。'),
-  ]) {
-    testWidgets('an empty balance is rendered in ${locale.languageCode}', (
+  group('the balance chip', () {
+    testWidgets('sits in the status row, beside the state word', (
       tester,
     ) async {
       await tester.pumpWidget(
         app(
+          credits: ValueNotifier(12),
+          agents: ValueNotifier([
+            fakeAgent(paneId: 'w:p1', name: 'one'),
+            fakeAgent(paneId: 'w:p2', name: 'two'),
+          ]),
+          onOpenAgent: (_) {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final chip = find.byKey(const ValueKey('voice_balance'));
+      expect(tester.widget<Text>(chip).data, '12 credits');
+
+      // Containment, not pixels: the chip has to be inside the header row
+      // that carries the state word, and that row has to stay clear of the
+      // switcher bar underneath it.
+      final rowRect = tester.getRect(
+        find.ancestor(of: chip, matching: find.byType(Row)).first,
+      );
+      final chipRect = tester.getRect(chip);
+      final statusRect = tester.getRect(
+        find.byKey(const ValueKey('voice_status')),
+      );
+      expect(encloses(rowRect, chipRect), isTrue);
+      expect(encloses(rowRect, statusRect), isTrue);
+      // Beside the word, on its trailing side.
+      expect(chipRect.left, greaterThanOrEqualTo(statusRect.right));
+      expect(
+        rowRect.bottom,
+        lessThanOrEqualTo(tester.getRect(find.byType(AgentSwitcherBar)).top),
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('turns to the blocked ink at zero', (tester) async {
+      await tester.pumpWidget(app(credits: ValueNotifier(0)));
+      await tester.pumpAndSettle();
+
+      final chip = find.byKey(const ValueKey('voice_balance'));
+      expect(tester.widget<Text>(chip).data, '0 credits');
+      expect(
+        tester.widget<Text>(chip).style!.color,
+        droverDarkTheme.extension<DroverColors>()!.blockedDot,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('is absent entirely while the balance is unknown', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app());
+      await tester.pumpAndSettle();
+
+      // Not a zero and not a dash: a balance nobody read is not a balance
+      // of nothing.
+      expect(find.byKey(const ValueKey('voice_balance')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('follows the notifier without a new screen', (tester) async {
+      final credits = ValueNotifier<int?>(null);
+      await tester.pumpWidget(app(credits: credits));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('voice_balance')), findsNothing);
+
+      credits.value = 3;
+      await tester.pump();
+
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('voice_balance'))).data,
+        '3 credits',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+  });
+
+  group('the session receipt', () {
+    testWidgets('lists the connected length, the cost and what is left', (
+      tester,
+    ) async {
+      var clock = DateTime(2026, 1, 1, 9);
+      await tester.pumpWidget(
+        app(credits: ValueNotifier(11), now: () => clock),
+      );
+      await tester.pump();
+
+      clock = clock.add(const Duration(seconds: 298));
+      await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+      await tester.pumpAndSettle();
+
+      final receipt = find.byKey(const ValueKey('voice_receipt'));
+      expect(receipt, findsOneWidget);
+      // The three values as rendered, inside the card — not the session's
+      // own fields, and not somewhere else on the screen.
+      for (final value in ['4 min 58 s', '1 credit', '11']) {
+        expect(
+          find.descendant(of: receipt, matching: find.text(value)),
+          findsOneWidget,
+          reason: value,
+        );
+      }
+      expect(
+        find.descendant(
+          of: receipt,
+          matching: find.text(
+            'One credit, one call — however many times it reconnected '
+            'along the way.',
+          ),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('drops the balance row rather than guess at it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app());
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+      await tester.pumpAndSettle();
+
+      final receipt = find.byKey(const ValueKey('voice_receipt'));
+      expect(
+        find.descendant(of: receipt, matching: find.text('Cost')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: receipt, matching: find.text('Balance')),
+        findsNothing,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('does not appear for a call that was only parked', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(credits: ValueNotifier(11)));
+      await tester.pump();
+
+      // The legal transition sequence, and back out of `paused` again:
+      // Flutter suppresses frame production while paused, so the park's
+      // rebuild is pending but unpainted until frames come back. No
+      // resumption handle was offered, so coming back does not re-open the
+      // call — see the app-lifecycle group for that half.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump();
+
+      // A backgrounded call reads as "Ended" and is not over: a receipt
+      // here would bill the reader for a conversation about to carry on.
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('voice_status'))).data,
+        'Ended',
+      );
+      expect(find.byKey(const ValueKey('voice_receipt')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+  });
+
+  group('a refused mint', () {
+    Future<void> refused(
+      WidgetTester tester, {
+      bool campaignOver = false,
+      Future<void> Function()? onSignIn,
+      Locale? locale,
+    }) async {
+      await tester.pumpWidget(
+        app(
           locale: locale,
+          credits: ValueNotifier(0),
+          onSignIn: onSignIn,
+          connect: (_, _) async =>
+              throw VoiceOutOfCredits(campaignOver: campaignOver),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+
+    /// The control that would open a call, whichever of the two it is.
+    IconButton starter(WidgetTester tester) => tester.widget<IconButton>(
+      find.byKey(const ValueKey('voice_action_button')),
+    );
+
+    testWidgets('says there are no credits and cannot be retried', (
+      tester,
+    ) async {
+      await refused(tester);
+
+      final card = find.byKey(const ValueKey('voice_no_credits_card'));
+      expect(
+        find.descendant(of: card, matching: find.text('No credits left')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text(
+            'A call costs one credit and there are none. Nothing was '
+            'recorded — the microphone never opened and no audio left '
+            'the phone.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      // The bare error line is gone: the card is the account of it now.
+      expect(find.byKey(const ValueKey('voice_error_body')), findsNothing);
+      expect(starter(tester).onPressed, isNull);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('offers Sign in with Apple to an anonymous account', (
+      tester,
+    ) async {
+      var signedIn = 0;
+      await refused(tester, onSignIn: () async => signedIn++);
+
+      final action = find.byKey(const ValueKey('voice_refusal_sign_in'));
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(of: action, matching: find.byType(Text)),
+            )
+            .data,
+        'Sign in with Apple',
+      );
+
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+      expect(signedIn, 1);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('offers nothing at all to an account already signed in', (
+      tester,
+    ) async {
+      await refused(tester);
+
+      expect(find.byKey(const ValueKey('voice_refusal_sign_in')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('lets the call be retried once a balance arrives', (
+      tester,
+    ) async {
+      final credits = ValueNotifier<int?>(0);
+      await tester.pumpWidget(
+        app(
+          credits: credits,
+          onSignIn: () async {},
           connect: (_, _) async => throw const VoiceOutOfCredits(),
         ),
       );
       await tester.pump();
       await tester.pump();
+      expect(starter(tester).onPressed, isNull);
 
-      // The refused mint is all the app can ever know about the balance, so
-      // what it puts on screen has to be its own sentence — not a stringified
-      // exception, and not nothing.
-      expect(find.text(expected), findsWidgets);
+      // What a sign-in leads to: the grant lands and the control comes back
+      // without the user having to leave the screen.
+      credits.value = 3;
+      await tester.pump();
+
+      expect(starter(tester).onPressed, isNotNull);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
     });
-  }
+
+    testWidgets('says the campaign is over without blaming the balance', (
+      tester,
+    ) async {
+      await refused(tester, campaignOver: true, onSignIn: () async {});
+
+      final card = find.byKey(const ValueKey('voice_campaign_over_card'));
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text('The free credits have run out'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text(
+            'Voice is free while the credits last, and they have run out '
+            'for everyone — this is not your balance, and there is '
+            'nothing on your side to put right. Nothing was recorded: the '
+            'microphone never opened.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      // No action even for an anonymous account: signing in would grant
+      // nothing, and an action here would be a promise nobody can keep.
+      expect(find.byKey(const ValueKey('voice_refusal_sign_in')), findsNothing);
+      expect(find.byKey(const ValueKey('voice_no_credits_card')), findsNothing);
+      expect(starter(tester).onPressed, isNull);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('stays disabled for a spent campaign whatever the balance', (
+      tester,
+    ) async {
+      final credits = ValueNotifier<int?>(0);
+      await tester.pumpWidget(
+        app(
+          credits: credits,
+          connect: (_, _) async =>
+              throw const VoiceOutOfCredits(campaignOver: true),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      credits.value = 5;
+      await tester.pump();
+
+      expect(starter(tester).onPressed, isNull);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('reads as Japanese, not as a translation', (tester) async {
+      await refused(tester, locale: const Locale('ja'));
+
+      expect(find.text('クレジットがありません'), findsWidgets);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('voice_balance'))).data,
+        '0クレジット',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+  });
 
   testWidgets('an errored session says so in the log, not the greeting', (
     tester,
@@ -2114,3 +2470,12 @@ class _SessionOwnerState extends State<_SessionOwner> {
   @override
   Widget build(BuildContext context) => widget.child;
 }
+
+/// Whether [inner] lies wholly within [outer]. Position is asserted by
+/// containment in the rectangle it has to be inside — an absolute pixel
+/// would re-fail on every padding tweak without saying anything true.
+bool encloses(Rect outer, Rect inner) =>
+    inner.left >= outer.left - precisionErrorTolerance &&
+    inner.right <= outer.right + precisionErrorTolerance &&
+    inner.top >= outer.top - precisionErrorTolerance &&
+    inner.bottom <= outer.bottom + precisionErrorTolerance;
