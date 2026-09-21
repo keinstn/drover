@@ -698,6 +698,140 @@ void main() {
       await tester.pump();
     });
 
+    testWidgets('survives a call that died mid-sentence', (tester) async {
+      var clock = DateTime(2026, 1, 1, 9);
+      final connector = FakeConnector();
+      await tester.pumpWidget(
+        app(
+          connect: connector.call,
+          credits: ValueNotifier(11),
+          now: () => clock,
+        ),
+      );
+      await tester.pump();
+
+      clock = clock.add(const Duration(seconds: 298));
+      connector.last.server.addError(StateError('the connection dropped'));
+      await tester.pumpAndSettle();
+
+      // The credit was spent the moment the transport existed, so a call
+      // that fell over still owes the same account of itself. Both are on
+      // screen: what went wrong, then what it cost.
+      final body = find.byKey(const ValueKey('voice_error_body'));
+      expect(tester.widget<Text>(body).data, contains('the connection'));
+      final receipt = find.byKey(const ValueKey('voice_receipt'));
+      for (final value in ['4 min 58 s', '1 credit', '11']) {
+        expect(
+          find.descendant(of: receipt, matching: find.text(value)),
+          findsOneWidget,
+          reason: value,
+        );
+      }
+      // In that order, by rendered geometry rather than by tree position.
+      expect(
+        tester.getRect(body).bottom,
+        lessThanOrEqualTo(tester.getRect(receipt).top),
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('follows a refusal that arrived mid-call, which did not', (
+      tester,
+    ) async {
+      var clock = DateTime(2026, 1, 1, 9);
+      // Hand-rolled rather than FakeConnector, whose throwAt raises a
+      // StateError: what this test is about is the reconnect being
+      // refused the way the server refuses a mint.
+      final transports = <FakeTransport>[];
+      await tester.pumpWidget(
+        app(
+          connect: (_, _) async {
+            if (transports.isEmpty) {
+              final transport = FakeTransport();
+              transports.add(transport);
+              return transport;
+            }
+            throw const VoiceOutOfCredits();
+          },
+          credits: ValueNotifier(0),
+          now: () => clock,
+        ),
+      );
+      await tester.pump();
+      // A handle, so the drop below reconnects rather than ending — and
+      // that reconnect is the mint that gets refused.
+      transports.single.pushResumption('h1');
+      await tester.pump();
+
+      clock = clock.add(const Duration(seconds: 298));
+      transports.single.server.addError(StateError('dropped'));
+      await tester.pumpAndSettle();
+
+      // Same error value as a refusal before the call, but this
+      // conversation happened and was charged: the card would claim
+      // nothing was recorded, and the receipt it owes would go missing.
+      expect(find.byKey(const ValueKey('voice_no_credits_card')), findsNothing);
+      expect(find.byKey(const ValueKey('voice_error_body')), findsOneWidget);
+      final receipt = find.byKey(const ValueKey('voice_receipt'));
+      expect(
+        find.descendant(of: receipt, matching: find.text('4 min 58 s')),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('never follows a refusal, which spent nothing', (tester) async {
+      for (final campaignOver in [false, true]) {
+        await tester.pumpWidget(
+          app(
+            credits: ValueNotifier(0),
+            connect: (_, _) async =>
+                throw VoiceOutOfCredits(campaignOver: campaignOver),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        // The microphone never opened and no credit was taken, so "1
+        // credit" here would be a lie — however the refusal is worded.
+        expect(
+          find.byKey(const ValueKey('voice_receipt')),
+          findsNothing,
+          reason: 'campaignOver: $campaignOver',
+        );
+        expect(find.text('1 credit'), findsNothing);
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump();
+      }
+    });
+
+    testWidgets('is absent when the call never got off the ground', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        app(
+          credits: ValueNotifier(11),
+          connect: (_, _) async => throw StateError('no host'),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Not a refusal, so the error line stands on its own — but no
+      // transport ever existed, so nothing was charged and there is
+      // nothing to bill for.
+      expect(find.byKey(const ValueKey('voice_error_body')), findsOneWidget);
+      expect(find.byKey(const ValueKey('voice_receipt')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
     testWidgets('does not appear for a call that was only parked', (
       tester,
     ) async {
@@ -770,9 +904,10 @@ void main() {
         find.descendant(
           of: card,
           matching: find.text(
-            'A call costs one credit and there are none. Nothing was '
-            'recorded — the microphone never opened and no audio left '
-            'the phone.',
+            'A call costs one credit and there are none. The free '
+            'allowance is topped back up at the start of every month. '
+            'Nothing was recorded — the microphone never opened and no '
+            'audio left the phone.',
           ),
         ),
         findsOneWidget,

@@ -168,6 +168,65 @@ void main() {
     expect(s.connected, const Duration(seconds: 60));
   });
 
+  test('a call that died mid-sentence is finished and paid for', () async {
+    final s = session();
+    await s.start();
+    clock = clock.add(const Duration(seconds: 298));
+    transport.server.addError(StateError('the connection dropped'));
+    await pumpEventQueue();
+
+    // The transport existed, so the mint behind it went through: the call
+    // is over for good and it cost a credit, however badly it went.
+    expect(s.status, VoiceSessionStatus.error);
+    expect(s.finished, isTrue);
+    expect(s.spent, isTrue);
+    expect(s.connected, const Duration(seconds: 298));
+  });
+
+  test('a refused mint is finished but spent nothing', () async {
+    final s = session(connect: (_, _) async => throw const VoiceOutOfCredits());
+    await s.start();
+
+    expect(s.finished, isTrue);
+    expect(s.spent, isFalse);
+  });
+
+  test('a dial that never got a transport spent nothing either', () async {
+    final s = session(connect: (_, _) async => throw StateError('no host'));
+    await s.start();
+
+    // Not a refusal, but no transport either: the session cannot know a
+    // mint went out, and must not claim a credit it cannot see.
+    expect(s.status, VoiceSessionStatus.error);
+    expect(s.finished, isTrue);
+    expect(s.spent, isFalse);
+  });
+
+  test('a missing microphone permission spends nothing', () async {
+    mic = FakeMic(permitted: false);
+    final s = session();
+    await s.start();
+
+    expect(s.spent, isFalse);
+  });
+
+  test('a resumed park keeps the credit it already paid', () async {
+    final connector = FakeConnector();
+    final s = session(connect: connector.call);
+    await s.start();
+    connector.last.pushResumption('h1');
+    await pumpEventQueue();
+    await s.background();
+    expect(s.spent, isTrue, reason: 'parked');
+
+    await s.start();
+
+    // Same call, same credit: the reset only happens for a start that
+    // begins a new one.
+    expect(s.spent, isTrue);
+    expect(connector.handles, [null, 'h1']);
+  });
+
   test('a call that ends in error still reports what it billed for', () async {
     mic = FakeMic(permitted: false);
     final s = session();

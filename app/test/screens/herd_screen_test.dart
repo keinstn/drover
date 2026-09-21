@@ -440,11 +440,18 @@ void main() {
       // The sheet, before the screen: an anonymous account is granted
       // nothing, so opening the call first would only reach a refusal.
       expect(find.text('Sign in for your free credits'), findsOneWidget);
+      // The two things the sheet exists to say: the allowance comes back
+      // every month, and it survives a reinstall. Read as a one-off, an
+      // empty balance would look like the end of it.
       expect(
         find.textContaining(
-          'keeps them if you reinstall drover',
+          'topped back up at the start of every month',
           findRichText: true,
         ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('kept if you reinstall drover', findRichText: true),
         findsOneWidget,
       );
       // Nothing is for sale, so nothing here may read as an offer.

@@ -1046,10 +1046,10 @@ abstract class AppLocalizations {
   /// **'One credit is one call, up to five minutes.'**
   String get settingsVoiceCreditsSubtitle;
 
-  /// One line under the balance row explaining the free campaign. There is nothing to buy, so it must not read as an offer.
+  /// One line under the balance row explaining the free campaign. The allowance is monthly, not a one-off, and there is nothing to buy — so it must not read as an offer either.
   ///
   /// In en, this message translates to:
-  /// **'Voice is free for now: sign in with Apple and a few credits are added for you.'**
+  /// **'Voice is free for now: sign in with Apple for a free allowance, topped back up at the start of every month.'**
   String get settingsVoiceCreditsCampaign;
 
   /// No description provided for @settingsVoiceCreditsActivity.
@@ -1226,10 +1226,10 @@ abstract class AppLocalizations {
   /// **'No credits left'**
   String get voiceNoCreditsTitle;
 
-  /// No description provided for @voiceNoCreditsBody.
+  /// Shown to a signed-in account that has spent its allowance and to an anonymous one that was never granted any — so the middle sentence says how the allowance works rather than claiming this reader had one.
   ///
   /// In en, this message translates to:
-  /// **'A call costs one credit and there are none. Nothing was recorded — the microphone never opened and no audio left the phone.'**
+  /// **'A call costs one credit and there are none. The free allowance is topped back up at the start of every month. Nothing was recorded — the microphone never opened and no audio left the phone.'**
   String get voiceNoCreditsBody;
 
   /// No description provided for @voiceCampaignOverTitle.
@@ -1289,7 +1289,7 @@ abstract class AppLocalizations {
   /// No description provided for @voiceSignInBody.
   ///
   /// In en, this message translates to:
-  /// **'The voice assistant is free for now, and the free credits go to a signed-in account. Signing in with Apple is what adds them, and it is what keeps them if you reinstall drover. drover asks Apple for nothing but a stable identifier — no name, no email address.'**
+  /// **'The voice assistant is free for now, and the free credits go to a signed-in account. Sign in with Apple and your allowance is added — and topped back up at the start of every month, and kept if you reinstall drover. drover asks Apple for nothing but a stable identifier: no name, no email address.'**
   String get voiceSignInBody;
 
   /// No description provided for @voiceToolCalled.

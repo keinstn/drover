@@ -217,9 +217,10 @@ class HerdScreen extends StatefulWidget {
   final Future<void> Function()? onVoiceSignIn;
 
   /// Asks the owner of [voiceCredits] to re-read the balance. Called when a
-  /// call finishes, which is the moment the server debited it: this screen
-  /// is the only place that watches the retained conversation all the way to
-  /// its end, whether or not the voice screen is still showing.
+  /// call is over for good — a debit has just landed, or a refusal has just
+  /// said the balance is not what the app thought. This screen is the only
+  /// place that watches the retained conversation all the way to its end,
+  /// whether or not the voice screen is still showing.
   final VoidCallback? onVoiceCreditsStale;
 
   /// Builds the session a voice screen runs on; defaults to
@@ -425,9 +426,9 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
   /// that follows it. Reset when a session is dropped or replaced.
   var _voiceCreditsRead = false;
 
-  /// Re-reads the balance the moment a call is over for good — which is when
-  /// the server has debited it, and the only way the chip and the receipt
-  /// can show what is actually left.
+  /// Re-reads the balance the moment a call is over for good — a debit has
+  /// landed, or a refusal has just proved the balance stale — which is the
+  /// only way the chip and the receipt can show what is actually left.
   void _syncVoiceCredits() {
     final finished = _voiceSession?.finished ?? false;
     if (finished == _voiceCreditsRead) return;

@@ -268,7 +268,14 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     // gets a card rather than the bare line below: what it cost, what was
     // recorded (nothing), and — while the account is still anonymous — the
     // sign-in that grants the credits.
-    final refusal = session.status == VoiceSessionStatus.error
+    //
+    // Only for a call that never started, which is what `!spent` says. A
+    // re-mint refused mid-call (`_lost` reconnecting on a handle) reaches
+    // the same error value for a conversation that did happen and was
+    // charged — "nothing was recorded" would be false there, and the
+    // receipt it owes would go missing. That one falls through to the
+    // ordinary error line, with its receipt under it.
+    final refusal = session.status == VoiceSessionStatus.error && !session.spent
         ? switch (session.error) {
             VoiceSession.outOfCredits => _Refusal.noCredits,
             VoiceSession.campaignOver => _Refusal.campaignOver,
@@ -284,16 +291,20 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
         session.status == VoiceSessionStatus.error && refusal == null
         ? _statusLabel(l10n, session)
         : null;
-    // One slot at the foot of the log, and at most one occupant: a refusal
-    // card, the bare error line, or — once the call is over for good — the
-    // receipt.
-    final trailer = refusal != null
-        ? _refusalCard(context, l10n, refusal)
-        : errorText != null
-        ? _errorBody(context, errorText)
-        : session.finished
-        ? _receiptCard(context, l10n)
-        : null;
+    // The foot of the log. A refusal is the whole of it — nothing was
+    // spent, so there is no receipt to add and the card already says what
+    // happened. Otherwise the error line comes first and the receipt after
+    // it: what went wrong, then what it cost, which is the order the two
+    // are read in. A call that never got a transport owes no receipt at
+    // all, whichever way it ended.
+    final trailers = <Widget>[
+      if (refusal != null)
+        _refusalCard(context, l10n, refusal)
+      else ...[
+        if (errorText != null) _errorBody(context, errorText),
+        if (session.finished && session.spent) _receiptCard(context, l10n),
+      ],
+    ];
     // Holds, not draws: a pending draft's row renders nothing, but a draft
     // always trails the tool entry that created it (`voice_session.dart`
     // adds one per call before running it), so entries are never all
@@ -304,7 +315,7 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
         session.entries.isEmpty &&
         session.partialUser == null &&
         session.partialAssistant == null &&
-        trailer == null;
+        trailers.isEmpty;
     return Scaffold(
       // The glow is the whole body's bottom edge, not the transcript's: put
       // it under the SafeArea so it bleeds past the controls into the very
@@ -403,7 +414,7 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
                         Expanded(
                           child: empty
                               ? _empty(context, l10n)
-                              : _transcript(context, trailer),
+                              : _transcript(context, trailers),
                         ),
                         _pending(context, l10n, constraints.maxHeight),
                       ],
@@ -500,9 +511,9 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// The log, with [trailer] — a refusal card, the error line or the
-  /// receipt — pinned after the last entry when there is one.
-  Widget _transcript(BuildContext context, Widget? trailer) {
+  /// The log, with [trailers] — a refusal card, or the error line and the
+  /// receipt — pinned after the last entry, in the order given.
+  Widget _transcript(BuildContext context, List<Widget> trailers) {
     final session = widget.session;
     // builder, not ListView(children:): the session notifies several times a
     // second during a turn, and the log grows across Restarts.
@@ -517,9 +528,9 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     return ListView.builder(
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      itemCount: rows + (trailer == null ? 0 : 1),
-      itemBuilder: (context, i) => i == rows
-          ? trailer!
+      itemCount: rows + trailers.length,
+      itemBuilder: (context, i) => i >= rows
+          ? trailers[i - rows]
           : _entryRow(
               context,
               AppLocalizations.of(context)!,
@@ -568,10 +579,12 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// What the finished call cost, once it is over for good: how long it was
-  /// actually connected, the one credit it spent, and what is left. Keys on
+  /// What the call cost, once it is over for good: how long it was actually
+  /// connected, the one credit it spent, and what is left. Keys on
   /// [VoiceSession.finished] rather than the status, because a call parked
-  /// by a backgrounding also reads as ended and is not over.
+  /// by a backgrounding also reads as ended and is not over — and on
+  /// [VoiceSession.spent], because a call that died is still a call that
+  /// was paid for, while one refused before it began is not.
   Widget _receiptCard(BuildContext context, AppLocalizations l10n) {
     final connected = widget.session.connected;
     final balance = widget.credits?.value;

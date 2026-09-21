@@ -320,13 +320,27 @@ class VoiceSession extends ChangeNotifier {
   bool _suspended = false;
   bool _disposed = false;
 
-  /// Whether this call is over for good, set by the one path that closes a
-  /// call out. The status alone cannot answer it: a [background] that parks
-  /// the call also lands on [VoiceSessionStatus.ended], and so would a
-  /// receipt for a call that is about to carry on. Cleared by the [start]
-  /// that begins the next call.
+  /// Whether this call is over for good — the user's End, the cap, or a
+  /// failure it could not come back from. The status alone cannot answer
+  /// it: a [background] that parks the call also lands on
+  /// [VoiceSessionStatus.ended], and that call is about to carry on.
+  /// Cleared by the [start] that begins the next one.
   bool get finished => _finished;
   bool _finished = false;
+
+  /// Whether this call has cost a credit. True from the first transport it
+  /// gets: the mint is what the Function charges, and a transport exists
+  /// only because one went through. Everything that fails earlier — the
+  /// microphone permission, a refused mint — never reached the charge.
+  ///
+  /// ponytail: a mint that succeeds and *then* fails to open the socket
+  /// reads as unspent here, though the Function has already charged it.
+  /// The session cannot see inside [_connect] to tell that apart from a
+  /// dial that never got as far as minting, and claiming a credit that may
+  /// not have been taken is the worse of the two errors. Same known hole
+  /// the session id's own comment in [start] names.
+  bool get spent => _spent;
+  bool _spent = false;
 
   /// Armed by [start], cancelled by [_teardown]; survives reconnects because
   /// [_lost] never goes back through [start].
@@ -449,6 +463,7 @@ class VoiceSession extends ChangeNotifier {
     if (!wasParked) {
       _usage = VoiceUsage();
       _connected = Duration.zero;
+      _spent = false;
       // One conversation, one id, however many times it reconnects — and so
       // one debit. Resuming a parked call is the same conversation and keeps
       // its id; a Restart is a new one and pays again.
@@ -552,6 +567,9 @@ class VoiceSession extends ChangeNotifier {
   /// Makes [transport] the current one and routes its messages into [_rx].
   void _bind(VoiceTransport transport, int gen) {
     _transport = transport;
+    // The transport is here, so the mint behind it went through and the
+    // credit is gone — whatever happens to the call from now on.
+    _spent = true;
     _rxSub = transport.receive().listen(
       (response) {
         _rx = _rx
@@ -964,6 +982,11 @@ class VoiceSession extends ChangeNotifier {
     // A call that died still burned tokens, and a cost measurement that drops
     // exactly the calls that went wrong measures the wrong population.
     _appendUsage();
+    // Over for good: [_suspended] and the handle were both dropped above,
+    // so nothing can pick this conversation up again. Whether it owes a
+    // receipt is [spent]'s question, not this one's — a mint refused
+    // before the call began lands here having cost nothing.
+    _finished = true;
     _setStatus(VoiceSessionStatus.error, error: message);
   }
 

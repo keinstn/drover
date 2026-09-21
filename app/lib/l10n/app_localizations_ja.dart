@@ -521,7 +521,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get settingsVoiceCreditsCampaign =>
-      'いまは音声アシスタントを無料で試せます。Apple でサインインすると、クレジットがいくつか追加されます。';
+      'いまは音声アシスタントを無料で試せます。Apple でサインインすると無料分が追加され、毎月はじめに補充されます。';
 
   @override
   String get settingsVoiceCreditsActivity => '最近のクレジット履歴';
@@ -619,7 +619,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get voiceNoCreditsBody =>
-      '通話には1クレジット必要ですが、残りがありません。録音は行われていません。マイクは開かず、音声は端末から出ていません。';
+      '通話には1クレジット必要ですが、残りがありません。無料分は毎月はじめに補充されます。録音は行われていません。マイクは開かず、音声は端末から出ていません。';
 
   @override
   String get voiceCampaignOverTitle => '無料クレジットの配布が終わりました';
@@ -655,7 +655,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get voiceSignInBody =>
-      'いまは音声アシスタントを無料で試せます。無料クレジットはサインイン済みのアカウントに追加されます。Apple でサインインするとクレジットが追加され、drover を入れ直しても残ります。drover が Apple から受け取るのは識別子だけで、氏名もメールアドレスも受け取りません。';
+      'いまは音声アシスタントを無料で試せます。無料クレジットはサインイン済みのアカウントに追加されます。Apple でサインインすると無料分が追加され、毎月はじめに補充されます。drover を入れ直しても残ります。drover が Apple から受け取るのは識別子だけで、氏名もメールアドレスも受け取りません。';
 
   @override
   String voiceToolCalled(String name) {

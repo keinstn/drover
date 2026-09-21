@@ -67,6 +67,7 @@ const _scenariosByPreview = <String, List<String>>{
     'ended',
     'start',
     'receipt',
+    'error-receipt',
     'no-credits',
     'campaign-over',
   ],
@@ -253,8 +254,11 @@ final _previews = <String, PreviewBuilder>{
   // adds a pending message draft, 'ended' closes the stream, and 'start'
   // leaves the session idle — the screen as it looks before anyone taps
   // Start. 'receipt' ends the call on a clock wound forward, so the receipt
-  // card shows a real length; 'no-credits' and 'campaign-over' refuse the
-  // mint the two ways the server can, which is how their cards get looked at.
+  // card shows a real length, and 'error-receipt' kills the same call
+  // mid-sentence — the credit is spent either way, so the error line and
+  // the receipt are both on screen. 'no-credits' and 'campaign-over' refuse
+  // the mint the two ways the server can, which is how their cards get
+  // looked at.
   'voice': (_, scenario) {
     final session = _voiceSession(scenario);
     // The screen only starts a call it can continue for free, so every
@@ -468,7 +472,7 @@ class _StubVoiceTransport implements VoiceTransport {
 /// story needs, since no wallet is read in a preview.
 ValueNotifier<int?> _voiceCredits(String scenario) =>
     ValueNotifier(switch (scenario) {
-      'receipt' => 11,
+      'receipt' || 'error-receipt' => 11,
       'no-credits' || 'campaign-over' => 0,
       _ => 12,
     });
@@ -513,7 +517,7 @@ VoiceSession _voiceSession(String scenario) {
     ],
     drafts: drafts,
   );
-  if (scenario == 'receipt') {
+  if (scenario == 'receipt' || scenario == 'error-receipt') {
     session.addListener(() {
       if (session.status == VoiceSessionStatus.live) {
         elapsed = const Duration(seconds: 298);
@@ -585,6 +589,11 @@ void _scriptVoice(
       case 'ended':
       case 'receipt':
         unawaited(server.close());
+      // An error on the stream rather than a close: no resumption handle
+      // was ever offered, so the session fails the call outright — which
+      // is the mid-call death the receipt now has to survive.
+      case 'error-receipt':
+        server.addError(StateError('the connection dropped'));
     }
   });
 }

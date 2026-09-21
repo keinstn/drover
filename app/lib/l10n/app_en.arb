@@ -240,9 +240,9 @@
   "settingsVoiceAssistantSubtitle": "Talk to drover about your agents. Agent status and short summaries of their replies are sent to Google's Gemini Live API for the conversation.",
   "settingsVoiceCredits": "Voice credits",
   "settingsVoiceCreditsSubtitle": "One credit is one call, up to five minutes.",
-  "settingsVoiceCreditsCampaign": "Voice is free for now: sign in with Apple and a few credits are added for you.",
+  "settingsVoiceCreditsCampaign": "Voice is free for now: sign in with Apple for a free allowance, topped back up at the start of every month.",
   "@settingsVoiceCreditsCampaign": {
-    "description": "One line under the balance row explaining the free campaign. There is nothing to buy, so it must not read as an offer."
+    "description": "One line under the balance row explaining the free campaign. The allowance is monthly, not a one-off, and there is nothing to buy \u2014 so it must not read as an offer either."
   },
   "settingsVoiceCreditsActivity": "Recent credit activity",
   "settingsVoiceCreditsNone": "Nothing yet.",
@@ -283,7 +283,10 @@
   },
   "voiceMicPermissionDenied": "Microphone access is off. Allow it in Settings to talk to drover.",
   "voiceNoCreditsTitle": "No credits left",
-  "voiceNoCreditsBody": "A call costs one credit and there are none. Nothing was recorded \u2014 the microphone never opened and no audio left the phone.",
+  "voiceNoCreditsBody": "A call costs one credit and there are none. The free allowance is topped back up at the start of every month. Nothing was recorded \u2014 the microphone never opened and no audio left the phone.",
+  "@voiceNoCreditsBody": {
+    "description": "Shown to a signed-in account that has spent its allowance and to an anonymous one that was never granted any \u2014 so the middle sentence says how the allowance works rather than claiming this reader had one."
+  },
   "voiceCampaignOverTitle": "The free credits have run out",
   "voiceCampaignOverBody": "Voice is free while the credits last, and they have run out for everyone \u2014 this is not your balance, and there is nothing on your side to put right. Nothing was recorded: the microphone never opened.",
   "voiceCredits": "{credits, plural, =1{1 credit} other{{credits} credits}}",
@@ -312,7 +315,7 @@
   "voiceReceiptBalance": "Balance",
   "voiceReceiptFootnote": "One credit, one call \u2014 however many times it reconnected along the way.",
   "voiceSignInTitle": "Sign in for your free credits",
-  "voiceSignInBody": "The voice assistant is free for now, and the free credits go to a signed-in account. Signing in with Apple is what adds them, and it is what keeps them if you reinstall drover. drover asks Apple for nothing but a stable identifier \u2014 no name, no email address.",
+  "voiceSignInBody": "The voice assistant is free for now, and the free credits go to a signed-in account. Sign in with Apple and your allowance is added \u2014 and topped back up at the start of every month, and kept if you reinstall drover. drover asks Apple for nothing but a stable identifier: no name, no email address.",
   "voiceToolCalled": "Called {name}",
   "@voiceToolCalled": {
     "placeholders": {
