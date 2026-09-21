@@ -865,6 +865,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
             notifyOnDone: _notifyOnDone,
             appVersion: widget.appVersion,
             staleNotifyPlugins: staleNotifyPlugins,
+            hasHosts: _hosts.isNotEmpty,
             voiceWallet: voiceWallet,
             onThemeModeChanged: (mode) {
               setState(() => _themeMode = mode);

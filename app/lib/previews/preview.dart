@@ -688,6 +688,7 @@ class _SettingsPreviewState extends State<_SettingsPreview> {
       onSignInWithApple: () async {},
       onDeleteAccount: () async {},
       onManageHosts: () {},
+      hasHosts: false,
       appVersion: '0.0.0-preview (0)',
       staleNotifyPlugins: _staleNotifyPlugins,
     );

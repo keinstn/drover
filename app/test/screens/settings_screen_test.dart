@@ -29,6 +29,7 @@ Widget _app({
   VoidCallback? onEnterDemo,
   String? appVersion,
   List<Future<StaleNotifyPlugin?>>? staleNotifyPlugins,
+  bool hasHosts = false,
   Future<VoiceWallet>? voiceWallet,
 }) {
   return MaterialApp(
@@ -54,6 +55,7 @@ Widget _app({
       onEnterDemo: onEnterDemo,
       appVersion: appVersion,
       staleNotifyPlugins: staleNotifyPlugins,
+      hasHosts: hasHosts,
       voiceWallet: voiceWallet,
     ),
   );
@@ -82,6 +84,7 @@ class _SettingsHost extends StatefulWidget {
     required this.onEnterDemo,
     required this.appVersion,
     required this.staleNotifyPlugins,
+    required this.hasHosts,
     required this.voiceWallet,
   });
 
@@ -102,6 +105,7 @@ class _SettingsHost extends StatefulWidget {
   final VoidCallback? onEnterDemo;
   final String? appVersion;
   final List<Future<StaleNotifyPlugin?>>? staleNotifyPlugins;
+  final bool hasHosts;
   final Future<VoiceWallet>? voiceWallet;
 
   @override
@@ -153,6 +157,7 @@ class _SettingsHostState extends State<_SettingsHost> {
       onEnterDemo: widget.onEnterDemo,
       appVersion: widget.appVersion,
       staleNotifyPlugins: widget.staleNotifyPlugins,
+      hasHosts: widget.hasHosts,
       voiceWallet: widget.voiceWallet,
     );
   }
@@ -898,6 +903,58 @@ void main() {
     expect(find.text('Delete your account?'), findsNothing);
     expect(find.text('Signed in with Apple'), findsNothing);
     expect(find.text('Sign in with Apple'), findsOneWidget);
+    // No host was configured, so there is nothing to re-pair.
+    expect(find.text('Account deleted'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'a successful delete with a host configured offers to re-pair it',
+    (tester) async {
+      var manageCalls = 0;
+      await tester.pumpWidget(
+        _app(onManageHosts: () => manageCalls++, hasHosts: true),
+      );
+      await _revealDeleteRow(tester);
+
+      await tester.tap(
+        find.byKey(const ValueKey('settings_account_delete_tile')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('account_delete_confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Account deleted'), findsOneWidget);
+      await tester.tap(find.text('Manage hosts'));
+      await tester.pumpAndSettle();
+
+      expect(manageCalls, 1);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('dismissing the re-pair nudge does not open host management', (
+    tester,
+  ) async {
+    var manageCalls = 0;
+    await tester.pumpWidget(
+      _app(onManageHosts: () => manageCalls++, hasHosts: true),
+    );
+    await _revealDeleteRow(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings_account_delete_tile')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('account_delete_confirm')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+
+    expect(manageCalls, 0);
 
     await tester.pumpWidget(const SizedBox());
   });

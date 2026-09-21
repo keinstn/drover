@@ -260,6 +260,9 @@
       "credits": { "type": "int" }
     }
   },
+  "accountDeletedTitle": "Account deleted",
+  "accountDeletedNotifyBody": "Notification pairing was removed with it. Re-pair each host to keep getting notifications.",
+  "accountDeletedManageHosts": "Manage hosts",
   "herdVoiceButton": "Voice assistant",
   "herdVoiceButtonLive": "Voice call in progress",
   "voiceStatusConnecting": "Connecting…",

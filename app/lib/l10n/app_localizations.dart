@@ -1136,6 +1136,24 @@ abstract class AppLocalizations {
   /// **'{credits, plural, =1{One credit goes} other{{credits} credits go}} with it.'**
   String accountDeleteBalance(int credits);
 
+  /// No description provided for @accountDeletedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Account deleted'**
+  String get accountDeletedTitle;
+
+  /// No description provided for @accountDeletedNotifyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Notification pairing was removed with it. Re-pair each host to keep getting notifications.'**
+  String get accountDeletedNotifyBody;
+
+  /// No description provided for @accountDeletedManageHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage hosts'**
+  String get accountDeletedManageHosts;
+
   /// No description provided for @herdVoiceButton.
   ///
   /// In en, this message translates to:
