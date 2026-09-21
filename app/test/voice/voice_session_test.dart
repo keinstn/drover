@@ -1708,6 +1708,42 @@ void main() {
       expect(connector.handles, [null, null]);
     });
 
+    test('a handle-less park is still the paid-for call', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      await s.background();
+
+      // The pairing is the point: the Live conversation cannot be picked up,
+      // but the call is parked inside its cap and already paid for, so
+      // whoever holds this session must keep it.
+      expect(s.resumable, isFalse);
+      expect(s.parked, isTrue);
+    });
+
+    test('a park is over once the cap has run out', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      await s.background();
+
+      clock = clock.add(kVoiceSessionCap);
+
+      expect(s.parked, isFalse, reason: 'nothing left to continue');
+    });
+
+    test('stop leaves nothing parked', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      await s.background();
+      expect(s.parked, isTrue);
+
+      await s.stop();
+
+      expect(s.parked, isFalse);
+    });
+
     test('it is a no-op once the session already ended', () async {
       final s = session();
       await s.start();

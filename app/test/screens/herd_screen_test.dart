@@ -217,6 +217,10 @@ class FakeVoiceSessions {
   /// call already counts as on the wire.
   Completer<void>? connectGate;
 
+  /// Injected into every session built here, so a test can run a call's cap
+  /// out without waiting five minutes.
+  var clock = DateTime(2026, 1, 1);
+
   Future<VoiceTransport> _connect(String? handle, String sessionId) async {
     await connectGate?.future;
     return connector.call(handle, sessionId);
@@ -229,6 +233,7 @@ class FakeVoiceSessions {
   }) {
     final session = VoiceSession(
       connect: _connect,
+      now: () => clock,
       mic: mic,
       speaker: speaker,
       tools: const [],
@@ -957,6 +962,86 @@ void main() {
       });
     });
 
+    /// Opens the voice screen, starts a call and leaves it parked with no
+    /// resumption handle — the first seconds of a call, and every mid-call
+    /// reconnect, since a reconnect consumes the handle it had. Backgrounded
+    /// from the herd screen, so the voice screen's own observer is out of it.
+    Future<void> startAndPark(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('voice_start_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('a handle-less park is not charged for twice', (tester) async {
+      final client = HerdrClient(FakeCommandRunner(_respond));
+      await tester.pumpWidget(
+        _herdApp(
+          client: client,
+          voiceAssistantEnabled: true,
+          voiceSessionFor: sessions.call,
+        ),
+      );
+      await tester.pump();
+
+      await startAndPark(tester);
+      // Back in, and Restart rather than Start: with no handle the screen
+      // cannot pick the conversation up by itself.
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+      expect(sessions.built, hasLength(1), reason: 'the same call, kept');
+      await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+      await tester.pumpAndSettle();
+
+      // The money: two connects under one session id, so the re-mint lands
+      // inside the server's reuse window and the call is paid for once. The
+      // navigation in the middle must not change that.
+      expect(sessions.connector.sessionIds, hasLength(2));
+      expect(
+        sessions.connector.sessionIds.toSet(),
+        hasLength(1),
+        reason: 'one call, one debit',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a park past its cap is not retained', (tester) async {
+      final client = HerdrClient(FakeCommandRunner(_respond));
+      await tester.pumpWidget(
+        _herdApp(
+          client: client,
+          voiceAssistantEnabled: true,
+          voiceSessionFor: sessions.call,
+        ),
+      );
+      await tester.pump();
+
+      await startAndPark(tester);
+      // Away long enough that the call is over, not paused: there is nothing
+      // left to continue, so the next one is a new call and pays.
+      sessions.clock = sessions.clock.add(kVoiceSessionCap);
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+
+      expect(sessions.built, hasLength(2));
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('a call the user ended is replaced by a fresh one', (
       tester,
     ) async {
@@ -992,6 +1077,9 @@ void main() {
       expect(find.text('Session ended'), findsNothing);
       expect(sessions.built, hasLength(2));
       expect(sessions.connector.handles, [null, null]);
+      // Two calls, two ids, two credits: an End is what makes the next Start
+      // pay again.
+      expect(sessions.connector.sessionIds.toSet(), hasLength(2));
 
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();

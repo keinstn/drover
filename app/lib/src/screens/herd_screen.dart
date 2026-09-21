@@ -1005,16 +1005,19 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
     // Built once here, not in the route builder, which can run more than once.
     final host = _hostsInScope.first;
     // A retained conversation is picked up where it was left: still on the
-    // wire (the user only walked to another drover screen), or parked with a
-    // handle to continue from ([VoiceSession.resumable] is the session's own
-    // word that its next start() would continue rather than begin). Anything
-    // else — the user's End, an error, the cap, a session that was never
-    // offered a handle — is spent, so it goes and a fresh one takes its
-    // place. [didUpdateWidget] has already dropped one that stopped applying
-    // to this host, so whatever survives here belongs to [host].
+    // wire (the user only walked to another drover screen), or parked. The
+    // session answers two different questions about a park and either one
+    // keeps it — [VoiceSession.resumable] that the Live conversation itself
+    // can be picked up, [VoiceSession.parked] that the call is inside its cap
+    // and already paid for, so building a fresh one here would buy a second
+    // credit for it. Anything else — the user's End, an error, the cap — is
+    // spent, so it goes and a fresh one takes its place. [didUpdateWidget]
+    // has already dropped one that stopped applying to this host, so whatever
+    // survives here belongs to [host].
     final VoiceSession session;
     final retained = _voiceSession;
-    if (retained != null && (_voiceOnTheWire || retained.resumable)) {
+    if (retained != null &&
+        (_voiceOnTheWire || retained.resumable || retained.parked)) {
       session = retained;
     } else {
       _dropVoiceSession();

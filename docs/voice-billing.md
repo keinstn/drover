@@ -250,12 +250,13 @@ so the re-mint lands inside the reuse window and costs nothing.
 
 A park that caught the call without a handle — the first seconds of a call,
 and every mid-call reconnect, since a reconnect consumes the handle it had —
-is the ragged edge. Staying on the screen and tapping Restart continues that
-call for free, because the session id survives in the object. Leaving the
-screen and coming back does not: `_openVoice` keeps a retained session only
-while it is `resumable`, so a handle-less park is discarded and the next
-Start buys a second credit for a call still inside its cap. Worth closing by
-keeping a session that is parked and still inside its cap, handle or not.
+continues for free too, wherever it is picked up from. The session id survives
+any park, so the re-mint lands inside the reuse window; what the handle decides
+is only whether the Live conversation resumes or the user has to tap Restart.
+So `_openVoice` keeps a retained session while it is `resumable` *or* `parked`
+— the same call, still inside its cap — and a handle-less park costs one credit
+however the user navigates. Past the cap there is nothing left to continue and
+the next call pays.
 
 ## Voice Gateway
 

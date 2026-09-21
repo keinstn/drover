@@ -281,9 +281,11 @@ Already done for this project; recorded so a fresh setup can repeat it.
     to. Foregrounding onto the herd screen must never re-open a mic by
     itself.
   - `_openVoice` reuses the retained session whenever it is still usable —
-    `connecting`, `live`, or `resumable` — not only when `resumable`, which
-    would have disposed and replaced a live call mid-sentence on the way back
-    in.
+    `connecting`, `live`, `resumable`, or `parked` — not only when
+    `resumable`, which would have disposed and replaced a live call
+    mid-sentence on the way back in, and would have thrown away a park whose
+    resumption handle a reconnect had consumed, buying a second credit for a
+    call already paid for.
   - Still foreground-only: `UIBackgroundModes: audio` remains rejected (next
     bullet). What changed is which drover screen the user may be on, not
     whether drover has to be in front.
