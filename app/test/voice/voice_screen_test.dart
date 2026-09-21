@@ -44,6 +44,11 @@ void main() {
     Locale? locale,
     ValueListenable<List<AgentInfo>>? agents,
     void Function(AgentInfo agent)? onOpenAgent,
+    // The screen no longer starts a new call by itself — a mint spends a
+    // credit, so that takes a tap. This stands in for the tap, on the frame
+    // the screen used to start itself on, so a test about anything else can
+    // stay written against a live call.
+    bool start = true,
   }) {
     final session = VoiceSession(
       connect: connect ?? (_, _) async => transport,
@@ -61,6 +66,9 @@ void main() {
         ),
       ],
     );
+    if (start) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => session.start());
+    }
     final screen = VoiceScreen(
       session: session,
       agents: agents,
@@ -1476,6 +1484,58 @@ void main() {
     });
   });
 
+  group('starting a call', () {
+    String status(WidgetTester tester) =>
+        tester.widget<Text>(find.byKey(const ValueKey('voice_status'))).data!;
+
+    testWidgets('arriving on the screen spends nothing', (tester) async {
+      final connector = FakeConnector();
+      await tester.pumpWidget(app(connect: connector.call, start: false));
+      await tester.pump();
+
+      // The mint that spends a credit lives inside `start()`, alongside the
+      // dial and the microphone — so no socket and no open mic is as close as
+      // this test can get to "the wallet was not touched".
+      expect(connector.transports, isEmpty);
+      expect(mic.startCalls, 0);
+      expect(status(tester), 'Ready');
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('tapping Start opens the call', (tester) async {
+      final connector = FakeConnector();
+      await tester.pumpWidget(app(connect: connector.call, start: false));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('voice_start_button')));
+      await tester.pumpAndSettle();
+
+      expect(connector.transports, hasLength(1));
+      expect(status(tester), 'Listening');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('after End the middle button is Restart, not Start', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app());
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('voice_action_button')));
+      await tester.pumpAndSettle();
+
+      expect(status(tester), 'Ended');
+      expect(find.byKey(const ValueKey('voice_start_button')), findsNothing);
+      expect(find.text('Restart'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+  });
+
   group('continuing a conversation', () {
     /// The screen behind a pushed [VoiceScreen], so popping it exercises
     /// `State.dispose` for real — and pushing again re-enters the SAME
@@ -1511,6 +1571,9 @@ void main() {
       await tester.pumpWidget(host(session));
       await tester.tap(find.text('voice'));
       await tester.pumpAndSettle();
+      // The tap that opens a new call; re-entering below must not need it.
+      await tester.tap(find.byKey(const ValueKey('voice_start_button')));
+      await tester.pumpAndSettle();
 
       tester.state<NavigatorState>(find.byType(Navigator).last).pop();
       await tester.pumpAndSettle();
@@ -1529,6 +1592,47 @@ void main() {
       // down, so there is nothing to reconnect and nothing to log.
       expect(connector.transports, hasLength(1));
       expect(find.text('Reconnected, continuing'), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('voice_status'))).data,
+        'Listening',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+      await tester.pump();
+    });
+
+    testWidgets('re-entering continues a parked call with no tap', (
+      tester,
+    ) async {
+      final connector = FakeConnector();
+      final session = VoiceSession(
+        connect: connector.call,
+        mic: mic,
+        speaker: speaker,
+        tools: const [],
+      );
+      await tester.pumpWidget(host(session));
+      await tester.tap(find.text('voice'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('voice_start_button')));
+      await tester.pumpAndSettle();
+      // The handle a park keeps, then the park itself.
+      connector.last.pushResumption('h1');
+      await tester.pump();
+      await session.background();
+      await tester.pumpAndSettle();
+      expect(session.resumable, isTrue);
+
+      tester.state<NavigatorState>(find.byType(Navigator).last).pop();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('voice'));
+      await tester.pumpAndSettle();
+
+      // Continuing costs nothing, so it needs no tap: the screen dialled back
+      // on the handle by itself, and there is no Start button to press.
+      expect(connector.handles, [null, 'h1']);
+      expect(find.byKey(const ValueKey('voice_start_button')), findsNothing);
       expect(
         tester.widget<Text>(find.byKey(const ValueKey('voice_status'))).data,
         'Listening',

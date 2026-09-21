@@ -598,6 +598,11 @@ void main() {
     Future<void> callAndLeave(WidgetTester tester) async {
       await tester.tap(find.byKey(const ValueKey('voice_button')));
       await tester.pumpAndSettle();
+      // A new call costs a credit, so the voice screen waits to be told to
+      // dial. Only the first visit needs this: once the conversation exists,
+      // re-entering continues it for free and by itself.
+      await tester.tap(find.byKey(const ValueKey('voice_start_button')));
+      await tester.pumpAndSettle();
       sessions.connector.last.push(
         LiveServerContent(
           outputTranscription: const Transcription(
@@ -765,6 +770,8 @@ void main() {
       sessions.connectGate = Completer<void>();
       await tester.tap(find.byKey(const ValueKey('voice_button')));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('voice_start_button')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
 
@@ -865,6 +872,8 @@ void main() {
 
         await tester.tap(find.byKey(const ValueKey('voice_button')));
         await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('voice_start_button')));
+        await tester.pumpAndSettle();
 
         expect(wake.calls, [true]);
 
@@ -896,6 +905,8 @@ void main() {
       testWidgets('Restart turns the wake back on', (tester) async {
         await pumpHerd(tester);
         await tester.tap(find.byKey(const ValueKey('voice_button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('voice_start_button')));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('voice_action_button')));
         await tester.pumpAndSettle();
@@ -961,6 +972,8 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('voice_button')));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('voice_start_button')));
+      await tester.pumpAndSettle();
       sessions.connector.last.pushResumption('h1');
       await tester.pump();
       // End, then leave: a handle is in hand, so the End alone is what makes
@@ -971,6 +984,8 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('voice_start_button')));
       await tester.pumpAndSettle();
 
       expect(find.text("Let's talk about your agents"), findsOneWidget);
@@ -1088,6 +1103,8 @@ void main() {
       await tester.pump();
 
       await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('voice_start_button')));
       await tester.pumpAndSettle();
 
       // Seeded before the push: with a one-hour poll interval no listAgents

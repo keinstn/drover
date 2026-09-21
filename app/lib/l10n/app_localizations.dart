@@ -1154,6 +1154,12 @@ abstract class AppLocalizations {
   /// **'Connecting…'**
   String get voiceStatusConnecting;
 
+  /// No description provided for @voiceStatusReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready'**
+  String get voiceStatusReady;
+
   /// No description provided for @voiceStatusLive.
   ///
   /// In en, this message translates to:
@@ -1231,6 +1237,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Restart'**
   String get voiceRestart;
+
+  /// No description provided for @voiceStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start'**
+  String get voiceStart;
 
   /// No description provided for @voiceGreeting.
   ///

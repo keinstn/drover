@@ -606,6 +606,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceStatusConnecting => 'Connecting…';
 
   @override
+  String get voiceStatusReady => 'Ready';
+
+  @override
   String get voiceStatusLive => 'Listening';
 
   @override
@@ -648,6 +651,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get voiceRestart => 'Restart';
+
+  @override
+  String get voiceStart => 'Start';
 
   @override
   String get voiceGreeting => 'Let\'s talk about your agents';
