@@ -661,9 +661,47 @@ void main() {
     await tester.pump();
   });
 
+  /// The roster the switcher bar under the header is built from: without it
+  /// the bar is absent, and a test about the pinned region's geometry is
+  /// measuring a screen that never ships.
+  ValueNotifier<List<AgentInfo>> roster() => ValueNotifier([
+    fakeAgent(paneId: 'w:p1', name: 'one'),
+    fakeAgent(paneId: 'w:p2', name: 'two'),
+    fakeAgent(paneId: 'w:p3', name: 'three'),
+  ]);
+
+  /// The pinned region's own scroll position.
+  ScrollPosition pinnedPosition(WidgetTester tester) => tester
+      .state<ScrollableState>(
+        find.descendant(
+          of: find.byKey(const ValueKey('voice_pending_drafts')),
+          matching: find.byType(Scrollable),
+        ),
+      )
+      .position;
+
+  /// [key]'s rect lies inside the pinned region's — the invariant, measured
+  /// where it actually holds. Against the test window instead, a card the
+  /// pinned viewport has scrolled out of sight still passes.
+  void expectInsidePinned(WidgetTester tester, String key) {
+    final pinned = tester.getRect(
+      find.byKey(const ValueKey('voice_pending_drafts')),
+    );
+    final rect = tester.getRect(find.byKey(ValueKey(key)));
+    expect(rect.top, greaterThanOrEqualTo(pinned.top));
+    expect(rect.bottom, lessThanOrEqualTo(pinned.bottom));
+  }
+
   testWidgets('several pending cards scroll inside their cap', (tester) async {
     final drafts = VoiceDrafts();
-    await tester.pumpWidget(app(herd: FakeVoiceHerd(), drafts: drafts));
+    await tester.pumpWidget(
+      app(
+        herd: FakeVoiceHerd(),
+        drafts: drafts,
+        agents: roster(),
+        onOpenAgent: (_) {},
+      ),
+    );
     await tester.pump();
     for (var i = 0; i < 4; i++) {
       drafts.addLaunch(
@@ -683,8 +721,7 @@ void main() {
     // larger half of the region.
     expect(tester.getSize(pinned).height, lessThanOrEqualTo(300));
     // The newest card's button is the one on screen, without scrolling.
-    final last = find.byKey(const ValueKey('voice_launch_d4'));
-    expect(tester.getRect(last).bottom, lessThanOrEqualTo(600));
+    expectInsidePinned(tester, 'voice_launch_d4');
     // The older ones are a scroll away inside the pinned section, not lost.
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('voice_launch_d1')),
@@ -694,12 +731,114 @@ void main() {
         matching: find.byType(Scrollable),
       ),
     );
-    final first = find.byKey(const ValueKey('voice_launch_d1'));
-    expect(first, findsOneWidget);
-    expect(tester.getRect(first).bottom, lessThanOrEqualTo(600));
+    // Reached, not merely built: every card in the section is laid out, so
+    // `findsOneWidget` alone would pass for one the viewport can't show.
+    expectInsidePinned(tester, 'voice_launch_d1');
     // And the transcript is still there, still scrollable.
     expect(find.byType(ListView), findsOneWidget);
     expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('a new draft re-anchors the pinned region it was left in', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    tester.view.padding = const FakeViewPadding(top: 141, bottom: 102);
+    addTearDown(tester.view.reset);
+    const brief =
+        'Rewrite the voice assistant greeting so it invites a wider set of '
+        'ideas than "let us talk about agents", and propose three options.';
+    final drafts = VoiceDrafts();
+    await tester.pumpWidget(
+      app(
+        herd: FakeVoiceHerd(),
+        drafts: drafts,
+        agents: roster(),
+        onOpenAgent: (_) {},
+      ),
+    );
+    await tester.pump();
+    for (var i = 0; i < 2; i++) {
+      drafts.addLaunch(kind: 'claude', cwd: '/home/me/proj', brief: brief);
+      await tester.pump();
+    }
+    await tester.pump();
+
+    // Two long cards already overflow the cap, so the region scrolls.
+    expect(pinnedPosition(tester).maxScrollExtent, greaterThan(0));
+    // The user drags it to re-read the older card, parking it at the far end.
+    await tester.drag(
+      find.byKey(const ValueKey('voice_pending_drafts')),
+      const Offset(0, 600),
+    );
+    await tester.pumpAndSettle();
+    final parked = pinnedPosition(tester);
+    expect(parked.pixels, parked.maxScrollExtent);
+
+    drafts.addLaunch(kind: 'claude', cwd: '/home/me/proj', brief: brief);
+    await tester.pump();
+    await tester.pump();
+
+    // The newest card's button is reachable again: `reverse: true` only sets
+    // the initial anchor, so without a re-anchor the appended card lands
+    // below the parked viewport with no way to press it.
+    expectInsidePinned(tester, 'voice_launch_d3');
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('re-entering with drafts already pending leaves the scroll be', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    tester.view.padding = const FakeViewPadding(top: 141, bottom: 102);
+    addTearDown(tester.view.reset);
+    const brief =
+        'Rewrite the voice assistant greeting so it invites a wider set of '
+        'ideas than "let us talk about agents", and propose three options.';
+    // Drafted before this screen existed: the call outlives the route, so
+    // coming back from an agent's screen builds a fresh state over a pending
+    // section that is already full.
+    final drafts = VoiceDrafts();
+    for (var i = 0; i < 2; i++) {
+      drafts.addLaunch(kind: 'claude', cwd: '/home/me/proj', brief: brief);
+    }
+    await tester.pumpWidget(
+      app(
+        herd: FakeVoiceHerd(),
+        drafts: drafts,
+        agents: roster(),
+        onOpenAgent: (_) {},
+        // No call running, so nothing else notifies: the state's idea of how
+        // many cards there are is whatever it was built with.
+        start: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // The user scrolls up to re-read the older card...
+    await tester.drag(
+      find.byKey(const ValueKey('voice_pending_drafts')),
+      const Offset(0, 600),
+    );
+    await tester.pumpAndSettle();
+    final parked = pinnedPosition(tester).pixels;
+    expect(parked, greaterThan(0));
+
+    // ...and taps its Send: that notifies without adding a card, so nothing
+    // new has arrived and the section must stay where they left it.
+    drafts.markBusy(drafts.pending.first);
+    await tester.pump();
+    await tester.pump();
+
+    expect(pinnedPosition(tester).pixels, parked);
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
