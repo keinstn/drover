@@ -166,7 +166,14 @@ Already done for this project; recorded so a fresh setup can repeat it.
   function calling, `sendTextRealtime`, input and output transcription, and
   `SpeechConfig(languageCode: 'ja-JP')`.
 - Audio format: input PCM16 16 kHz mono, output PCM16 24 kHz.
-- Model: `gemini-3.1-flash-live-preview` on the Developer API backend.
+- Model: `gemini-3.8-live` on the Developer API backend, since 2026-09-21.
+  It replaced `gemini-3.1-flash-live-preview`, which Google now lists as the
+  legacy preview model to migrate off; the two share a pricing row, so the
+  move cost nothing. On the minted-token path `voiceModel` in
+  `functions/src/index.ts` is what actually decides the model — the token's
+  `fieldMask` freezes it and `kVoiceModel` is ignored — so a future model can
+  be swapped server side without shipping a build. See
+  [voice-billing.md](voice-billing.md).
 - Session limits: the server caps a single Live connection at roughly ten
   minutes, but a drop no longer ends the conversation (2026-09-13). Every
   connect asks for session resumption and sliding-window context-window

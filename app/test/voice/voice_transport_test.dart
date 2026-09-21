@@ -132,7 +132,14 @@ void main() {
     expect(setup['system_instruction'], isNotNull);
     expect(setup['tools'], isNotNull);
     expect(setup['output_audio_transcription'], isNotNull);
-    expect(setup['contextWindowCompression'], isNotNull);
+    // Both numbers, exactly: with either missing the mechanism never fires
+    // and the prompt grows for the whole session, and a `targetTokens` under
+    // the ~1,800-token per-turn floor drops the conversation outright instead
+    // of trimming it. See `voiceGenerationConfig`.
+    expect(setup['contextWindowCompression'], {
+      'triggerTokens': 5000,
+      'slidingWindow': {'targetTokens': 3000},
+    });
     expect(setup['session_resumption'], <String, Object?>{});
     expect(
       (setup['generation_config']! as Map<String, Object?>)['speechConfig'],

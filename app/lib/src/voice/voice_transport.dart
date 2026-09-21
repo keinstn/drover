@@ -12,10 +12,13 @@ import 'voice_tools.dart';
 /// Gemini Live model used for the voice assistant (Firebase AI Logic, Gemini
 /// Developer API backend — no API key ships in the app).
 ///
-/// On the minted-token path this has to stay equal to `voiceModel` in
-/// `functions/src/index.ts`, which the token's `fieldMask` freezes: bump one
-/// without the other and the constrained endpoint refuses every session.
-const kVoiceModel = 'gemini-3.1-flash-live-preview';
+/// On the minted-token path this value is ignored: the token's `fieldMask`
+/// freezes `model`, so `voiceModel` in `functions/src/index.ts` decides which
+/// model the session runs on and a mismatch here changes nothing (measured
+/// 2026-09-21, see docs/voice-billing.md). It still decides the model on the
+/// [FirebaseVoiceTransport] path, which connects through Firebase AI Logic
+/// with no token and no mask, so keep the two in sync for that reason.
+const kVoiceModel = 'gemini-3.8-live';
 
 const kVoiceSystemPrompt = '''
 You are the voice concierge for drover, a phone app that manages AI coding
@@ -62,9 +65,26 @@ LiveGenerationConfig voiceGenerationConfig(String languageCode) =>
       inputAudioTranscription: AudioTranscriptionConfig(),
       outputAudioTranscription: AudioTranscriptionConfig(),
       // Keeps the conversation inside the model's context window across a
-      // resumed connection by dropping the oldest turns.
+      // resumed connection by dropping the oldest turns. Without both numbers
+      // the mechanism never fires, so the prompt grows every turn and the
+      // session pays the quadratic described in docs/voice-billing.md.
+      //
+      // 5,000 sits above where an ordinary call ends — six to eight turns
+      // never reach it, so nothing about a normal conversation changes — and
+      // a dense call is clipped there instead of paying for all of its audio
+      // again on every later turn. 3,000 is what survives a clip, and it has
+      // to stay comfortably above the per-turn floor: the system prompt and
+      // the tool declarations cannot be compressed away, so a target below
+      // the floor drops the conversation outright rather than trimming it.
+      // drover's floor is around 1,800 tokens (measured 2026-09-21), leaving
+      // roughly 1,200 tokens of actual conversation — the last few turns,
+      // which is what `draft_message` → confirm → `send_message` needs to
+      // still see. The floor grows with the system prompt and the tool
+      // declarations, so that margin shrinks as those grow; raise
+      // `targetTokens` with them.
       contextWindowCompression: ContextWindowCompressionConfig(
-        slidingWindow: SlidingWindow(),
+        triggerTokens: 5000,
+        slidingWindow: SlidingWindow(targetTokens: 3000),
       ),
     );
 
