@@ -365,6 +365,16 @@ class VoiceSession extends ChangeNotifier {
   /// offered a handle to resume it on.
   bool get resumable => _suspended && _resumeHandle != null;
 
+  /// Whether this is still the same call, parked and inside its cap — which
+  /// is the billing question, not [resumable]'s question of whether the Live
+  /// *conversation* can be picked up again. [start] keeps [_sessionId] for
+  /// any park, handle or none, so continuing one re-mints inside the
+  /// server's reuse window and costs nothing; a session thrown away while
+  /// this holds buys a second credit for a call already paid for. Once the
+  /// cap has passed there is nothing left to continue: the next call is a
+  /// new one and pays.
+  bool get parked => _suspended && (_capDeadline?.isAfter(_now()) ?? false);
+
   bool _stale(int generation) => generation != _generation || !_active;
 
   /// Connects and goes live. Callable again after [stop]; a stopped
@@ -396,11 +406,14 @@ class VoiceSession extends ChangeNotifier {
     // the same Live conversation be picked up (which needs a handle, and only
     // decides what [_connect] is given). Both marks are consumed here —
     // one park buys one resume.
-    final parked = _suspended;
+    //
+    // The raw mark, not the [parked] getter: that one asks whether the park
+    // is *still* good, which is the very thing the deadline below works out.
+    final wasParked = _suspended;
     final continuing = resumable;
     _suspended = false;
     final deadline =
-        (parked ? _capDeadline : null) ?? _now().add(kVoiceSessionCap);
+        (wasParked ? _capDeadline : null) ?? _now().add(kVoiceSessionCap);
     _capDeadline = deadline;
     if (!deadline.isAfter(_now())) {
       // Came back after the cap ran out while away. Nothing is active, so
@@ -413,7 +426,7 @@ class VoiceSession extends ChangeNotifier {
     }
     final gen = ++_generation;
     _active = true;
-    if (!parked) {
+    if (!wasParked) {
       _usage = VoiceUsage();
       _connected = Duration.zero;
       // One conversation, one id, however many times it reconnects — and so
@@ -853,14 +866,17 @@ class VoiceSession extends ChangeNotifier {
   Future<void> _end() => _ending = _endAndSettle();
 
   Future<void> _endAndSettle() async {
-    final parked = _suspended;
+    // The raw mark rather than the [parked] getter: this runs as the call is
+    // being put down, and what it needs to know is whether a park asked for
+    // it, not whether that park is still worth resuming.
+    final wasParked = _suspended;
     await _teardown();
     // After the teardown, not before: a SessionResumptionUpdate already
     // queued on the [_rx] chain can land while it runs and re-arm the handle.
     // A handle must not outlive the conversation it belongs to — left behind
     // by, say, the cap, a later park would stitch the killed conversation
     // back onto the next call.
-    if (!parked) _resumeHandle = null;
+    if (!wasParked) _resumeHandle = null;
     if (_status == VoiceSessionStatus.ended ||
         _status == VoiceSessionStatus.error) {
       return;
@@ -869,7 +885,7 @@ class VoiceSession extends ChangeNotifier {
     // it is about to come back and send, and no usage readout — that lands
     // once, at the end that finishes the call, and covers all of it. The
     // status still flips, because the screen and [start] both key on it.
-    if (parked) {
+    if (wasParked) {
       _setStatus(VoiceSessionStatus.ended);
       return;
     }
