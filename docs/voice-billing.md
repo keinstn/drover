@@ -111,8 +111,8 @@ bounds the variance. Credits that drain with measured use need the relay.
 
 Nothing is sold yet, but the app ships publicly, so credits have to get into a
 wallet without somebody typing them. The campaign is that: a handful of free
-credits per account per month, and one ceiling over the whole thing so the
-bill cannot run away while nobody is watching.
+credits per account, and one ceiling over the whole thing so the bill cannot
+run away while nobody is watching.
 
 Its dials live in `config/voiceCampaign`, a document edited by hand in the
 Firebase console the same way credits are:
@@ -122,7 +122,7 @@ config/voiceCampaign
   callsUsed   number   calls the campaign has paid for so far
   callLimit   number   the ceiling                    (default 130)
   enabled     boolean  false is the emergency stop     (default true)
-  freeGrant   number   the monthly per-account allowance (default 5)
+  freeGrant   number   credits a new account is handed (default 5)
 ```
 
 Every field is optional and every one has a default in `functions/src/wallet.ts`
@@ -171,49 +171,25 @@ be noticed.
 
 ### Who gets the free credits
 
-`freeGrant` credits a month, and only to an account that is **not anonymous**.
-The app signs in anonymously at launch and links Sign in with Apple later, and
-an anonymous install that is deleted and reinstalled comes back under a fresh
-uid — granting to it would be a faucet rather than a campaign. Being linked to
-Apple is what makes an account outlive a reinstall, and so what makes a
-per-account allowance mean anything. A callable reads this off the verified ID
-token as `request.auth.token.firebase.sign_in_provider`, which is
+`freeGrant` credits, once per account, and only to an account that is **not
+anonymous**. The app signs in anonymously at launch and links Sign in with
+Apple later, and an anonymous install that is deleted and reinstalled comes
+back under a fresh uid — granting to it would be a faucet rather than a
+campaign. Being linked to Apple is what makes an account outlive a reinstall,
+and so what makes "once" mean anything. A callable reads this off the verified
+ID token as `request.auth.token.firebase.sign_in_provider`, which is
 `"anonymous"` until the link and `"apple.com"` after. An anonymous caller gets
 nothing and no error: a zero balance, and the ordinary `noCredits` refusal when
 it tries to call.
 
-**Monthly rather than once for the life of the account**, because a one-time
-grant only ever answers "did they use it up", where a monthly one shows the
-*sustained* rate — calls per account per month is the number a price has to be
-set against, and it is invisible if everyone is spending a one-off allowance.
-It also bounds each account's exposure per month instead of for all time.
-
-The month is a UTC year-month stamped on the wallet as `campaignGrantPeriod`
-(`"2026-09"`). A grant is due when that stamp is absent, stale, or anything
-other than the current month. UTC rather than the account's own month because
-the Function has no idea where the account is, and one instant the world over
-is easier to reason about than a boundary that depends on a guess — in Japan
-the refill lands at 09:00 on the 1st.
-
-**It tops up to `freeGrant`; it does not add `freeGrant`.** The figure written
-is `freeGrant` less what is already there, so a balance of 3 gets 2, a balance
-of 0 gets 5, and a balance already at or above the allowance gets nothing.
-Credits therefore do not pile up across months in which nobody called: however
-long an account has been away, its month is worth `freeGrant` calls. The rule
-also cannot ever *reduce* a balance, which is what makes it safe the day
-purchased credits share this field.
-
-A top-up of nothing still stamps the month — that account has had its
-allowance — but writes no ledger row: the row records the actual delta, and
-"granted 0 credits" is a blank line in the activity list. The rows it does
-write are `campaignGrant`, like every other movement, so the credits are
-reconcilable rather than unexplained.
-
-The grant happens lazily, at either of the two places a signed-in user touches
+The grant happens lazily, on either of the two places a signed-in user touches
 the wallet — the `voiceWallet` callable, so Settings shows a real balance the
 moment it is opened, and `mintVoiceToken`, so somebody who never opens Settings
-still gets their calls. It runs in a transaction that reads the stamp, which is
-the only thing stopping two concurrent calls from both granting.
+still gets their first call. It runs in a transaction that reads a
+`campaignGrantedAt` mark on the wallet, which is the only thing stopping two
+concurrent calls from both granting, and it writes a `campaignGrant` ledger row
+like every other movement so the credits are reconcilable rather than
+unexplained.
 
 It does **not** touch `callsUsed`. That counter tracks calls spent; an unspent
 grant has cost nothing, and bounding grants by the ceiling would reserve budget
@@ -221,12 +197,6 @@ against credits that may never be used. `enabled: false` does stop granting —
 the emergency stop means the campaign is over, and handing out credits nobody
 may spend is only a confusing balance. To stop the grant alone, set `freeGrant`
 to 0.
-
-One consequence worth planning for: a monthly allowance makes `callLimit` the
-binding constraint far sooner than a one-off did. At the defaults the campaign
-funds 26 account-months, so a dozen active accounts exhaust it in a couple of
-months. Expect to re-calibrate the ceiling on roughly that rhythm rather than
-setting it once.
 
 ## Purchase
 

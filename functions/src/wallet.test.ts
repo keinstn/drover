@@ -9,7 +9,6 @@ import {
   voiceCampaignCallLimit,
   voiceCampaignFreeGrant,
   voiceCampaignGrant,
-  voiceCampaignPeriod,
   voiceLedgerEntry,
   voiceMintDecision,
   voiceSessionReuseMs,
@@ -251,114 +250,38 @@ void test("lets a paid-for call finish after the campaign closes", () => {
   // nothing increments the campaign counter either.
 });
 
-void test("names the UTC month a moment falls in", () => {
-  // `Date.UTC` months are 0-based: 8 is September, 9 is October.
-  assert.equal(voiceCampaignPeriod(Date.UTC(2026, 8, 21, 12)), "2026-09");
-  // The boundary is UTC, so the last instant of September in London is still
-  // September even though it is already October in Tokyo.
-  assert.equal(
-    voiceCampaignPeriod(Date.UTC(2026, 8, 30, 23, 59, 59)),
-    "2026-09",
-  );
-  assert.equal(voiceCampaignPeriod(Date.UTC(2026, 9, 1, 0, 0, 0)), "2026-10");
-});
+void test("grants the free credits once, and never to an anonymous account", () => {
+  const grant = (signInProvider: unknown, grantedAt: unknown = null) =>
+    voiceCampaignGrant({ signInProvider, grantedAt, campaign: openCampaign });
 
-// A grant as the wallet asks for it: `null` for "nothing to write", otherwise
-// the credits to add, which may be 0 and still stamps the month.
-function grant(
-  fields: {
-    signInProvider?: unknown;
-    grantedPeriod?: unknown;
-    credits?: unknown;
-    campaign?: VoiceCampaign;
-    nowMs?: number;
-  } = {},
-): number | null {
-  return voiceCampaignGrant({
-    signInProvider:
-      "signInProvider" in fields ? fields.signInProvider : "apple.com",
-    grantedPeriod: fields.grantedPeriod ?? null,
-    credits: fields.credits ?? 0,
-    campaign: fields.campaign ?? openCampaign,
-    nowMs: fields.nowMs ?? Date.UTC(2026, 8, 21),
-  });
-}
-
-void test("grants once a month, not once an account", () => {
+  assert.equal(grant("apple.com"), voiceCampaignFreeGrant);
   assert.equal(
-    grant(),
-    voiceCampaignFreeGrant,
-    "no stamp at all means a grant",
-  );
-  assert.equal(
-    grant({ grantedPeriod: "2026-09" }),
-    null,
-    "a second touch in the same month must not grant again",
-  );
-  assert.equal(
-    grant({ grantedPeriod: "2026-08" }),
-    voiceCampaignFreeGrant,
-    "the month rolling over is what makes the next grant due",
-  );
-  assert.equal(
-    grant({ grantedPeriod: 20260901 }),
-    voiceCampaignFreeGrant,
-    "a hand-edited stamp that is not this month is not this month",
-  );
-});
-
-void test("tops the balance up to the allowance instead of adding to it", () => {
-  assert.equal(grant({ credits: 0 }), voiceCampaignFreeGrant);
-  assert.equal(grant({ credits: 3 }), voiceCampaignFreeGrant - 3);
-  assert.equal(
-    grant({ credits: voiceCampaignFreeGrant }),
+    grant("apple.com", new Date()),
     0,
-    "a balance already at the allowance is topped up by nothing, not refilled",
+    "the mark on the wallet is what makes the grant happen only once",
   );
   assert.equal(
-    grant({ credits: 99 }),
+    grant("anonymous"),
     0,
-    "a top-up must never reduce a balance, whatever is sitting in the field",
-  );
-  // The stamp still goes down at 0, so the month is spent. That is what bounds
-  // an account to `freeGrant` calls a month however long it has been away.
-  assert.notEqual(grant({ credits: 99 }), null);
-});
-
-void test("writes no ledger row for a top-up of nothing", () => {
-  // `0` and `null` are different answers: `0` stamps the month and records
-  // nothing, `null` writes nothing at all. The caller keys the ledger row off
-  // exactly this.
-  assert.equal(grant({ credits: voiceCampaignFreeGrant }), 0);
-  assert.equal(grant({ grantedPeriod: "2026-09" }), null);
-});
-
-void test("reads a junk balance as nothing before topping up", () => {
-  assert.equal(grant({ credits: "3" }), voiceCampaignFreeGrant);
-  assert.equal(grant({ credits: -4 }), voiceCampaignFreeGrant);
-  assert.equal(grant({ credits: 2.7 }), voiceCampaignFreeGrant - 2);
-});
-
-void test("never grants to an anonymous account", () => {
-  assert.equal(
-    grant({ signInProvider: "anonymous" }),
-    null,
     "an anonymous install comes back under a fresh uid, so granting is a faucet",
   );
-  assert.equal(grant({ signInProvider: undefined }), null);
-  assert.equal(grant({ signInProvider: 42 }), null);
+  assert.equal(grant(undefined), 0);
+  assert.equal(grant(42), 0);
 });
 
 void test("stops granting when the campaign is stopped, but not at the ceiling", () => {
+  const grant = (campaign: VoiceCampaign) =>
+    voiceCampaignGrant({
+      signInProvider: "apple.com",
+      grantedAt: null,
+      campaign,
+    });
+
   assert.equal(
-    grant({ campaign: campaignAt({ callsUsed: voiceCampaignCallLimit }) }),
+    grant(campaignAt({ callsUsed: voiceCampaignCallLimit })),
     voiceCampaignFreeGrant,
     "an unspent credit costs nothing, so the call ceiling must not bound grants",
   );
-  assert.equal(grant({ campaign: campaignAt({ enabled: false }) }), null);
-  assert.equal(
-    grant({ campaign: campaignAt({ freeGrant: 0 }) }),
-    null,
-    "an allowance of nothing writes nothing, not even a stamp every month",
-  );
+  assert.equal(grant(campaignAt({ enabled: false })), 0);
+  assert.equal(grant(campaignAt({ freeGrant: 0 })), 0);
 });

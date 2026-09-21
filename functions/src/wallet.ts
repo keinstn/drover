@@ -37,7 +37,7 @@ export const voiceSessionReuseMs = 6 * 60 * 1000;
 // export lags about a day, so spend cannot be metered live.
 export const voiceCampaignCallLimit = 130;
 
-// What one account is topped up to at the start of each month.
+// What one new account is handed, once.
 export const voiceCampaignFreeGrant = 5;
 
 export interface VoiceCampaign {
@@ -83,67 +83,32 @@ export function voiceCampaignOpen(campaign: VoiceCampaign): boolean {
   );
 }
 
-// The UTC year-month a moment falls in, "2026-09". Stamped on the wallet as
-// `campaignGrantPeriod`, it is what says which month's grant an account has
-// already had.
+// How many credits to hand this account as its campaign grant — 0 for none.
 //
-// UTC, not the account's own month: the Function has no idea where the account
-// is, and one instant the world over is easier to reason about than a boundary
-// that depends on a guess. In Japan the refill lands at 09:00 on the 1st.
-export function voiceCampaignPeriod(nowMs: number): string {
-  return new Date(nowMs).toISOString().slice(0, 7);
-}
-
-// What to top this account up by for the current month — `null` when nothing
-// should be written at all, otherwise the credits to add, which may be 0.
+// Once per account, and never to an anonymous one. An anonymous install that
+// is deleted and reinstalled comes back under a fresh uid, so granting to it
+// would be a faucet rather than a campaign; signing in with Apple is what
+// makes an account outlive a reinstall, and so what makes "once" mean
+// anything. An anonymous caller gets nothing and no error — a zero balance,
+// and the ordinary refusal when it tries to call.
 //
-// Monthly rather than once for the account's whole life. A one-time grant only
-// ever answers "did they use it up"; a monthly one shows the sustained rate,
-// which is the number a price has to be set against, and it bounds an account
-// to `freeGrant` calls a month rather than `freeGrant` ever.
+// `grantedAt` is the mark on the wallet. The caller writes it in the same
+// commit as the credits, which is what keeps two concurrent calls from both
+// granting.
 //
-// A *top-up*, not an addition: the figure is `freeGrant` less what is already
-// there, so somebody holding 3 gets 2 and somebody holding 5 gets nothing.
-// That is what keeps a month's allowance at `freeGrant` however long the
-// account has been away — credits do not pile up across months — and it can
-// never reduce a balance, which will matter the day purchased credits share
-// this field.
-//
-// 0 is not the same answer as `null`. A balance that already covers the month
-// has had its allowance, so the period is stamped and nothing else happens;
-// the caller writes no ledger row, because "granted 0 credits" is a blank line
-// in the activity list. `null` means this account is not owed a grant at all.
-//
-// Never to an anonymous one: an anonymous install that is deleted and
-// reinstalled comes back under a fresh uid, so granting to it would be a
-// faucet rather than a campaign, and signing in with Apple is what makes an
-// account outlive a reinstall. An anonymous caller gets nothing and no error
-// — a zero balance, and the ordinary refusal when it tries to call.
-//
-// The caller stamps the period in the same commit as the credits, which is
-// what keeps two concurrent calls from both granting.
-//
-// The ceiling does not bound any of this: an unspent credit costs nothing, and
+// The ceiling does not bound this: an unspent credit costs nothing, and
 // `callsUsed` counts calls made, not credits handed out. `enabled: false`
 // does, because the emergency stop means the campaign is over and credits
 // nobody may spend are only a confusing balance.
 export function voiceCampaignGrant(input: {
   signInProvider: unknown;
-  grantedPeriod: unknown;
-  credits: unknown;
+  grantedAt: unknown;
   campaign: VoiceCampaign;
-  nowMs: number;
-}): number | null {
-  if (!voiceGrantEligible(input.signInProvider)) return null;
-  if (!input.campaign.enabled) return null;
-  // An allowance of nothing is the way to switch the grant off on its own,
-  // so it writes nothing at all — not even a stamp, which would otherwise be
-  // one pointless wallet write per account per month forever.
-  if (input.campaign.freeGrant <= 0) return null;
-  // Absent, stale, or hand-edited into something that is not this month: all
-  // of them mean the month's grant has not been handed out yet.
-  if (input.grantedPeriod === voiceCampaignPeriod(input.nowMs)) return null;
-  return Math.max(0, input.campaign.freeGrant - walletCredits(input.credits));
+}): number {
+  if (input.grantedAt != null) return 0;
+  if (!voiceGrantEligible(input.signInProvider)) return 0;
+  if (!input.campaign.enabled) return 0;
+  return input.campaign.freeGrant;
 }
 
 // Whether this sign-in could ever be granted to, from

@@ -32,7 +32,6 @@ import {
   voiceCallCost,
   voiceCampaign,
   voiceCampaignGrant,
-  voiceCampaignPeriod,
   voiceGrantEligible,
   voiceLedgerEntry,
   voiceMintDecision,
@@ -577,15 +576,15 @@ function readVoiceCampaign(document: DocumentSnapshot): VoiceCampaign {
   );
 }
 
-// Tops an account up to the campaign's monthly allowance, and stamps the
-// month so it happens once per month rather than once per call.
+// Hands an account the campaign's free credits, once, and writes the ledger
+// row and the mark that says it happened.
 //
 // Lazily, and from the one place both callables reach: `voiceWallet`, so
 // Settings shows a real balance the moment it is opened, and `mintVoiceToken`,
-// so somebody who never opens Settings can still make their first call. What
-// an account is owed is decided by `voiceCampaignGrant`; this only writes it.
+// so somebody who never opens Settings can still make their first call. Who
+// is owed a grant is decided by `voiceCampaignGrant`; this only writes it.
 //
-// A transaction, because the stamp it reads is the only thing stopping two
+// A transaction, because the mark it reads is the only thing stopping two
 // concurrent calls from both granting.
 //
 // Nothing here touches `callsUsed`: that counter tracks calls spent, and an
@@ -599,36 +598,26 @@ async function grantCampaignCredits(
   if (!voiceGrantEligible(signInProvider)) return;
   const wallet = walletRef(uid);
   const campaign = voiceCampaignRef();
-  const nowMs = Date.now();
   await db.runTransaction(async (transaction) => {
     const [walletDocument, campaignDocument] = await Promise.all([
       transaction.get(wallet),
       transaction.get(campaign),
     ]);
-    const credits = walletDocument.get("credits");
     const granted = voiceCampaignGrant({
       signInProvider,
-      grantedPeriod: walletDocument.get("campaignGrantPeriod"),
-      credits,
+      grantedAt: walletDocument.get("campaignGrantedAt"),
       campaign: readVoiceCampaign(campaignDocument),
-      nowMs,
     });
-    if (granted === null) return;
-    // The stamp goes down even for a top-up of nothing: an account that was
-    // already at the allowance has had this month's, and without the stamp
-    // every later call would ask again.
+    if (granted === 0) return;
     transaction.set(
       wallet,
       {
-        credits: walletCredits(credits) + granted,
-        campaignGrantPeriod: voiceCampaignPeriod(nowMs),
+        credits: walletCredits(walletDocument.get("credits")) + granted,
+        campaignGrantedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
     );
-    // A top-up of nothing moved no credits, so there is nothing to record. A
-    // ledger row of 0 would be a blank line in the activity list.
-    if (granted === 0) return;
     transaction.set(ledgerRef(uid), {
       type: "campaignGrant",
       credits: granted,
