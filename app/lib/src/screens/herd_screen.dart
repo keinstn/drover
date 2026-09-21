@@ -788,6 +788,18 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
     bool fromVoice = false,
   }) async {
     final bucket = _bucketFor(host.hostId);
+    // Only the voice host's own agents are named to the model: the session's
+    // tools talk to that one host's client, so an agent anywhere else is a
+    // name it could not read, message or act on — and the point of the hint
+    // is to resolve "it" to something the model can actually work with. No
+    // session means no host, so the report is withheld there too.
+    //
+    // Decided here rather than in the route builder, which can run more than
+    // once: the same ceiling [canDictate] below carries, and for the same
+    // reason — one screen, one answer, settled when it is pushed.
+    final reportFocus = host.hostId == _voiceHost?.hostId
+        ? _reportVoiceFocus
+        : null;
     _stopPolling();
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -810,6 +822,7 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
           // the user goes back and in again. Thread a listenable through if
           // that turns out to annoy in use.
           canDictate: !_voiceOnTheWire,
+          onVoiceFocus: reportFocus,
           paneId: agent.paneId,
           initialAgent: agent,
           initialAgents: bucket.agents,
@@ -826,6 +839,19 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
     _startPolling();
     for (final inScope in _hostsInScope) {
       unawaited(_loadHost(inScope));
+    }
+  }
+
+  /// Tells the conversation which agent's screen the user is on, from an
+  /// [AgentScreen] that was handed this callback. Read off [_voiceSession]
+  /// at call time rather than captured: the retained conversation can be
+  /// dropped and replaced while an agent screen sits on top of it, and both
+  /// halves are safe no-ops on a null or already-moved-on session.
+  void _reportVoiceFocus(AgentInfo agent, {required bool focused}) {
+    if (focused) {
+      _voiceSession?.focusAgent(agent);
+    } else {
+      _voiceSession?.releaseFocus(agent.paneId);
     }
   }
 

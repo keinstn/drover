@@ -6,6 +6,7 @@ import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/agent_info.dart';
 import 'voice_audio.dart';
 import 'voice_drafts.dart';
 import 'voice_herd.dart';
@@ -412,6 +413,11 @@ class VoiceSession extends ChangeNotifier {
     final wasParked = _suspended;
     final continuing = resumable;
     _suspended = false;
+    // A conversation the server is not restoring begins knowing nothing, so
+    // what the last one was told about the focus is forgotten with it —
+    // left behind it would read as agreement, and the new conversation would
+    // never hear which screen is open.
+    if (!continuing) _sentFocusPaneId = null;
     final deadline =
         (wasParked ? _capDeadline : null) ?? _now().add(kVoiceSessionCap);
     _capDeadline = deadline;
@@ -541,6 +547,12 @@ class VoiceSession extends ChangeNotifier {
       onError: (Object e) => unawaited(_lost(gen, '$e')),
       onDone: () => unawaited(_lost(gen, null)),
     );
+    // The one place a transport is known good, on the first connect and on
+    // every resume alike. Anything the model has not been told about the
+    // focus goes out here: a hint that fell into the null window this
+    // connect closes, or the screen that was already open when the call
+    // began.
+    _syncFocus();
   }
 
   /// The connection dropped ([error] null when it closed cleanly). The server
@@ -726,6 +738,98 @@ class VoiceSession extends ChangeNotifier {
       default:
         break;
     }
+  }
+
+  /// Which agent's screen the user has open, or null when none is: where
+  /// the user actually is, as [focusAgent] and [releaseFocus] report it and
+  /// whether or not anything has reached the wire yet.
+  AgentInfo? _focusAgent;
+
+  /// The pane the model was last *told* about, written only once a send has
+  /// actually gone out. The pair is the whole mechanism: [_syncFocus] speaks
+  /// whenever the two disagree and says nothing while they agree, so a hint
+  /// that never made it — the socket was gone, the send threw — is not
+  /// recorded as delivered and the next connect says it again. Forgotten by
+  /// a [start] that opens a conversation the server is not restoring, which
+  /// has been told nothing.
+  ///
+  /// ponytail: "told" is never confirmed, and the live config compacts the
+  /// context window by dropping the oldest turns
+  /// ([voiceGenerationConfig]), so a focus injected early in a long call can
+  /// fall out of the model's context while this still records it as known.
+  /// Re-send it periodically if a long call is ever seen forgetting which
+  /// screen is open.
+  String? _sentFocusPaneId;
+
+  /// Reports that the user is now looking at [agent]'s screen, so an unnamed
+  /// agent resolves to the one in front of the user rather than to the most
+  /// recent event's — see the `[focus]` bullet in [kVoiceSystemPrompt]. A
+  /// pane that already has the focus is a no-op, so the screens may call
+  /// this on every build rather than only on a change.
+  ///
+  /// Reports rather than sends: what goes on the wire is [_syncFocus]'s
+  /// business, and it may be nothing (the model already knows) or may happen
+  /// later (on the next connect).
+  ///
+  /// Deliberately logs no [VoiceEntry]: focus is navigation, not
+  /// conversation, and a transcript line on every screen change would bury
+  /// the conversation it is meant to help.
+  void focusAgent(AgentInfo agent) {
+    if (_focusAgent?.paneId == agent.paneId) return;
+    _focusAgent = agent;
+    _syncFocus();
+  }
+
+  /// Reports that [paneId]'s screen is gone — unless the focus has already
+  /// moved on. The guard is what makes a switch between two agents work: the
+  /// bottom bar builds the incoming screen before the outgoing one is
+  /// disposed, so the release arrives second and would otherwise undo the
+  /// focus the incoming screen just set.
+  void releaseFocus(String paneId) {
+    if (_focusAgent?.paneId != paneId) return;
+    _focusAgent = null;
+    _syncFocus();
+  }
+
+  /// Tells the model where the user is, unless that is already what it was
+  /// told. Queued on [_announcing] behind whatever else is being said and
+  /// gated on [_awaitPlaybackEnd] for the same reason [_announce] is: Gemini
+  /// Live treats injected text as a barge-in, and a hint sent mid-sentence
+  /// cuts the model off.
+  ///
+  /// Everything is read at send time rather than captured when queued, so
+  /// coalescing falls out of the same comparison: a run of switches says
+  /// only where the user ended up, and a screen opened and left again while
+  /// one hint waits out the playback agrees with what the model was told by
+  /// the time the wait ends, so nothing is sent at all — the two cancel
+  /// instead of barging in twice to say nothing changed.
+  ///
+  /// A send that finds no transport — the window a reconnect leaves open —
+  /// or that fails leaves [_sentFocusPaneId] alone, which is exactly what
+  /// makes [_bind] pick the hint up on the other side of the reconnect.
+  void _syncFocus() {
+    _announcing = _announcing.then((_) async {
+      if (!_active || _focusAgent?.paneId == _sentFocusPaneId) return;
+      if (!await _awaitPlaybackEnd()) return;
+      final agent = _focusAgent;
+      if (agent?.paneId == _sentFocusPaneId) return;
+      final transport = _transport;
+      if (transport == null) return;
+      try {
+        await transport.sendText(
+          agent == null
+              ? "[focus] The user is no longer looking at any agent's screen."
+              : '[focus] The user is now looking at '
+                    "${voiceAgentTitle(agent)}'s screen.",
+        );
+      } catch (_) {
+        // Swallowed on purpose, and twice over: an error escaping here would
+        // reject [_announcing] and silence every announcement behind it, and
+        // the unrecorded send is retried by the next [_bind] anyway.
+        return;
+      }
+      _sentFocusPaneId = agent?.paneId;
+    });
   }
 
   /// Tells the model about [events] as injected text, logging one entry per

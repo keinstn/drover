@@ -152,6 +152,7 @@ class AgentScreen extends StatefulWidget {
     this.nativeHistoryResolver,
     this.showComposerFor,
     this.backToVoice = false,
+    this.onVoiceFocus,
     this.pollInterval = const Duration(seconds: 2),
   });
 
@@ -217,6 +218,21 @@ class AgentScreen extends StatefulWidget {
   /// the way out reads as part of the call, not as plain chrome.
   final bool backToVoice;
 
+  /// Reports this screen's agent to a live voice call as the one the user is
+  /// looking at — `focused: true` when the screen opens, false when it goes.
+  /// The model then resolves an unnamed agent ("what is it waiting for?") to
+  /// the screen in front of the user instead of guessing or asking.
+  ///
+  /// Null reports nothing, which is the right answer wherever the report
+  /// would be a lie or a dead end: previews and the demo have no call at all,
+  /// and [HerdScreen] withholds it for an agent on a host the session is not
+  /// scoped to — see the comment where it does.
+  ///
+  /// A callback rather than the session itself, because this screen has no
+  /// business knowing a voice call exists: it reports where the user is, and
+  /// whoever owns the conversation decides what that is worth.
+  final void Function(AgentInfo agent, {required bool focused})? onVoiceFocus;
+
   final Duration pollInterval;
 
   @override
@@ -225,6 +241,13 @@ class AgentScreen extends StatefulWidget {
 
 class _AgentScreenState extends State<AgentScreen> {
   AgentInfo? _agent;
+
+  /// The agent reported to the voice call by [AgentScreen.onVoiceFocus], or
+  /// null when nothing was. Held rather than re-read from [_agent], which the
+  /// poll refreshes: the release has to name the pane the focus named, and a
+  /// release for a pane nobody focused is what the session would silently
+  /// drop.
+  AgentInfo? _voiceFocused;
   // All running agents from the latest `listAgents()` poll (seeded from
   // `widget.initialAgents`), used to derive the current agent (by pane id)
   // and to drive the bottom switcher bar.
@@ -320,6 +343,19 @@ class _AgentScreenState extends State<AgentScreen> {
       );
     }
     _agent = widget.initialAgent;
+    // Reported from here, before the first `listAgents` lands, so a call
+    // already on the wire learns where the user went as they go — not one
+    // SSH round-trip later.
+    //
+    // ponytail: a screen opened without an [AgentScreen.initialAgent] never
+    // reports at all, because there is nothing to name yet. No caller does
+    // that today; report from the first [_load] that resolves the agent if
+    // one ever starts to.
+    final focused = widget.initialAgent;
+    if (focused != null && widget.onVoiceFocus != null) {
+      _voiceFocused = focused;
+      widget.onVoiceFocus!(focused, focused: true);
+    }
     _workspaceLabel = widget.initialWorkspaceLabel;
     _load();
     if (_agent != null && _workspaceLabel == null) _loadWorkspaceLabel();
@@ -330,6 +366,12 @@ class _AgentScreenState extends State<AgentScreen> {
   void dispose() {
     _timer?.cancel();
     _keyRefreshTimer?.cancel();
+    // The screen the user was looking at is going. A bar switch builds the
+    // replacement before this runs, so this release lands *after* the
+    // incoming screen's focus — the session guards on the pane id and drops
+    // the stale one rather than blanking the focus just set.
+    final focused = _voiceFocused;
+    if (focused != null) widget.onVoiceFocus?.call(focused, focused: false);
     if (_dictationStarting || _dictating) {
       unawaited(_speechInput.cancel());
     }
@@ -1027,6 +1069,9 @@ class _AgentScreenState extends State<AgentScreen> {
           // The way out is still the call this screen was opened from: a bar
           // switch replaces the route, so the pop destination never changed.
           backToVoice: widget.backToVoice,
+          // And the call is still the same call, so the agent the bar moved
+          // to is the one to report next.
+          onVoiceFocus: widget.onVoiceFocus,
           imagePicker: widget.imagePicker,
           draftStore: widget.draftStore,
           draftKeyPrefix: widget.draftKeyPrefix,
