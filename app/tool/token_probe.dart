@@ -41,6 +41,11 @@
 //     name. Over REST it is `bidiGenerateContentSetup` plus a `fieldMask`
 //     naming the frozen fields; `liveConnectConstraints` is a 400.
 //
+// Live model names move faster than this file does — Q4's `other` may have
+// gone stale by the time it runs. `mint()` prints the response body on every
+// mint regardless of status, so a bad name shows up immediately as a mint
+// failure rather than a silent no-op.
+//
 // The key is read from the environment only — never a file, never an argument
 // (arguments show up in `ps`). Minted tokens and resumption handles are
 // credentials too, so only a short prefix of one is ever printed, and every
@@ -327,6 +332,12 @@ class Live {
       final message = await _inbox.next.timeout(wait);
       final usage = message['usageMetadata'];
       if (usage != null) say('  <- usageMetadata ${jsonEncode(usage)}');
+      // Which model actually answered — not documented on this path, so
+      // print it if present rather than assume the field name. Q4 is what
+      // this exists for; the setupComplete frame already prints raw, so a
+      // model identifier arriving on that frame instead needs no extra code.
+      final version = message['modelVersion'];
+      if (version != null) say('  <- modelVersion $version');
       final update =
           message['sessionResumptionUpdate'] as Map<String, Object?>?;
       if (update != null) {
@@ -660,39 +671,58 @@ Future<void> _q3() async {
   }
 }
 
-/// Q4: is the model lock enforced, or advisory? `liveConnectConstraints` is
-/// the *SDK* name; over REST the field is `bidiGenerateContentSetup` plus a
-/// `fieldMask` saying which of its fields are frozen (from js-genai's
+/// Q4: not just whether the model lock is enforced, but which model actually
+/// serves a locked session — this is drover's real migration question, since
+/// `gemini-3.1-flash-live-preview` (`_model`, still what shipped app builds
+/// send) is now the legacy preview of `gemini-3.8-live` (`other`), the
+/// documented "New Stable" replacement in the same pricing row. If a Cloud
+/// Function can mint a token locked to the new model while the client setup
+/// still names the old one, the model can be migrated server-side with no app
+/// release. The mint below locks to `other`; the connect below asks for
+/// `_model` and takes a real turn, printing any model identifier the server
+/// reports on its frames — that identifier is the answer, not just whether
+/// the connection was accepted. `liveConnectConstraints` is the *SDK* name;
+/// over REST the field is `bidiGenerateContentSetup` plus a `fieldMask`
+/// saying which of its fields are frozen (from js-genai's
 /// `convertBidiSetupToTokenSetup`) — the prose docs name neither.
 Future<void> _q4() async {
-  const other = 'models/gemini-2.5-flash-native-audio-preview-09-2025';
+  const other = 'models/gemini-3.8-live';
   final token = await mint({
     'uses': 3,
     ..._expiries(),
     'bidiGenerateContentSetup': {
-      'model': _model,
+      'model': other,
       'generationConfig': {
         'responseModalities': ['AUDIO'],
       },
     },
     'fieldMask': 'model,generationConfig.responseModalities',
-  }, label: '(locked to $_model)');
+  }, label: '(locked to $other)');
   if (token == null) return;
 
-  say('\n-- connect asking for the locked model');
-  final ok = await Live.open(token: token);
-  if (ok != null) await ok.close();
-
-  say('\n-- connect asking for a DIFFERENT real model ($other)');
-  final bad = await Live.open(token: token, model: other);
-  if (bad != null) {
-    await bad.turn('Reply with the single word one.');
-    await bad.close();
+  // Positive control, and the reference for what modelVersion prints when
+  // the client's request and the lock actually agree — without this, a
+  // failure on the mismatched connect below can't be told apart from
+  // "$other just doesn't serve over ephemeral tokens".
+  say('\n-- connect asking for the locked model ($other) itself');
+  final matched = await Live.open(token: token, model: other);
+  if (matched != null) {
+    await matched.turn('Reply with the single word one.');
+    await matched.close();
   }
 
-  // setupComplete on a different model is ambiguous: the server may have
-  // honoured the client's model, or ignored the field entirely. A model that
-  // cannot exist separates the two — accepted means the field is ignored.
+  say('\n-- connect asking for $_model, on a token locked to $other');
+  final locked = await Live.open(token: token, model: _model);
+  if (locked != null) {
+    await locked.turn('Reply with the single word one.');
+    await locked.close();
+  }
+
+  // setupComplete above is ambiguous by itself: the server may have honoured
+  // the client's model, or run the locked one instead — that is exactly what
+  // the modelVersion print inside turn() above is for. A model that cannot
+  // exist separates the two a different way: accepted means the field is
+  // ignored outright, model mismatch or not.
   say('\n-- connect asking for a NONEXISTENT model, on the locked token');
   final nonsense = await Live.open(token: token, model: 'models/not-a-model');
   if (nonsense != null) {
