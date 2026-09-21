@@ -82,3 +82,30 @@ export async function debitedMint<T>(
     throw error;
   }
 }
+
+// One ledger row as the app is allowed to see it. `sessionId` stays behind:
+// it correlates a row with one conversation, and the app has no use for it.
+//
+// A row that cannot be labelled or counted is dropped rather than returned —
+// the app renders these, and a malformed one would be a blank line it has no
+// words for. The ledger is written by this backend alone, so such a row means
+// somebody edited a document by hand.
+export function voiceLedgerEntry(row: {
+  type: unknown;
+  credits: unknown;
+  createdAtMs: unknown;
+}): { type: string; credits: number; at: number | null } | null {
+  if (typeof row.type !== "string" || row.type.length === 0) return null;
+  if (typeof row.credits !== "number" || !Number.isFinite(row.credits)) {
+    return null;
+  }
+  return {
+    type: row.type,
+    credits: row.credits,
+    // A row read back always has its timestamp — the server resolves it on
+    // commit, and the query orders by it. Null is what a hand-edited row
+    // whose `createdAt` is not a timestamp at all comes back as, and it
+    // costs the row its date rather than its place in the list.
+    at: typeof row.createdAtMs === "number" ? row.createdAtMs : null,
+  };
+}

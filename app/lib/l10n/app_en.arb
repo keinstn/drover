@@ -238,6 +238,13 @@
   "settingsAssistant": "Assistant",
   "settingsVoiceAssistant": "Voice assistant",
   "settingsVoiceAssistantSubtitle": "Talk to drover about your agents. Agent status and short summaries of their replies are sent to Google's Gemini Live API for the conversation.",
+  "settingsVoiceCredits": "Voice credits",
+  "settingsVoiceCreditsSubtitle": "One credit is one call, up to five minutes.",
+  "settingsVoiceCreditsActivity": "Recent credit activity",
+  "settingsVoiceCreditsNone": "Nothing yet.",
+  "settingsVoiceCreditsFailed": "Couldn't load your balance.",
+  "voiceLedgerCall": "Voice call",
+  "voiceLedgerRefund": "Returned",
   "settingsAccount": "Account",
   "settingsAccountSignIn": "Sign in with Apple",
   "settingsAccountSignedIn": "Signed in with Apple",
@@ -247,6 +254,12 @@
   "accountDeleteBody": "Your sign-in, host pairings and any voice credits are deleted for good. Credits cannot be refunded or moved to another account. The hosts stay set up on this device, and would each need pairing again for notifications.",
   "accountDeleteConfirm": "Delete",
   "accountDeleteFailed": "Could not delete the account. Tap to try again.",
+  "accountDeleteBalance": "{credits, plural, =1{One credit goes} other{{credits} credits go}} with it.",
+  "@accountDeleteBalance": {
+    "placeholders": {
+      "credits": { "type": "int" }
+    }
+  },
   "herdVoiceButton": "Voice assistant",
   "herdVoiceButtonLive": "Voice call in progress",
   "voiceStatusConnecting": "Connecting…",

@@ -28,6 +28,7 @@ import {
 import {
   debitedMint,
   voiceCallCost,
+  voiceLedgerEntry,
   voiceMintDecision,
   walletCredits,
 } from "./wallet.js";
@@ -529,10 +530,14 @@ function walletRef(uid: string) {
   return db.collection("users").doc(uid).collection("wallet").doc("credits");
 }
 
+function ledgerCollection(uid: string) {
+  return db.collection("users").doc(uid).collection("ledger");
+}
+
 // One immutable row per movement, under an auto-ID: nothing ever rewrites one,
 // so the ledger is the history and the wallet is only the running total.
 function ledgerRef(uid: string) {
-  return db.collection("users").doc(uid).collection("ledger").doc();
+  return ledgerCollection(uid).doc();
 }
 
 // ponytail: one document per call and nothing reaps them. A stale one is
@@ -630,6 +635,40 @@ async function refundVoiceCall(uid: string, sessionId: string): Promise<void> {
   batch.delete(voiceSessionRef(sessionId));
   await batch.commit();
 }
+
+// What the signed-in account may read of its own wallet: the balance, and the
+// recent movements behind it.
+//
+// `firestore.rules` denies the device every direct read, so this is the only
+// way it ever learns what it has left. It reads the wallet and the ledger and
+// nothing else, and returns no `sessionId` — what the app shows is what it
+// spent, not which conversation spent it.
+//
+// The last 20 rows, newest first. One screen of recent activity is all this is
+// for, so there is no paging: the wallet balance, not the ledger, is the
+// number that has to be right.
+export const voiceWallet = onCall(
+  { enforceAppCheck: true },
+  async (request) => {
+    const uid = requireUid(request.auth);
+    const [wallet, ledger] = await Promise.all([
+      walletRef(uid).get(),
+      ledgerCollection(uid).orderBy("createdAt", "desc").limit(20).get(),
+    ]);
+    const entries = ledger.docs
+      .map((row) => {
+        const createdAt = row.get("createdAt");
+        return voiceLedgerEntry({
+          type: row.get("type"),
+          credits: row.get("credits"),
+          createdAtMs:
+            createdAt instanceof Timestamp ? createdAt.toMillis() : null,
+        });
+      })
+      .filter((entry) => entry != null);
+    return { credits: walletCredits(wallet.get("credits")), entries };
+  },
+);
 
 // Mints a short-lived Gemini Live API token for a signed-in app install.
 //
