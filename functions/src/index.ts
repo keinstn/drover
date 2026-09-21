@@ -516,12 +516,8 @@ const voiceTokenNewSessionLifetimeMs = 60 * 1000;
 // unconstrained token is refused (measured 2026-09-21, see
 // docs/voice-billing.md). So the model can be moved here alone, server side,
 // without an App Store release, which is the escape hatch if one is
-// deprecated.
-//
-// Keep it equal to `kVoiceModel` in app/lib/src/voice/voice_transport.dart all
-// the same: `FirebaseVoiceTransport`, used when `kVoiceUseMintedToken` is
-// false, connects through Firebase AI Logic with no token and no mask, and on
-// that path `kVoiceModel` is what decides the model.
+// deprecated. `kVoiceModel` in app/lib/src/voice/voice_transport.dart is sent
+// in the client setup and ignored; it does not have to match this.
 const voiceModel = "models/gemini-3.8-live";
 
 // The wallet and its ledger.

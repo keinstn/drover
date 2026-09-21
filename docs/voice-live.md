@@ -169,7 +169,7 @@ Already done for this project; recorded so a fresh setup can repeat it.
 - Model: `gemini-3.8-live` on the Developer API backend, since 2026-09-21.
   It replaced `gemini-3.1-flash-live-preview`, which Google now lists as the
   legacy preview model to migrate off; the two share a pricing row, so the
-  move cost nothing. On the minted-token path `voiceModel` in
+  move cost nothing. `voiceModel` in
   `functions/src/index.ts` is what actually decides the model — the token's
   `fieldMask` freezes it and `kVoiceModel` is ignored — so a future model can
   be swapped server side without shipping a build. See
@@ -177,7 +177,7 @@ Already done for this project; recorded so a fresh setup can repeat it.
 - Session limits: the server caps a single Live connection at roughly ten
   minutes, but a drop no longer ends the conversation (2026-09-13). Every
   connect asks for session resumption and sliding-window context-window
-  compression (`FirebaseVoiceTransport.connect`); the server then keeps
+  compression (`TokenVoiceTransport.connect`); the server then keeps
   handing out resumption handles, and when the socket drops `VoiceSession`
   reconnects once on the latest handle, logs a "Reconnected, continuing" line
   and keeps the mic and speaker up. The conversation carries on across

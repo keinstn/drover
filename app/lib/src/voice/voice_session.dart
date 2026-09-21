@@ -136,24 +136,16 @@ class VoiceSession extends ChangeNotifier {
     final drafts = VoiceDrafts();
     final tools = droverVoiceTools(herd, drafts);
     return VoiceSession(
-      // One const decides which wire the conversation runs on; see
-      // [kVoiceUseMintedToken].
-      connect: (resumeHandle, sessionId) => kVoiceUseMintedToken
-          ? TokenVoiceTransport.connect(
-              tools: tools,
-              languageCode: voiceLanguageCodeFor(locale),
-              resumeHandle: resumeHandle,
-              // Every mint this transport makes — the first one and each
-              // re-mint at a token boundary — carries the conversation's id,
-              // so the Function charges the call once. A reconnect that
-              // builds a NEW transport gets the same id through [_connect].
-              mint: () => mintVoiceTokenFromFunctions(sessionId),
-            )
-          : FirebaseVoiceTransport.connect(
-              tools: tools,
-              languageCode: voiceLanguageCodeFor(locale),
-              resumeHandle: resumeHandle,
-            ),
+      connect: (resumeHandle, sessionId) => TokenVoiceTransport.connect(
+        tools: tools,
+        languageCode: voiceLanguageCodeFor(locale),
+        resumeHandle: resumeHandle,
+        // Every mint this transport makes — the first one and each re-mint
+        // at a token boundary — carries the conversation's id, so the
+        // Function charges the call once. A reconnect that builds a NEW
+        // transport gets the same id through [_connect].
+        mint: () => mintVoiceTokenFromFunctions(sessionId),
+      ),
       mic: RecordVoiceMic(),
       speaker: SoLoudVoiceSpeaker(),
       muteMicWhileSpeaking: voiceMicGateNeeded,

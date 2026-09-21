@@ -419,13 +419,13 @@ find and neither of which is written down anywhere else:
   naming another shipping Live model just as it answered `models/not-a-model`:
   both connected and were answered, while the unconstrained control refused
   the made-up name as before. So on the minted-token path the Function's
-  constant alone decides which model bills, and the app's `kVoiceModel` is
-  dead weight there. The consequence worth keeping: a model can be switched
+  constant alone decides which model bills, and the app's `kVoiceModel`
+  decides nothing. The consequence worth keeping: a model can be switched
   server side, with no App Store release, which is the escape hatch when one
-  is deprecated, and shipped builds keep working across the switch.
-  `kVoiceModel` still decides the model on the unmetered
-  `FirebaseVoiceTransport` path, which is the only reason the two are kept in
-  sync.
+  is deprecated, and shipped builds keep working across the switch. The app
+  sends `kVoiceModel` in the setup frame anyway — a *wrong* value is what was
+  measured as accepted, an absent one was not — but the two no longer have to
+  match.
 
 Re-check all of this before relying on it; ephemeral tokens are a preview
 feature of a preview API, and the documentation is already out of step with the
