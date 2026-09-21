@@ -136,9 +136,11 @@ Settings, and the first time you open it Drover shows you what this section
 describes and asks you to agree. If you decline, no microphone is opened and
 nothing is sent.
 
-The assistant is powered by **Google's Gemini Live**, reached through **Firebase
-AI Logic**. While a voice session is running — and only then — the following is
-sent to Google:
+The assistant is powered by **Google's Gemini Live**, which your device connects
+to directly. The developer's backend issues the short-lived access token that
+opens the session; no audio, no transcript, and no agent context passes through
+it. While a voice session is running — and only then — the following is sent
+to Google:
 
 - **Your microphone audio**, streamed live for as long as the session is open.
 - **Transcripts of both sides** of the conversation, your words and the
@@ -170,7 +172,7 @@ assistant off in Settings stops all of it.
 
 None of this reaches, is stored by, or is visible to the developer. Google
 processes it in order to provide the service; see Google's privacy
-documentation for how Google handles data sent to Gemini and Firebase AI Logic.
+documentation for how Google handles data sent to Gemini.
 
 ## Camera and photo library
 
@@ -189,9 +191,9 @@ you.
 
 - **Google (Firebase)** — processes the notification-backend data listed above
   on the developer's behalf, and, if you use the voice assistant, receives the
-  microphone audio and agent context listed under "Voice assistant" through
-  Firebase AI Logic and the Gemini API. See Google's privacy documentation for
-  how Google handles data processed through Firebase and Gemini.
+  microphone audio and agent context listed under "Voice assistant" through the
+  Gemini API. See Google's privacy documentation for how Google handles data
+  processed through Firebase and Gemini.
 - **Apple** — delivers push notifications through the Apple Push Notification
   service, and provides the App Attest attestation described above.
 
