@@ -872,10 +872,10 @@ void main() {
         find.descendant(
           of: card,
           matching: find.text(
-            'A call costs one credit and there are none. The free '
-            'allowance is topped back up at the start of every month. '
-            'Nothing was recorded — the microphone never opened and no '
-            'audio left the phone.',
+            'A call costs one credit and there are none. The free credits '
+            'are granted once, to a signed-in account. Nothing was '
+            'recorded — the microphone never opened and no audio left the '
+            'phone.',
           ),
         ),
         findsOneWidget,
@@ -1011,6 +1011,17 @@ void main() {
       await refused(tester, locale: const Locale('ja'));
 
       expect(find.text('クレジットがありません'), findsWidgets);
+      // The body too, not just the title: it is the sentence that says how
+      // the grant works, and a promise of more credits must not survive in
+      // one language after being taken out of the other.
+      expect(
+        find.text(
+          '通話には1クレジット必要ですが、残りがありません。'
+          '無料クレジットは、サインイン済みのアカウントに一度だけ配られます。'
+          '録音は行われていません。マイクは開かず、音声は端末から出ていません。',
+        ),
+        findsOneWidget,
+      );
       expect(
         tester.widget<Text>(find.byKey(const ValueKey('voice_balance'))).data,
         '0クレジット',

@@ -1117,8 +1117,8 @@ void main() {
 
     expect(
       find.text(
-        'Voice is free for now: sign in with Apple for a free allowance, '
-        'topped back up at the start of every month.',
+        'Voice is free for now: sign in with Apple and a few free credits '
+        'are added, once.',
       ),
       findsOneWidget,
     );

@@ -541,7 +541,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsVoiceCreditsCampaign =>
-      'Voice is free for now: sign in with Apple for a free allowance, topped back up at the start of every month.';
+      'Voice is free for now: sign in with Apple and a few free credits are added, once.';
 
   @override
   String get settingsVoiceCreditsActivity => 'Recent credit activity';
@@ -647,7 +647,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get voiceNoCreditsBody =>
-      'A call costs one credit and there are none. The free allowance is topped back up at the start of every month. Nothing was recorded — the microphone never opened and no audio left the phone.';
+      'A call costs one credit and there are none. The free credits are granted once, to a signed-in account. Nothing was recorded — the microphone never opened and no audio left the phone.';
 
   @override
   String get voiceCampaignOverTitle => 'The free credits have run out';
@@ -690,7 +690,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get voiceSignInBody =>
-      'The voice assistant is free for now, and the free credits go to a signed-in account. Sign in with Apple and your allowance is added — and topped back up at the start of every month, and kept if you reinstall drover. drover asks Apple for nothing but a stable identifier: no name, no email address.';
+      'The voice assistant is free for now, and the free credits go to a signed-in account. Signing in with Apple adds them — once — and it is also what keeps them if you reinstall drover. drover asks Apple for nothing but a stable identifier: no name, no email address.';
 
   @override
   String voiceToolCalled(String name) {

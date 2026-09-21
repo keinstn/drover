@@ -1046,10 +1046,10 @@ abstract class AppLocalizations {
   /// **'One credit is one call, up to five minutes.'**
   String get settingsVoiceCreditsSubtitle;
 
-  /// One line under the balance row explaining the free campaign. The allowance is monthly, not a one-off, and there is nothing to buy — so it must not read as an offer either.
+  /// One line under the balance row explaining the free campaign. The credits are granted once and never refilled, and there is nothing to buy — so it must promise no more of them, and must not read as an offer.
   ///
   /// In en, this message translates to:
-  /// **'Voice is free for now: sign in with Apple for a free allowance, topped back up at the start of every month.'**
+  /// **'Voice is free for now: sign in with Apple and a few free credits are added, once.'**
   String get settingsVoiceCreditsCampaign;
 
   /// No description provided for @settingsVoiceCreditsActivity.
@@ -1226,10 +1226,10 @@ abstract class AppLocalizations {
   /// **'No credits left'**
   String get voiceNoCreditsTitle;
 
-  /// Shown to a signed-in account that has spent its allowance and to an anonymous one that was never granted any — so the middle sentence says how the allowance works rather than claiming this reader had one.
+  /// Shown to a signed-in account that has spent its credits and to an anonymous one that was never granted any, directly above a Sign in with Apple button that only the second reader gets. The middle sentence therefore states how the grant works instead of addressing either reader's own balance: it tells the anonymous reader why that button helps, and tells the signed-in reader, truthfully, that there are no more coming. It must promise no refill.
   ///
   /// In en, this message translates to:
-  /// **'A call costs one credit and there are none. The free allowance is topped back up at the start of every month. Nothing was recorded — the microphone never opened and no audio left the phone.'**
+  /// **'A call costs one credit and there are none. The free credits are granted once, to a signed-in account. Nothing was recorded — the microphone never opened and no audio left the phone.'**
   String get voiceNoCreditsBody;
 
   /// No description provided for @voiceCampaignOverTitle.
@@ -1289,7 +1289,7 @@ abstract class AppLocalizations {
   /// No description provided for @voiceSignInBody.
   ///
   /// In en, this message translates to:
-  /// **'The voice assistant is free for now, and the free credits go to a signed-in account. Sign in with Apple and your allowance is added — and topped back up at the start of every month, and kept if you reinstall drover. drover asks Apple for nothing but a stable identifier: no name, no email address.'**
+  /// **'The voice assistant is free for now, and the free credits go to a signed-in account. Signing in with Apple adds them — once — and it is also what keeps them if you reinstall drover. drover asks Apple for nothing but a stable identifier: no name, no email address.'**
   String get voiceSignInBody;
 
   /// No description provided for @voiceToolCalled.
