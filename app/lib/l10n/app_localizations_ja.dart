@@ -628,14 +628,17 @@ class AppLocalizationsJa extends AppLocalizations {
   String get voiceStart => '開始';
 
   @override
-  String get voiceGreeting => 'エージェントについて話しましょう';
+  String get voiceGreeting => '何から始めましょうか';
 
   @override
   String get voiceClose => '閉じる';
 
   @override
   String get voiceHint =>
-      'エージェントについて聞いてみましょう。例:「どのエージェントが私を待っている？」「claude にテストも追加するよう伝えて」';
+      '「どのエージェントが待ってる？」\n「claude にテストも追加するよう伝えて」\n「請求書PDFが崩れるんだけど、どう頼むのがいい？」';
+
+  @override
+  String get voiceHintHandoff => '話しながら決めていけます。内容がまとまったら、エージェントを起動して任せられます。';
 
   @override
   String voiceEventFinished(String name) {
