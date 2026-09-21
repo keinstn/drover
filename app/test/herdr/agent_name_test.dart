@@ -22,6 +22,12 @@ void main() {
       expect(agentNameSlug('${'a' * 31} b'), 'a' * 31);
     });
 
+    test('collapses a separator run into one', () {
+      expect(agentNameSlug('claude-案件 Project'), 'claude-project');
+      expect(agentNameSlug('a  --__  b'), 'a-b');
+      expect(agentNameSlug('claude-案件 Project'), matches(_herdrName));
+    });
+
     test('drops leading characters before the first letter', () {
       expect(agentNameSlug('42-drover'), 'drover');
     });

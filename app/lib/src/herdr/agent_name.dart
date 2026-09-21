@@ -19,6 +19,9 @@ String agentNameSlug(String base) {
   final slug = base
       .toLowerCase()
       .replaceAll(RegExp(r'[^a-z0-9_-]+'), '-')
+      // A separator the base already carried, next to one this substitution
+      // just inserted, would otherwise read as `claude--project`.
+      .replaceAll(RegExp(r'[-_]{2,}'), '-')
       .replaceFirst(RegExp(r'^[^a-z]+'), '')
       .replaceFirst(RegExp(r'[-_]+$'), '');
   final trimmed = _truncate(slug, 32);
