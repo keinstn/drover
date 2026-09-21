@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
+import '../herdr/agent_name.dart';
 import '../herdr/herdr_client.dart';
 import '../models/agent_preset.dart';
 import '../models/workspace_info.dart';
@@ -73,12 +74,15 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
     // avoid an unhandled rejection
   }
 
+  /// The name the field starts with — slugged, so what it shows is a name
+  /// `herdr agent start` will actually accept (a `MyProject` or `案件` folder
+  /// would otherwise fail the launch with `invalid_agent_name`).
   String _defaultName() {
     final seg = lastPathSegment(_cwdController.text.trim());
     final bin = _selectedPreset?.bin;
-    if (bin == null) return seg;
+    if (bin == null) return seg.isEmpty ? '' : agentNameSlug(seg);
     if (seg.isEmpty) return bin;
-    return '$bin-$seg';
+    return agentNameSlug('$bin-$seg');
   }
 
   void _syncDefaultName() {
@@ -154,10 +158,16 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
               workspaceId: wsId,
               cwd: cwd,
             ));
-        await widget.client.startAgent(
-          name: name,
-          kind: preset.kind,
-          paneId: paneId,
+        // Slugs a hand-typed illegal name and walks past one a live agent
+        // already holds. It stays inside this try so a taken name is not
+        // mistaken for a failed start and does not roll the pane back.
+        await startAgentWithFreeName(
+          base: name,
+          start: (name) => widget.client.startAgent(
+            name: name,
+            kind: preset.kind,
+            paneId: paneId,
+          ),
         );
       } catch (e) {
         if (_mode == _WorkspaceMode.newWorkspace) {

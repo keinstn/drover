@@ -5,11 +5,11 @@ import 'package:flutter/foundation.dart';
 
 import '../agents/agent_adapter.dart';
 import '../agents/agent_registry.dart';
+import '../herdr/agent_name.dart';
 import '../herdr/ansi_text.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/pane_text.dart';
 import '../models/agent_info.dart';
-import '../models/agent_preset.dart';
 import '../transcript/native_transcript.dart';
 import '../utils/path.dart';
 
@@ -464,15 +464,20 @@ class HerdVoiceHerd implements VoiceHerd {
     required String cwd,
     required String brief,
   }) async {
-    final preset = kAgentPresets.where((p) => p.kind == kind).firstOrNull;
-    final name = preset?.bin ?? kind;
     final folder = lastPathSegment(cwd);
     final workspace = await _client.createWorkspace(label: folder, cwd: cwd);
+    final String name;
     try {
-      await _client.startAgent(
-        name: name,
-        kind: kind,
-        paneId: workspace.paneId,
+      // Every kind is already a legal slug, so the retry only ever appends a
+      // numeric suffix — and it must stay inside this try so a taken name is
+      // not mistaken for a failed start and does not roll the workspace back.
+      name = await startAgentWithFreeName(
+        base: kind,
+        start: (name) => _client.startAgent(
+          name: name,
+          kind: kind,
+          paneId: workspace.paneId,
+        ),
       );
     } catch (_) {
       // Same rollback as the launch sheet: never leave an empty workspace

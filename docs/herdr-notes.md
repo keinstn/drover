@@ -49,6 +49,12 @@ which agent is running in the pane.
   hold spaces, uppercase, or multibyte text (a Japanese/emoji name is rejected,
   verified live on 0.7.5). So drover must not treat `name` as a human-readable
   session title — for that, use `terminal_title_stripped` (see below).
+  `agent start <name>` enforces the same rule, and enforces it *before* it
+  resolves the target pane — an illegal name fails the start outright rather
+  than landing an unnamed agent (verified live on 0.9.1: a 33-character name
+  and an uppercase name were both rejected ahead of pane resolution, while a
+  32-character name passed). A name must also be unique among currently live
+  agents, rejected separately with error `agent_name_taken`.
 
 ## Behaviours / gotchas
 
