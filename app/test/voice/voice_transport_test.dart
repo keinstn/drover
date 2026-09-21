@@ -127,7 +127,9 @@ void main() {
 
     expect(live.tokens, ['token-1']);
     final setup = live.setups.single;
-    expect(setup['model'], 'models/$kVoiceModel');
+    // Sent, but deliberately not pinned to a value: the token's `fieldMask`
+    // freezes `model`, so the server ignores whatever the client names here.
+    expect(setup['model'], isA<String>());
     // Everything the token does not freeze is still the client's to send.
     expect(setup['system_instruction'], isNotNull);
     expect(setup['tools'], isNotNull);
