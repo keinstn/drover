@@ -8,12 +8,13 @@ add findings with the date they were observed. Facts below were recorded on
 ## Purpose
 
 The voice assistant lets you control drover by talking to it: a full-duplex
-voice session with Gemini Live, reached through Firebase AI Logic. The model
-drives drover via function calling over the same `HerdrClient` operations the
-UI uses (list agents, read status, send a prompt, …). No Gemini API key lives
-on the device — the app talks to Firebase AI Logic, and App Check protects
-that endpoint, so only a build of this app (or a registered debug token) can
-use the project's quota.
+voice session with Gemini Live, reached over a raw WebSocket straight to the
+Gemini Developer API. The model drives drover via function calling over the
+same `HerdrClient` operations the UI uses (list agents, read status, send a
+prompt, …). No Gemini API key lives on the device — the app calls the
+`mintVoiceToken` Cloud Function for a short-lived token, and App Check
+protects that callable, so only a build of this app (or a registered debug
+token) can use the project's quota.
 
 It lives on the long-lived `voice-live` branch rather than `main` because it
 needs several weeks of on-device iteration (session limits, echo handling,
@@ -104,12 +105,15 @@ One-time App Store Connect setup (done in the console, not scriptable):
 Already done for this project; recorded so a fresh setup can repeat it.
 
 - Firebase console → AI Services → AI Logic → Get started → choose the
-  **Gemini Developer API** backend. This creates (or links) a Gemini API
-  project behind the scenes.
-- App Check is auto-enforced for AI Logic. That means **every** simulator or
-  device install needs its App Check debug token registered: Firebase
-  console → App Check → the iOS app → Manage debug tokens. A new simulator, a
-  reset simulator, or a reinstall on a device is a new token.
+  **Gemini Developer API** backend. This is a one-time provisioning step —
+  it creates (or links) the Gemini API project behind the scenes, which is
+  where `GEMINI_API_KEY` comes from — not something the app calls at
+  runtime; see Purpose above.
+- App Check is enforced on the `mintVoiceToken` callable. That means
+  **every** simulator or device install needs its App Check debug token
+  registered: Firebase console → App Check → the iOS app → Manage debug
+  tokens. A new simulator, a reset simulator, or a reinstall on a device is a
+  new token.
 - Recovering the token when you missed it: it is printed once in the
   simulator syslog —
 
@@ -126,7 +130,7 @@ Already done for this project; recorded so a fresh setup can repeat it.
   ```
 
 - Failure signature without a registered token: HTTP 403
-  `App attestation failed` on the first AI Logic request.
+  `App attestation failed` on the first `mintVoiceToken` call.
 - Billing: the Gemini API project that AI Logic created was in prepaid mode
   with zero credits. The Live WebSocket then closes with code 1011
   `Your prepayment credits are depleted`. Top up at
