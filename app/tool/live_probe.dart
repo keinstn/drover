@@ -11,10 +11,28 @@
 // dominant cost term, and every price depends on it. What it found is written
 // up under "Before setting a price" in docs/voice-billing.md.
 //
+// Optional: TRIGGER_TOKENS and/or TARGET_TOKENS (integers) turn on context
+// window compression, by adding a "contextWindowCompression" block to the
+// setup frame below. Neither set means the setup frame is byte-for-byte what
+// it always was, so a baseline run stays comparable to a compressed one.
+//
+// Optional: MODEL overrides the `_model` constant below, so the same run can
+// target a different Live model (e.g. the newer `gemini-3.8-live`) without
+// editing the file. Unset, it defaults to `_model` exactly as before.
+//
+// Optional: SYSTEM_PROMPT_FILE names a file whose (trimmed) contents are sent
+// as the setup frame's `system_instruction`. This is for measuring where the
+// prompt floor actually sits: drover sends a real system instruction plus
+// tool declarations on every turn, and that floor is what a TRIGGER_TOKENS
+// value has to clear before compression can free anything at all. Unset
+// means no `system_instruction` key, so the baseline stays what it was.
+//
 // The key is read from the environment only — never a file, never an argument
 // (arguments show up in `ps`):
 //
-//   GEMINI_API_KEY=<key> fvm dart run tool/live_probe.dart [turns] [speech.wav]
+//   GEMINI_API_KEY=<key> [MODEL=<model>] [TRIGGER_TOKENS=<n>] \
+//       [TARGET_TOKENS=<n>] [SYSTEM_PROMPT_FILE=<path>] \
+//       fvm dart run tool/live_probe.dart [turns] [speech.wav]
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -37,6 +55,60 @@ const _prompts = [
 ];
 
 Future<void> main(List<String> args) async {
+  final model = Platform.environment['MODEL'] ?? _model;
+  final triggerTokens = int.tryParse(
+    Platform.environment['TRIGGER_TOKENS'] ?? '',
+  );
+  final targetTokens = int.tryParse(
+    Platform.environment['TARGET_TOKENS'] ?? '',
+  );
+  // Null-aware map entries (`?key: value`), same style as `sessionResumption`
+  // in token_probe.dart's `Live.open` — an entry is included only when its
+  // value is non-null, so neither variable set means neither key appears.
+  final slidingWindow = targetTokens == null
+      ? null
+      : {'targetTokens': targetTokens};
+  final compression = triggerTokens == null && slidingWindow == null
+      ? null
+      : {'triggerTokens': ?triggerTokens, 'slidingWindow': ?slidingWindow};
+  final systemPromptPath = Platform.environment['SYSTEM_PROMPT_FILE'];
+  final systemPrompt = systemPromptPath == null || systemPromptPath.isEmpty
+      ? null
+      : File(systemPromptPath).readAsStringSync().trim();
+  final systemInstruction = systemPrompt == null
+      ? null
+      : {
+          'parts': [
+            {'text': systemPrompt},
+          ],
+        };
+  final setupFrame = {
+    'setup': {
+      'model': model,
+      'generationConfig': {
+        'responseModalities': ['AUDIO'],
+      },
+      'contextWindowCompression': ?compression,
+      'system_instruction': ?systemInstruction,
+    },
+  };
+  // Printed before the key check below, which exits before ever opening a
+  // socket: this is how a reviewer with no key can confirm the flag plumbing
+  // without running anything. The key travels in the connection URL, never in
+  // this frame, so printing it verbatim is safe — except the system
+  // instruction's text, which is swapped for its character count so a
+  // multi-KB prompt does not make this line unreadable; the rest of the
+  // frame, including the real text, is what actually gets sent below.
+  final printableSetup = systemPrompt == null
+      ? setupFrame
+      : {
+          'setup': {
+            ...setupFrame['setup']! as Map<String, Object?>,
+            'system_instruction': {'characters': systemPrompt.length},
+          },
+        };
+  stdout.writeln('setup frame: ${jsonEncode(printableSetup)}');
+
   final key = Platform.environment['GEMINI_API_KEY'];
   if (key == null || key.isEmpty) {
     stderr.writeln('set GEMINI_API_KEY (see the header of this file)');
@@ -68,16 +140,7 @@ Future<void> main(List<String> args) async {
 
   // Audio out, like the app: an audio response is what makes output tokens
   // audio tokens, which is half of what we are trying to price.
-  ws.add(
-    jsonEncode({
-      'setup': {
-        'model': _model,
-        'generationConfig': {
-          'responseModalities': ['AUDIO'],
-        },
-      },
-    }),
-  );
+  ws.add(jsonEncode(setupFrame));
 
   final setup = await inbox.next.timeout(const Duration(seconds: 30));
   if (!setup.containsKey('setupComplete')) {
@@ -85,7 +148,13 @@ Future<void> main(List<String> args) async {
     await ws.close();
     exit(1);
   }
-  stdout.writeln('connected: $_model\n');
+  // The full setupComplete frame, raw: a model identifier could arrive
+  // nested inside it (as `setupComplete: {...}` rather than a top-level key),
+  // and unlike usageMetadata/goAway/sessionResumptionUpdate below, nothing
+  // else here ever shows this frame's contents.
+  stdout.writeln('setupComplete: ${jsonEncode(setup)}');
+  stdout.writeln('connected: $model\n');
+  _noteModelIdentifier(setup);
 
   final encoder = const JsonEncoder.withIndent('  ');
   for (var turn = 1; turn <= turns; turn++) {
@@ -148,6 +217,7 @@ Future<void> main(List<String> args) async {
     var sawUsage = false;
     while (!(sawTurnComplete && sawUsage)) {
       final message = await inbox.next.timeout(const Duration(seconds: 60));
+      _noteModelIdentifier(message);
       final usage = message['usageMetadata'];
       if (usage != null) {
         sawUsage = true;
@@ -174,6 +244,24 @@ Future<void> main(List<String> args) async {
   }
 
   await ws.close();
+}
+
+/// Whether `_noteModelIdentifier` has already printed this run. A module
+/// variable rather than a local, since setup and every turn share one run.
+var _printedModelIdentifier = false;
+
+/// Prints the model identifier a server frame reports, if any — once per
+/// run, since it does not change mid-session and repeating it on every turn
+/// would just be noise. `modelVersion` is the field the Gemini API uses on
+/// other endpoints to report which model actually served a request; print it
+/// here rather than assume it, since the Live path is not documented to
+/// carry it at all.
+void _noteModelIdentifier(Map<String, Object?> message) {
+  if (_printedModelIdentifier) return;
+  final version = message['modelVersion'];
+  if (version == null) return;
+  stdout.writeln('modelVersion: $version');
+  _printedModelIdentifier = true;
 }
 
 /// Minimal pull-based reader over a broadcast-free stream — `package:async`'s
