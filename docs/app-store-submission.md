@@ -219,16 +219,17 @@ own machine is not developer collection.** Only what lands in the developer's
 Firebase project counts — the anonymous auth uid, FCM tokens, `deviceId`,
 `hostId`, pairing-code hashes, credential hashes, de-duplication records and
 rate-limit counters, **and, from 1.1.0, everything the voice assistant sends
-through Firebase AI Logic to Gemini**: microphone audio, Google's transcripts of
-both sides, and the agent context in the tool results. AI Logic is reached
-through the developer's own Firebase project, so it falls inside this boundary
-by the boundary's own rule — see the third judgment call below.
+to Gemini**: microphone audio, Google's transcripts of both sides, and the
+agent context in the tool results. The app streams that straight to Google's
+Gemini API, on a short-lived token the developer's own backend mints against
+the developer's own Gemini project, so it falls inside this boundary by the
+boundary's own rule — see the third judgment call below.
 
 | Data type | Collected | Notes |
 |---|---|---|
 | Contact info, Health, Financial, Location, Sensitive info, Contacts | **No** | No account exists; no name or email is ever requested |
 | User content — photos | **No** | Attached images go over SSH to the user's own machine |
-| User content — audio | **Yes** (from 1.1.0) | The voice assistant streams microphone audio to Gemini through Firebase AI Logic. Purpose: App Functionality. **Not** linked to identity. **Not** used for tracking. Dictation is unaffected: Apple's recognizer is on-device only and its audio never leaves |
+| User content — audio | **Yes** (from 1.1.0) | The voice assistant streams microphone audio straight to Gemini. Purpose: App Functionality. **Not** linked to identity. **Not** used for tracking. Dictation is unaffected: Apple's recognizer is on-device only and its audio never leaves |
 | User content — other | **Yes** (from 1.1.0) | The same sessions send Google's transcripts of both sides plus the agent context — agent names, titles, kinds and statuses, project folder names, a blocked agent's question and options, and an agent's last reply with code stripped out. Purpose: App Functionality. **Not** linked to identity. **Not** used for tracking |
 | Browsing / search history | **No** | |
 | Identifiers — Device ID | **Yes** | FCM push token and `deviceId`. Purpose: App Functionality. **Not** linked to identity. **Not** used for tracking |
@@ -264,10 +265,11 @@ never sees it?** Google is a processor here, not the developer, and none of it
 is retained by or visible to the developer — so under the "reaches the
 developer" framing the old answers survive intact. **Declare it anyway.** The
 questionnaire asks what the *app* collects, not what the developer keeps, and
-data sent to a third party through an SDK integrated in the app is collection
-for Apple's purposes. It also lands in the developer's own Firebase project,
-which is the same boundary that makes the notification backend countable. The
-same reasoning governs the published privacy policy: "never reaches the
+data the app itself sends to a third party is collection for Apple's purposes.
+It is also sent on a credential the developer's backend mints, against the
+developer's own Gemini project, which is the same boundary that makes the
+notification backend countable. The same reasoning governs the published
+privacy policy: "never reaches the
 developer" is literally true of the voice path and still misleads, because what
 a reader takes from it is where their data goes, not who runs the server. So
 the policy states the Google path plainly instead of leaning on the framing.
