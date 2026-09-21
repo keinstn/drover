@@ -9,15 +9,14 @@ import 'package:firebase_ai/firebase_ai.dart';
 
 import 'voice_tools.dart';
 
-/// Gemini Live model used for the voice assistant (Firebase AI Logic, Gemini
-/// Developer API backend — no API key ships in the app).
+/// Gemini Live model named in the client setup frame — and ignored there.
 ///
-/// On the minted-token path this value is ignored: the token's `fieldMask`
-/// freezes `model`, so `voiceModel` in `functions/src/index.ts` decides which
-/// model the session runs on and a mismatch here changes nothing (measured
-/// 2026-09-21, see docs/voice-billing.md). It still decides the model on the
-/// [FirebaseVoiceTransport] path, which connects through Firebase AI Logic
-/// with no token and no mask, so keep the two in sync for that reason.
+/// Every session runs on a minted token, and the token's `fieldMask` freezes
+/// `model`, so `voiceModel` in `functions/src/index.ts` is what decides which
+/// model the session runs on: a mismatch here changes nothing (measured
+/// 2026-09-21, see docs/voice-billing.md). It is still sent — a *wrong* value
+/// is what was measured as accepted, an absent one was not — but it no longer
+/// has to match anything, and moving the model means editing the Function.
 const kVoiceModel = 'gemini-3.8-live';
 
 const kVoiceSystemPrompt = '''
@@ -51,10 +50,9 @@ abstract interface class VoiceTransport {
   Future<void> close();
 }
 
-/// The live generation config both transports connect with. Only
-/// `responseModalities` is frozen server side when the session runs on a
-/// minted token; the rest is the client's, and stays here so the two
-/// transports cannot drift apart.
+/// The live generation config the transport connects with. Only
+/// `responseModalities` is frozen server side by the minted token; the rest
+/// is the client's.
 LiveGenerationConfig voiceGenerationConfig(String languageCode) =>
     LiveGenerationConfig(
       responseModalities: [ResponseModalities.audio],
@@ -88,73 +86,7 @@ LiveGenerationConfig voiceGenerationConfig(String languageCode) =>
       ),
     );
 
-/// [VoiceTransport] over a Firebase AI [LiveSession].
-class FirebaseVoiceTransport implements VoiceTransport {
-  FirebaseVoiceTransport._(this._session);
-
-  final LiveSession _session;
-
-  /// Builds the live model for [tools] and opens the session.
-  ///
-  /// With [resumeHandle] the server restores the conversation behind that
-  /// handle instead of starting a new one; either way the session is
-  /// resumable, so the server keeps sending [SessionResumptionUpdate]s.
-  static Future<FirebaseVoiceTransport> connect({
-    required List<VoiceTool> tools,
-    required String languageCode,
-    String? resumeHandle,
-  }) async {
-    final model = FirebaseAI.googleAI().liveGenerativeModel(
-      model: kVoiceModel,
-      systemInstruction: Content.text(kVoiceSystemPrompt),
-      tools: [voiceToolsToFirebase(tools)],
-      liveGenerationConfig: voiceGenerationConfig(languageCode),
-    );
-    return FirebaseVoiceTransport._(
-      await model.connect(
-        sessionResumption: resumeHandle == null
-            ? SessionResumptionConfig()
-            : SessionResumptionConfig.resume(resumeHandle),
-      ),
-    );
-  }
-
-  @override
-  Stream<LiveServerResponse> receive() => _session.receive();
-
-  @override
-  Future<void> sendAudio(Uint8List pcm16k) => _session.sendAudioRealtime(
-    InlineDataPart('audio/pcm;rate=16000', pcm16k),
-  );
-
-  @override
-  Future<void> sendText(String text) => _session.sendTextRealtime(text);
-
-  @override
-  Future<void> sendToolResponse(List<FunctionResponse> responses) =>
-      _session.sendToolResponse(responses);
-
-  @override
-  Future<void> close() => _session.close();
-}
-
 // --------------------------------------------------------------- minted token
-
-/// Which transport a production [VoiceSession] builds.
-///
-/// `false` keeps the original path: the app opens the Live session itself
-/// through Firebase AI Logic. `true` moves it behind `mintVoiceToken`, a Cloud
-/// Function that mints a short-lived Live API token the app then connects
-/// with — the only shape in which a server-side check can ever gate a
-/// session.
-///
-/// `true` since the Function was deployed (2026-09-18, `us-central1`, the
-/// region [mintVoiceTokenFromFunctions] pins). Flipping this back is the whole
-/// revert: both transports are kept, and nothing else chooses between them.
-/// Since the wallet landed the Function mints only against a balance, so the
-/// revert is not free: on the AI Logic path a call costs nothing and is
-/// charged to nobody.
-const kVoiceUseMintedToken = true;
 
 /// Whether a finished session shows what it billed for.
 ///
@@ -338,9 +270,8 @@ Future<VoiceToken> mintVoiceTokenFromFunctions(String sessionId) async {
 
 /// [VoiceTransport] over a raw Live WebSocket opened with a minted token.
 ///
-/// Speaks the wire protocol directly and hands [VoiceSession] the same
-/// `firebase_ai` types [FirebaseVoiceTransport] does, so nothing above it
-/// knows which one it got.
+/// Speaks the wire protocol directly and hands [VoiceSession] ordinary
+/// `firebase_ai` types, so nothing above it deals with the raw socket.
 ///
 /// The token's expiry — not the server's own connection cap — is what ends
 /// these connections, and it is expected rather than exceptional: the next
