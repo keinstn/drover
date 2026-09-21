@@ -3,6 +3,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import {
   type DocumentReference,
+  type DocumentSnapshot,
   FieldValue,
   getFirestore,
   type QueryDocumentSnapshot,
@@ -27,7 +28,11 @@ import {
 } from "./validation.js";
 import {
   debitedMint,
+  type VoiceCampaign,
   voiceCallCost,
+  voiceCampaign,
+  voiceCampaignGrant,
+  voiceGrantEligible,
   voiceLedgerEntry,
   voiceMintDecision,
   walletCredits,
@@ -528,8 +533,9 @@ const voiceModel = "models/gemini-3.8-live";
 // write, so this Function's admin SDK is the only writer and no device can
 // read its own balance, let alone change it.
 //
-// Credits get in by hand for now: edit `credits` here in the Firebase console.
-// That leaves no ledger row, so reconciliation shows such a grant as
+// Credits get in two ways for now. The free campaign grants them, and that
+// writes a ledger row like any other movement. A hand edit of `credits` here
+// in the Firebase console does not, so reconciliation shows such a grant as
 // unexplained — the real purchase path will write both together.
 function walletRef(uid: string) {
   return db.collection("users").doc(uid).collection("wallet").doc("credits");
@@ -543,6 +549,89 @@ function ledgerCollection(uid: string) {
 // so the ledger is the history and the wallet is only the running total.
 function ledgerRef(uid: string) {
   return ledgerCollection(uid).doc();
+}
+
+// The free campaign's dials and its counter, in one document meant to be
+// edited by hand in the Firebase console: the ceiling has to be movable
+// without a deploy, and `enabled: false` is the emergency stop.
+//
+// ponytail: a single counter document, so campaign spend is capped by
+// Firestore's per-document write rate of roughly one per second. At a ceiling
+// of a few hundred calls nobody will ever meet that; shard the counter across
+// N documents and sum them if a campaign ever runs at that rate.
+function voiceCampaignRef() {
+  return db.collection("config").doc("voiceCampaign");
+}
+
+function readVoiceCampaign(document: DocumentSnapshot): VoiceCampaign {
+  return voiceCampaign(
+    document.exists
+      ? {
+          callsUsed: document.get("callsUsed"),
+          callLimit: document.get("callLimit"),
+          enabled: document.get("enabled"),
+          freeGrant: document.get("freeGrant"),
+        }
+      : null,
+  );
+}
+
+// Hands an account the campaign's free credits, once, and writes the ledger
+// row and the mark that says it happened.
+//
+// Lazily, and from the one place both callables reach: `voiceWallet`, so
+// Settings shows a real balance the moment it is opened, and `mintVoiceToken`,
+// so somebody who never opens Settings can still make their first call. Who
+// is owed a grant is decided by `voiceCampaignGrant`; this only writes it.
+//
+// A transaction, because the mark it reads is the only thing stopping two
+// concurrent calls from both granting.
+//
+// Nothing here touches `callsUsed`: that counter tracks calls spent, and an
+// unspent grant has cost nothing.
+async function grantCampaignCredits(
+  uid: string,
+  signInProvider: unknown,
+): Promise<void> {
+  // Answered before anything is read: an anonymous install is never granted
+  // to, and it is the common case on this path.
+  if (!voiceGrantEligible(signInProvider)) return;
+  const wallet = walletRef(uid);
+  const campaign = voiceCampaignRef();
+  await db.runTransaction(async (transaction) => {
+    const [walletDocument, campaignDocument] = await Promise.all([
+      transaction.get(wallet),
+      transaction.get(campaign),
+    ]);
+    const granted = voiceCampaignGrant({
+      signInProvider,
+      grantedAt: walletDocument.get("campaignGrantedAt"),
+      campaign: readVoiceCampaign(campaignDocument),
+    });
+    if (granted === 0) return;
+    transaction.set(
+      wallet,
+      {
+        credits: walletCredits(walletDocument.get("credits")) + granted,
+        campaignGrantedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    transaction.set(ledgerRef(uid), {
+      type: "campaignGrant",
+      credits: granted,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  });
+}
+
+// The sign-in provider off the verified ID token, which is how a callable
+// tells an anonymous install from an Apple-linked account.
+function signInProviderOf(request: {
+  auth?: { token: { firebase: { sign_in_provider: string } } };
+}): unknown {
+  return request.auth?.token.firebase.sign_in_provider;
 }
 
 // ponytail: one document per call and nothing reaps them. A stale one is
@@ -565,17 +654,21 @@ async function claimVoiceCall(
 ): Promise<boolean> {
   const wallet = walletRef(uid);
   const session = voiceSessionRef(sessionId);
+  const campaign = voiceCampaignRef();
   const nowMs = Date.now();
   return db.runTransaction(async (transaction) => {
-    const [walletDocument, sessionDocument] = await Promise.all([
-      transaction.get(wallet),
-      transaction.get(session),
-    ]);
+    const [walletDocument, sessionDocument, campaignDocument] =
+      await Promise.all([
+        transaction.get(wallet),
+        transaction.get(session),
+        transaction.get(campaign),
+      ]);
     const startedAt = sessionDocument.get("startedAt");
     const credits = walletDocument.get("credits");
     const decision = voiceMintDecision({
       uid,
       credits,
+      campaign: readVoiceCampaign(campaignDocument),
       session: sessionDocument.exists
         ? {
             uid: sessionDocument.get("uid"),
@@ -594,8 +687,20 @@ async function claimVoiceCall(
         "Voice session ID belongs to another account.",
       );
     }
+    // Both refusals are `resource-exhausted` — the app has to be told which,
+    // because "you are out of credits" and "the free campaign has ended" ask
+    // the reader to do different things. `details.reason` is what it reads.
+    if (decision === "campaignOver") {
+      throw new HttpsError(
+        "resource-exhausted",
+        "The free voice campaign has ended.",
+        { reason: "campaignOver" },
+      );
+    }
     if (decision === "empty") {
-      throw new HttpsError("resource-exhausted", "No voice credits left.");
+      throw new HttpsError("resource-exhausted", "No voice credits left.", {
+        reason: "noCredits",
+      });
     }
 
     transaction.set(
@@ -613,6 +718,13 @@ async function claimVoiceCall(
       createdAt: FieldValue.serverTimestamp(),
     });
     transaction.set(session, { uid, startedAt: Timestamp.fromMillis(nowMs) });
+    // In the same commit as the debit and the ledger row. Counted apart, the
+    // campaign and the wallets would disagree after any crash between them.
+    transaction.set(
+      campaign,
+      { callsUsed: FieldValue.increment(voiceCallCost) },
+      { merge: true },
+    );
     return true;
   });
 }
@@ -638,6 +750,14 @@ async function refundVoiceCall(uid: string, sessionId: string): Promise<void> {
     createdAt: FieldValue.serverTimestamp(),
   });
   batch.delete(voiceSessionRef(sessionId));
+  // And the campaign gets its call back. A mint that failed cost nothing, so
+  // a counter that only ever went up would spend the budget on calls that
+  // never happened.
+  batch.set(
+    voiceCampaignRef(),
+    { callsUsed: FieldValue.increment(-voiceCallCost) },
+    { merge: true },
+  );
   await batch.commit();
 }
 
@@ -656,6 +776,9 @@ export const voiceWallet = onCall(
   { enforceAppCheck: true },
   async (request) => {
     const uid = requireUid(request.auth);
+    // Before the read, not beside it, or the first look at Settings shows a
+    // zero that the grant is about to contradict.
+    await grantCampaignCredits(uid, signInProviderOf(request));
     const [wallet, ledger] = await Promise.all([
       walletRef(uid).get(),
       ledgerCollection(uid).orderBy("createdAt", "desc").limit(20).get(),
@@ -691,6 +814,10 @@ export const mintVoiceToken = onCall(
     if (sessionId == null) {
       throw new HttpsError("invalid-argument", "Invalid voice session ID.");
     }
+    // Before the claim, so a first-time caller's own grant is already in the
+    // balance the claim reads. Somebody who never opened Settings still has
+    // their free calls.
+    await grantCampaignCredits(uid, signInProviderOf(request));
     return debitedMint(
       () => claimVoiceCall(uid, sessionId),
       () => mintLiveToken(),
