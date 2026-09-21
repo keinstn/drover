@@ -611,6 +611,7 @@ Ship it.''';
       List<String> statuses = const ['idle'],
       List<String> panes = const ['> add retries'],
       bool startFails = false,
+      Set<String> namesTaken = const {},
     }) {
       var listCalls = 0;
       var paneCalls = 0;
@@ -623,8 +624,14 @@ Ship it.''';
             statuses[i < statuses.length ? i : statuses.length - 1],
           );
         }
-        if (startFails && command.contains("'agent' 'start'")) {
-          return '{"id":"1","error":{"code":"no_agent","message":"nope"}}';
+        if (command.contains("'agent' 'start'")) {
+          if (startFails) {
+            return '{"id":"1","error":{"code":"no_agent","message":"nope"}}';
+          }
+          if (namesTaken.any((n) => command.contains("'agent' 'start' '$n'"))) {
+            return '{"id":"1","error":{"code":"agent_name_taken",'
+                '"message":"taken"}}';
+          }
         }
         return null;
       });
@@ -699,6 +706,52 @@ Ship it.''';
         isFalse,
       );
     });
+
+    test('starts under the next free name when the kind is taken', () async {
+      final (:herd, :runner) = launcher(namesTaken: {'claude'});
+
+      final result = await herd.launch(
+        kind: 'claude',
+        cwd: '/home/me/proj',
+        brief: 'add retries',
+      );
+
+      expect(result, (
+        paneId: 'w2:p1',
+        title: 'Add retries',
+        briefDelivered: true,
+      ));
+      expect(
+        runner.commands.where((c) => c.contains("'agent' 'start'")).toList(),
+        [
+          contains("'agent' 'start' 'claude'"),
+          contains("'agent' 'start' 'claude-2'"),
+        ],
+      );
+      // A taken name is not a failed start: the workspace stays.
+      expect(
+        runner.commands.any((c) => c.contains("'workspace' 'close'")),
+        isFalse,
+      );
+    });
+
+    test(
+      'falls the title back to the name it actually started under',
+      () async {
+        final (:herd, :runner) = launcher(
+          namesTaken: {'claude'},
+          statuses: ['working'],
+        );
+
+        final result = await herd.launch(
+          kind: 'claude',
+          cwd: '/home/me/proj',
+          brief: 'add retries',
+        );
+
+        expect(result.title, 'claude-2');
+      },
+    );
 
     test('waits for the pane to read idle before prompting', () async {
       final (:herd, :runner) = launcher(
