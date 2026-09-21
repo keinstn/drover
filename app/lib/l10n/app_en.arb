@@ -288,9 +288,13 @@
   "voiceEnd": "End",
   "voiceRestart": "Restart",
   "voiceStart": "Start",
-  "voiceGreeting": "Let's talk about your agents",
+  "voiceGreeting": "What should we start on?",
   "voiceClose": "Close",
-  "voiceHint": "Ask about your agents, e.g. \u201cWhich agent is waiting for me?\u201d, or say \u201cTell claude to add tests too\u201d.",
+  "voiceHint": "\u201cWhich agent is waiting for me?\u201d\n\u201cTell claude to add tests too\u201d\n\u201cThe invoice PDFs come out broken \u2014 what should I ask for?\u201d",
+  "@voiceHint": {
+    "description": "Three things to say out loud, one per line, under the greeting on a voice screen that has not started. One per capability: ask about the herd, leave an agent a message, and talk out something that has no agent yet."
+  },
+  "voiceHintHandoff": "Work it out as you talk. Once it's settled, the call starts a new agent to take it on.",
   "voiceEventFinished": "{name} finished",
   "@voiceEventFinished": {
     "placeholders": {

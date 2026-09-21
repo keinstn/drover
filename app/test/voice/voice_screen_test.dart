@@ -324,8 +324,15 @@ void main() {
     await tester.pump();
 
     expect(find.text('Listening'), findsOneWidget);
-    expect(find.text("Let's talk about your agents"), findsOneWidget);
-    expect(find.textContaining('Ask about your agents'), findsOneWidget);
+    expect(find.text('What should we start on?'), findsOneWidget);
+    // All three things to say, and what saying them leads to.
+    expect(
+      find.textContaining('Which agent is waiting for me?'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Tell claude to add tests too'), findsOneWidget);
+    expect(find.textContaining('what should I ask for?'), findsOneWidget);
+    expect(find.textContaining('starts a new agent'), findsOneWidget);
     expect(find.byTooltip('End'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
@@ -347,9 +354,14 @@ void main() {
       await tester.pump();
 
       expect(tester.takeException(), isNull);
-      expect(find.textContaining('Ask about your agents'), findsOneWidget);
+      expect(
+        find.textContaining('Which agent is waiting for me?'),
+        findsOneWidget,
+      );
       // The hint's text box really is taller than the region it sits in.
-      final hint = tester.getRect(find.textContaining('Ask about your agents'));
+      final hint = tester.getRect(
+        find.textContaining('Which agent is waiting for me?'),
+      );
       final region = tester.getRect(find.byType(SingleChildScrollView).first);
       expect(hint.height, greaterThan(region.height));
 
@@ -371,8 +383,8 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text("Let's talk about your agents"), findsNothing);
-    expect(find.textContaining('Ask about your agents'), findsNothing);
+    expect(find.text('What should we start on?'), findsNothing);
+    expect(find.textContaining('Which agent is waiting for me?'), findsNothing);
     expect(find.text('One agent is blocked.'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
@@ -560,8 +572,8 @@ void main() {
     await tester.pump();
 
     // The greeting invites the user to talk; there is nothing listening.
-    expect(find.text("Let's talk about your agents"), findsNothing);
-    expect(find.textContaining('Ask about your agents'), findsNothing);
+    expect(find.text('What should we start on?'), findsNothing);
+    expect(find.textContaining('Which agent is waiting for me?'), findsNothing);
     // And the error is in the body, where it can be read in full.
     final body = find.byKey(const ValueKey('voice_error_body'));
     expect(body, findsOneWidget);

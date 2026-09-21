@@ -1247,7 +1247,7 @@ abstract class AppLocalizations {
   /// No description provided for @voiceGreeting.
   ///
   /// In en, this message translates to:
-  /// **'Let\'s talk about your agents'**
+  /// **'What should we start on?'**
   String get voiceGreeting;
 
   /// No description provided for @voiceClose.
@@ -1256,11 +1256,17 @@ abstract class AppLocalizations {
   /// **'Close'**
   String get voiceClose;
 
-  /// No description provided for @voiceHint.
+  /// Three things to say out loud, one per line, under the greeting on a voice screen that has not started. One per capability: ask about the herd, leave an agent a message, and talk out something that has no agent yet.
   ///
   /// In en, this message translates to:
-  /// **'Ask about your agents, e.g. “Which agent is waiting for me?”, or say “Tell claude to add tests too”.'**
+  /// **'“Which agent is waiting for me?”\n“Tell claude to add tests too”\n“The invoice PDFs come out broken — what should I ask for?”'**
   String get voiceHint;
+
+  /// No description provided for @voiceHintHandoff.
+  ///
+  /// In en, this message translates to:
+  /// **'Work it out as you talk. Once it\'s settled, the call starts a new agent to take it on.'**
+  String get voiceHintHandoff;
 
   /// No description provided for @voiceEventFinished.
   ///

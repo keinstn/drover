@@ -656,14 +656,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceStart => 'Start';
 
   @override
-  String get voiceGreeting => 'Let\'s talk about your agents';
+  String get voiceGreeting => 'What should we start on?';
 
   @override
   String get voiceClose => 'Close';
 
   @override
   String get voiceHint =>
-      'Ask about your agents, e.g. “Which agent is waiting for me?”, or say “Tell claude to add tests too”.';
+      '“Which agent is waiting for me?”\n“Tell claude to add tests too”\n“The invoice PDFs come out broken — what should I ask for?”';
+
+  @override
+  String get voiceHintHandoff =>
+      'Work it out as you talk. Once it\'s settled, the call starts a new agent to take it on.';
 
   @override
   String voiceEventFinished(String name) {
