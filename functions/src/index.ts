@@ -510,10 +510,19 @@ const voiceTokenNewSessionLifetimeMs = 60 * 1000;
 // speech config, transcription, context-window compression) stays the
 // client's, and `fieldMask` names exactly what is frozen.
 //
-// Must stay equal to `kVoiceModel` in app/lib/src/voice/voice_transport.dart,
-// which the client sends in its own setup: bump one without the other and the
-// constrained endpoint refuses every session.
-const voiceModel = "models/gemini-3.1-flash-live-preview";
+// The mask makes this constant the only thing that decides the model on the
+// minted-token path: a client naming a different model — or one that does not
+// exist — connects and is answered anyway, while the same name on an
+// unconstrained token is refused (measured 2026-09-21, see
+// docs/voice-billing.md). So the model can be moved here alone, server side,
+// without an App Store release, which is the escape hatch if one is
+// deprecated.
+//
+// Keep it equal to `kVoiceModel` in app/lib/src/voice/voice_transport.dart all
+// the same: `FirebaseVoiceTransport`, used when `kVoiceUseMintedToken` is
+// false, connects through Firebase AI Logic with no token and no mask, and on
+// that path `kVoiceModel` is what decides the model.
+const voiceModel = "models/gemini-3.8-live";
 
 // The wallet and its ledger.
 //

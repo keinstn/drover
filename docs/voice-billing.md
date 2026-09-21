@@ -3,7 +3,8 @@
 A design note, not a built feature. Nothing here is implemented; the voice
 assistant is free while it lives on the `voice-live` branch. Written
 2026-09-13, revised 2026-09-18 after the ephemeral-token measurements below,
-and 2026-09-19 with the four flows drawn.
+2026-09-19 with the four flows drawn, and 2026-09-21 after the move to
+`gemini-3.8-live`.
 
 If voice is ever sold, it is sold as prepaid **Voice Credits** through an Apple
 consumable in-app purchase. One piece of backend is needed whatever else is
@@ -413,6 +414,19 @@ find and neither of which is written down anywhere else:
   token is refused with `1008 "models/... is not found"`. The client's value is
   ignored rather than honoured, which is what makes it a real constraint.
 
+  Re-measured 2026-09-21, this time with a *real* alternate model as well as
+  the nonexistent one: a masked token minted for one model answered a client
+  naming another shipping Live model just as it answered `models/not-a-model`:
+  both connected and were answered, while the unconstrained control refused
+  the made-up name as before. So on the minted-token path the Function's
+  constant alone decides which model bills, and the app's `kVoiceModel` is
+  dead weight there. The consequence worth keeping: a model can be switched
+  server side, with no App Store release, which is the escape hatch when one
+  is deprecated, and shipped builds keep working across the switch.
+  `kVoiceModel` still decides the model on the unmetered
+  `FirebaseVoiceTransport` path, which is the only reason the two are kept in
+  sync.
+
 Re-check all of this before relying on it; ephemeral tokens are a preview
 feature of a preview API, and the documentation is already out of step with the
 behaviour.
@@ -454,24 +468,61 @@ before it. This is why a credit cannot be denominated in minutes — the same
 minute costs more the later in a conversation it falls. The session cap
 (`kVoiceSessionCap`) is what bounds the quadratic.
 
+Context-window compression is the second bound on it, and `live_probe.dart`
+measured on 2026-09-21 how it actually behaves. It works, but it had been
+shipping inert: `ContextWindowCompressionConfig` was sent with neither
+`triggerTokens` nor `targetTokens`, and with both unset nothing ever fires, so
+the prompt grew every turn for the whole session. Set them and the per-turn
+prompt stops climbing and saw-tooths instead — up to the trigger, down to the
+target, up again.
+
+The trap is the floor. With `targetTokens` set far *below* the per-turn floor,
+the prompt never drops below that floor: the system instruction and the tool
+declarations cannot be compressed away, so the model simply discards the
+conversation in full rather than trimming it to fit. Retained conversation is
+therefore roughly **`targetTokens` minus the per-turn floor**, and a target at
+or under the floor retains nothing. drover's floor is about 1,800 tokens —
+system prompt, tool declarations and transcripts, derived from the billed text
+tokens per turn — so the shipped `triggerTokens: 5000` with
+`SlidingWindow(targetTokens: 3000)` keeps around 1,200 tokens of conversation
+across a compression, which is the last two or three turns. That margin is what
+`draft_message` → confirm → `send_message` needs to survive a clip, and it
+shrinks every time the system prompt or the tool declarations grow.
+
 Not yet measured: a multi-turn run with real audio *input*. Those runs are
 closed by the server with `1008 The operation was aborted.` while text turns
 succeed at the same moment, so it is not quota; the cause is unknown after
 three attempts, most likely the VAD/activity signalling. It does not affect
 the re-billing conclusion, but no end-to-end figure for a real session exists
-yet. Nor does the check against Cloud Billing that this note asks for — the
-billing export's tables stop at 2026-08-23 and have no September rows.
+yet.
 
-Re-check all of this against a newer model before relying on it; the behaviour
-above is that of a preview model and may change.
+The check against Cloud Billing that this note asks for has since been done,
+on 2026-09-21: the export's tables were only lagging, not stopped, and the
+September rows are all there. Dividing charge by tokens reproduces every list
+price above at a consistent 159.4 JPY/USD, so the rates are confirmed against
+an invoice rather than a documentation page. What the invoice settles is the
+per-call figure the modelling could not: eight real conversations under the
+five-minute cap cost between 1.09 and 11.54 JPY, averaging 5.9. The modelled
+ceiling for a dense call, scaled from the one twelve-minute session that ran
+under the old ten-minute cap, is about 25 JPY.
+
+Re-check all of this against `gemini-3.8-live` before relying on it. The
+re-billing and audio-rate figures above were measured on the legacy preview
+model, and while the two sit in the same pricing row, the same rates are an
+assumption until they are measured again — the migration does not carry the
+measurements over with it.
 
 The price then has to cover the Gemini cost plus Apple's cut, Firebase and
 Cloud Run, headroom for refunds and abuse, and headroom for model price and
 exchange-rate moves.
 
-`gemini-3.1-flash-live-preview` is a preview model. Confirm a stable Live model
-is available before selling anything against it; while it is still preview,
-voice stays on an invite-only TestFlight beta.
+This no longer waits on a stable Live model. Voice moved to `gemini-3.8-live`
+on 2026-09-21 — Google publishes it as stable and lists the model drover used
+before it as the legacy preview one to migrate off — and both sit in the same
+pricing row ($3.00/1M input audio, $12.00/1M output audio, $0.75/1M input
+text), so the move cost nothing. Whether voice stays on an invite-only
+TestFlight beta is now a question about the measurements and the price, not
+about the model's maturity.
 
 ## Order of work
 
