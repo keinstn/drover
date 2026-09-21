@@ -1116,6 +1116,80 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    /// Every `[focus]` hint that reached the model on the current socket.
+    List<String> focusHints() => sessions.connector.last.sentText
+        .where((text) => text.startsWith('[focus] '))
+        .toList();
+
+    testWidgets('opening an agent tells the call whose screen is open', (
+      tester,
+    ) async {
+      final client = HerdrClient(FakeCommandRunner(_respond));
+      await tester.pumpWidget(
+        _herdApp(
+          client: client,
+          voiceAssistantEnabled: true,
+          voiceSessionFor: sessions.call,
+        ),
+      );
+      await tester.pump();
+
+      await callAndLeave(tester);
+      final loggedBefore = sessions.built.single.entries.length;
+      await tester.tap(find.text('Agent One'));
+      await tester.pumpAndSettle();
+
+      // The call is still up behind the agent screen, and now knows which
+      // agent "it" means.
+      expect(focusHints(), hasLength(1));
+      expect(focusHints().single, contains('Agent One'));
+
+      await tester.tap(find.byKey(const ValueKey('agent_back_button')));
+      await tester.pumpAndSettle();
+
+      expect(focusHints(), hasLength(2));
+      expect(focusHints().last, contains('no longer looking'));
+      // Navigation, not conversation: two hints went to the model and the
+      // log grew by nothing.
+      expect(sessions.built.single.entries, hasLength(loggedBefore));
+
+      // Torn down with an agent screen still on top, so the release runs
+      // against a herd screen that may already be going.
+      await tester.tap(find.text('Agent One'));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('an agent on a host the call is not scoped to is not named', (
+      tester,
+    ) async {
+      final clientA = HerdrClient(FakeCommandRunner(_respond));
+      final clientB = HerdrClient(FakeCommandRunner(_respondB));
+      await tester.pumpWidget(
+        _herdApp(
+          hosts: const [_hostRefA, _hostRefB],
+          clientFor: (ref) => ref.hostId == 'host-a' ? clientA : clientB,
+          voiceAssistantEnabled: true,
+          voiceSessionFor: sessions.call,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await callAndLeave(tester);
+      // The session was built for host A (the first in scope); host B's
+      // "Agent Bee" is a name its tools could not resolve.
+      await tester.scrollUntilVisible(find.text('Agent Bee'), 100);
+      await tester.tap(find.text('Agent Bee'));
+      await tester.pumpAndSettle();
+
+      expect(focusHints(), isEmpty);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('the host in scope changing drops the retained call', (
       tester,
     ) async {

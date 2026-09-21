@@ -4031,6 +4031,114 @@ void main() {
     },
   );
 
+  group('reporting focus to a voice call', () {
+    // The same two agents `multiAgentResponse` serves, handed in up front so
+    // the report fires on the first frame rather than after a poll.
+    const alpha = AgentInfo(
+      paneId: 'wB:p1',
+      workspaceId: 'wB',
+      tabId: 'wB:t1',
+      agent: 'claude',
+      status: AgentStatus.idle,
+      cwd: '/tmp/proj-b',
+      focused: false,
+    );
+    const database = AgentInfo(
+      paneId: 'wA:p1',
+      workspaceId: 'wA',
+      tabId: 'wA:t1',
+      agent: 'codex',
+      status: AgentStatus.working,
+      cwd: '/tmp/proj-a',
+      focused: false,
+    );
+
+    Widget agentRoute(
+      HerdrClient client,
+      void Function(AgentInfo agent, {required bool focused}) onVoiceFocus,
+    ) => AgentScreen(
+      client: client,
+      paneId: 'wB:p1',
+      initialAgent: alpha,
+      initialAgents: const [alpha, database],
+      pollInterval: const Duration(hours: 1),
+      onVoiceFocus: onVoiceFocus,
+    );
+
+    testWidgets('reports the agent on open and again when it is popped', (
+      tester,
+    ) async {
+      final client = HerdrClient(StubCommandRunner(multiAgentResponse));
+      final reports = <(String, bool)>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => Center(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => agentRoute(
+                        client,
+                        (agent, {required focused}) =>
+                            reports.add((agent.paneId, focused)),
+                      ),
+                    ),
+                  ),
+                  child: const Text('open agent'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('open agent'));
+      await tester.pumpAndSettle();
+      expect(reports, [('wB:p1', true)]);
+
+      await tester.tap(find.byKey(const ValueKey('agent_back_button')));
+      await tester.pumpAndSettle();
+
+      expect(reports, [('wB:p1', true), ('wB:p1', false)]);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a bar switch reports the agent switched to, after the '
+        'outgoing screen is released', (tester) async {
+      final client = HerdrClient(StubCommandRunner(multiAgentResponse));
+      final reports = <(String, bool)>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: agentRoute(
+            client,
+            (agent, {required focused}) => reports.add((agent.paneId, focused)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('switcher_agent_wA:p1')));
+      await tester.pumpAndSettle();
+
+      // `pushReplacement` builds the incoming screen before disposing the
+      // outgoing one, so the release of wB:p1 arrives *after* the focus on
+      // wA:p1 — the ordering the session's pane-guarded release exists for.
+      expect(reports, [('wB:p1', true), ('wA:p1', true), ('wB:p1', false)]);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
   testWidgets('the herd tab pops to the first route', (tester) async {
     final client = HerdrClient(StubCommandRunner(multiAgentResponse));
 
