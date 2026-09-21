@@ -527,6 +527,22 @@ class AppLocalizationsJa extends AppLocalizations {
   String get settingsAccountSignInFailed => 'サインインできませんでした。タップしてやり直してください。';
 
   @override
+  String get settingsAccountDelete => 'アカウントを削除';
+
+  @override
+  String get accountDeleteTitle => 'アカウントを削除しますか？';
+
+  @override
+  String get accountDeleteBody =>
+      'サインイン、ホストのペアリング、残っているボイスクレジットがすべて削除されます。クレジットの払い戻しや、別のアカウントへの引き継ぎはできません。ホストの設定は端末に残りますが、通知には再度ペアリングが必要です。';
+
+  @override
+  String get accountDeleteConfirm => '削除';
+
+  @override
+  String get accountDeleteFailed => 'アカウントを削除できませんでした。タップしてやり直してください。';
+
+  @override
   String get herdVoiceButton => '音声アシスタント';
 
   @override

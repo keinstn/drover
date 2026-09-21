@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import {
   type DocumentReference,
   FieldValue,
@@ -420,6 +421,64 @@ export const revokeHost = onCall({ enforceAppCheck: true }, async (request) => {
   await batch.commit();
   return { hostId: pairing.hostId };
 });
+
+// Deletes the signed-in account and everything hanging off it, which App Store
+// guideline 5.1.1(v) requires the app to offer. The client gets no say in what
+// goes, so `request.data` is ignored entirely.
+//
+// Firestore first and Auth last: a pass that fails partway leaves the account
+// signed in and the client free to call again, whereas deleting the user first
+// would strand the remaining rows with no session left to retry from.
+//
+// `voiceSessions` documents are deliberately left alone. They are keyed by a
+// client-generated UUID and hold only that ID's uid and start time. Nothing
+// reaps them yet either, here or anywhere — see the note on `voiceSessionRef`.
+//
+// Apple token revocation does not happen here either. The client calls
+// `revokeTokenWithAuthorizationCode` and Firebase's own backend performs the
+// revoke from the Apple provider configuration in the console, so no `.p8` or
+// client-secret JWT belongs in this Function.
+export const deleteAccount = onCall(
+  { enforceAppCheck: true },
+  async (request) => {
+    const uid = requireUid(request.auth);
+
+    // One call for `devices`, `wallet`, `ledger` and `_rateLimits` alike —
+    // naming them here would go stale the next time one is added.
+    await db.recursiveDelete(db.collection("users").doc(uid));
+
+    // Hosts carry an `events` subcollection, so each goes recursively too; a
+    // plain delete would leave those rows behind under a deleted parent.
+    //
+    // ponytail: both sweeps stop at 500 and the account is deleted anyway.
+    // A host doc left behind holds its `hostId` forever — `createPairingCode`
+    // refuses an ID owned by another uid, and that uid no longer exists to
+    // revoke it — so past 500 hosts the leftovers need the console. Nobody
+    // pairs 500 machines; page through it if anybody ever does.
+    const hosts = await db
+      .collection("hosts")
+      .where("uid", "==", uid)
+      .limit(500)
+      .get();
+    for (const host of hosts.docs) {
+      await db.recursiveDelete(host.ref);
+    }
+
+    const pairingCodes = await db
+      .collection("pairingCodes")
+      .where("uid", "==", uid)
+      .limit(500)
+      .get();
+    const batch = db.batch();
+    for (const pairingCode of pairingCodes.docs) {
+      batch.delete(pairingCode.ref);
+    }
+    await batch.commit();
+
+    await getAuth().deleteUser(uid);
+    return { deleted: true };
+  },
+);
 
 // The Gemini API key. It stays in Secret Manager, is bound to this one
 // function, and never reaches the client or a log line — keeping the key here
