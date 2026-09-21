@@ -641,7 +641,7 @@ void main() {
       // down in between: one session, one socket, no reconnect and no fresh
       // call's greeting.
       expect(find.text('One agent is blocked.'), findsOneWidget);
-      expect(find.text("Let's talk about your agents"), findsNothing);
+      expect(find.text('What should we start on?'), findsNothing);
       expect(find.text('Reconnected, continuing'), findsNothing);
       expect(sessions.built, hasLength(1));
       expect(sessions.connector.transports, hasLength(1));
@@ -1073,7 +1073,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('voice_start_button')));
       await tester.pumpAndSettle();
 
-      expect(find.text("Let's talk about your agents"), findsOneWidget);
+      expect(find.text('What should we start on?'), findsOneWidget);
       expect(find.text('Session ended'), findsNothing);
       expect(sessions.built, hasLength(2));
       expect(sessions.connector.handles, [null, null]);
@@ -1108,7 +1108,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('voice_button')));
       await tester.pumpAndSettle();
 
-      expect(find.text("Let's talk about your agents"), findsOneWidget);
+      expect(find.text('What should we start on?'), findsOneWidget);
       expect(find.text('One agent is blocked.'), findsNothing);
       expect(sessions.built, hasLength(2));
 
@@ -1140,7 +1140,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('voice_button')));
       await tester.pumpAndSettle();
 
-      expect(find.text("Let's talk about your agents"), findsOneWidget);
+      expect(find.text('What should we start on?'), findsOneWidget);
       expect(find.text('One agent is blocked.'), findsNothing);
       expect(sessions.built, hasLength(2));
 

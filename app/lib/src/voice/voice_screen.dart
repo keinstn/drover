@@ -327,11 +327,18 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// Before anything has been said: the greeting and what to try, centred in
-  /// the transcript's place. Goes as soon as the first line lands.
-  // Scrolls once the region is shorter than the two paragraphs need — at an
-  // accessibility text size the hint alone can outgrow a phone's height, and
-  // the stage this replaced scrolled for the same reason.
+  /// Before anything has been said: the greeting, three things to say out
+  /// loud, and what the talking leads to — centred in the transcript's
+  /// place. Goes as soon as the first line lands.
+  ///
+  /// The three lines are one per capability, because the assistant's widest
+  /// one is the one nobody guesses: the third has no agent behind it yet, and
+  /// the sentence under it says where that conversation ends up. Since a new
+  /// call waits for the Start tap, this is also the last thing read before
+  /// spending a credit.
+  // Scrolls once the region is shorter than the three blocks need — at an
+  // accessibility text size the examples alone can outgrow a phone's height,
+  // and the stage this replaced scrolled for the same reason.
   Widget _empty(BuildContext context, AppLocalizations l10n) => Center(
     child: SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
@@ -350,6 +357,12 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
           const SizedBox(height: 8),
           Text(
             l10n.voiceHint,
+            textAlign: TextAlign.center,
+            style: _mutedStyle(context).copyWith(fontSize: 13, height: 1.6),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            l10n.voiceHintHandoff,
             textAlign: TextAlign.center,
             style: _mutedStyle(context).copyWith(fontSize: 13, height: 1.4),
           ),
