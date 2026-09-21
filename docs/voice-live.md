@@ -324,6 +324,66 @@ Already done for this project; recorded so a fresh setup can repeat it.
   playback invites questions at review time — on the `1.1.0` submission this
   branch is heading for. Resuming a session interrupted by a real call is a
   separate feature: hold the resumption handle and reconnect on `resumed`.
+- **The model is told which agent's screen the user is on** (2026-09-21).
+  Until now an unnamed agent — "what is it waiting for?", "tell it to carry
+  on" — had to be guessed from the last event or asked back about, even while
+  the user was staring at the agent they meant. `AgentScreen` now reports
+  itself through an `onVoiceFocus` callback, `HerdScreen` routes it to
+  `VoiceSession.focusAgent` / `releaseFocus`, and the session injects a
+  `[focus] The user is now looking at …'s screen.` line; the system prompt
+  tells the model to resolve an unnamed agent to that one. It is a *hint*,
+  not a binding: an agent the user names by name still wins.
+  - It rides the same injected-text channel as the `[event]` announcements
+    and shares their chain, so it waits out the model's estimated playback
+    before it goes. Gemini Live treats injected text as a barge-in, and a
+    hint landing mid-sentence would cut the model off just for walking to
+    another screen. Everything is read at send time rather than captured
+    when queued, so a run of switches says only where the user ended up, and
+    a screen opened and left again while a hint waits out the playback
+    cancels itself — nothing is sent, rather than two barge-ins that between
+    them say nothing changed.
+  - **What the model was told is tracked apart from where the user is**, and
+    the session speaks only when the two disagree. A hint that never made it
+    — the socket was gone mid-reconnect, the send threw — is not recorded as
+    delivered, so it simply still disagrees at the next connect and goes out
+    there. Without that split a reconnect, which the server's few-minute
+    connection cap makes routine, would silently swallow a focus for good;
+    worse, a swallowed *release* would leave the resumed conversation sure
+    the user was still on a screen they had left, and the prompt tells the
+    model to prefer that over asking. A `start` that opens a conversation
+    the server is not restoring forgets what the last one was told, because
+    the new one has been told nothing.
+  - **Deliberately no transcript entry.** Focus is navigation, not
+    conversation: a line in the log on every screen change would bury the
+    conversation the hint exists to help. The tests assert this, so the
+    silence is on purpose rather than an omission.
+  - **The release is pane-guarded**, and the bottom switcher bar is why.
+    `pushReplacement` builds the incoming agent screen before the outgoing
+    one is disposed, so the release arrives *after* the focus the new screen
+    just set; without the guard a bar switch would blank the focus it had
+    just moved. `releaseFocus(paneId)` is a no-op unless that pane still
+    holds the focus, and the screens keep the agent they reported so the
+    release names the same pane the focus did. The ordering is the
+    framework's, not something the screens work around.
+  - **Only the voice host's agents are named.** A session's tools talk to one
+    host's client (the one-host ceiling below), so an agent on any other host
+    is a name the model could not read, message or act on. `HerdScreen`
+    withholds the callback for anything but `_voiceHost`, and with no session
+    there is no host and nothing is reported.
+  - Ceilings. Marked `ponytail:` in the code: "told" is never confirmed, and
+    the live config compacts the context window by dropping the oldest turns,
+    so a focus injected early in a long call can fall out of the model's
+    context while the session still records it as known; and a screen opened
+    without an initial agent never reports at all, because there is nothing
+    to name before the first `listAgents` resolves one (no caller does that
+    today). Not marked, because it belongs to another path entirely: a
+    **notification tap** opens its agent screen from `main.dart`, which pops
+    to the root — firing the release for whatever was open — and pushes
+    without the callback, so the model is left believing no screen is open
+    while the user looks at the tapped agent. That path never had the voice
+    session in reach; wiring it is issue #232. The failure is the safe one —
+    the model falls back to asking or to the last event, rather than
+    confidently naming the wrong agent.
 
 ## Voicemail and callback model
 

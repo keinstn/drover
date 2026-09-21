@@ -928,6 +928,213 @@ void main() {
     });
   });
 
+  group('focus', () {
+    final claude = fakeAgent(paneId: 'p1', title: 'Implement OAuth');
+    final codex = fakeAgent(paneId: 'p2', kind: 'codex', name: 'Reviewer');
+
+    test('focusAgent tells the model whose screen is open', () async {
+      final s = session();
+      await s.start();
+
+      s.focusAgent(claude);
+      await settle();
+
+      expect(transport.sentText, hasLength(1));
+      expect(transport.sentText.single, startsWith('[focus] '));
+      expect(transport.sentText.single, contains('Implement OAuth'));
+      // Navigation, not conversation: nothing reaches the log.
+      expect(s.entries, isEmpty);
+    });
+
+    test('focusing the same pane twice sends one hint', () async {
+      final s = session();
+      await s.start();
+
+      s.focusAgent(claude);
+      s.focusAgent(claude);
+      await settle();
+
+      expect(transport.sentText, hasLength(1));
+    });
+
+    test('releasing a pane that lost the focus sends nothing', () async {
+      final s = session();
+      await s.start();
+      s.focusAgent(claude);
+      await settle();
+      s.focusAgent(codex);
+      await settle();
+
+      // What the outgoing screen does after the incoming one took over.
+      s.releaseFocus('p1');
+      await settle();
+
+      expect(transport.sentText, hasLength(2));
+      expect(transport.sentText.last, contains('Reviewer'));
+    });
+
+    test('releasing the focused pane says no screen is open', () async {
+      final s = session();
+      await s.start();
+      s.focusAgent(claude);
+      await settle();
+
+      s.releaseFocus('p1');
+      await settle();
+
+      expect(transport.sentText, hasLength(2));
+      expect(transport.sentText.last, startsWith('[focus] '));
+      expect(transport.sentText.last, contains('no longer looking'));
+    });
+
+    test('a session that is not live sends nothing', () async {
+      final s = session();
+
+      s.focusAgent(claude);
+      s.releaseFocus('p1');
+      await settle();
+
+      expect(transport.sentText, isEmpty);
+      expect(s.status, VoiceSessionStatus.idle);
+    });
+
+    test('a hint waiting out playback names where focus ended up', () async {
+      final gate = Completer<void>();
+      final s = session(sleepGate: gate);
+      await s.start();
+      // Two seconds of model audio, so the first hint parks in the wait.
+      transport.push(audioChunk(bytes: 96000));
+      await settle();
+
+      s.focusAgent(claude);
+      await settle();
+      expect(sleeps, hasLength(1), reason: 'parked in the first sleep');
+      expect(transport.sentText, isEmpty);
+
+      s.focusAgent(codex);
+      gate.complete();
+      await settle();
+
+      expect(transport.sentText, hasLength(1));
+      expect(transport.sentText.single, contains('Reviewer'));
+    });
+  });
+
+  group('focus reconciliation', () {
+    final claude = fakeAgent(paneId: 'p1', title: 'Implement OAuth');
+
+    /// A connect that hands out [transport] first and parks every later one
+    /// on [gate], so the window a reconnect leaves with no transport can be
+    /// held open.
+    Future<VoiceTransport> Function(String?, String) gatedConnect(
+      Completer<VoiceTransport> gate,
+    ) {
+      var calls = 0;
+      return (_, _) => ++calls == 1 ? Future.value(transport) : gate.future;
+    }
+
+    /// Drops the first connection after offering a handle, leaving the
+    /// session reconnecting with `_transport` null.
+    Future<void> dropIntoReconnect(VoiceSession s) async {
+      transport.pushResumption('h1');
+      await settle();
+      await transport.server.close();
+      await settle();
+    }
+
+    test('a focus set while reconnecting lands on the new wire', () async {
+      final gate = Completer<VoiceTransport>();
+      final resumed = FakeTransport();
+      final s = session(connect: gatedConnect(gate));
+      await s.start();
+      await dropIntoReconnect(s);
+      expect(s.status, VoiceSessionStatus.connecting);
+
+      s.focusAgent(claude);
+      await settle();
+      expect(transport.sentText, isEmpty, reason: 'that wire is gone');
+
+      gate.complete(resumed);
+      await settle();
+
+      expect(resumed.sentText, hasLength(1));
+      expect(resumed.sentText.single, contains('Implement OAuth'));
+      expect(s.status, VoiceSessionStatus.live);
+    });
+
+    test('a release lost to a reconnect is said on the new wire', () async {
+      final gate = Completer<VoiceTransport>();
+      final resumed = FakeTransport();
+      final s = session(connect: gatedConnect(gate));
+      await s.start();
+      s.focusAgent(claude);
+      await settle();
+      expect(transport.sentText, hasLength(1));
+      await dropIntoReconnect(s);
+
+      // Leaving the screen inside the window: the model still believes the
+      // user is on it, and the prompt tells it to trust that.
+      s.releaseFocus('p1');
+      await settle();
+      gate.complete(resumed);
+      await settle();
+
+      expect(resumed.sentText, hasLength(1));
+      expect(resumed.sentText.single, contains('no longer looking'));
+    });
+
+    test('a focus released inside the playback wait sends nothing', () async {
+      final gate = Completer<void>();
+      final s = session(sleepGate: gate);
+      await s.start();
+      // Two seconds of model audio, so the hint parks in the wait.
+      transport.push(audioChunk(bytes: 96000));
+      await settle();
+
+      s.focusAgent(claude);
+      await settle();
+      expect(sleeps, hasLength(1), reason: 'parked in the first sleep');
+      s.releaseFocus('p1');
+      gate.complete();
+      await settle();
+
+      // The two cancel: barging into the model's turn to say the user opened
+      // a screen and left it again is worse than saying nothing.
+      expect(transport.sentText, isEmpty);
+    });
+
+    test('a call that goes live on a focused pane says so', () async {
+      final s = session();
+      s.focusAgent(claude);
+      await settle();
+      expect(transport.sentText, isEmpty);
+
+      await s.start();
+      await settle();
+
+      expect(transport.sentText, hasLength(1));
+      expect(transport.sentText.single, contains('Implement OAuth'));
+    });
+
+    test('a fresh conversation is told the focus again', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      s.focusAgent(claude);
+      await settle();
+      expect(connector.transports.first.sentText, hasLength(1));
+
+      // End and start again: a new Live conversation, which has been told
+      // nothing, however much the last one knew.
+      await s.stop();
+      await s.start();
+      await settle();
+
+      expect(connector.transports[1].sentText, hasLength(1));
+      expect(connector.transports[1].sentText.single, contains('OAuth'));
+    });
+  });
+
   group('resumption', () {
     final claude = fakeAgent(paneId: 'p1', title: 'Implement OAuth');
 
