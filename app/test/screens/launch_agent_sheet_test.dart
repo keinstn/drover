@@ -72,6 +72,16 @@ CommandResult _response(String command) {
   throw StateError('unexpected command: $command');
 }
 
+/// Answers the first `claude-proj` start with herdr's `agent_name_taken`, so
+/// only the retry's `claude-proj-2` gets through.
+CommandResult _responseWithTakenAgentName(String command) {
+  if (command.contains("'agent' 'start'") &&
+      command.contains("'claude-proj'")) {
+    return ok('{"id":"1","error":{"code":"agent_name_taken","message":"t"}}');
+  }
+  return _response(command);
+}
+
 CommandResult _responseWithDuplicateWorkspaceLabels(String command) {
   if (command.contains("'workspace' 'list'")) {
     return ok(
@@ -403,6 +413,72 @@ void main() {
     expect(startCommand, isNot(contains("'claude-proj'")));
   });
 
+  testWidgets('the default name stays legal for any folder name', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_response);
+    final client = HerdrClient(runner);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: LaunchAgentSheet(client: client, existingCwds: const []),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final nameField = find.byKey(const ValueKey('agent_name_field'));
+    for (final cwd in ['/tmp/MyProject', '/tmp/案件']) {
+      await tester.enterText(find.byKey(const ValueKey('cwd_field')), cwd);
+      await tester.pump();
+      final text = tester.widget<TextField>(nameField).controller!.text;
+      expect(text, matches(RegExp(r'^[a-z][a-z0-9_-]{0,31}$')), reason: cwd);
+    }
+  });
+
+  testWidgets(
+    'a taken agent name retries with a suffix, keeping the workspace',
+    (tester) async {
+      final runner = FakeCommandRunner(_responseWithTakenAgentName);
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: _Harness(client: client),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const ValueKey('cwd_field')),
+        '/tmp/proj',
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('launch_button')));
+      await tester.pumpAndSettle();
+
+      final starts = runner.commands
+          .where((c) => c.contains("'agent' 'start'"))
+          .toList();
+      expect(starts, hasLength(2));
+      expect(starts.last, contains("'claude-proj-2'"));
+      // A collision is not a failed start: the workspace must survive it.
+      expect(
+        runner.commands.any((c) => c.contains("'workspace' 'close'")),
+        isFalse,
+      );
+      final state = tester.state<_HarnessState>(find.byType(_Harness));
+      expect(state.poppedValue, true);
+    },
+  );
+
   testWidgets('hides IDs for uniquely named existing workspaces', (
     tester,
   ) async {
@@ -498,9 +574,7 @@ void main() {
     expect(cwdField.controller!.text, '/home/dev/proj');
   });
 
-  testWidgets('the launch CTA is a stadium', (
-    tester,
-  ) async {
+  testWidgets('the launch CTA is a stadium', (tester) async {
     final runner = FakeCommandRunner(_response);
     final client = HerdrClient(runner);
 
