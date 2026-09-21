@@ -112,10 +112,25 @@ class VoiceScreen extends StatefulWidget {
 class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
   final _scroll = ScrollController();
 
+  /// The pinned drafts' own scroll, re-anchored on every new card. `reverse`
+  /// on [_pending] only picks where the viewport *starts*: once it has been
+  /// scrolled — a drag inside the cards, or a focus pulling an older one
+  /// into view — it stays where it was left, and each card appended after
+  /// that lands below the viewport with its button out of reach.
+  final _pendingScroll = ScrollController();
+
+  int _pendingCount = 0;
+
   @override
   void initState() {
     super.initState();
     widget.session.addListener(_onSessionChanged);
+    // Seeded, not left at zero: the call outlives this route, so a fresh
+    // state is built over however many cards are already pending, and an
+    // unseeded count would read the next notify — a Send on an older card,
+    // with no call running to notify sooner — as growth and yank the
+    // section out from under the finger that is reading it.
+    _pendingCount = widget.session.drafts.pending.length;
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.session.resumable) widget.session.start();
@@ -132,6 +147,7 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     // foreground — the open mic and the held-off auto-lock — now belong to
     // the herd screen, which is still there when this one is gone.
     _scroll.dispose();
+    _pendingScroll.dispose();
     super.dispose();
   }
 
@@ -174,7 +190,19 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     // Follow new entries only if the user hasn't scrolled up to read.
     final stick = _wasAtBottom;
+    // Growth only, so reading an older card isn't fought while nothing new
+    // has arrived. The count is stored either way: a send followed by a new
+    // draft has to re-anchor too.
+    final pending = widget.session.drafts.pending.length;
+    final grew = pending > _pendingCount;
+    _pendingCount = pending;
     setState(() {});
+    if (grew) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Reversed, so 0 is the newest card's edge.
+        if (_pendingScroll.hasClients) _pendingScroll.jumpTo(0);
+      });
+    }
     if (!stick) return;
     _jumpToEnd();
   }
@@ -392,6 +420,7 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
       constraints: BoxConstraints(maxHeight: height * 0.5),
       child: SingleChildScrollView(
         key: const ValueKey('voice_pending_drafts'),
+        controller: _pendingScroll,
         reverse: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
