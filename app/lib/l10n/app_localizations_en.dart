@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -595,6 +594,16 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0 with it.';
   }
+
+  @override
+  String get accountDeletedTitle => 'Account deleted';
+
+  @override
+  String get accountDeletedNotifyBody =>
+      'Notification pairing was removed with it. Re-pair each host to keep getting notifications.';
+
+  @override
+  String get accountDeletedManageHosts => 'Manage hosts';
 
   @override
   String get herdVoiceButton => 'Voice assistant';

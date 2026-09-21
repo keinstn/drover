@@ -30,6 +30,7 @@ class SettingsScreen extends StatelessWidget {
     required this.onSignInWithApple,
     required this.onDeleteAccount,
     required this.onManageHosts,
+    required this.hasHosts,
     this.onEnterDemo,
     this.appVersion,
     this.staleNotifyPlugins,
@@ -67,6 +68,12 @@ class SettingsScreen extends StatelessWidget {
   /// job, same as [onSignInWithApple].
   final Future<void> Function() onDeleteAccount;
   final VoidCallback onManageHosts;
+
+  /// Whether any host is configured on this device — including in demo mode,
+  /// where [staleNotifyPlugins] is null because the demo must not probe them
+  /// over SSH. Gates the post-delete re-pair nudge, which cares only about
+  /// there being a host to re-pair, not about its plugin's staleness.
+  final bool hasHosts;
 
   /// Enters the scripted demo session. The first-run setup screen offers it
   /// too, but only there — this row is how someone who already configured a
@@ -230,6 +237,8 @@ class SettingsScreen extends StatelessWidget {
             builder: (context, snapshot) => _DeleteAccountTile(
               onDelete: onDeleteAccount,
               credits: snapshot.data?.credits ?? 0,
+              onManageHosts: onManageHosts,
+              hasHosts: hasHosts,
             ),
           ),
           if (version != null && version.isNotEmpty) ...[
@@ -328,13 +337,26 @@ class _AccountTileState extends State<_AccountTile> {
 /// Stateful for the same reason [_AccountTile] is: what a tap produces
 /// (in-flight, failed) belongs to the row, not to the caller.
 class _DeleteAccountTile extends StatefulWidget {
-  const _DeleteAccountTile({required this.onDelete, required this.credits});
+  const _DeleteAccountTile({
+    required this.onDelete,
+    required this.credits,
+    required this.onManageHosts,
+    required this.hasHosts,
+  });
 
   final Future<void> Function() onDelete;
 
   /// What the wallet holds, or zero while the balance is loading, failed or
   /// is genuinely empty — the dialog treats all three the same way.
   final int credits;
+
+  final VoidCallback onManageHosts;
+
+  /// Whether any host is configured on this device. The pre-delete dialog
+  /// already warns that pairing goes with the account; this gates a second,
+  /// actionable nudge right after deletion succeeds — skipped when there is
+  /// nothing to re-pair.
+  final bool hasHosts;
 
   @override
   State<_DeleteAccountTile> createState() => _DeleteAccountTileState();
@@ -366,6 +388,13 @@ class _DeleteAccountTileState extends State<_DeleteAccountTile> {
       _busy = false;
       _failed = failed;
     });
+    // Fired at the moment re-pairing actually matters, not just in the
+    // pre-delete warning the user may have skimmed past.
+    if (!failed && widget.hasHosts && mounted) {
+      if (await _showAccountDeletedNotifyDialog(context) == true) {
+        widget.onManageHosts();
+      }
+    }
   }
 
   @override
@@ -419,6 +448,34 @@ Future<bool?> _showDeleteAccountDialog(BuildContext context, int credits) {
               foregroundColor: Theme.of(context).colorScheme.error,
             ),
             child: Text(l10n.accountDeleteConfirm),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+/// Follows a successful deletion when there was at least one host to
+/// re-pair. The pre-delete dialog already discloses that pairing goes with
+/// the account; this repeats it at the point where acting on it is actually
+/// possible, with a direct route to the host list rather than a warning the
+/// user has to remember and act on later.
+Future<bool?> _showAccountDeletedNotifyDialog(BuildContext context) {
+  return showDialog<bool>(
+    context: context,
+    builder: (context) {
+      final l10n = AppLocalizations.of(context)!;
+      return AlertDialog(
+        title: Text(l10n.accountDeletedTitle),
+        content: Text(l10n.accountDeletedNotifyBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.commonClose),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.accountDeletedManageHosts),
           ),
         ],
       );

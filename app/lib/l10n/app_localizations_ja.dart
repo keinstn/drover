@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -567,6 +566,16 @@ class AppLocalizationsJa extends AppLocalizations {
   String accountDeleteBalance(int credits) {
     return 'いまの残高は $credits クレジットです。';
   }
+
+  @override
+  String get accountDeletedTitle => 'アカウントを削除しました';
+
+  @override
+  String get accountDeletedNotifyBody =>
+      '通知のペアリングも解除されました。通知を受け取るには、各ホストで再度ペアリングしてください。';
+
+  @override
+  String get accountDeletedManageHosts => 'ホストを管理';
 
   @override
   String get herdVoiceButton => '音声アシスタント';
