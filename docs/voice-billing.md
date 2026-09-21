@@ -187,13 +187,18 @@ on the provider in its console. Decided 2026-09-19: a balance at deletion is
 **lost, not refunded**, and the purchase screen says so before the sale rather
 than at the end.
 
-Built 2026-09-20, and two details moved. The confirm dialog names no count:
-`firestore.rules` denies the client every read, so the device cannot see its
-own balance to quote it, and a vaguer sentence beats a number the app would
-have to fetch to be allowed to say. And the wallet and ledger go with the
-account rather than staying anonymised — a refund arriving for a deleted
-account has nowhere to land and nobody to pay, which is the price of deleting
-on request. Revisit when the purchase path exists, not before.
+Built 2026-09-20, and two details moved. The confirm dialog first shipped
+naming no count, because `firestore.rules` denies the client every read and the
+device could not see its own balance to quote. Settings has to show that
+balance anyway, so a `voiceWallet` callable now reads the wallet and its twenty
+newest ledger rows against the auth context — the rules stay shut, and the
+Function is the only way through them. The dialog names the number when there
+is one to name; a balance that is zero, still loading, or failed to load keeps
+the vaguer sentence, so the warning never waits on a round trip to appear. And
+the wallet and ledger go with the account rather than staying anonymised — a
+refund arriving for a deleted account has nowhere to land and nobody to pay,
+which is the price of deleting on request. Revisit when the purchase path
+exists, not before.
 
 One thing is open rather than decided. `linkAppleAccount` falls back to signing
 in when the Apple ID already belongs to an older Firebase user; that is the

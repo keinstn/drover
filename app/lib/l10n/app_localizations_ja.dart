@@ -515,6 +515,27 @@ class AppLocalizationsJa extends AppLocalizations {
       'エージェントについて drover と話せます。会話のため、エージェントの状態と返答の短い要約が Google の Gemini Live API に送信されます。';
 
   @override
+  String get settingsVoiceCredits => 'ボイスクレジット';
+
+  @override
+  String get settingsVoiceCreditsSubtitle => '1クレジットで1通話、最大5分です。';
+
+  @override
+  String get settingsVoiceCreditsActivity => '最近のクレジット履歴';
+
+  @override
+  String get settingsVoiceCreditsNone => 'まだ履歴はありません。';
+
+  @override
+  String get settingsVoiceCreditsFailed => '残高を読み込めませんでした。';
+
+  @override
+  String get voiceLedgerCall => '通話';
+
+  @override
+  String get voiceLedgerRefund => '返却';
+
+  @override
   String get settingsAccount => 'アカウント';
 
   @override
@@ -541,6 +562,11 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get accountDeleteFailed => 'アカウントを削除できませんでした。タップしてやり直してください。';
+
+  @override
+  String accountDeleteBalance(int credits) {
+    return 'いまの残高は $credits クレジットです。';
+  }
 
   @override
   String get herdVoiceButton => '音声アシスタント';

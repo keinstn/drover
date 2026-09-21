@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
+import '../firebase/voice_wallet.dart';
 import '../infra/shell_command.dart';
 import '../notifications/notify_plugin_version.dart';
 import '../widgets/copyable_value.dart';
@@ -32,6 +33,7 @@ class SettingsScreen extends StatelessWidget {
     this.onEnterDemo,
     this.appVersion,
     this.staleNotifyPlugins,
+    this.voiceWallet,
   });
 
   final ThemeMode themeMode;
@@ -84,6 +86,13 @@ class SettingsScreen extends StatelessWidget {
   /// would let the slowest host's probe hold back a row whose own probe
   /// already answered.
   final List<Future<StaleNotifyPlugin?>>? staleNotifyPlugins;
+
+  /// An already-started balance fetch, for the same reason
+  /// [staleNotifyPlugins] is one: this screen is rebuilt on every switch,
+  /// and a future created here would call the wallet Function again each
+  /// time. Null hides the balance entirely — previews and any build without
+  /// Firebase behind it.
+  final Future<VoiceWallet>? voiceWallet;
 
   @override
   Widget build(BuildContext context) {
@@ -205,11 +214,24 @@ class SettingsScreen extends StatelessWidget {
             value: voiceAssistantEnabled,
             onChanged: onVoiceAssistantChanged,
           ),
+          if (voiceWallet != null)
+            FutureBuilder<VoiceWallet>(
+              future: voiceWallet,
+              builder: _voiceCredits,
+            ),
           _sectionHeader(context, l10n.settingsAccount),
           _AccountTile(signedIn: appleSignedIn, onSignIn: onSignInWithApple),
           // Offered whether or not an Apple ID is attached: an anonymous
           // account is still an account, with a wallet hanging off its uid.
-          _DeleteAccountTile(onDelete: onDeleteAccount),
+          // Reads the same already-started future the section above does, so
+          // the confirmation can name what the balance actually is.
+          FutureBuilder<VoiceWallet>(
+            future: voiceWallet,
+            builder: (context, snapshot) => _DeleteAccountTile(
+              onDelete: onDeleteAccount,
+              credits: snapshot.data?.credits ?? 0,
+            ),
+          ),
           if (version != null && version.isNotEmpty) ...[
             // Detaches the row from the section above, so a footer doesn't
             // read as one of its settings.
@@ -306,9 +328,13 @@ class _AccountTileState extends State<_AccountTile> {
 /// Stateful for the same reason [_AccountTile] is: what a tap produces
 /// (in-flight, failed) belongs to the row, not to the caller.
 class _DeleteAccountTile extends StatefulWidget {
-  const _DeleteAccountTile({required this.onDelete});
+  const _DeleteAccountTile({required this.onDelete, required this.credits});
 
   final Future<void> Function() onDelete;
+
+  /// What the wallet holds, or zero while the balance is loading, failed or
+  /// is genuinely empty — the dialog treats all three the same way.
+  final int credits;
 
   @override
   State<_DeleteAccountTile> createState() => _DeleteAccountTileState();
@@ -319,7 +345,9 @@ class _DeleteAccountTileState extends State<_DeleteAccountTile> {
   bool _failed = false;
 
   Future<void> _confirmAndDelete() async {
-    if (await _showDeleteAccountDialog(context) != true) return;
+    if (await _showDeleteAccountDialog(context, widget.credits) != true) {
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _busy = true;
@@ -359,14 +387,25 @@ class _DeleteAccountTileState extends State<_DeleteAccountTile> {
 /// Asks before anything is destroyed, and says plainly what "everything"
 /// covers — credits especially, since those were paid for and cannot come
 /// back. Cancel is the default; the destructive action has to be chosen.
-Future<bool?> _showDeleteAccountDialog(BuildContext context) {
+///
+/// [credits] is named only when there is a number to name: a balance that is
+/// zero, still loading or failed to load leaves the wording exactly as it was
+/// before the client could read its own wallet at all.
+Future<bool?> _showDeleteAccountDialog(BuildContext context, int credits) {
   return showDialog<bool>(
     context: context,
     builder: (context) {
       final l10n = AppLocalizations.of(context)!;
       return AlertDialog(
         title: Text(l10n.accountDeleteTitle),
-        content: Text(l10n.accountDeleteBody),
+        content: Text(
+          // A paragraph break rather than a space: the two are separate
+          // sentences, and Japanese does not join sentences with one.
+          credits > 0
+              ? '${l10n.accountDeleteBody}\n\n'
+                    '${l10n.accountDeleteBalance(credits)}'
+              : l10n.accountDeleteBody,
+        ),
         actions: [
           TextButton(
             key: const ValueKey('account_delete_cancel'),
@@ -436,6 +475,89 @@ Future<void> _showPluginUpdateDialog(
     },
   );
 }
+
+/// The balance and the rows behind it, under the assistant switch.
+///
+/// A [FutureBuilder] builder rather than a widget: everything it renders is
+/// one snapshot of a future the caller already started.
+Widget _voiceCredits(BuildContext context, AsyncSnapshot<VoiceWallet> snap) {
+  final l10n = AppLocalizations.of(context)!;
+  final scheme = Theme.of(context).colorScheme;
+  if (snap.hasError) {
+    return ListTile(
+      key: const ValueKey('settings_voice_credits_failed_tile'),
+      leading: const Icon(Icons.toll_outlined),
+      title: Text(l10n.settingsVoiceCreditsFailed),
+    );
+  }
+  final wallet = snap.data;
+  // Nothing at all while it is in flight. A spinner would take up a row's
+  // worth of height and then hand it back, shifting everything below it just
+  // as the user reaches for a switch.
+  if (wallet == null) return const SizedBox.shrink();
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      ListTile(
+        key: const ValueKey('settings_voice_credits_tile'),
+        leading: const Icon(Icons.toll_outlined),
+        title: Text(l10n.settingsVoiceCredits),
+        subtitle: Text(l10n.settingsVoiceCreditsSubtitle),
+        // No chevron and no tap: there is nothing to buy yet, and a row that
+        // leads nowhere is worse than one that plainly just reports.
+        trailing: Text(
+          '${wallet.credits}',
+          style: TextStyle(color: scheme.onSurfaceVariant),
+        ),
+      ),
+      _sectionHeader(context, l10n.settingsVoiceCreditsActivity),
+      if (wallet.entries.isEmpty)
+        ListTile(
+          key: const ValueKey('settings_voice_credits_none_tile'),
+          title: Text(
+            l10n.settingsVoiceCreditsNone,
+            style: TextStyle(color: scheme.onSurfaceVariant),
+          ),
+        ),
+      for (final (index, entry) in wallet.entries.indexed)
+        ListTile(
+          key: ValueKey('settings_voice_credits_entry_$index'),
+          title: Text(switch (entry.type) {
+            VoiceLedgerType.call => l10n.voiceLedgerCall,
+            VoiceLedgerType.refund => l10n.voiceLedgerRefund,
+          }),
+          // No line at all when the row came back without a usable date:
+          // an empty subtitle would still take up the space.
+          subtitle: switch (entry.at) {
+            final at? => Text(_ledgerTimestamp(context, at)),
+            null => null,
+          },
+          trailing: Text(
+            _signedCredits(entry.credits),
+            style: TextStyle(color: scheme.onSurfaceVariant),
+          ),
+        ),
+    ],
+  );
+}
+
+/// The framework's own date and time for the active locale. Nothing else in
+/// the app renders an absolute timestamp — the herd screen speaks in elapsed
+/// time — so there is no house format to match, and
+/// [MaterialLocalizations] already follows both the locale and the device's
+/// 24-hour setting.
+String _ledgerTimestamp(BuildContext context, DateTime at) {
+  final material = MaterialLocalizations.of(context);
+  return '${material.formatShortDate(at)} '
+      '${material.formatTimeOfDay(TimeOfDay.fromDateTime(at))}';
+}
+
+/// Always signed, because which way a row moved the balance is the whole
+/// point of showing it. A true minus rather than a hyphen, to line up with
+/// the plus.
+String _signedCredits(int credits) =>
+    credits < 0 ? '\u2212${-credits}' : '+$credits';
 
 Widget _sectionHeader(BuildContext context, String label) => Padding(
   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
