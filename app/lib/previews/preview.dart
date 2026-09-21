@@ -242,7 +242,11 @@ final _previews = <String, PreviewBuilder>{
   // receive() stream, then diverges: 'speaking' leaves an unfinished
   // assistant transcript pending (the glow should read as speaking), 'draft'
   // adds a pending message draft, 'ended' closes the stream.
-  'voice': (_, scenario) => VoiceScreen(session: _voiceSession(scenario)),
+  'voice': (_, scenario) => VoiceScreen(
+    session: _voiceSession(scenario),
+    agents: _voiceBarAgents,
+    onOpenAgent: (_) {},
+  ),
   'settings': (_, _) => const _SettingsPreview(),
   // Notification pairing: SCENARIO=idle (default) shows the manual dialog,
   // as if drover.notify were not linked on the host. SCENARIO=plugin-detected
@@ -527,6 +531,41 @@ void _scriptVoice(
     }
   });
 }
+
+/// The roster behind the voice screen's switcher bar, one agent per status
+/// so every dot colour is on screen. Fixed: the preview has no poll.
+final _voiceBarAgents = ValueNotifier<List<AgentInfo>>(const [
+  AgentInfo(
+    paneId: 'wA:p1',
+    workspaceId: 'wA',
+    tabId: 'wA:t1',
+    agent: 'claude',
+    status: AgentStatus.blocked,
+    cwd: '/tmp/proj-a',
+    focused: false,
+    terminalTitle: 'Implement the OAuth callback',
+  ),
+  AgentInfo(
+    paneId: 'wA:p2',
+    workspaceId: 'wA',
+    tabId: 'wA:t1',
+    agent: 'copilot',
+    status: AgentStatus.working,
+    cwd: '/tmp/proj-a',
+    focused: false,
+    terminalTitle: 'データベース migration をレビュー',
+  ),
+  AgentInfo(
+    paneId: 'wB:p1',
+    workspaceId: 'wB',
+    tabId: 'wB:t1',
+    agent: 'codex',
+    status: AgentStatus.idle,
+    cwd: '/tmp/proj-b',
+    focused: false,
+    terminalTitle: 'Herd の session 表示を設計',
+  ),
+]);
 
 void main() {
   if (kDebugMode) {

@@ -238,6 +238,11 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
   /// longer apply.
   VoiceSession? _voiceSession;
 
+  /// The voice host's agents, for the switcher bar under the voice screen's
+  /// header. Separate from [HerdVoiceHerd]'s own `agents` closure, which the
+  /// voice *tools* read: this one exists to notify a widget.
+  final _voiceAgents = ValueNotifier<List<AgentInfo>>(const []);
+
   /// The host [_voiceSession] was built for; its tools talk to that host's
   /// client alone.
   HerdHostRef? _voiceHost;
@@ -366,6 +371,7 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
     for (final inbox in _voiceInboxes.values) {
       inbox.dispose();
     }
+    _voiceAgents.dispose();
     super.dispose();
   }
 
@@ -460,6 +466,9 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
         bucket.failStreak = 0;
         bucket.nextPollAt = null;
       });
+      // The poll keeps running while the voice screen is pushed, so this is
+      // the live feed behind its switcher bar.
+      if (host.hostId == _voiceHost?.hostId) _voiceAgents.value = agents;
       // Drop any cached history for a pane the herd no longer reports (the
       // agent stopped/exited), so the cache doesn't grow unboundedly.
       final panes = agents.map((agent) => agent.paneId).toSet();
@@ -773,7 +782,11 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
   /// replacement screen's own `listAgents` poll; both go through the same
   /// serialized SSH channel, and it keeps blocked-transition toasts alive
   /// while the user hops between agents.
-  Future<void> _openAgentScreen(HerdHostRef host, AgentInfo agent) async {
+  Future<void> _openAgentScreen(
+    HerdHostRef host,
+    AgentInfo agent, {
+    bool fromVoice = false,
+  }) async {
     final bucket = _bucketFor(host.hostId);
     _stopPolling();
     await Navigator.of(context).push(
@@ -805,6 +818,7 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
           nativeTranscriptHistory: _nativeHistoryFor(host, agent.paneId),
           nativeHistoryResolver: (paneId) => _nativeHistoryFor(host, paneId),
           showComposerFor: widget.showComposerFor,
+          backToVoice: fromVoice,
         ),
       ),
     );
@@ -1025,8 +1039,18 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
         _voiceHost = host;
       });
     }
+    // Seeded before the push, on both paths: with minAgents 1 an empty bar
+    // would animate in on the first poll, a visible glitch on every open.
+    _voiceAgents.value = _bucketFor(host.hostId).agents;
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => VoiceScreen(session: session)),
+      MaterialPageRoute<void>(
+        builder: (_) => VoiceScreen(
+          session: session,
+          agents: _voiceAgents,
+          onOpenAgent: (agent) =>
+              _openAgentScreen(host, agent, fromVoice: true),
+        ),
+      ),
     );
   }
 

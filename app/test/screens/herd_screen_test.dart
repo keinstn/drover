@@ -9,6 +9,7 @@ import 'package:drover/src/infra/settings_store.dart';
 import 'package:drover/src/infra/screen_wake.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
+import 'package:drover/src/screens/agent_screen.dart';
 import 'package:drover/src/screens/herd_screen.dart';
 import 'package:drover/src/screens/launch_agent_sheet.dart';
 import 'package:drover/src/voice/voice_consent_sheet.dart';
@@ -1039,6 +1040,109 @@ void main() {
       expect(find.text("Let's talk about your agents"), findsOneWidget);
       expect(find.text('One agent is blocked.'), findsNothing);
       expect(sessions.built, hasLength(2));
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+  });
+
+  group('the voice switcher bar', () {
+    late FakeVoiceSessions sessions;
+
+    setUp(() {
+      sessions = FakeVoiceSessions();
+      SharedPreferences.setMockInitialValues({
+        'voice_consent_version': kVoiceConsentVersion,
+      });
+    });
+
+    testWidgets('tapping an agent in the bar opens it with the call still on', (
+      tester,
+    ) async {
+      final client = HerdrClient(FakeCommandRunner(_respond));
+      Color? listeningInk;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: droverDarkTheme,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) {
+              // Read off the same theme the screens render under, so the
+              // expectation cannot drift from the screen-private constant.
+              listeningInk = voiceListeningInk(context);
+              return HerdScreen(
+                hosts: const [_hostRef],
+                clientFor: (_) => client,
+                onOpenHostSwitcher: () {},
+                onOpenSettings: () {},
+                pollInterval: const Duration(hours: 1),
+                voiceAssistantEnabled: true,
+                voiceSessionFor: sessions.call,
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('voice_button')));
+      await tester.pumpAndSettle();
+
+      // Seeded before the push: with a one-hour poll interval no listAgents
+      // has landed since the call opened, so the roster can only be there
+      // because `_openVoice` seeded it rather than the poll filling it in.
+      expect(find.byType(VoiceScreen), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('switcher_agent_wA:p2')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('switcher_agent_wA:p2')));
+      // Route transition plus the bar's own slide; not pumpAndSettle,
+      // because the pushed screen polls on a timer.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // The agent is on screen, on top of the call...
+      expect(find.byType(AgentScreen), findsOneWidget);
+      expect(find.text('Agent Two'), findsWidgets);
+
+      // ...and its way back wears the "we are listening" ink, off the
+      // render rather than off the constructor argument.
+      final ink = tester
+          .widget<RichText>(
+            find.descendant(
+              of: find.byKey(const ValueKey('agent_back_button')),
+              matching: find.byType(RichText),
+            ),
+          )
+          .text
+          .style!
+          .color!;
+      expect(ink, listeningInk);
+      expect(ink, isNot(droverDarkTheme.colorScheme.onSurfaceVariant));
+
+      // And the call is still the one call: nothing was torn down or
+      // re-dialled to put this screen on top of it.
+      expect(sessions.built, hasLength(1));
+      expect(sessions.connector.transports, hasLength(1));
+
+      // The return leg: that ink is a promise about where back goes, so
+      // press it and land on the call — still the same one.
+      await tester.tap(find.byKey(const ValueKey('agent_back_button')));
+      await tester.pump();
+      // Two waits, not one: the first covers the pop transition, the second
+      // the frame that disposes the popped route. Not pumpAndSettle — the
+      // agent screen polls on a timer until it is gone.
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byType(VoiceScreen), findsOneWidget);
+      expect(find.byType(AgentScreen), findsNothing);
+      expect(sessions.built, hasLength(1));
+      expect(sessions.connector.transports, hasLength(1));
 
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();

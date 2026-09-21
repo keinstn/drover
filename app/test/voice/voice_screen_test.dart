@@ -6,13 +6,16 @@ import 'dart:ui' as ui;
 
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
+import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/voice/voice_drafts.dart';
 import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_screen.dart';
 import 'package:drover/src/voice/voice_session.dart';
 import 'package:drover/src/voice/voice_tools.dart';
 import 'package:drover/src/voice/voice_transport.dart';
+import 'package:drover/src/widgets/agent_switcher_bar.dart';
 import 'package:firebase_ai/firebase_ai.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -39,6 +42,8 @@ void main() {
     bool reduceMotion = false,
     ThemeData? theme,
     Locale? locale,
+    ValueListenable<List<AgentInfo>>? agents,
+    void Function(AgentInfo agent)? onOpenAgent,
   }) {
     final session = VoiceSession(
       connect: connect ?? (_, _) async => transport,
@@ -56,7 +61,11 @@ void main() {
         ),
       ],
     );
-    final screen = VoiceScreen(session: session);
+    final screen = VoiceScreen(
+      session: session,
+      agents: agents,
+      onOpenAgent: onOpenAgent,
+    );
     return MaterialApp(
       theme: theme ?? droverDarkTheme,
       locale: locale,
@@ -1661,6 +1670,161 @@ void main() {
         await tester.pump();
       },
     );
+  });
+
+  group('the switcher bar under the header', () {
+    AgentInfo agent(String paneId, AgentStatus status, String name) =>
+        AgentInfo(
+          paneId: paneId,
+          workspaceId: 'wA',
+          tabId: 'wA:t1',
+          agent: 'claude',
+          status: status,
+          cwd: '/tmp/proj',
+          focused: false,
+          name: name,
+        );
+
+    final roster = [
+      agent('wA:p1', AgentStatus.idle, 'One'),
+      agent('wA:p2', AgentStatus.blocked, 'Two'),
+    ];
+
+    /// The colour of the status dot beside [paneId]'s avatar, off the render.
+    Color dotColour(WidgetTester tester, String paneId) =>
+        (tester
+                    .widgetList<Container>(
+                      find.descendant(
+                        of: find.byKey(ValueKey('switcher_agent_$paneId')),
+                        matching: find.byType(Container),
+                      ),
+                    )
+                    .firstWhere(
+                      (c) =>
+                          (c.decoration as BoxDecoration?)?.shape ==
+                          BoxShape.circle,
+                    )
+                    .decoration
+                as BoxDecoration)
+            .color!;
+
+    testWidgets('renders when both the list and the callback are given', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        app(agents: ValueNotifier(roster), onOpenAgent: (_) {}),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AgentSwitcherBar), findsOneWidget);
+      expect(find.byKey(const ValueKey('switcher_herd_tab')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('switcher_agent_wA:p1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('switcher_agent_wA:p2')),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    for (final (name, agents, onOpenAgent) in [
+      ('the list is null', null, (AgentInfo _) {}),
+      ('the callback is null', ValueNotifier(roster), null),
+      ('both are null', null, null),
+    ]) {
+      testWidgets('renders nothing when $name', (tester) async {
+        await tester.pumpWidget(app(agents: agents, onOpenAgent: onOpenAgent));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(AgentSwitcherBar), findsNothing);
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump();
+      });
+    }
+
+    testWidgets('sits above the transcript', (tester) async {
+      await tester.pumpWidget(
+        app(agents: ValueNotifier(roster), onOpenAgent: (_) {}),
+      );
+      await tester.pumpAndSettle();
+
+      // A line in the log, so the transcript list exists to measure against
+      // (an empty screen renders the greeting instead).
+      transport.push(
+        LiveServerContent(
+          outputTranscription: const Transcription(
+            text: 'One agent is blocked.',
+          ),
+          turnComplete: true,
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Rendered geometry, not tree order: the bar must actually be above the
+      // log, not merely earlier in the Column. Its height is asserted too, or
+      // a collapsed bar would sit above everything for free.
+      expect(
+        tester.getSize(find.byType(AgentSwitcherBar)).height,
+        greaterThan(0),
+      );
+      expect(
+        tester.getBottomLeft(find.byType(AgentSwitcherBar)).dy,
+        lessThanOrEqualTo(tester.getTopLeft(find.byType(ListView)).dy),
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('tapping a cell opens that agent', (tester) async {
+      final opened = <AgentInfo>[];
+      await tester.pumpWidget(
+        app(agents: ValueNotifier(roster), onOpenAgent: opened.add),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('switcher_agent_wA:p2')));
+      await tester.pump();
+
+      expect(opened, [roster[1]]);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('a new list from the notifier repaints the bar', (
+      tester,
+    ) async {
+      final agents = ValueNotifier<List<AgentInfo>>(roster);
+      await tester.pumpWidget(app(agents: agents, onOpenAgent: (_) {}));
+      await tester.pumpAndSettle();
+
+      final wasIdle = dotColour(tester, 'wA:p1');
+      expect(find.byKey(const ValueKey('switcher_agent_wA:p3')), findsNothing);
+
+      // The poll's own move: a new list, nobody rebuilding the screen.
+      agents.value = [
+        agent('wA:p1', AgentStatus.working, 'One'),
+        ...roster.skip(1),
+        agent('wA:p3', AgentStatus.idle, 'Three'),
+      ];
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('switcher_agent_wA:p3')),
+        findsOneWidget,
+      );
+      expect(dotColour(tester, 'wA:p1'), isNot(wasIdle));
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
   });
 }
 

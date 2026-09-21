@@ -17,6 +17,7 @@ import 'package:drover/src/screens/agent_screen.dart';
 import 'package:drover/src/screens/structured_prompt_sheet.dart';
 import 'package:drover/src/speech/speech_input.dart';
 import 'package:drover/src/transcript/native_transcript.dart';
+import 'package:drover/src/voice/voice_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5072,6 +5073,108 @@ void main() {
     await pumpIn('ja');
     expect(find.text('会話履歴'), findsOneWidget);
     expect(find.text('ライブターミナル'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the back chevron wears the listening ink only for a call', (
+    tester,
+  ) async {
+    final client = HerdrClient(StubCommandRunner(blockedPromptResponse));
+
+    Color backArrowInk() => tester
+        .widget<RichText>(
+          find.descendant(
+            of: find.byKey(const ValueKey('agent_back_button')),
+            matching: find.byType(RichText),
+          ),
+        )
+        .text
+        .style!
+        .color!;
+
+    Color? listeningInk;
+    Future<void> pump({required bool backToVoice}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: Builder(
+            builder: (context) {
+              // Captured from the same theme the screen renders under, so the
+              // expectation cannot drift from the private constant.
+              listeningInk = voiceListeningInk(context);
+              return AgentScreen(
+                client: client,
+                paneId: 'wB:p1',
+                backToVoice: backToVoice,
+                pollInterval: const Duration(hours: 1),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+
+    await pump(backToVoice: false);
+    expect(backArrowInk(), droverDarkTheme.colorScheme.onSurfaceVariant);
+
+    await tester.pumpWidget(const SizedBox());
+    await pump(backToVoice: true);
+    expect(backArrowInk(), listeningInk);
+    expect(listeningInk, isNot(droverDarkTheme.colorScheme.onSurfaceVariant));
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a bar switch keeps the call ink, because it keeps the way out', (
+    tester,
+  ) async {
+    final client = HerdrClient(StubCommandRunner(multiAgentResponse));
+
+    Color backArrowInk() => tester
+        .widget<RichText>(
+          find.descendant(
+            of: find.byKey(const ValueKey('agent_back_button')),
+            matching: find.byType(RichText),
+          ),
+        )
+        .text
+        .style!
+        .color!;
+
+    Color? listeningInk;
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: Builder(
+          builder: (context) {
+            listeningInk = voiceListeningInk(context);
+            return AgentScreen(
+              client: client,
+              paneId: 'wB:p1',
+              backToVoice: true,
+              pollInterval: const Duration(hours: 1),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(backArrowInk(), listeningInk);
+
+    // Hopping to another pane replaces the route but not the way back, so the
+    // chevron must still say the call is what it returns to.
+    await tester.tap(find.byKey(const ValueKey('switcher_agent_wA:p1')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('switcher_agent_wA:p1')), findsOneWidget);
+    expect(backArrowInk(), listeningInk);
 
     await tester.pumpWidget(const SizedBox());
   });
