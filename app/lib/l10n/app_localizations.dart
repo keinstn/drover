@@ -1025,7 +1025,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsVoiceAssistant.
   ///
   /// In en, this message translates to:
-  /// **'Voice assistant'**
+  /// **'Voice assistant (Experimental)'**
   String get settingsVoiceAssistant;
 
   /// No description provided for @settingsVoiceAssistantSubtitle.
@@ -1169,7 +1169,7 @@ abstract class AppLocalizations {
   /// No description provided for @herdVoiceButton.
   ///
   /// In en, this message translates to:
-  /// **'Voice assistant'**
+  /// **'Voice assistant (Experimental)'**
   String get herdVoiceButton;
 
   /// No description provided for @herdVoiceButtonLive.
@@ -1481,7 +1481,7 @@ abstract class AppLocalizations {
   /// No description provided for @voiceConsentTitle.
   ///
   /// In en, this message translates to:
-  /// **'Voice uses Google Gemini'**
+  /// **'Experimental: voice uses Google Gemini'**
   String get voiceConsentTitle;
 
   /// No description provided for @voiceConsentBody.

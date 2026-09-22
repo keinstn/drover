@@ -524,7 +524,10 @@ void main() {
 
       await openHerd(tester);
 
-      expect(find.text('Voice uses Google Gemini'), findsOneWidget);
+      expect(
+        find.text('Experimental: voice uses Google Gemini'),
+        findsOneWidget,
+      );
       expect(
         find.textContaining("Google's Gemini Live", findRichText: true),
         findsOneWidget,
@@ -574,7 +577,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(VoiceScreen), findsNothing);
-      expect(find.text('Voice uses Google Gemini'), findsNothing);
+      expect(find.text('Experimental: voice uses Google Gemini'), findsNothing);
       expect(find.byKey(const ValueKey('voice_button')), findsOneWidget);
       expect(
         (await SettingsStore().load()).voiceConsentVersion,
@@ -613,7 +616,7 @@ void main() {
 
       await openHerd(tester);
 
-      expect(find.text('Voice uses Google Gemini'), findsNothing);
+      expect(find.text('Experimental: voice uses Google Gemini'), findsNothing);
       expect(find.byType(VoiceScreen), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
@@ -631,7 +634,10 @@ void main() {
 
       await openHerd(tester);
 
-      expect(find.text('Voice uses Google Gemini'), findsOneWidget);
+      expect(
+        find.text('Experimental: voice uses Google Gemini'),
+        findsOneWidget,
+      );
       expect(find.byType(VoiceScreen), findsNothing);
 
       await tester.pumpWidget(const SizedBox());
@@ -647,7 +653,10 @@ void main() {
 
       await openHerd(tester);
 
-      expect(find.text('Voice uses Google Gemini'), findsOneWidget);
+      expect(
+        find.text('Experimental: voice uses Google Gemini'),
+        findsOneWidget,
+      );
       expect(
         find.textContaining(
           'keeps listening while you use the rest of drover',
@@ -672,7 +681,10 @@ void main() {
 
       await openHerd(tester);
 
-      expect(find.text('Voice uses Google Gemini'), findsOneWidget);
+      expect(
+        find.text('Experimental: voice uses Google Gemini'),
+        findsOneWidget,
+      );
       expect(find.byType(VoiceScreen), findsNothing);
 
       await tester.pumpWidget(const SizedBox());
