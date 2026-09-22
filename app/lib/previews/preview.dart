@@ -22,6 +22,7 @@ import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
+import 'package:record/record.dart';
 
 import '../l10n/app_localizations.dart';
 import '../src/app_theme.dart';
@@ -402,6 +403,9 @@ Uint8List _scriptedFrame(double amplitude) {
 /// [VoiceMic] that grants permission and records nothing real, but streams a
 /// scripted voice so the glow moves in a preview.
 class _StubVoiceMic implements VoiceMic {
+  @override
+  Stream<RecordState> get state => const Stream.empty();
+
   @override
   Future<bool> hasPermission() async => true;
 

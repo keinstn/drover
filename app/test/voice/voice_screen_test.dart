@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:record/record.dart';
 
 import 'fakes.dart';
 
@@ -2322,6 +2323,28 @@ void main() {
 
       expect(connector.transports, hasLength(1));
       expect(find.text('Reconnected, continuing'), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('voice_status'))).data,
+        'Ended',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+  });
+
+  group('audio interruption', () {
+    testWidgets('mic pause ends the live session, rendering why it ended', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app());
+      await tester.pump();
+
+      mic.states.add(RecordState.pause);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Interrupted'), findsOneWidget);
       expect(
         tester.widget<Text>(find.byKey(const ValueKey('voice_status'))).data,
         'Ended',
