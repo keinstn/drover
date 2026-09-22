@@ -540,6 +540,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'One credit is one call, up to five minutes.';
 
   @override
+  String get settingsVoiceCreditsCampaign =>
+      'Voice is free for now: sign in with Apple and a few free credits are added, once.';
+
+  @override
   String get settingsVoiceCreditsActivity => 'Recent credit activity';
 
   @override
@@ -553,6 +557,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get voiceLedgerRefund => 'Returned';
+
+  @override
+  String get voiceLedgerGrant => 'Free credits';
 
   @override
   String get settingsAccount => 'Account';
@@ -636,7 +643,54 @@ class AppLocalizationsEn extends AppLocalizations {
       'Microphone access is off. Allow it in Settings to talk to drover.';
 
   @override
-  String get voiceOutOfCredits => 'You are out of voice credits.';
+  String get voiceNoCreditsTitle => 'No credits left';
+
+  @override
+  String get voiceNoCreditsBody =>
+      'A call costs one credit and there are none. The free credits are granted once, to a signed-in account. Nothing was recorded — the microphone never opened and no audio left the phone.';
+
+  @override
+  String get voiceCampaignOverTitle => 'The free credits have run out';
+
+  @override
+  String get voiceCampaignOverBody =>
+      'Voice is free while the credits last, and they have run out for everyone — this is not your balance, and there is nothing on your side to put right. Nothing was recorded: the microphone never opened.';
+
+  @override
+  String voiceCredits(int credits) {
+    String _temp0 = intl.Intl.pluralLogic(
+      credits,
+      locale: localeName,
+      other: '$credits credits',
+      one: '1 credit',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get voiceReceiptLength => 'Length';
+
+  @override
+  String voiceReceiptLengthValue(int minutes, int seconds) {
+    return '$minutes min $seconds s';
+  }
+
+  @override
+  String get voiceReceiptCost => 'Cost';
+
+  @override
+  String get voiceReceiptBalance => 'Balance';
+
+  @override
+  String get voiceReceiptFootnote =>
+      'One credit, one call — however many times it reconnected along the way.';
+
+  @override
+  String get voiceSignInTitle => 'Sign in for your free credits';
+
+  @override
+  String get voiceSignInBody =>
+      'The voice assistant is free for now, and the free credits go to a signed-in account. Signing in with Apple adds them — once — and it is also what keeps them if you reinstall drover. drover asks Apple for nothing but a stable identifier: no name, no email address.';
 
   @override
   String voiceToolCalled(String name) {

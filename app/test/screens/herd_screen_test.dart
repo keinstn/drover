@@ -19,6 +19,7 @@ import 'package:drover/src/voice/voice_session.dart';
 import 'package:drover/src/voice/voice_transport.dart';
 import 'package:drover/src/widgets/error_message_view.dart';
 import 'package:firebase_ai/firebase_ai.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -172,6 +173,9 @@ Widget _herdApp({
   Locale? locale,
   Stream<void>? networkChanges,
   bool voiceAssistantEnabled = false,
+  ValueListenable<int?>? voiceCredits,
+  Future<void> Function()? onVoiceSignIn,
+  VoidCallback? onVoiceCreditsStale,
   ThemeData? theme,
   ScreenWake? screenWake,
   VoiceSession Function({
@@ -195,6 +199,9 @@ Widget _herdApp({
       pollInterval: pollInterval,
       networkChanges: networkChanges,
       voiceAssistantEnabled: voiceAssistantEnabled,
+      voiceCredits: voiceCredits,
+      onVoiceSignIn: onVoiceSignIn,
+      onVoiceCreditsStale: onVoiceCreditsStale,
       voiceSessionFor: voiceSessionFor,
       screenWake: screenWake,
     ),
@@ -403,15 +410,101 @@ void main() {
   });
 
   group('voice consent', () {
-    Future<void> openHerd(WidgetTester tester) async {
+    Future<void> openHerd(
+      WidgetTester tester, {
+      Future<void> Function()? onVoiceSignIn,
+    }) async {
       final client = HerdrClient(FakeCommandRunner(_respond));
       await tester.pumpWidget(
-        _herdApp(client: client, voiceAssistantEnabled: true),
+        _herdApp(
+          client: client,
+          voiceAssistantEnabled: true,
+          onVoiceSignIn: onVoiceSignIn,
+        ),
       );
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('voice_button')));
       await tester.pumpAndSettle();
     }
+
+    testWidgets('an anonymous account is offered the free credits first', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({
+        'voice_consent_version': kVoiceConsentVersion,
+      });
+      var signedIn = 0;
+
+      await openHerd(tester, onVoiceSignIn: () async => signedIn++);
+
+      // The sheet, before the screen: an anonymous account is granted
+      // nothing, so opening the call first would only reach a refusal.
+      expect(find.text('Sign in for your free credits'), findsOneWidget);
+      // The two things the sheet exists to say: signing in is what adds
+      // the credits, and it is also what keeps them across a reinstall.
+      // The grant is one-time, and the copy has to say so rather than let
+      // an empty balance later read as a refill that failed to arrive.
+      expect(
+        find.textContaining('adds them — once —', findRichText: true),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+          'keeps them if you reinstall drover',
+          findRichText: true,
+        ),
+        findsOneWidget,
+      );
+      // Nothing may promise a refill.
+      expect(
+        find.textContaining('every month', findRichText: true),
+        findsNothing,
+      );
+      // Nothing is for sale, so nothing here may read as an offer.
+      expect(find.textContaining('buy', findRichText: true), findsNothing);
+      expect(find.byType(VoiceScreen), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('voice_sign_in_accept')));
+      await tester.pumpAndSettle();
+
+      expect(signedIn, 1);
+      expect(find.byType(VoiceScreen), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('Not now still opens the conversation', (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'voice_consent_version': kVoiceConsentVersion,
+      });
+      var signedIn = 0;
+
+      await openHerd(tester, onVoiceSignIn: () async => signedIn++);
+      await tester.tap(find.byKey(const ValueKey('voice_sign_in_decline')));
+      await tester.pumpAndSettle();
+
+      // An escape, not a second consent gate.
+      expect(signedIn, 0);
+      expect(find.byType(VoiceScreen), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('an account with an Apple ID is never asked', (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'voice_consent_version': kVoiceConsentVersion,
+      });
+
+      await openHerd(tester);
+
+      expect(find.text('Sign in for your free credits'), findsNothing);
+      expect(find.byType(VoiceScreen), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
 
     testWidgets('the first tap renders the disclosure naming Google', (
       tester,

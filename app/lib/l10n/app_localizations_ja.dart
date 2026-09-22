@@ -520,6 +520,10 @@ class AppLocalizationsJa extends AppLocalizations {
   String get settingsVoiceCreditsSubtitle => '1クレジットで1通話、最大5分です。';
 
   @override
+  String get settingsVoiceCreditsCampaign =>
+      'いまは音声アシスタントを無料で試せます。Apple でサインインすると、無料クレジットが一度だけ追加されます。';
+
+  @override
   String get settingsVoiceCreditsActivity => '最近のクレジット履歴';
 
   @override
@@ -533,6 +537,9 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get voiceLedgerRefund => '返却';
+
+  @override
+  String get voiceLedgerGrant => '無料クレジット';
 
   @override
   String get settingsAccount => 'アカウント';
@@ -608,7 +615,47 @@ class AppLocalizationsJa extends AppLocalizations {
       'マイクへのアクセスがオフです。設定で許可すると drover と話せます。';
 
   @override
-  String get voiceOutOfCredits => 'ボイスクレジットがありません。';
+  String get voiceNoCreditsTitle => 'クレジットがありません';
+
+  @override
+  String get voiceNoCreditsBody =>
+      '通話には1クレジット必要ですが、残りがありません。無料クレジットは、サインイン済みのアカウントに一度だけ配られます。録音は行われていません。マイクは開かず、音声は端末から出ていません。';
+
+  @override
+  String get voiceCampaignOverTitle => '無料クレジットの配布が終わりました';
+
+  @override
+  String get voiceCampaignOverBody =>
+      '音声アシスタントはクレジットがあるあいだ無料で使えますが、全体の配布分がなくなりました。あなたの残高の問題ではなく、こちらで直せることもありません。録音は行われていません。マイクは開いていません。';
+
+  @override
+  String voiceCredits(int credits) {
+    return '$creditsクレジット';
+  }
+
+  @override
+  String get voiceReceiptLength => '通話時間';
+
+  @override
+  String voiceReceiptLengthValue(int minutes, int seconds) {
+    return '$minutes分$seconds秒';
+  }
+
+  @override
+  String get voiceReceiptCost => '料金';
+
+  @override
+  String get voiceReceiptBalance => '残高';
+
+  @override
+  String get voiceReceiptFootnote => '1通話につき1クレジットです。途中で何度つなぎ直しても変わりません。';
+
+  @override
+  String get voiceSignInTitle => 'サインインすると無料クレジットがもらえます';
+
+  @override
+  String get voiceSignInBody =>
+      'いまは音声アシスタントを無料で試せます。無料クレジットはサインイン済みのアカウントに追加されます。Apple でサインインすると一度だけ追加され、drover を入れ直しても残ります。drover が Apple から受け取るのは識別子だけで、氏名もメールアドレスも受け取りません。';
 
   @override
   String voiceToolCalled(String name) {

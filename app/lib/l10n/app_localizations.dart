@@ -1046,6 +1046,12 @@ abstract class AppLocalizations {
   /// **'One credit is one call, up to five minutes.'**
   String get settingsVoiceCreditsSubtitle;
 
+  /// One line under the balance row explaining the free campaign. The credits are granted once and never refilled, and there is nothing to buy — so it must promise no more of them, and must not read as an offer.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice is free for now: sign in with Apple and a few free credits are added, once.'**
+  String get settingsVoiceCreditsCampaign;
+
   /// No description provided for @settingsVoiceCreditsActivity.
   ///
   /// In en, this message translates to:
@@ -1075,6 +1081,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Returned'**
   String get voiceLedgerRefund;
+
+  /// No description provided for @voiceLedgerGrant.
+  ///
+  /// In en, this message translates to:
+  /// **'Free credits'**
+  String get voiceLedgerGrant;
 
   /// No description provided for @settingsAccount.
   ///
@@ -1208,11 +1220,77 @@ abstract class AppLocalizations {
   /// **'Microphone access is off. Allow it in Settings to talk to drover.'**
   String get voiceMicPermissionDenied;
 
-  /// No description provided for @voiceOutOfCredits.
+  /// No description provided for @voiceNoCreditsTitle.
   ///
   /// In en, this message translates to:
-  /// **'You are out of voice credits.'**
-  String get voiceOutOfCredits;
+  /// **'No credits left'**
+  String get voiceNoCreditsTitle;
+
+  /// Shown to a signed-in account that has spent its credits and to an anonymous one that was never granted any, directly above a Sign in with Apple button that only the second reader gets. The middle sentence therefore states how the grant works instead of addressing either reader's own balance: it tells the anonymous reader why that button helps, and tells the signed-in reader, truthfully, that there are no more coming. It must promise no refill.
+  ///
+  /// In en, this message translates to:
+  /// **'A call costs one credit and there are none. The free credits are granted once, to a signed-in account. Nothing was recorded — the microphone never opened and no audio left the phone.'**
+  String get voiceNoCreditsBody;
+
+  /// No description provided for @voiceCampaignOverTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The free credits have run out'**
+  String get voiceCampaignOverTitle;
+
+  /// No description provided for @voiceCampaignOverBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice is free while the credits last, and they have run out for everyone — this is not your balance, and there is nothing on your side to put right. Nothing was recorded: the microphone never opened.'**
+  String get voiceCampaignOverBody;
+
+  /// A balance or a cost, as a count of voice credits. Used by the chip in the voice screen's status row and by the receipt's Cost row.
+  ///
+  /// In en, this message translates to:
+  /// **'{credits, plural, =1{1 credit} other{{credits} credits}}'**
+  String voiceCredits(int credits);
+
+  /// No description provided for @voiceReceiptLength.
+  ///
+  /// In en, this message translates to:
+  /// **'Length'**
+  String get voiceReceiptLength;
+
+  /// How long the call was actually connected. Minutes and seconds are always both shown, so a short call reads 0 min 12 s rather than as a bare number.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min {seconds} s'**
+  String voiceReceiptLengthValue(int minutes, int seconds);
+
+  /// No description provided for @voiceReceiptCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost'**
+  String get voiceReceiptCost;
+
+  /// No description provided for @voiceReceiptBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'Balance'**
+  String get voiceReceiptBalance;
+
+  /// No description provided for @voiceReceiptFootnote.
+  ///
+  /// In en, this message translates to:
+  /// **'One credit, one call — however many times it reconnected along the way.'**
+  String get voiceReceiptFootnote;
+
+  /// No description provided for @voiceSignInTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in for your free credits'**
+  String get voiceSignInTitle;
+
+  /// No description provided for @voiceSignInBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The voice assistant is free for now, and the free credits go to a signed-in account. Signing in with Apple adds them — once — and it is also what keeps them if you reinstall drover. drover asks Apple for nothing but a stable identifier: no name, no email address.'**
+  String get voiceSignInBody;
 
   /// No description provided for @voiceToolCalled.
   ///
