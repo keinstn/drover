@@ -213,6 +213,12 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
   /// renders nothing instead of a guess.
   final _voiceCredits = ValueNotifier<int?>(null);
 
+  /// Whether this device has already said its owner would pay to keep using
+  /// voice. Seeded from [AppSettings] in `initState` and persisted on the
+  /// tap: the server counts the taps and keeps no uid, so the device is the
+  /// only thing that can remember having sent one.
+  final _voicePaidInterest = ValueNotifier(false);
+
   /// Per-device push opt-ins, mirrored to the backend on every change.
   bool _notifyOnBlocked = true;
   bool _notifyOnDone = true;
@@ -297,6 +303,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     _notifyOnBlocked = widget.initialSettings.notifyOnBlocked;
     _notifyOnDone = widget.initialSettings.notifyOnDone;
     _voiceAssistantEnabled = widget.initialSettings.voiceAssistantEnabled;
+    _voicePaidInterest.value = widget.initialSettings.voicePaidInterest;
     _appleSignedIn = widget.initialAppleSignedIn;
     // Read at launch, but only for someone who has the assistant on: the
     // voice screen's chip is the first thing that quotes this number, and a
@@ -388,6 +395,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     unawaited(_registry.disposeAll());
     _demo?.dispose();
     _voiceCredits.dispose();
+    _voicePaidInterest.dispose();
     super.dispose();
   }
 
@@ -409,6 +417,17 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
       }, onError: (Object _) {}),
     );
     return wallet;
+  }
+
+  /// Adds this device's tap to the count, then flips the card over to its
+  /// thank-you and remembers it.
+  ///
+  /// Persisted only after the call succeeds: a device that failed to send its
+  /// tap must still be able to send it, and the card is what offers that.
+  Future<void> _recordVoicePaidInterest() async {
+    await recordVoicePaidInterest();
+    await widget.settingsStore.saveVoicePaidInterest();
+    if (mounted) _voicePaidInterest.value = true;
   }
 
   /// Links the Apple ID. Shared by the settings row and the voice path —
@@ -1045,6 +1064,12 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
                 // starts at nothing, and the shared notifier has to say so
                 // as well as this screen.
                 _voiceCredits.value = null;
+                // The paid-interest flag deliberately stays: it belongs to
+                // this device, not to the account that just went, and the
+                // count it already added cannot be taken back — nothing on
+                // the server says which tap was this one's. Clearing it here
+                // would only invite the same person to count themselves
+                // twice.
                 voiceWallet = _refreshVoiceCredits();
               });
               // The old uid's `users/{uid}/devices` documents went with the
@@ -1148,6 +1173,8 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
               // Null once an Apple ID is attached: there is nothing left to
               // offer, and the sheet and the refusal card both key on it.
               onVoiceSignIn: _appleSignedIn ? null : _signInWithApple,
+              voicePaidInterest: _voicePaidInterest,
+              onVoicePaidInterest: _recordVoicePaidInterest,
               onVoiceCreditsStale: _refreshVoiceCredits,
             ),
     );

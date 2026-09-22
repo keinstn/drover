@@ -103,6 +103,8 @@ class VoiceScreen extends StatefulWidget {
     this.onOpenAgent,
     this.credits,
     this.onSignIn,
+    this.paidInterest,
+    this.onPaidInterest,
   });
 
   final VoiceSession session;
@@ -120,6 +122,19 @@ class VoiceScreen extends StatefulWidget {
   /// sign-in sheet are the two things that need it, and for an account that
   /// already has an Apple ID there is nothing for either to offer.
   final Future<void> Function()? onSignIn;
+
+  /// Whether this device has already said its owner would pay to keep using
+  /// voice. Live, and persisted by whoever owns it, so a restart comes back
+  /// to the thank-you rather than offering the tap again. Device-held and not
+  /// account-held: the server counts the taps and keeps no uid, so there is
+  /// nowhere else this could be asked.
+  final ValueListenable<bool>? paidInterest;
+
+  /// Adds this device's tap to that count. Non-null only where there is a
+  /// backend to count it — null in a preview, a test, or a build without
+  /// Firebase — and the offer is not made at all without it, which is what
+  /// keeps a button that cannot do anything off the card.
+  final Future<void> Function()? onPaidInterest;
 
   /// The herd's agents, live: a poll landing a new list repaints the switcher
   /// bar's dots under the header. Null — together with [onOpenAgent] — means
@@ -641,10 +656,17 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
       );
 
   /// A refused mint, said in full: what it costs, that nothing was recorded,
-  /// and — only for [_Refusal.noCredits] on an account with no Apple ID —
-  /// the sign-in that grants the free credits. [_Refusal.campaignOver] never
-  /// carries an action: the campaign ending is nothing the user did and
-  /// nothing they can undo, and an action there would be a false promise.
+  /// and — only for [_Refusal.noCredits] — one action. Which one depends on
+  /// the account: the sign-in that grants the free credits while there is no
+  /// Apple ID, and once there is one, the "I would pay for this" that used to
+  /// be an empty space.
+  ///
+  /// [_Refusal.campaignOver] never carries either. The campaign ending is
+  /// nothing this user did and nothing they can undo, so a sign-in there
+  /// would be a false promise — and the paid-interest tap would be unreadable
+  /// data: that card is shown to everyone once the ceiling is hit, including
+  /// people who never made a call, and their taps and the taps of somebody
+  /// who spent five would be the same number.
   Widget _refusalCard(
     BuildContext context,
     AppLocalizations l10n,
@@ -652,6 +674,18 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
   ) {
     final onSignIn = widget.onSignIn;
     final offersSignIn = refusal == _Refusal.noCredits && onSignIn != null;
+    // The other half of the same slot: only the signed-in reader, who is the
+    // only one whose *own* credits can have run out. Both halves are needed
+    // or neither is offered — the state without the action is a card that
+    // cannot say what it wants, and the action without the state is a button
+    // that never turns into its own answer.
+    final onPaidInterest = widget.onPaidInterest;
+    final paidInterest = widget.paidInterest;
+    final offersPaidInterest =
+        refusal == _Refusal.noCredits &&
+        onSignIn == null &&
+        onPaidInterest != null &&
+        paidInterest != null;
     return _logCard(
       context,
       key: ValueKey(
@@ -687,6 +721,52 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
                   unawaited(runBestEffort(onSignIn, context: 'voice sign-in')),
               child: Text(l10n.settingsAccountSignIn),
             ),
+          ),
+        ],
+        if (offersPaidInterest) ...[
+          const SizedBox(height: 10),
+          ValueListenableBuilder(
+            valueListenable: paidInterest,
+            builder: (context, recorded, _) => recorded
+                ? Text(
+                    l10n.voicePaidInterestDone,
+                    key: const ValueKey('voice_paid_interest_done'),
+                    style: _mutedStyle(context).copyWith(height: 1.5),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        l10n.voicePaidInterestPrompt,
+                        style: _mutedStyle(context).copyWith(height: 1.5),
+                      ),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.tonal(
+                          key: const ValueKey('voice_paid_interest'),
+                          // Best-effort like the sign-in above: the card is
+                          // still here to tap again, which beats a second
+                          // error stacked on the refusal already on screen.
+                          //
+                          // ponytail: a double tap inside the in-flight call
+                          // sends it twice. The server records one document
+                          // per account either way, so the count — the only
+                          // thing this exists to produce — cannot move twice;
+                          // give the button a pending state if it ever grows
+                          // one worth showing.
+                          onPressed: () => unawaited(
+                            runBestEffort(
+                              onPaidInterest,
+                              context: 'voice paid interest',
+                            ),
+                          ),
+                          child: Text(l10n.voicePaidInterestAction),
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ],
       ],

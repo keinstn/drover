@@ -551,6 +551,33 @@ function ledgerRef(uid: string) {
   return ledgerCollection(uid).doc();
 }
 
+// How many people have said they would pay to keep using the voice assistant:
+// one number, and nothing else anywhere.
+//
+// Deliberately not keyed by uid. A stored per-account "this person would pay"
+// is Product Interaction under Apple's App Privacy questionnaire, which would
+// turn drover's `Usage Data: No` into a Yes, and Apple's optional-disclosure
+// exemption cannot rescue it — that exemption requires the user's name or
+// account name to be displayed in the submission form, and drover has neither
+// by design. The per-account precision bought only exact de-duplication:
+// there is no contact information anywhere in this app, so nobody could ever
+// have been written to about it. A line on the privacy label was not worth
+// that, for an app whose privacy posture is a feature.
+//
+// Its own document rather than a field on `config/voiceCampaign`: that one
+// takes a write per call as the campaign ceiling's counter, and a product
+// signal has no business adding contention to the money path.
+//
+// ponytail: this counts *taps*, not people. De-duplication is a flag on the
+// device now (`AppSettings.voicePaidInterest`), so a reinstall — or the same
+// person on a second device — can add to the count again. Accepted: the
+// number is read as "at least this many wanted it", which is the direction
+// that matters for the decision it feeds. Nothing short of a per-account
+// record fixes it, and that is the thing being deliberately given up.
+function voicePaidInterestRef() {
+  return db.collection("config").doc("voicePaidInterest");
+}
+
 // The free campaign's dials and its counter, in one document meant to be
 // edited by hand in the Firebase console: the ceiling has to be movable
 // without a deploy, and `enabled: false` is the emergency stop.
@@ -795,6 +822,43 @@ export const voiceWallet = onCall(
       })
       .filter((entry) => entry != null);
     return { credits: walletCredits(wallet.get("credits")), entries };
+  },
+);
+
+// Counts one more "I would pay for this" tap.
+//
+// The free campaign measures nothing about willingness to pay — running out
+// of free credits says the grant was small, not that anybody would buy more —
+// so this tap is the only signal the campaign produces on the question it
+// exists to answer. It is not a purchase, there is no price, and nothing is
+// promised to the caller; the app's copy says so.
+//
+// Nothing about the caller is written down: the uid is checked and thrown
+// away, and what lands in Firestore is `+1` on a number. See
+// `voicePaidInterestRef` for why that is worth the lost de-duplication.
+//
+// Anonymous callers are still refused rather than quietly counted. The
+// credits are granted to a signed-in account only, so an anonymous install
+// cannot have exhausted a grant it never received, and counting one would
+// pollute the single number this exists to produce. The app never offers the
+// tap to one, so reaching here anonymously means reaching past the app.
+export const voicePaidInterest = onCall(
+  { enforceAppCheck: true },
+  async (request) => {
+    // Called for its check, not its value — an unauthenticated caller is
+    // refused here, and the uid goes no further than this line.
+    requireUid(request.auth);
+    if (!voiceGrantEligible(signInProviderOf(request))) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Voice paid interest needs a signed-in account.",
+      );
+    }
+    await voicePaidInterestRef().set(
+      { taps: FieldValue.increment(1) },
+      { merge: true },
+    );
+    return { recorded: true };
   },
 );
 

@@ -100,3 +100,19 @@ Future<VoiceWallet> fetchVoiceWallet() async {
   ).httpsCallable('voiceWallet').call<Object?>();
   return parseVoiceWallet(result.data);
 }
+
+/// Adds one to the count of people who would pay to keep using the voice
+/// assistant.
+///
+/// Nothing is bought and nothing is promised back — the call exists so the
+/// free campaign can answer the one question it is being run to answer. The
+/// server stores no uid, only the total, which is why the "you already said
+/// this" state is a local flag on this device rather than something the
+/// wallet can be asked about.
+///
+/// Returns nothing: the caller learns it worked by the future completing.
+Future<void> recordVoicePaidInterest() async {
+  await FirebaseFunctions.instanceFor(
+    region: 'us-central1',
+  ).httpsCallable('voicePaidInterest').call<Object?>();
+}

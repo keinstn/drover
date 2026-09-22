@@ -21,6 +21,17 @@ void main() {
     expect(settings.notifyOnDone, isTrue);
     expect(settings.voiceAssistantEnabled, isTrue);
     expect(settings.voiceConsentVersion, 0);
+    expect(settings.voicePaidInterest, isFalse);
+  });
+
+  test('saveVoicePaidInterest()/load() survives a restart', () async {
+    // The only record this device has that it already sent its tap: the
+    // server counts them and keeps no uid, so a lost flag is a second tap
+    // from the same person.
+    SharedPreferences.setMockInitialValues({});
+    await store.saveVoicePaidInterest();
+
+    expect((await store.load()).voicePaidInterest, isTrue);
   });
 
   test('a stored voice-assistant opt-out survives the on-by-default', () async {
