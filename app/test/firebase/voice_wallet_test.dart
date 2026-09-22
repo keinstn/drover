@@ -107,4 +107,25 @@ void main() {
     // A readable balance survives its unreadable rows.
     expect(parseVoiceWallet({'credits': 2, 'entries': 'none'}).credits, 2);
   });
+
+  group('creditsGranted', () {
+    test('reports the rise from a sign-in that just granted credits', () {
+      expect(creditsGranted(before: 0, after: 3), 3);
+    });
+
+    test('reports nothing for a re-read that already held the balance', () {
+      // The account was granted its credits before this sign-in (an Apple ID
+      // re-linked on a fresh install), so there is no rise to announce.
+      expect(creditsGranted(before: 3, after: 3), 0);
+    });
+
+    test('reports nothing while the wallet read has not landed', () {
+      expect(creditsGranted(before: 0, after: null), 0);
+    });
+
+    test('reports negative for a balance that only went down', () {
+      // A spent call, not a grant; callers only toast a positive result.
+      expect(creditsGranted(before: 3, after: 2), -1);
+    });
+  });
 }
