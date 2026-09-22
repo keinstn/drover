@@ -55,6 +55,38 @@ platform's secret or secure-file facility. Register the macOS app and add its
 plist only when distributing the macOS target; App Check is currently
 activated only on iOS.
 
+## Sign in with Apple artwork
+
+The second file a fresh clone or worktree needs, for the same reason: Apple's
+licence for their design resources forbids redistributing the artwork, and
+this repository is public, so the Sign in with Apple mark is gitignored too.
+Without it `flutter build` and `flutter test` both stop at the missing asset.
+
+Download [Logo - Sign in with
+Apple](https://devimages-cdn.apple.com/design/resources/download/Logo-Sign-in-with-Apple.dmg)
+and mount it, which means accepting Apple's licence. From
+`Sign in with Apple - Logo Only/PNG`, copy the logo-only marks — the app draws
+its own localised title, so the left-aligned logo-with-text files are the
+wrong ones — into `app/assets/sign_in_with_apple`:
+
+```text
+1x/Logo - SIWA - Logo-only - Black@1x.png -> mark_black.png
+1x/Logo - SIWA - Logo-only - White@1x.png -> mark_white.png
+2x/Logo - SIWA - Logo-only - Black@2x.png -> 2.0x/mark_black.png
+2x/Logo - SIWA - Logo-only - White@2x.png -> 2.0x/mark_white.png
+3x/Logo - SIWA - Logo-only - Black@3x.png -> 3.0x/mark_black.png
+3x/Logo - SIWA - Logo-only - White@3x.png -> 3.0x/mark_white.png
+```
+
+For Xcode Cloud the six travel as a single base64'd archive in the
+`SIGN_IN_WITH_APPLE_ASSETS_BASE64` environment secret, which
+`app/ios/ci_scripts/ci_pre_xcodebuild.sh` unpacks. Produce its value from a
+checkout that already has them:
+
+```sh
+COPYFILE_DISABLE=1 tar -czf - -C app/assets sign_in_with_apple | base64 | pbcopy
+```
+
 In the Apple Developer portal, enable Push Notifications and App Attest for
 the iOS App ID. The iOS target already contains the corresponding
 entitlements. Enable the iOS Remote notifications Background Mode in Xcode.

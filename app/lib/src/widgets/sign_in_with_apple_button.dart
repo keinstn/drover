@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
 
+/// Apple's marks, named after the mark and not the square it sits on: the
+/// black one is for a white button, the white one for a black button.
+const _markBlack = 'assets/sign_in_with_apple/mark_black.png';
+const _markWhite = 'assets/sign_in_with_apple/mark_white.png';
+
 /// The Sign in with Apple button, built to Apple's Human Interface
 /// Guidelines for a custom button
 /// (https://developer.apple.com/design/human-interface-guidelines/sign-in-with-apple).
@@ -79,15 +84,29 @@ class SignInWithAppleButton extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // ponytail: Apple's own artwork, which we are told to use and
-          // never redraw, is a download that would have to land in
-          // app/assets and pubspec.yaml — outside this change. Material's
-          // apple glyph stands in until it does, sized by eye against the
-          // system button rather than by Apple's "match the button height",
-          // which is a rule about their file's built-in padding and would
-          // make this glyph enormous.
-          Icon(Icons.apple, size: height * 0.45, color: foreground),
-          SizedBox(width: height * 0.1),
+          // Apple's own artwork, which they tell us to use and never redraw.
+          // The file is named for the mark, so it is the ink's colour and not
+          // the fill's — and it is opaque, not a transparent glyph: the black
+          // mark comes on a white square, the white mark on a black one. That
+          // square is the button's fill, pixel for pixel, so the fill and the
+          // asset can only ever change together.
+          //
+          // Sized to the whole button height, which is Apple's rule and is
+          // about the padding built into their file: the mark is 19 of the
+          // 44pt square, so this paints it at 43% of the height — the
+          // proportion the by-eye 45% here before was reaching for. That
+          // padding is also why there is no gap widget after it: their file
+          // carries 14pt of its own on each side.
+          //
+          // ponytail: the files are gitignored. Apple's licence forbids
+          // redistributing their artwork and this repository is public, so
+          // they arrive from a secret in CI and from the download in
+          // docs/firebase-setup.md everywhere else.
+          Image.asset(
+            dark ? _markBlack : _markWhite,
+            height: height,
+            width: height,
+          ),
           // ponytail: the title shrinks rather than truncates where the
           // width runs out — the out-of-credits card at an accessibility
           // text size is the case. That trades Apple's 43% proportion, which
