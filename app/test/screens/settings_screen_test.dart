@@ -379,6 +379,8 @@ void main() {
     // The switch sits under its own section header, not under Appearance.
     // Rendered through the label ramp, which uppercases outside Japanese.
     expect(find.text('ASSISTANT'), findsOneWidget);
+    // The label calls out that the feature is still experimental.
+    expect(find.text('Voice assistant (Experimental)'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

@@ -166,7 +166,7 @@
   "settingsVersionCopied": "バージョンをコピーしました",
 
   "settingsAssistant": "アシスタント",
-  "settingsVoiceAssistant": "音声アシスタント",
+  "settingsVoiceAssistant": "音声アシスタント（実験的）",
   "settingsVoiceAssistantSubtitle": "エージェントについて drover と話せます。会話のため、エージェントの状態と返答の短い要約が Google の Gemini Live API に送信されます。",
   "settingsVoiceCredits": "ボイスクレジット",
   "settingsVoiceCreditsSubtitle": "1クレジットで1通話、最大5分です。",
@@ -190,7 +190,7 @@
   "accountDeletedTitle": "アカウントを削除しました",
   "accountDeletedNotifyBody": "通知のペアリングも解除されました。通知を受け取るには、各ホストで再度ペアリングしてください。",
   "accountDeletedManageHosts": "ホストを管理",
-  "herdVoiceButton": "音声アシスタント",
+  "herdVoiceButton": "音声アシスタント（実験的）",
   "herdVoiceButtonLive": "通話中",
   "voiceStatusConnecting": "接続中…",
   "voiceStatusReady": "待機中",
@@ -242,7 +242,7 @@
   "voiceLaunchFailed": "エージェントを起動できませんでした",
   "voiceCapReached": "セッションの制限時間に達しました",
   "voiceBackgrounded": "アプリがバックグラウンドに移りました",
-  "voiceConsentTitle": "音声アシスタントは Google Gemini を利用します",
+  "voiceConsentTitle": "実験的機能：音声アシスタントは Google Gemini を利用します",
   "voiceConsentBody": "音声アシスタントは Google の Gemini Live 上で動作します。セッション中は、マイクの音声と、あなたとアシスタント双方の発話の文字起こしが Google に送信されます。あわせて、応答に必要な情報（エージェントの状態、セッション名と種類、プロジェクトのフォルダ名、エージェントが待っている質問と選択肢、エージェントの最後の返信を文章にしたもの）も送信されます。最後の返信は、エージェントが作業を終えたときには、あなたが何も話していなくても送信されます。返信からはコードブロックもインラインコードも取り除かれ、操作が失敗したときはターミナルの出力ではなく短いコードだけを送ります。文章はそのまま送られるため、エージェントが文中や質問の文面に書いたパスはそのまま含まれます。セッションを開いていない間は何も送信されません。通話は、drover の他の画面を使っている間も聞き取りを続けます。アプリを離れるとマイクは閉じ、送信も止まります。会話に戻るとマイクはひとりでに開き直し、続きから再開します。セッションは制限時間に達すると自動的に終了し、離れていた時間もその制限時間に含まれます。通話を完全に終わらせるのは「終了」だけで、いつでも押せます。",
   "voiceConsentAccept": "同意して続ける",
   "voiceConsentDecline": "今はしない"

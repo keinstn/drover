@@ -527,7 +527,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsAssistant => 'Assistant';
 
   @override
-  String get settingsVoiceAssistant => 'Voice assistant';
+  String get settingsVoiceAssistant => 'Voice assistant (Experimental)';
 
   @override
   String get settingsVoiceAssistantSubtitle =>
@@ -614,7 +614,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountDeletedManageHosts => 'Manage hosts';
 
   @override
-  String get herdVoiceButton => 'Voice assistant';
+  String get herdVoiceButton => 'Voice assistant (Experimental)';
 
   @override
   String get herdVoiceButtonLive => 'Voice call in progress';
@@ -816,7 +816,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceBackgrounded => 'App went to the background';
 
   @override
-  String get voiceConsentTitle => 'Voice uses Google Gemini';
+  String get voiceConsentTitle => 'Experimental: voice uses Google Gemini';
 
   @override
   String get voiceConsentBody =>

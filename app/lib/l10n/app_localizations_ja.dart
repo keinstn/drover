@@ -508,7 +508,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get settingsAssistant => 'アシスタント';
 
   @override
-  String get settingsVoiceAssistant => '音声アシスタント';
+  String get settingsVoiceAssistant => '音声アシスタント（実験的）';
 
   @override
   String get settingsVoiceAssistantSubtitle =>
@@ -586,7 +586,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get accountDeletedManageHosts => 'ホストを管理';
 
   @override
-  String get herdVoiceButton => '音声アシスタント';
+  String get herdVoiceButton => '音声アシスタント（実験的）';
 
   @override
   String get herdVoiceButtonLive => '通話中';
@@ -773,7 +773,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get voiceBackgrounded => 'アプリがバックグラウンドに移りました';
 
   @override
-  String get voiceConsentTitle => '音声アシスタントは Google Gemini を利用します';
+  String get voiceConsentTitle => '実験的機能：音声アシスタントは Google Gemini を利用します';
 
   @override
   String get voiceConsentBody =>

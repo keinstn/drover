@@ -428,7 +428,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('voice_button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Voice uses Google Gemini'), findsOneWidget);
+    expect(find.text('Experimental: voice uses Google Gemini'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

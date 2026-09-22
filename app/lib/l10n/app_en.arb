@@ -236,7 +236,7 @@
   "settingsVersionCopied": "Version copied",
 
   "settingsAssistant": "Assistant",
-  "settingsVoiceAssistant": "Voice assistant",
+  "settingsVoiceAssistant": "Voice assistant (Experimental)",
   "settingsVoiceAssistantSubtitle": "Talk to drover about your agents. Agent status and short summaries of their replies are sent to Google's Gemini Live API for the conversation.",
   "settingsVoiceCredits": "Voice credits",
   "settingsVoiceCreditsSubtitle": "One credit is one call, up to five minutes.",
@@ -268,7 +268,7 @@
   "accountDeletedTitle": "Account deleted",
   "accountDeletedNotifyBody": "Notification pairing was removed with it. Re-pair each host to keep getting notifications.",
   "accountDeletedManageHosts": "Manage hosts",
-  "herdVoiceButton": "Voice assistant",
+  "herdVoiceButton": "Voice assistant (Experimental)",
   "herdVoiceButtonLive": "Voice call in progress",
   "voiceStatusConnecting": "Connecting…",
   "voiceStatusReady": "Ready",
@@ -410,7 +410,7 @@
   "voiceLaunchFailed": "Couldn't start the agent",
   "voiceCapReached": "Session time limit reached",
   "voiceBackgrounded": "App went to the background",
-  "voiceConsentTitle": "Voice uses Google Gemini",
+  "voiceConsentTitle": "Experimental: voice uses Google Gemini",
   "voiceConsentBody": "The voice assistant runs on Google's Gemini Live. While a session is open, your microphone audio and transcripts of both sides of the conversation are sent to Google, along with the context it needs to answer you: your agents' status, session titles and kinds, project folder names, any question an agent is waiting on with its options, and an agent's last reply as prose — which is also sent on its own when an agent finishes, even if you have said nothing. Code is stripped from that reply, fenced or inline, and a failed action reports a short code instead of the terminal's output. Prose is sent as written, so a path an agent typed in a sentence, or in the wording of a question, goes with it. Nothing is sent while no session is open. A call keeps listening while you use the rest of drover; leaving the app closes the microphone and stops sending, and returning to the conversation re-opens the microphone by itself and carries on where you left off. A session ends on its own after a time limit, and time spent away counts against it. Only End finishes a call for good, and you can tap it whenever you like.",
   "voiceConsentAccept": "Allow and continue",
   "voiceConsentDecline": "Not now"
