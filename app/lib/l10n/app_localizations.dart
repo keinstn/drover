@@ -1250,6 +1250,12 @@ abstract class AppLocalizations {
   /// **'{credits, plural, =1{1 credit} other{{credits} credits}}'**
   String voiceCredits(int credits);
 
+  /// Toast shown right after Apple sign-in grants the one-time free campaign credits.
+  ///
+  /// In en, this message translates to:
+  /// **'{credits, plural, =1{1 free voice credit added} other{{credits} free voice credits added}}'**
+  String voiceCreditsGranted(int credits);
+
   /// No description provided for @voiceReceiptLength.
   ///
   /// In en, this message translates to:

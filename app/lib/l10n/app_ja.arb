@@ -204,6 +204,7 @@
   "voiceCampaignOverTitle": "無料クレジットの配布が終わりました",
   "voiceCampaignOverBody": "音声アシスタントはクレジットがあるあいだ無料で使えますが、全体の配布分がなくなりました。あなたの残高の問題ではなく、こちらで直せることもありません。録音は行われていません。マイクは開いていません。",
   "voiceCredits": "{credits}クレジット",
+  "voiceCreditsGranted": "無料クレジットを{credits}追加しました",
   "voiceReceiptLength": "通話時間",
   "voiceReceiptLengthValue": "{minutes}分{seconds}秒",
   "voiceReceiptCost": "料金",
