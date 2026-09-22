@@ -912,6 +912,11 @@ void main() {
             .data,
         'Sign in with Apple',
       );
+      // The card's button is the same Apple-compliant one, so it carries
+      // Apple's minimum size here too.
+      final size = tester.getSize(action);
+      expect(size.width, greaterThanOrEqualTo(140));
+      expect(size.height, greaterThanOrEqualTo(30));
 
       await tester.tap(action);
       await tester.pumpAndSettle();

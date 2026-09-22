@@ -28,6 +28,26 @@ jobs:
           flutter-version-file: app/.fvmrc
           cache: true
 
+      # Apple's Sign in with Apple artwork is licensed and must not live in a
+      # public repository, so it is gitignored and injected into the release
+      # build from an Xcode Cloud secret (app/ios/ci_scripts/ci_pre_xcodebuild.sh).
+      # A clone therefore has no copy, and `flutter analyze` fails on the
+      # declared-but-missing asset before a single test runs.
+      #
+      # Neither analyze nor the tests look at the pixels — the tests assert
+      # which AssetImage the button chose, not what it depicts — so a 1x1
+      # placeholder at each declared path is all CI needs. The real artwork is
+      # verified where it matters: the Xcode Cloud script counts the files and
+      # checks their MIME type, and fails the release build if either is wrong.
+      - name: Placeholder Sign in with Apple artwork
+        run: |
+          mkdir -p assets/sign_in_with_apple
+          for mark in black white; do
+            printf '%s' \
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' \
+              | base64 --decode > "assets/sign_in_with_apple/mark_$mark.png"
+          done
+
       - name: Pub get
         run: flutter pub get
 
