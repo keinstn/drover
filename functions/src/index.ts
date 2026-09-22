@@ -35,6 +35,7 @@ import {
   voiceGrantEligible,
   voiceLedgerEntry,
   voiceMintDecision,
+  voiceSessionInitialMintCount,
   walletCredits,
 } from "./wallet.js";
 
@@ -690,8 +691,8 @@ function voiceSessionRef(sessionId: string) {
 //
 // One conversation re-mints — shortly before its token expires, and again
 // after a genuine drop — and every one of those carries the session ID the app
-// made when the call started. So the first mint pays and the rest are free:
-// charging each of them would bill a single conversation several times over.
+// made when the call started. So the first mint pays and a bounded number of
+// reconnect mints are free: charging each would bill one conversation twice.
 async function claimVoiceCall(
   uid: string,
   sessionId: string,
@@ -718,17 +719,26 @@ async function claimVoiceCall(
             uid: sessionDocument.get("uid"),
             startedAtMs:
               startedAt instanceof Timestamp ? startedAt.toMillis() : null,
+            mintCount: sessionDocument.get("mintCount"),
           }
         : null,
       nowMs,
     });
     if (decision === "reuse") {
+      transaction.update(session, { mintCount: FieldValue.increment(1) });
       return false;
     }
     if (decision === "foreign") {
       throw new HttpsError(
         "permission-denied",
         "Voice session ID belongs to another account.",
+      );
+    }
+    if (decision === "mintLimit") {
+      throw new HttpsError(
+        "failed-precondition",
+        "Voice session token limit reached.",
+        { reason: "sessionMintLimit" },
       );
     }
     // Both refusals are `resource-exhausted` — the app has to be told which,
@@ -761,7 +771,11 @@ async function claimVoiceCall(
       sessionId,
       createdAt: FieldValue.serverTimestamp(),
     });
-    transaction.set(session, { uid, startedAt: Timestamp.fromMillis(nowMs) });
+    transaction.set(session, {
+      uid,
+      startedAt: Timestamp.fromMillis(nowMs),
+      mintCount: voiceSessionInitialMintCount,
+    });
     // In the same commit as the debit and the ledger row. Counted apart, the
     // campaign and the wallets would disagree after any crash between them.
     transaction.set(

@@ -8,20 +8,22 @@ export const voiceCallCost = 1;
 
 // How long one session ID keeps minting without being charged again.
 //
-// A conversation re-mints — before the token expires, and after a genuine
-// drop — and all of those carry the session ID the app made when the call
-// started. Every mint inside this window is the same call.
+// A conversation re-mints after a genuine drop, and all of those requests
+// carry the session ID the app made when the call started. Every mint inside
+// this window is the same call.
 //
 // A little longer than `kVoiceSessionCap` (5 minutes, in
 // app/lib/src/voice/voice_session.dart), which ends the conversation: long
 // enough to cover one call including its reconnects, short enough that a
 // session ID cannot be talked on indefinitely for one credit.
-//
-// ponytail: the window bounds duration, not concurrency — a modified client
-// could mint many tokens inside it and run them at once, and cost grows with
-// speech seconds times turns. The shipped app opens one socket at a time.
-// Count the mints on the session document if that ever stops being true.
 export const voiceSessionReuseMs = 6 * 60 * 1000;
+
+// One initial token plus enough retries for ordinary connection drops and
+// background/foreground resumes. The count is stored on the session document
+// and advanced in the same transaction that admits a mint, so a modified
+// client cannot turn one paid session ID into an unlimited token faucet.
+export const voiceSessionInitialMintCount = 1;
+export const voiceSessionMintLimit = 5;
 
 // The free campaign: a few credits per account, and a ceiling on the whole
 // thing so the bill cannot run away.
@@ -134,12 +136,14 @@ export function voiceGrantEligible(signInProvider: unknown): boolean {
 // - `debit`: a new call, and the balance covers it
 // - `empty`: a new call the balance does not cover
 // - `foreign`: the session ID belongs to somebody else
+// - `mintLimit`: this paid session has minted all of its allowed tokens
 // - `campaignOver`: the free campaign is spent, or stopped by hand
 export type VoiceMintDecision =
   | "reuse"
   | "debit"
   | "empty"
   | "foreign"
+  | "mintLimit"
   | "campaignOver";
 
 // The stored balance. A missing, negative or malformed value is no credit at
@@ -157,7 +161,7 @@ export function walletCredits(value: unknown): number {
 export function voiceMintDecision(input: {
   uid: string;
   credits: unknown;
-  session: { uid: unknown; startedAtMs: unknown } | null;
+  session: { uid: unknown; startedAtMs: unknown; mintCount: unknown } | null;
   campaign: VoiceCampaign;
   nowMs: number;
 }): VoiceMintDecision {
@@ -168,6 +172,17 @@ export function voiceMintDecision(input: {
       typeof session.startedAtMs === "number" &&
       input.nowMs - session.startedAtMs < voiceSessionReuseMs
     ) {
+      // Existing documents from before the bound, and hand-edited values, fail
+      // closed while they are live. Once stale they take the ordinary debit
+      // path below, which safely replaces them with a count of one.
+      if (
+        typeof session.mintCount !== "number" ||
+        !Number.isInteger(session.mintCount) ||
+        session.mintCount < 1 ||
+        session.mintCount >= voiceSessionMintLimit
+      ) {
+        return "mintLimit";
+      }
       return "reuse";
     }
   }
