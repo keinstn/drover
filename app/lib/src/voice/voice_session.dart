@@ -4,6 +4,7 @@ import 'dart:ui' show Locale;
 
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/foundation.dart';
+import 'package:record/record.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/agent_info.dart';
@@ -241,6 +242,7 @@ class VoiceSession extends ChangeNotifier {
   VoiceTransport? _transport;
   StreamSubscription<LiveServerResponse>? _rxSub;
   StreamSubscription<Uint8List>? _micSub;
+  StreamSubscription<RecordState>? _micStateSub;
   StreamSubscription<AgentEvent>? _inboxSub;
   StreamSubscription<VoiceDraftEvent>? _draftsSub;
   StreamSubscription<double>? _speakerLevelSub;
@@ -520,6 +522,11 @@ class VoiceSession extends ChangeNotifier {
       // The mic engine restarts here, so the device's echo canceller starts
       // cold again and the warm-up gate has to re-earn its way out.
       _playedBytesSinceStart = 0;
+      _micStateSub = _mic.state.listen((state) {
+        if (state == RecordState.pause) {
+          unawaited(_micInterrupted(gen));
+        }
+      });
       final frames = await _mic.start();
       if (_stale(gen)) {
         await _mic.stop();
@@ -591,6 +598,18 @@ class VoiceSession extends ChangeNotifier {
     // connect closes, or the screen that was already open when the call
     // began.
     _syncFocus();
+  }
+
+  /// The recorder paused without drover asking it to. `VoiceSession` never
+  /// calls the recorder's pause method, so this is an audio-session
+  /// interruption (Siri, an incoming call, and similar OS-owned takeovers).
+  /// Park the conversation like [background] rather than leaving the UI live
+  /// with a microphone that no longer produces frames.
+  Future<void> _micInterrupted(int gen) async {
+    if (_stale(gen)) return;
+    _suspended = true;
+    _entries.add(const VoiceEntry(VoiceEntryKind.system, interruptedCode));
+    await _end();
   }
 
   /// The connection dropped ([error] null when it closed cleanly). The server
@@ -1059,6 +1078,8 @@ class VoiceSession extends ChangeNotifier {
     // synchronously anyway.
     unawaited(_micSub?.cancel());
     _micSub = null;
+    unawaited(_micStateSub?.cancel());
+    _micStateSub = null;
     unawaited(_rxSub?.cancel());
     _rxSub = null;
     unawaited(_inboxSub?.cancel());
