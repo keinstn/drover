@@ -6,11 +6,12 @@ balance is empty (#267, #269, #274), and the wallet, its ledger and the Sign in
 with Apple identity they hang off exist too — see "Identity", built 2026-09-20.
 What is still a design note is everything that would put credits in that
 wallet: the in-app purchase, `verifyPurchase`, Server Notifications V2 and
-refunds, and the Cloud Run relay. Nothing is sold — credits get in by hand, in
-the Firebase console — and the voice assistant is free while it lives on the
-`voice-live` branch. Written 2026-09-13, revised 2026-09-18 after the
-ephemeral-token measurements below, 2026-09-19 with the four flows drawn, and
-2026-09-21 after the move to `gemini-3.8-live` and to record what had shipped.
+refunds, and the Cloud Run relay. Nothing is sold — credits get in by hand in
+the Firebase console, or from the free campaign below — and the voice assistant
+is free while it lives on the `voice-live` branch. Written 2026-09-13, revised
+2026-09-18 after the ephemeral-token measurements below, 2026-09-19 with the
+four flows drawn, and 2026-09-21 after the move to `gemini-3.8-live`, to record
+what had shipped, and again for the free campaign.
 
 If voice is ever sold, it is sold as prepaid **Voice Credits** through an Apple
 consumable in-app purchase. One piece of backend is needed whatever else is
@@ -105,6 +106,97 @@ can meter; but cost is quadratic in turn count (below), so a window of fixed
 length costs a variable amount. Under that design the session cap
 (`kVoiceSessionCap`) stops being only a safety rail and becomes the thing that
 bounds the variance. Credits that drain with measured use need the relay.
+
+## The free campaign
+
+Nothing is sold yet, but the app ships publicly, so credits have to get into a
+wallet without somebody typing them. The campaign is that: a handful of free
+credits per account, and one ceiling over the whole thing so the bill cannot
+run away while nobody is watching.
+
+Its dials live in `config/voiceCampaign`, a document edited by hand in the
+Firebase console the same way credits are:
+
+```text
+config/voiceCampaign
+  callsUsed   number   calls the campaign has paid for so far
+  callLimit   number   the ceiling                    (default 130)
+  enabled     boolean  false is the emergency stop     (default true)
+  freeGrant   number   credits a new account is handed (default 5)
+```
+
+Every field is optional and every one has a default in `functions/src/wallet.ts`
+next to `voiceCallCost`. A missing document is a running campaign on the
+defaults — nobody should have to create one before the first call works — and a
+field that is missing or malformed falls back on its own, the same refusal to
+believe a hand-edited document that `walletCredits` already makes about a
+balance. The constants in code are only that fallback: the *limit* has to be
+movable without a deploy, which is why it lives in the document.
+
+**The ceiling is a call count standing in for a budget.** 130 calls is a
+¥2,000 budget at a conservative ¥15 a call, against a measured ~¥6 on average
+and ~¥25 at the worst modelled case. It is a count and not an amount of money
+because money cannot be metered live: the billing export lags about a day, so
+by the time spend is visible it has already happened. That makes the number a
+calibration knob, not a measurement — it has to be re-checked against the real
+per-call cost as calls accumulate, and moved in the console when the two drift
+apart.
+
+`callsUsed` moves in the same commit as the wallet debit and the ledger row,
+inside `claimVoiceCall`'s existing transaction, and a failed mint gives the
+call back in the same batch that refunds the credit. Counted apart, a crash
+between the two would leave the campaign and the wallets disagreeing.
+
+### Two refusals that look alike
+
+Both come back as `resource-exhausted`, and the app has to tell them apart,
+because "you are out of credits" and "the free campaign has ended" ask the
+reader to do different things. `HttpsError`'s third argument carries which:
+
+- `details: { reason: "noCredits" }` — this account's balance is empty.
+- `details: { reason: "campaignOver" }` — the ceiling is reached, or `enabled`
+  is `false`.
+
+`campaignOver` is checked first, so somebody who still holds credits is not
+told they have none when the campaign is what ended.
+
+Neither refusal can reach a call that is already running. The campaign is
+checked *below* the reuse branch in `voiceMintDecision`: a conversation
+re-mints to carry on, every re-mint carries the session ID the call started
+with, and those return `reuse` before the ceiling is ever consulted. So the
+call that spends the campaign's last credit finishes normally, and a re-mint
+neither counts nor is refused. That ordering is the whole point of the
+function's shape, and it is asserted in `wallet.test.ts` rather than left to
+be noticed.
+
+### Who gets the free credits
+
+`freeGrant` credits, once per account, and only to an account that is **not
+anonymous**. The app signs in anonymously at launch and links Sign in with
+Apple later, and an anonymous install that is deleted and reinstalled comes
+back under a fresh uid — granting to it would be a faucet rather than a
+campaign. Being linked to Apple is what makes an account outlive a reinstall,
+and so what makes "once" mean anything. A callable reads this off the verified
+ID token as `request.auth.token.firebase.sign_in_provider`, which is
+`"anonymous"` until the link and `"apple.com"` after. An anonymous caller gets
+nothing and no error: a zero balance, and the ordinary `noCredits` refusal when
+it tries to call.
+
+The grant happens lazily, on either of the two places a signed-in user touches
+the wallet — the `voiceWallet` callable, so Settings shows a real balance the
+moment it is opened, and `mintVoiceToken`, so somebody who never opens Settings
+still gets their first call. It runs in a transaction that reads a
+`campaignGrantedAt` mark on the wallet, which is the only thing stopping two
+concurrent calls from both granting, and it writes a `campaignGrant` ledger row
+like every other movement so the credits are reconcilable rather than
+unexplained.
+
+It does **not** touch `callsUsed`. That counter tracks calls spent; an unspent
+grant has cost nothing, and bounding grants by the ceiling would reserve budget
+against credits that may never be used. `enabled: false` does stop granting —
+the emergency stop means the campaign is over, and handing out credits nobody
+may spend is only a confusing balance. To stop the grant alone, set `freeGrant`
+to 0.
 
 ## Purchase
 
