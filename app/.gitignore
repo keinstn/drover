@@ -49,3 +49,6 @@ app.*.map.json
 
 # Firebase environment configuration
 **/GoogleService-Info.plist
+
+# Apple's Sign in with Apple artwork
+**/assets/sign_in_with_apple/

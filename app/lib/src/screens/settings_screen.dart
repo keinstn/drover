@@ -7,6 +7,7 @@ import '../firebase/voice_wallet.dart';
 import '../infra/shell_command.dart';
 import '../notifications/notify_plugin_version.dart';
 import '../widgets/copyable_value.dart';
+import '../widgets/sign_in_with_apple_button.dart';
 import '../widgets/top_toast.dart';
 
 /// App-level settings: theme, language, push opt-ins, and a shortcut into
@@ -318,15 +319,36 @@ class _AccountTileState extends State<_AccountTile> {
         title: Text(l10n.settingsAccountSignedIn),
       );
     }
-    return ListTile(
+    // Not a ListTile: Apple fixes this button's fill, ink and title, so the
+    // row cannot recolour it, put a chevron beside it, or make it the whole
+    // row's tap target. The row keeps the list's 16pt inset and gives up its
+    // ListTile shape instead — a compliant button in a wrong-shaped row
+    // beats a tidy row Apple rejects. The 8pt above and below also covers
+    // the margin Apple asks for around the button.
+    return Padding(
       key: const ValueKey('settings_account_tile'),
-      leading: const Icon(Icons.apple),
-      title: Text(l10n.settingsAccountSignIn),
-      subtitle: _failed ? Text(l10n.settingsAccountSignInFailed) : null,
-      trailing: const Icon(Icons.chevron_right),
-      // Null while in flight: the Apple sheet takes a moment to appear, and
-      // a second tap would start a second link.
-      onTap: _busy ? null : _signIn,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SignInWithAppleButton(
+            key: const ValueKey('settings_account_sign_in'),
+            // Null while in flight: the Apple sheet takes a moment to
+            // appear, and a second tap would start a second link.
+            onPressed: _busy ? null : _signIn,
+          ),
+          if (_failed) ...[
+            const SizedBox(height: 8),
+            Text(
+              l10n.settingsAccountSignInFailed,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

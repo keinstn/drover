@@ -522,7 +522,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get settingsVoiceCreditsCampaign =>
-      'いまは音声アシスタントを無料で試せます。Apple でサインインすると、無料クレジットが一度だけ追加されます。';
+      'いまは音声アシスタントを無料で試せます。Appleでサインインすると、無料クレジットが一度だけ追加されます。';
 
   @override
   String get settingsVoiceCreditsActivity => '最近のクレジット履歴';
@@ -546,7 +546,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get settingsAccount => 'アカウント';
 
   @override
-  String get settingsAccountSignIn => 'Apple でサインイン';
+  String get settingsAccountSignIn => 'Appleでサインイン';
 
   @override
   String get settingsAccountSignedIn => 'Apple でサインイン済み';
@@ -672,7 +672,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get voiceSignInBody =>
-      'いまは音声アシスタントを無料で試せます。無料クレジットはサインイン済みのアカウントに追加されます。Apple でサインインすると一度だけ追加され、drover を入れ直しても残ります。drover が Apple から受け取るのは識別子だけで、氏名もメールアドレスも受け取りません。';
+      'いまは音声アシスタントを無料で試せます。無料クレジットはサインイン済みのアカウントに追加されます。Appleでサインインすると一度だけ追加され、drover を入れ直しても残ります。drover が Apple から受け取るのは識別子だけで、氏名もメールアドレスも受け取りません。';
 
   @override
   String voiceToolCalled(String name) {

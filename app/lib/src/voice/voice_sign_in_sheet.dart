@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../widgets/sign_in_with_apple_button.dart';
 
 /// Offers Sign in with Apple before a call, to an account that is still
 /// anonymous.
@@ -78,10 +79,9 @@ class _VoiceSignInSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            FilledButton(
+            SignInWithAppleButton(
               key: const ValueKey('voice_sign_in_accept'),
               onPressed: () => Navigator.pop(context, true),
-              child: Text(l10n.settingsAccountSignIn),
             ),
             const SizedBox(height: 8),
             TextButton(

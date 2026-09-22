@@ -31,10 +31,14 @@ Widget _app({
   List<Future<StaleNotifyPlugin?>>? staleNotifyPlugins,
   bool hasHosts = false,
   Future<VoiceWallet>? voiceWallet,
+  // The locale the screen is *rendered* in, as opposed to `locale`, which is
+  // the value its language row displays.
+  Locale? uiLocale,
 }) {
   return MaterialApp(
     // The screen reads DroverColors, so the harness needs the real theme.
     theme: droverDarkTheme,
+    locale: uiLocale,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     home: _SettingsHost(
@@ -689,6 +693,31 @@ void main() {
       ),
       findsOneWidget,
     );
+    // Apple's own button, not a list row wearing an apple icon: App Review
+    // measures it, so the row has to render it at least as big as Apple's
+    // floor of 140x30pt.
+    final button = tester.getSize(
+      find.byKey(const ValueKey('settings_account_sign_in')),
+    );
+    expect(button.width, greaterThanOrEqualTo(140));
+    expect(button.height, greaterThanOrEqualTo(30));
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('in Japanese the account row carries Apple\'s own wording', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app(uiLocale: const Locale('ja')));
+    await _revealAccountRow(tester);
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_account_sign_in')),
+        matching: find.text('Appleでサインイン'),
+      ),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -728,7 +757,7 @@ void main() {
     );
     await _revealAccountRow(tester);
 
-    await tester.tap(find.byKey(const ValueKey('settings_account_tile')));
+    await tester.tap(find.byKey(const ValueKey('settings_account_sign_in')));
     await tester.pumpAndSettle();
 
     expect(attempts, 1);
@@ -743,8 +772,8 @@ void main() {
     expect(find.text('Sign in with Apple'), findsOneWidget);
     expect(find.text('Signed in with Apple'), findsNothing);
 
-    // And the retry the subtitle promises actually fires.
-    await tester.tap(find.byKey(const ValueKey('settings_account_tile')));
+    // And the retry the message under the button promises actually fires.
+    await tester.tap(find.byKey(const ValueKey('settings_account_sign_in')));
     await tester.pumpAndSettle();
     expect(attempts, 2);
 
@@ -771,7 +800,7 @@ void main() {
       );
       await _revealAccountRow(tester);
 
-      await tester.tap(find.byKey(const ValueKey('settings_account_tile')));
+      await tester.tap(find.byKey(const ValueKey('settings_account_sign_in')));
       await tester.pumpAndSettle();
 
       expect(signedInWithProvider, isTrue);
@@ -805,7 +834,7 @@ void main() {
     );
     await _revealAccountRow(tester);
 
-    await tester.tap(find.byKey(const ValueKey('settings_account_tile')));
+    await tester.tap(find.byKey(const ValueKey('settings_account_sign_in')));
     await tester.pumpAndSettle();
 
     expect(signedInWithProvider, isFalse);
