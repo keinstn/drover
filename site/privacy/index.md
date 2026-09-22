@@ -4,7 +4,7 @@ titleTemplate: false
 
 # Privacy Policy — Drover
 
-**Effective date:** 2026-09-17
+**Effective date:** 2026-09-22
 **Developer:** Keisuke Nishitani
 **Contact:** kei.sj.nstn@gmail.com
 
@@ -90,7 +90,7 @@ Functions, and Cloud Messaging). It stores exactly the following:
 | **Rate-limit counters** — a request count and timestamps | To prevent abuse of the backend | Rolling window |
 | **Voice credit balance** — a whole-number count, and timestamps for when it last changed and for your one-time free-campaign grant | So the backend knows whether you can start a call, and Settings can show you what you have left | Until you delete your data |
 | **Voice credit history** — one entry per credit added or spent (a call, a refund, or the free campaign's one-time grant), with the amount, a timestamp, and — for a call or its refund — an identifier for which call it belongs to, which the app does not show you | So there is a record behind the balance, and Settings can show your recent activity | Until you delete your data |
-| **Voice session record** — the account identifier and the time a call started, under the session ID your device creates for that call | So a reconnect within the same five-minute call is billed once, not twice | Not deleted when you delete your data; no automatic expiry yet |
+| **Voice session record** — the account identifier and the time a call started, under the session ID your device creates for that call | So a reconnect within the same five-minute call is billed once, not twice | Until you delete your data |
 
 The anonymous account identifier is not linked to your name, email address, or
 Apple ID. It identifies an installation of the app, not a person.
