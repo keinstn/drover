@@ -1,3 +1,24 @@
+## [1.0.6] - 2026-09-22
+
+### 🚀 Features
+
+- Notify on agent done and let each device opt in or out (#239)
+- *(app)* Flag an out-of-date notification plugin in settings (#243)
+- *(app)* Replace iOS app icon (#244)
+- *(app)* Replace iOS app icon (#251)
+
+### 🐛 Bug Fixes
+
+- *(functions)* Make done notifications opt-in, and raise the plugin floor to 0.2.0 (#247)
+- *(app)* Reuse the live herdr connection for the settings plugin probe (#248)
+
+### 📚 Documentation
+
+- Drop the restated drover-notify herdr floor (#241)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(app)* Upgrade flutter sdk to 3.47.4 (#246)
 ## [1.0.5] - 2026-09-13
 
 ### 🚀 Features
