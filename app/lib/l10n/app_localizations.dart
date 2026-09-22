@@ -1232,6 +1232,24 @@ abstract class AppLocalizations {
   /// **'A call costs one credit and there are none. The free credits are granted once, to a signed-in account. Nothing was recorded — the microphone never opened and no audio left the phone.'**
   String get voiceNoCreditsBody;
 
+  /// Shown on the no-credits card to an account that is already signed in, where the Sign in with Apple button would otherwise be, above the button in voicePaidInterestAction. Must not imply a paid plan is coming, planned, or will be offered to this reader: it genuinely might never exist, which is what the tap is being collected to decide. Must not promise to notify them, because nothing will.
+  ///
+  /// In en, this message translates to:
+  /// **'There is no paid plan, and there may never be one. If you would pay to keep talking to your agents, saying so is the only way the developer will know.'**
+  String get voicePaidInterestPrompt;
+
+  /// The button under voicePaidInterestPrompt. First person, because it is the reader's own statement being recorded, not an offer being accepted. Not 'Buy', not 'Join the waitlist', not 'Notify me' — none of those happen.
+  ///
+  /// In en, this message translates to:
+  /// **'I would pay for this'**
+  String get voicePaidInterestAction;
+
+  /// Replaces the prompt and its button once the tap has been recorded, and still shows after a restart because the state comes from the server. A thank-you and a statement of fact, deliberately not a teaser: the second sentence exists to close off the two readings the button could otherwise invite.
+  ///
+  /// In en, this message translates to:
+  /// **'Thank you — that is on record. It is not a purchase and not a place in a queue, and whether voice ever becomes a paid plan is still undecided.'**
+  String get voicePaidInterestDone;
+
   /// No description provided for @voiceCampaignOverTitle.
   ///
   /// In en, this message translates to:

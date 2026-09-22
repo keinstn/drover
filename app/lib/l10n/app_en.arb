@@ -287,6 +287,18 @@
   "@voiceNoCreditsBody": {
     "description": "Shown to a signed-in account that has spent its credits and to an anonymous one that was never granted any, directly above a Sign in with Apple button that only the second reader gets. The middle sentence therefore states how the grant works instead of addressing either reader's own balance: it tells the anonymous reader why that button helps, and tells the signed-in reader, truthfully, that there are no more coming. It must promise no refill."
   },
+  "voicePaidInterestPrompt": "There is no paid plan, and there may never be one. If you would pay to keep talking to your agents, saying so is the only way the developer will know.",
+  "@voicePaidInterestPrompt": {
+    "description": "Shown on the no-credits card to an account that is already signed in, where the Sign in with Apple button would otherwise be, above the button in voicePaidInterestAction. Must not imply a paid plan is coming, planned, or will be offered to this reader: it genuinely might never exist, which is what the tap is being collected to decide. Must not promise to notify them, because nothing will."
+  },
+  "voicePaidInterestAction": "I would pay for this",
+  "@voicePaidInterestAction": {
+    "description": "The button under voicePaidInterestPrompt. First person, because it is the reader's own statement being recorded, not an offer being accepted. Not 'Buy', not 'Join the waitlist', not 'Notify me' — none of those happen."
+  },
+  "voicePaidInterestDone": "Thank you — that is on record. It is not a purchase and not a place in a queue, and whether voice ever becomes a paid plan is still undecided.",
+  "@voicePaidInterestDone": {
+    "description": "Replaces the prompt and its button once the tap has been recorded, and still shows after a restart because the state comes from the server. A thank-you and a statement of fact, deliberately not a teaser: the second sentence exists to close off the two readings the button could otherwise invite."
+  },
   "voiceCampaignOverTitle": "The free credits have run out",
   "voiceCampaignOverBody": "Voice is free while the credits last, and they have run out for everyone \u2014 this is not your balance, and there is nothing on your side to put right. Nothing was recorded: the microphone never opened.",
   "voiceCredits": "{credits, plural, =1{1 credit} other{{credits} credits}}",

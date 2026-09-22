@@ -158,6 +158,8 @@ class HerdScreen extends StatefulWidget {
     this.voiceAssistantEnabled = false,
     this.voiceCredits,
     this.onVoiceSignIn,
+    this.voicePaidInterest,
+    this.onVoicePaidInterest,
     this.onVoiceCreditsStale,
     this.voiceSessionFor,
     this.screenWake,
@@ -215,6 +217,13 @@ class HerdScreen extends StatefulWidget {
   /// Links an Apple ID, which is what grants the free credits. Non-null only
   /// while the account is still anonymous — see [VoiceScreen.onSignIn].
   final Future<void> Function()? onVoiceSignIn;
+
+  /// Whether this account has already said it would pay for voice, and the
+  /// call that records it — both handed straight to [VoiceScreen], which is
+  /// the only thing that shows either. Owned by `main.dart` alongside the
+  /// balance, for the same reason.
+  final ValueListenable<bool>? voicePaidInterest;
+  final Future<void> Function()? onVoicePaidInterest;
 
   /// Asks the owner of [voiceCredits] to re-read the balance. Called when a
   /// call is over for good — a debit has just landed, or a refusal has just
@@ -1128,6 +1137,8 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
           session: session,
           credits: widget.voiceCredits,
           onSignIn: widget.onVoiceSignIn,
+          paidInterest: widget.voicePaidInterest,
+          onPaidInterest: widget.onVoicePaidInterest,
           agents: _voiceAgents,
           onOpenAgent: (agent) =>
               _openAgentScreen(host, agent, fromVoice: true),

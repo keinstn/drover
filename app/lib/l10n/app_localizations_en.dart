@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -648,6 +649,17 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get voiceNoCreditsBody =>
       'A call costs one credit and there are none. The free credits are granted once, to a signed-in account. Nothing was recorded — the microphone never opened and no audio left the phone.';
+
+  @override
+  String get voicePaidInterestPrompt =>
+      'There is no paid plan, and there may never be one. If you would pay to keep talking to your agents, saying so is the only way the developer will know.';
+
+  @override
+  String get voicePaidInterestAction => 'I would pay for this';
+
+  @override
+  String get voicePaidInterestDone =>
+      'Thank you — that is on record. It is not a purchase and not a place in a queue, and whether voice ever becomes a paid plan is still undecided.';
 
   @override
   String get voiceCampaignOverTitle => 'The free credits have run out';

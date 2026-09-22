@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -620,6 +621,17 @@ class AppLocalizationsJa extends AppLocalizations {
   @override
   String get voiceNoCreditsBody =>
       '通話には1クレジット必要ですが、残りがありません。無料クレジットは、サインイン済みのアカウントに一度だけ配られます。録音は行われていません。マイクは開かず、音声は端末から出ていません。';
+
+  @override
+  String get voicePaidInterestPrompt =>
+      '有料プランはありませんし、今後できるとはかぎりません。お金を払ってでも使い続けたいと思われるなら、こうして伝えていただくほかに、開発者がそれを知る方法はありません。';
+
+  @override
+  String get voicePaidInterestAction => 'お金を払ってでも使いたい';
+
+  @override
+  String get voicePaidInterestDone =>
+      'お伝えしました。ありがとうございます。購入でも、順番待ちの登録でもありません。有料プランにするかどうかは、まだ決まっていません。';
 
   @override
   String get voiceCampaignOverTitle => '無料クレジットの配布が終わりました';

@@ -44,6 +44,8 @@ void main() {
     void Function(AgentInfo agent)? onOpenAgent,
     ValueListenable<int?>? credits,
     Future<void> Function()? onSignIn,
+    ValueListenable<bool>? paidInterest,
+    Future<void> Function()? onPaidInterest,
     DateTime Function()? now,
     // The screen no longer starts a new call by itself — a mint spends a
     // credit, so that takes a tap. This stands in for the tap, on the frame
@@ -77,6 +79,8 @@ void main() {
       onOpenAgent: onOpenAgent,
       credits: credits,
       onSignIn: onSignIn,
+      paidInterest: paidInterest,
+      onPaidInterest: onPaidInterest,
     );
     return MaterialApp(
       theme: theme ?? droverDarkTheme,
@@ -838,6 +842,8 @@ void main() {
       WidgetTester tester, {
       bool campaignOver = false,
       Future<void> Function()? onSignIn,
+      ValueListenable<bool>? paidInterest,
+      Future<void> Function()? onPaidInterest,
       Locale? locale,
     }) async {
       await tester.pumpWidget(
@@ -845,6 +851,8 @@ void main() {
           locale: locale,
           credits: ValueNotifier(0),
           onSignIn: onSignIn,
+          paidInterest: paidInterest,
+          onPaidInterest: onPaidInterest,
           connect: (_, _) async =>
               throw VoiceOutOfCredits(campaignOver: campaignOver),
         ),
@@ -912,13 +920,219 @@ void main() {
       await tester.pump();
     });
 
-    testWidgets('offers nothing at all to an account already signed in', (
+    testWidgets('offers no sign-in to an account already signed in', (
       tester,
     ) async {
       await refused(tester);
 
       expect(find.byKey(const ValueKey('voice_refusal_sign_in')), findsNothing);
+      // And with no backend behind the build there is nothing in its place
+      // either: a button that cannot record anything must not be offered.
+      expect(find.text('I would pay for this'), findsNothing);
 
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    /// The refusal card for an account that already has an Apple ID and a
+    /// backend to record into — the one combination the paid-interest offer
+    /// is made in.
+    Future<ValueNotifier<bool>> paidInterestOffered(
+      WidgetTester tester, {
+      bool recorded = false,
+      bool campaignOver = false,
+      VoidCallback? onTap,
+    }) async {
+      final notifier = ValueNotifier(recorded);
+      await refused(
+        tester,
+        campaignOver: campaignOver,
+        paidInterest: notifier,
+        onPaidInterest: () async => onTap?.call(),
+      );
+      return notifier;
+    }
+
+    testWidgets('lets a signed-in account say it would pay, once', (
+      tester,
+    ) async {
+      var recorded = 0;
+      final notifier = await paidInterestOffered(
+        tester,
+        onTap: () => recorded++,
+      );
+
+      final card = find.byKey(const ValueKey('voice_no_credits_card'));
+      // Found by its copy, not only its key: the card has to actually say
+      // what the tap does, and it must promise no paid plan.
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text(
+            'There is no paid plan, and there may never be one. If you '
+            'would pay to keep talking to your agents, saying so is the '
+            'only way the developer will know.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      final action = find.descendant(
+        of: card,
+        matching: find.text('I would pay for this'),
+      );
+      expect(action, findsOneWidget);
+
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+      expect(recorded, 1);
+
+      // The screen does not decide it has been sent: the card only turns over
+      // when the value it reads does, which is after the owner of that value
+      // has persisted it.
+      expect(find.text('I would pay for this'), findsOneWidget);
+      notifier.value = true;
+      await tester.pump();
+
+      expect(find.text('I would pay for this'), findsNothing);
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text(
+            'Thank you — that is on record. It is not a purchase and not a '
+            'place in a queue, and whether voice ever becomes a paid plan '
+            'is still undecided.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        recorded,
+        1,
+        reason: 'the offer is gone, so it cannot be sent twice',
+      );
+
+      notifier.dispose();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('says it is on record before anything is tapped', (
+      tester,
+    ) async {
+      // What a restart looks like: the saved flag comes back true out of
+      // AppSettings, so the card is the thank-you from the first frame with
+      // nothing tapped in this session.
+      final notifier = await paidInterestOffered(tester, recorded: true);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('voice_no_credits_card')),
+          matching: find.text(
+            'Thank you — that is on record. It is not a purchase and not a '
+            'place in a queue, and whether voice ever becomes a paid plan '
+            'is still undecided.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('I would pay for this'), findsNothing);
+
+      notifier.dispose();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('never asks an anonymous account whether it would pay', (
+      tester,
+    ) async {
+      // Everything the offer needs is handed over except the Apple ID: an
+      // account that was never granted credits cannot have run out of its
+      // own, so its tap would not mean what the number is counted to mean.
+      // It gets the sign-in instead, which is the same slot.
+      final notifier = ValueNotifier(false);
+      await refused(
+        tester,
+        onSignIn: () async {},
+        paidInterest: notifier,
+        onPaidInterest: () async {},
+      );
+
+      expect(find.text('I would pay for this'), findsNothing);
+      expect(
+        find.textContaining('There is no paid plan'),
+        findsNothing,
+        reason: 'the prompt must not render without its button either',
+      );
+      expect(
+        find.byKey(const ValueKey('voice_refusal_sign_in')),
+        findsOneWidget,
+      );
+
+      notifier.dispose();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('never asks on the campaign-over card', (tester) async {
+      // That card is shown to everyone once the ceiling is reached, including
+      // people who never made a call, so a tap from it would be a number
+      // nobody could read.
+      final notifier = await paidInterestOffered(tester, campaignOver: true);
+
+      expect(
+        find.byKey(const ValueKey('voice_campaign_over_card')),
+        findsOneWidget,
+      );
+      expect(find.text('I would pay for this'), findsNothing);
+      expect(find.textContaining('There is no paid plan'), findsNothing);
+
+      notifier.dispose();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('says all three paid-interest lines in Japanese', (
+      tester,
+    ) async {
+      final notifier = ValueNotifier(false);
+      await refused(
+        tester,
+        locale: const Locale('ja'),
+        paidInterest: notifier,
+        onPaidInterest: () async {},
+      );
+
+      final card = find.byKey(const ValueKey('voice_no_credits_card'));
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text(
+            '有料プランはありませんし、今後できるとはかぎりません。'
+            'お金を払ってでも使い続けたいと思われるなら、'
+            'こうして伝えていただくほかに、開発者がそれを知る方法はありません。',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.text('お金を払ってでも使いたい')),
+        findsOneWidget,
+      );
+
+      notifier.value = true;
+      await tester.pump();
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text(
+            'お伝えしました。ありがとうございます。購入でも、順番待ちの登録でもありません。'
+            '有料プランにするかどうかは、まだ決まっていません。',
+          ),
+        ),
+        findsOneWidget,
+      );
+
+      notifier.dispose();
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
     });
