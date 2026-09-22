@@ -204,6 +204,15 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
   /// sign-out, because a balance signed out of is stranded.
   bool _appleSignedIn = false;
 
+  /// The voice-credit balance, as last read from the server. Owned here
+  /// because this is where the Firebase guard and the wallet call already
+  /// live, and shared: the voice screen's chip and its receipt both read
+  /// this one notifier, so they can never quote different numbers. Null
+  /// means nobody has managed to read it — a build without Firebase behind
+  /// it, the demo, or a fetch that failed — and everything that renders it
+  /// renders nothing instead of a guess.
+  final _voiceCredits = ValueNotifier<int?>(null);
+
   /// Per-device push opt-ins, mirrored to the backend on every change.
   bool _notifyOnBlocked = true;
   bool _notifyOnDone = true;
@@ -289,6 +298,11 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     _notifyOnDone = widget.initialSettings.notifyOnDone;
     _voiceAssistantEnabled = widget.initialSettings.voiceAssistantEnabled;
     _appleSignedIn = widget.initialAppleSignedIn;
+    // Read at launch, but only for someone who has the assistant on: the
+    // voice screen's chip is the first thing that quotes this number, and a
+    // chip that appears a second after the screen does reads as a change to
+    // the balance rather than as it arriving.
+    if (_voiceAssistantEnabled) _refreshVoiceCredits();
     if (_hosts.isNotEmpty) {
       _scheduleNotificationRegistration();
     }
@@ -373,7 +387,49 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     _notificationRegistration.dispose();
     unawaited(_registry.disposeAll());
     _demo?.dispose();
+    _voiceCredits.dispose();
     super.dispose();
+  }
+
+  /// Re-reads the wallet: publishes the balance to [_voiceCredits] and hands
+  /// the whole thing back, which is what the settings screen's activity list
+  /// needs. One call feeds both, so the two can never quote different
+  /// numbers.
+  ///
+  /// Null when there is nothing to read — no Firebase behind this build, or
+  /// the demo, which must not call out to anything. A *failed* read leaves
+  /// the last known balance where it was rather than blanking it: a chip
+  /// that vanishes mid-call reads as the balance changing.
+  Future<VoiceWallet>? _refreshVoiceCredits() {
+    if (_demo != null || Firebase.apps.isEmpty) return null;
+    final wallet = fetchVoiceWallet();
+    unawaited(
+      wallet.then((value) {
+        if (mounted) _voiceCredits.value = value.credits;
+      }, onError: (Object _) {}),
+    );
+    return wallet;
+  }
+
+  /// Links the Apple ID. Shared by the settings row and the voice path —
+  /// both are the same act, and two copies of it would drift.
+  ///
+  /// No scopes on either provider: the account needs the stable identifier
+  /// only, and asking for a name or an email would make drover collect
+  /// contact information it has no use for.
+  Future<void> _signInWithApple() async {
+    await linkAppleAccount(
+      link: () => FirebaseAuth.instance.currentUser!.linkWithProvider(
+        AppleAuthProvider(),
+      ),
+      signIn: () =>
+          FirebaseAuth.instance.signInWithProvider(AppleAuthProvider()),
+    );
+    setState(() => _appleSignedIn = true);
+    // The free credits are granted on a signed-in account's first wallet
+    // read, so the balance the app is holding is stale by exactly the thing
+    // the user just signed in for.
+    _refreshVoiceCredits();
   }
 
   Future<void> _persistHosts() => widget.hostStore.saveHosts(
@@ -845,9 +901,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     // Not final: deleting the account from this very screen leaves the
     // balance below describing a uid that no longer exists, so that one
     // callback replaces the future and the route re-reads it.
-    var voiceWallet = _demo == null && Firebase.apps.isNotEmpty
-        ? fetchVoiceWallet()
-        : null;
+    var voiceWallet = _refreshVoiceCredits();
     _navKey.currentState?.push(
       MaterialPageRoute<void>(
         // The StatefulBuilder is load-bearing, not noise: a pushed route
@@ -914,18 +968,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
             },
             appleSignedIn: _appleSignedIn,
             onSignInWithApple: () async {
-              await linkAppleAccount(
-                // No scopes on either provider: the account needs the stable
-                // identifier only, and asking for a name or an email would
-                // make drover collect contact information it has no use for.
-                link: () => FirebaseAuth.instance.currentUser!.linkWithProvider(
-                  AppleAuthProvider(),
-                ),
-                signIn: () => FirebaseAuth.instance.signInWithProvider(
-                  AppleAuthProvider(),
-                ),
-              );
-              setState(() => _appleSignedIn = true);
+              await _signInWithApple();
               rebuildRoute(() {});
             },
             onDeleteAccount: () async {
@@ -960,9 +1003,11 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
               // under the fresh uid — an empty balance and an empty ledger,
               // which is the truth and also the reassurance.
               rebuildRoute(() {
-                voiceWallet = Firebase.apps.isNotEmpty
-                    ? fetchVoiceWallet()
-                    : null;
+                // The deleted account's balance went with it; the fresh uid
+                // starts at nothing, and the shared notifier has to say so
+                // as well as this screen.
+                _voiceCredits.value = null;
+                voiceWallet = _refreshVoiceCredits();
               });
               // The old uid's `users/{uid}/devices` documents went with the
               // account, so this device has to re-register under the fresh
@@ -1061,6 +1106,11 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
               onOpenSettings: _openSettings,
               networkChanges: _staleTransportSignal.changes,
               voiceAssistantEnabled: _voiceAssistantEnabled,
+              voiceCredits: _voiceCredits,
+              // Null once an Apple ID is attached: there is nothing left to
+              // offer, and the sheet and the refusal card both key on it.
+              onVoiceSignIn: _appleSignedIn ? null : _signInWithApple,
+              onVoiceCreditsStale: _refreshVoiceCredits,
             ),
     );
   }

@@ -568,6 +568,23 @@ Widget _voiceCredits(BuildContext context, AsyncSnapshot<VoiceWallet> snap) {
           style: TextStyle(color: scheme.onSurfaceVariant),
         ),
       ),
+      // Where the credits come from, since nothing on this screen sells
+      // them. Its own line under the row rather than a second subtitle
+      // sentence: the row says what a credit is, this says why there are
+      // any. Indented to the tile's text column, so it reads as a note on
+      // the row above and not as a row of its own.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(72, 0, 16, 12),
+        child: Text(
+          l10n.settingsVoiceCreditsCampaign,
+          key: const ValueKey('settings_voice_credits_campaign'),
+          style: TextStyle(
+            color: DroverColors.of(context).tertiaryText,
+            fontSize: 12,
+            height: 1.4,
+          ),
+        ),
+      ),
       _sectionHeader(context, l10n.settingsVoiceCreditsActivity),
       if (wallet.entries.isEmpty)
         ListTile(
@@ -583,6 +600,7 @@ Widget _voiceCredits(BuildContext context, AsyncSnapshot<VoiceWallet> snap) {
           title: Text(switch (entry.type) {
             VoiceLedgerType.call => l10n.voiceLedgerCall,
             VoiceLedgerType.refund => l10n.voiceLedgerRefund,
+            VoiceLedgerType.grant => l10n.voiceLedgerGrant,
           }),
           // No line at all when the row came back without a usable date:
           // an empty subtitle would still take up the space.

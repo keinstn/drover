@@ -88,23 +88,21 @@ LiveGenerationConfig voiceGenerationConfig(String languageCode) =>
 
 // --------------------------------------------------------------- minted token
 
-/// Whether a finished session shows what it billed for.
-///
-/// A developer readout, not a feature: the totals reach the transcript and
-/// the debug log and nowhere else. Nothing about a session leaves the device,
-/// which is what keeps drover's App Privacy declaration ("Usage data: No")
-/// true. **Turn this off before 1.1.0 reaches the App Store** — the session
-/// and screen tests that assert the line go with it. The counting itself is
-/// not gated: it costs nothing, and the transport's own tests stay green
-/// either way.
-const kVoiceUsageReadout = true;
-
 /// What one call billed for, summed over its turns.
 ///
 /// The Live server reports `usageMetadata` on each `turnComplete` frame and
 /// `firebase_ai` 4.0.0 drops it (see `docs/voice-billing.md`), so only a raw
 /// socket can fill this in: [TokenVoiceTransport] does, and [VoiceSession]
 /// adds up the transports one call used.
+///
+/// Counted, never shown. The developer readout that used to render these
+/// totals as a transcript line is gone — the session receipt answers "what
+/// did that cost" in credits, which is the question a user actually has, and
+/// a raw token count above it was redundant as well as unshippable. The
+/// accounting stays because it is how the next meter would be built and it
+/// is the only thing on the device that can price a call in tokens; nothing
+/// in the app reads it today. Nothing leaves the device either way, which is
+/// what keeps drover's App Privacy declaration ("Usage data: No") true.
 class VoiceUsage {
   /// Frames that carried usage: one per model turn.
   ///
@@ -171,22 +169,6 @@ abstract interface class VoiceUsageReporter {
   VoiceUsage get usage;
 }
 
-/// The readout itself: one English line, rendered as it stands by the voice
-/// screen's system-code fall-through. Not localised — it ships behind
-/// [kVoiceUsageReadout] and is deleted before release.
-String voiceUsageLine(VoiceUsage usage, Duration elapsed) {
-  final clock = '${elapsed.inMinutes}m ${elapsed.inSeconds % 60}s';
-  if (usage.turns == 0) return 'usage · $clock · no usage reported';
-  return 'usage · ${usage.turns} turn${usage.turns == 1 ? '' : 's'} · $clock · '
-      'prompt ${usage.promptTokens}${_modalities(usage.promptByModality)} · '
-      'response ${usage.responseTokens}'
-      '${_modalities(usage.responseByModality)}';
-}
-
-String _modalities(Map<String, int> tokens) => tokens.isEmpty
-    ? ''
-    : ' (${tokens.entries.map((e) => '${e.key} ${e.value}').join(', ')})';
-
 /// The RPC an ephemeral token connects to.
 ///
 /// NOT the documented `BidiGenerateContent`: every documented way of
@@ -233,18 +215,23 @@ String scrubVoiceToken(String text, String token) => text
 /// this is injectable at all.
 typedef VoiceTokenMinter = Future<VoiceToken> Function();
 
-/// `mintVoiceToken` refused because the account has no credits left.
+/// `mintVoiceToken` refused because there is no credit to spend.
 ///
-/// The only thing the app can learn about the balance: `firestore.rules`
-/// denies the client every read, so the wallet is invisible until a mint says
-/// no. Its own class rather than the raw [FirebaseFunctionsException] so
+/// Its own class rather than the raw [FirebaseFunctionsException] so
 /// [VoiceSession] can render its own copy for it without knowing a thing
 /// about Cloud Functions.
 class VoiceOutOfCredits implements Exception {
-  const VoiceOutOfCredits();
+  const VoiceOutOfCredits({this.campaignOver = false});
+
+  /// Whether the whole free campaign is spent or switched off, rather than
+  /// this account's balance being empty. The two share a code and a status
+  /// but not a meaning: the campaign ending is nothing the user did and
+  /// nothing they can undo, so the screen must not ask them to act on it.
+  final bool campaignOver;
 
   @override
-  String toString() => 'VoiceOutOfCredits';
+  String toString() =>
+      campaignOver ? 'VoiceOutOfCredits(campaignOver)' : 'VoiceOutOfCredits';
 }
 
 /// Asks `mintVoiceToken` for a token. Firebase Auth and App Check are carried
@@ -263,7 +250,16 @@ Future<VoiceToken> mintVoiceTokenFromFunctions(String sessionId) async {
       expiresAt: DateTime.parse(result.data['expireTime']! as String),
     );
   } on FirebaseFunctionsException catch (e) {
-    if (e.code == 'resource-exhausted') throw const VoiceOutOfCredits();
+    if (e.code == 'resource-exhausted') {
+      // `details` is whatever the Function attached, so it is read
+      // defensively: a refusal that arrives without a reason is still a
+      // refusal, and the account's own empty balance is the safer of the
+      // two to assume — it is the one the user can do something about.
+      final details = e.details;
+      throw VoiceOutOfCredits(
+        campaignOver: details is Map && details['reason'] == 'campaignOver',
+      );
+    }
     rethrow;
   }
 }

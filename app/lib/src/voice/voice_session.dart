@@ -195,14 +195,21 @@ class VoiceSession extends ChangeNotifier {
   static const micPermissionDenied = 'mic_permission_denied';
 
   /// [error] value when `mintVoiceToken` refused because the account is out
-  /// of voice credits. The balance itself is unreadable from the device, so
-  /// the refused mint is the only signal there is.
+  /// of voice credits.
   static const outOfCredits = 'out_of_credits';
+
+  /// [error] value when `mintVoiceToken` refused because the free campaign
+  /// itself is over. Apart from [outOfCredits] because it is not the user's
+  /// balance and not theirs to fix, and the screen says so differently.
+  static const campaignOver = 'campaign_over';
 
   /// The [error] value for a failed connect: a refused mint gets its own copy
   /// on screen, everything else renders as itself.
-  static String _failure(Object error) =>
-      error is VoiceOutOfCredits ? outOfCredits : '$error';
+  static String _failure(Object error) => switch (error) {
+    VoiceOutOfCredits(campaignOver: true) => campaignOver,
+    VoiceOutOfCredits() => outOfCredits,
+    _ => '$error',
+  };
 
   /// Permanent half-duplex gate: the mic is dropped while the model's audio
   /// is estimated to still be playing (queued bytes at 24 kHz PCM16 mono)
@@ -273,10 +280,16 @@ class VoiceSession extends ChangeNotifier {
   /// out rather than be swallowed by the "already live" early return.
   Future<void> _ending = Future.value();
 
-  /// What this call has billed for, summed over every transport it used and
-  /// read back behind [kVoiceUsageReadout]. Reset by a [start] that begins a
-  /// call, so a Restart measures its own — but not by one that resumes a
-  /// parked call, which bills on across the gap.
+  /// What this call has billed for in tokens, summed over every transport it
+  /// used. Reset by a [start] that begins a call, so a Restart measures its
+  /// own — but not by one that resumes a parked call, which bills on across
+  /// the gap.
+  ///
+  /// Nothing in the app renders this: the user-facing answer to "what did
+  /// that cost" is the receipt, in credits. It is kept, and exposed, because
+  /// it is the accounting a token-priced meter would be built on and the
+  /// only place a call's tokens are summed across its reconnects.
+  VoiceUsage get usage => _usage;
   var _usage = VoiceUsage();
 
   /// How long this call has actually been connected, summed over its
@@ -284,6 +297,12 @@ class VoiceSession extends ChangeNotifier {
   /// away is not call time. Cost per minute is read off this line
   /// (`docs/voice-billing.md`), so counting the gap would under-report it.
   var _connected = Duration.zero;
+
+  /// How long this call was actually connected, summed over its segments.
+  /// Settled by the time [finished] turns true: [_teardown] folds the last
+  /// segment in before the status flips, so the screen's receipt reads a
+  /// final number rather than one still ticking.
+  Duration get connected => _connected;
 
   /// When the current segment began; null while nothing is connected.
   DateTime? _segmentStart;
@@ -306,6 +325,28 @@ class VoiceSession extends ChangeNotifier {
   /// can be picked up too.
   bool _suspended = false;
   bool _disposed = false;
+
+  /// Whether this call is over for good — the user's End, the cap, or a
+  /// failure it could not come back from. The status alone cannot answer
+  /// it: a [background] that parks the call also lands on
+  /// [VoiceSessionStatus.ended], and that call is about to carry on.
+  /// Cleared by the [start] that begins the next one.
+  bool get finished => _finished;
+  bool _finished = false;
+
+  /// Whether this call has cost a credit. True from the first transport it
+  /// gets: the mint is what the Function charges, and a transport exists
+  /// only because one went through. Everything that fails earlier — the
+  /// microphone permission, a refused mint — never reached the charge.
+  ///
+  /// ponytail: a mint that succeeds and *then* fails to open the socket
+  /// reads as unspent here, though the Function has already charged it.
+  /// The session cannot see inside [_connect] to tell that apart from a
+  /// dial that never got as far as minting, and claiming a credit that may
+  /// not have been taken is the worse of the two errors. Same known hole
+  /// the session id's own comment in [start] names.
+  bool get spent => _spent;
+  bool _spent = false;
 
   /// Armed by [start], cancelled by [_teardown]; survives reconnects because
   /// [_lost] never goes back through [start].
@@ -424,9 +465,11 @@ class VoiceSession extends ChangeNotifier {
     }
     final gen = ++_generation;
     _active = true;
+    _finished = false;
     if (!wasParked) {
       _usage = VoiceUsage();
       _connected = Duration.zero;
+      _spent = false;
       // One conversation, one id, however many times it reconnects — and so
       // one debit. Resuming a parked call is the same conversation and keeps
       // its id; a Restart is a new one and pays again.
@@ -530,6 +573,9 @@ class VoiceSession extends ChangeNotifier {
   /// Makes [transport] the current one and routes its messages into [_rx].
   void _bind(VoiceTransport transport, int gen) {
     _transport = transport;
+    // The transport is here, so the mint behind it went through and the
+    // credit is gone — whatever happens to the call from now on.
+    _spent = true;
     _rxSub = transport.receive().listen(
       (response) {
         _rx = _rx
@@ -939,22 +985,12 @@ class VoiceSession extends ChangeNotifier {
     await _teardown();
     _resumeHandle = null;
     _suspended = false;
-    // A call that died still burned tokens, and a cost measurement that drops
-    // exactly the calls that went wrong measures the wrong population.
-    _appendUsage();
+    // Over for good: [_suspended] and the handle were both dropped above,
+    // so nothing can pick this conversation up again. Whether it owes a
+    // receipt is [spent]'s question, not this one's — a mint refused
+    // before the call began lands here having cost nothing.
+    _finished = true;
     _setStatus(VoiceSessionStatus.error, error: message);
-  }
-
-  /// Logs what this call billed for, once, at whichever end it reached.
-  ///
-  /// Carries its own text rather than a code: the screen renders an unknown
-  /// system code as it stands, and a developer readout is not worth two
-  /// locales.
-  void _appendUsage() {
-    if (!kVoiceUsageReadout) return;
-    final line = voiceUsageLine(_usage, _connected);
-    _entries.add(VoiceEntry(VoiceEntryKind.system, line));
-    debugPrint(line);
   }
 
   /// Ends the session. The future is parked in [_ending] so a [start] that
@@ -988,14 +1024,14 @@ class VoiceSession extends ChangeNotifier {
     _closeOut();
   }
 
-  /// The lines that close a call out: that it ended, any draft left unsent,
-  /// and what the whole call billed for.
+  /// The lines that close a call out: that it ended, and any draft left
+  /// unsent. What it cost is the screen's receipt, not a line in the log.
   void _closeOut() {
     _entries.add(const VoiceEntry(VoiceEntryKind.system, endedCode));
     if (drafts.pending.isNotEmpty) {
       _entries.add(const VoiceEntry(VoiceEntryKind.system, unsentDraftsCode));
     }
-    _appendUsage();
+    _finished = true;
     _setStatus(VoiceSessionStatus.ended);
   }
 

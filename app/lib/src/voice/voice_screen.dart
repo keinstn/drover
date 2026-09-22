@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
+import '../infra/best_effort.dart';
 import '../models/agent_info.dart';
 import '../models/agent_preset.dart';
 import '../utils/path.dart';
@@ -75,6 +78,12 @@ Color voiceListeningInk(BuildContext context) =>
     ? _listeningInkDark
     : _listeningInkLight;
 
+/// Which refusal a `mintVoiceToken` that said no was: the account's own
+/// balance, or the free campaign being over for everybody. They share a
+/// status and a shape on screen and nothing else — only the first is the
+/// user's to do anything about.
+enum _Refusal { noCredits, campaignOver }
+
 /// The voice-assistant screen: the transcript *is* the screen — every line in
 /// one log, pending draft cards pinned above the controls until they are
 /// acted on — with the assistant's presence as light bleeding in from the
@@ -92,9 +101,25 @@ class VoiceScreen extends StatefulWidget {
     required this.session,
     this.agents,
     this.onOpenAgent,
+    this.credits,
+    this.onSignIn,
   });
 
   final VoiceSession session;
+
+  /// The account's voice-credit balance, live: the chip beside the state
+  /// word and the receipt's Balance row read this same notifier, so the two
+  /// can never disagree. Null — or a null value — means the balance is not
+  /// known here (no Firebase behind the build, a preview, a fetch that
+  /// failed), and both simply go: a balance the app is guessing at is worse
+  /// than no balance at all.
+  final ValueListenable<int?>? credits;
+
+  /// Links an Apple ID, which is what grants the free credits. Non-null only
+  /// while the account is still anonymous: the refusal card's action and the
+  /// sign-in sheet are the two things that need it, and for an account that
+  /// already has an Apple ID there is nothing for either to offer.
+  final Future<void> Function()? onSignIn;
 
   /// The herd's agents, live: a poll landing a new list repaints the switcher
   /// bar's dots under the header. Null — together with [onOpenAgent] — means
@@ -125,6 +150,11 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     widget.session.addListener(_onSessionChanged);
+    // The chip, the receipt's Balance row and whether the starter is
+    // enabled all read the balance, and none of them is under a
+    // ValueListenableBuilder: a fetch landing has to repaint the header and
+    // the controls together, not one of them.
+    widget.credits?.addListener(_onCreditsChanged);
     // Seeded, not left at zero: the call outlives this route, so a fresh
     // state is built over however many cards are already pending, and an
     // unseeded count would read the next notify — a Send on an older card,
@@ -141,6 +171,7 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.session.removeListener(_onSessionChanged);
+    widget.credits?.removeListener(_onCreditsChanged);
     // The session is left alone: not disposed, not ended, and the screen
     // wake not released. The call keeps listening while the user is on
     // another drover screen, and both the things that must not outlive the
@@ -186,6 +217,10 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     return position.pixels >= position.maxScrollExtent - 40;
   }
 
+  void _onCreditsChanged() {
+    if (mounted) setState(() {});
+  }
+
   void _onSessionChanged() {
     if (!mounted) return;
     // Follow new entries only if the user hasn't scrolled up to read.
@@ -229,14 +264,47 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     final l10n = AppLocalizations.of(context)!;
     final session = widget.session;
     final active = _isActive;
+    // A refused mint is the one error with somewhere to go from here, so it
+    // gets a card rather than the bare line below: what it cost, what was
+    // recorded (nothing), and — while the account is still anonymous — the
+    // sign-in that grants the credits.
+    //
+    // Only for a call that never started, which is what `!spent` says. A
+    // re-mint refused mid-call (`_lost` reconnecting on a handle) reaches
+    // the same error value for a conversation that did happen and was
+    // charged — "nothing was recorded" would be false there, and the
+    // receipt it owes would go missing. That one falls through to the
+    // ordinary error line, with its receipt under it.
+    final refusal = session.status == VoiceSessionStatus.error && !session.spent
+        ? switch (session.error) {
+            VoiceSession.outOfCredits => _Refusal.noCredits,
+            VoiceSession.campaignOver => _Refusal.campaignOver,
+            _ => null,
+          }
+        : null;
     // `_fail` adds no entry, so on an error the log would otherwise be
     // empty and the only account of what went wrong would be the header
     // label — which clamps to two lines. So the error rides the log as its
     // last line, where it wraps as far as it needs to: as the whole of it
     // after a failed connect, at the end after a mid-session drop.
-    final errorText = session.status == VoiceSessionStatus.error
+    final errorText =
+        session.status == VoiceSessionStatus.error && refusal == null
         ? _statusLabel(l10n, session)
         : null;
+    // The foot of the log. A refusal is the whole of it — nothing was
+    // spent, so there is no receipt to add and the card already says what
+    // happened. Otherwise the error line comes first and the receipt after
+    // it: what went wrong, then what it cost, which is the order the two
+    // are read in. A call that never got a transport owes no receipt at
+    // all, whichever way it ended.
+    final trailers = <Widget>[
+      if (refusal != null)
+        _refusalCard(context, l10n, refusal)
+      else ...[
+        if (errorText != null) _errorBody(context, errorText),
+        if (session.finished && session.spent) _receiptCard(context, l10n),
+      ],
+    ];
     // Holds, not draws: a pending draft's row renders nothing, but a draft
     // always trails the tool entry that created it (`voice_session.dart`
     // adds one per call before running it), so entries are never all
@@ -247,7 +315,7 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
         session.entries.isEmpty &&
         session.partialUser == null &&
         session.partialAssistant == null &&
-        errorText == null;
+        trailers.isEmpty;
     return Scaffold(
       // The glow is the whole body's bottom edge, not the transcript's: put
       // it under the SafeArea so it bleeds past the controls into the very
@@ -302,6 +370,13 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
                         ),
                       ),
                     ),
+                    // Outside the Expanded above, which deliberately takes
+                    // every pixel the back button leaves for an error of any
+                    // length: a fixed chip inside it would fight that. It
+                    // sits in the status row and not in an app bar — this
+                    // screen has none, and the switcher bar owns the band
+                    // underneath.
+                    _balanceChip(context, l10n),
                   ],
                 ),
                 // The roster under the header: who exists, what their status
@@ -339,14 +414,14 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
                         Expanded(
                           child: empty
                               ? _empty(context, l10n)
-                              : _transcript(context, l10n, errorText),
+                              : _transcript(context, trailers),
                         ),
                         _pending(context, l10n, constraints.maxHeight),
                       ],
                     ),
                   ),
                 ),
-                _controls(context, l10n, active),
+                _controls(context, l10n, active, refusal),
               ],
             ),
           ),
@@ -436,11 +511,9 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _transcript(
-    BuildContext context,
-    AppLocalizations l10n,
-    String? errorText,
-  ) {
+  /// The log, with [trailers] — a refusal card, or the error line and the
+  /// receipt — pinned after the last entry, in the order given.
+  Widget _transcript(BuildContext context, List<Widget> trailers) {
     final session = widget.session;
     // builder, not ListView(children:): the session notifies several times a
     // second during a turn, and the log grows across Restarts.
@@ -455,26 +528,201 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
     return ListView.builder(
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      itemCount: rows + (errorText == null ? 0 : 1),
-      itemBuilder: (context, i) => i == rows
-          // No maxLines: the header's copy of this is clamped to two, so
-          // the rest of a long host error has to be readable somewhere.
-          ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(
-                errorText!,
-                key: const ValueKey('voice_error_body'),
-                textAlign: TextAlign.center,
-                style: _mutedStyle(context),
-              ),
-            )
+      itemCount: rows + trailers.length,
+      itemBuilder: (context, i) => i >= rows
+          ? trailers[i - rows]
           : _entryRow(
               context,
-              l10n,
+              AppLocalizations.of(context)!,
               i < entries.length ? entries[i] : partials[i - entries.length],
             ),
     );
   }
+
+  /// The bare error line. No maxLines: the header's copy of this is clamped
+  /// to two, so the rest of a long host error has to be readable somewhere.
+  Widget _errorBody(BuildContext context, String text) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Text(
+      text,
+      key: const ValueKey('voice_error_body'),
+      textAlign: TextAlign.center,
+      style: _mutedStyle(context),
+    ),
+  );
+
+  /// The balance beside the state word: what a call would spend, where the
+  /// state of the call already is. Mono and tracked — the label ramp, the
+  /// same treatment every other count on a drover screen wears — and in the
+  /// blocked ink at zero, which is what "needs your attention" looks like
+  /// everywhere else in the app.
+  ///
+  /// Renders nothing at all when the balance is unknown rather than a
+  /// placeholder: a chip that reads 0 because nobody asked would send the
+  /// user to a wallet that is actually full.
+  Widget _balanceChip(BuildContext context, AppLocalizations l10n) {
+    final value = widget.credits?.value;
+    if (value == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(right: 20),
+      child: Text(
+        l10n.voiceCredits(value),
+        key: const ValueKey('voice_balance'),
+        style: droverLabelStyle(
+          context,
+          fontSize: 10.5,
+          color: value == 0
+              ? DroverColors.of(context).blockedDot
+              : _mutedInk(context),
+        ),
+      ),
+    );
+  }
+
+  /// What the call cost, once it is over for good: how long it was actually
+  /// connected, the one credit it spent, and what is left. Keys on
+  /// [VoiceSession.finished] rather than the status, because a call parked
+  /// by a backgrounding also reads as ended and is not over — and on
+  /// [VoiceSession.spent], because a call that died is still a call that
+  /// was paid for, while one refused before it began is not.
+  Widget _receiptCard(BuildContext context, AppLocalizations l10n) {
+    final connected = widget.session.connected;
+    final balance = widget.credits?.value;
+    return _logCard(
+      context,
+      key: const ValueKey('voice_receipt'),
+      children: [
+        _receiptRow(
+          context,
+          l10n.voiceReceiptLength,
+          // Connected time, summed per segment — not wall clock. A call
+          // that was parked while the user read a pane did not spend that
+          // time on the wire, and the honest number is the one the session
+          // counted.
+          l10n.voiceReceiptLengthValue(
+            connected.inMinutes,
+            connected.inSeconds % 60,
+          ),
+        ),
+        _receiptRow(context, l10n.voiceReceiptCost, l10n.voiceCredits(1)),
+        // No row at all when the balance is unknown: two true rows beat
+        // three with a guess in one of them.
+        if (balance != null)
+          _receiptRow(context, l10n.voiceReceiptBalance, '$balance'),
+        const SizedBox(height: 8),
+        Text(
+          l10n.voiceReceiptFootnote,
+          style: _mutedStyle(context).copyWith(fontSize: 11.5, height: 1.4),
+        ),
+      ],
+    );
+  }
+
+  Widget _receiptRow(BuildContext context, String label, String value) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: droverLabelStyle(context, color: _mutedInk(context)),
+            ),
+            Text(
+              value,
+              style: droverLabelStyle(
+                context,
+                fontSize: 10.5,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+      );
+
+  /// A refused mint, said in full: what it costs, that nothing was recorded,
+  /// and — only for [_Refusal.noCredits] on an account with no Apple ID —
+  /// the sign-in that grants the free credits. [_Refusal.campaignOver] never
+  /// carries an action: the campaign ending is nothing the user did and
+  /// nothing they can undo, and an action there would be a false promise.
+  Widget _refusalCard(
+    BuildContext context,
+    AppLocalizations l10n,
+    _Refusal refusal,
+  ) {
+    final onSignIn = widget.onSignIn;
+    final offersSignIn = refusal == _Refusal.noCredits && onSignIn != null;
+    return _logCard(
+      context,
+      key: ValueKey(
+        refusal == _Refusal.noCredits
+            ? 'voice_no_credits_card'
+            : 'voice_campaign_over_card',
+      ),
+      children: [
+        Text(
+          refusal == _Refusal.noCredits
+              ? l10n.voiceNoCreditsTitle
+              : l10n.voiceCampaignOverTitle,
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          refusal == _Refusal.noCredits
+              ? l10n.voiceNoCreditsBody
+              : l10n.voiceCampaignOverBody,
+          style: _mutedStyle(context).copyWith(height: 1.5),
+        ),
+        if (offersSignIn) ...[
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.tonal(
+              key: const ValueKey('voice_refusal_sign_in'),
+              // A failure here is almost always the user dismissing Apple's
+              // own sheet, and the card and its button are still there to
+              // try again — which is a better answer than a second error
+              // stacked on the one already on screen.
+              onPressed: () =>
+                  unawaited(runBestEffort(onSignIn, context: 'voice sign-in')),
+              child: Text(l10n.settingsAccountSignIn),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// The card shape the log already speaks in — the draft card's outline and
+  /// radius, at the same width.
+  Widget _logCard(
+    BuildContext context, {
+    required Key key,
+    required List<Widget> children,
+  }) => Align(
+    key: key,
+    alignment: Alignment.centerLeft,
+    child: ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width * 0.85,
+      ),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+          borderRadius: BorderRadius.circular(droverRadiusMedium),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: children,
+        ),
+      ),
+    ),
+  );
 
   /// The middle slot before and after a call — Start on a screen that has
   /// never run, Restart once one is over — and the ink-filled End/Close on the
@@ -483,8 +731,23 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
   /// third occupant of it: it is the one control that opens a call that was
   /// never opened, and a test reaching for End has to fail rather than find
   /// it under the same key.
-  Widget _controls(BuildContext context, AppLocalizations l10n, bool active) {
+  Widget _controls(
+    BuildContext context,
+    AppLocalizations l10n,
+    bool active,
+    _Refusal? refusal,
+  ) {
     final session = widget.session;
+    // A refused mint leaves nothing to start: the next tap would spend a
+    // credit that isn't there and come straight back here. The campaign
+    // being over is final, so that one stays off whatever happens; an empty
+    // balance is not, so the control comes back the moment the balance does
+    // — which is what a sign-in from the card above leads to.
+    final blocked = switch (refusal) {
+      _Refusal.campaignOver => true,
+      _Refusal.noCredits => (widget.credits?.value ?? 0) <= 0,
+      null => false,
+    };
     final tonal = IconButton.styleFrom(fixedSize: const Size.square(52));
     Widget starter(Key key, IconData icon, String label) => Column(
       mainAxisSize: MainAxisSize.min,
@@ -494,10 +757,12 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
           style: tonal,
           icon: Icon(icon),
           tooltip: label,
-          onPressed: () {
-            HapticFeedback.lightImpact();
-            session.start();
-          },
+          onPressed: blocked
+              ? null
+              : () {
+                  HapticFeedback.lightImpact();
+                  session.start();
+                },
         ),
         const SizedBox(height: 6),
         Text(
@@ -566,7 +831,11 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
         VoiceSessionStatus.error => l10n.voiceStatusError(
           switch (session.error) {
             VoiceSession.micPermissionDenied => l10n.voiceMicPermissionDenied,
-            VoiceSession.outOfCredits => l10n.voiceOutOfCredits,
+            // The short title only: the card in the log carries the prose,
+            // and the header saying it too would be the same paragraph
+            // twice on one screen.
+            VoiceSession.outOfCredits => l10n.voiceNoCreditsTitle,
+            VoiceSession.campaignOver => l10n.voiceCampaignOverTitle,
             final error => error ?? '',
           },
         ),

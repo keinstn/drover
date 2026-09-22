@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -9,6 +10,7 @@ import '../app_theme.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/herdr_version.dart';
 import '../i18n/status_label.dart';
+import '../infra/best_effort.dart';
 import '../infra/screen_wake.dart';
 import '../infra/settings_store.dart';
 import '../models/agent_info.dart';
@@ -18,6 +20,7 @@ import '../utils/path.dart';
 import '../voice/voice_consent_sheet.dart';
 import '../voice/voice_herd.dart';
 import '../voice/voice_screen.dart';
+import '../voice/voice_sign_in_sheet.dart';
 import '../voice/voice_session.dart';
 import '../widgets/agent_avatar.dart';
 import '../widgets/error_message_view.dart';
@@ -153,6 +156,9 @@ class HerdScreen extends StatefulWidget {
     this.pollInterval = const Duration(seconds: 2),
     this.networkChanges,
     this.voiceAssistantEnabled = false,
+    this.voiceCredits,
+    this.onVoiceSignIn,
+    this.onVoiceCreditsStale,
     this.voiceSessionFor,
     this.screenWake,
   });
@@ -200,6 +206,22 @@ class HerdScreen extends StatefulWidget {
   /// voice assistant. The session it opens is scoped to the first host in
   /// scope for now; multi-host aggregation is a follow-up.
   final bool voiceAssistantEnabled;
+
+  /// The account's voice-credit balance, handed straight to [VoiceScreen].
+  /// Owned by `main.dart`, which is where the fetch and the Firebase guard
+  /// already live; null means there is no balance to show.
+  final ValueListenable<int?>? voiceCredits;
+
+  /// Links an Apple ID, which is what grants the free credits. Non-null only
+  /// while the account is still anonymous — see [VoiceScreen.onSignIn].
+  final Future<void> Function()? onVoiceSignIn;
+
+  /// Asks the owner of [voiceCredits] to re-read the balance. Called when a
+  /// call is over for good — a debit has just landed, or a refusal has just
+  /// said the balance is not what the app thought. This screen is the only
+  /// place that watches the retained conversation all the way to its end,
+  /// whether or not the voice screen is still showing.
+  final VoidCallback? onVoiceCreditsStale;
 
   /// Builds the session a voice screen runs on; defaults to
   /// [VoiceSession.forHerd]. Overridable only so tests can reach the session
@@ -399,13 +421,30 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
     unawaited(_screenWake.setEnabled(active));
   }
 
+  /// Whether the retained call has already been counted as finished, so the
+  /// balance is re-read once per call and not on every transcript delta
+  /// that follows it. Reset when a session is dropped or replaced.
+  var _voiceCreditsRead = false;
+
+  /// Re-reads the balance the moment a call is over for good — a debit has
+  /// landed, or a refusal has just proved the balance stale — which is the
+  /// only way the chip and the receipt can show what is actually left.
+  void _syncVoiceCredits() {
+    final finished = _voiceSession?.finished ?? false;
+    if (finished == _voiceCreditsRead) return;
+    _voiceCreditsRead = finished;
+    if (finished) widget.onVoiceCreditsStale?.call();
+  }
+
   /// Ends and forgets the retained conversation, and lets the device lock
   /// again. Idempotent — the field is cleared, so nothing is ever disposed
   /// twice.
   void _dropVoiceSession() {
     _voiceSession?.removeListener(_syncWake);
+    _voiceSession?.removeListener(_syncVoiceCredits);
     _voiceSession?.dispose();
     _voiceSession = null;
+    _voiceCreditsRead = false;
     _voiceHost = null;
     // After the field is cleared, so [_voiceOnTheWire] reads false: a
     // disposed session's status would otherwise keep the device awake with
@@ -1028,6 +1067,17 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
     }
     // The poll keeps running behind the sheet and can empty the scope.
     if (!context.mounted || _hostsInScope.isEmpty) return;
+    // An anonymous account is granted nothing, so every call it opens is
+    // refused before the microphone does anything. Offered here rather than
+    // only on the refusal card, so the first thing that happens is not a
+    // failure — and declined, the conversation opens anyway: "Not now" is
+    // an escape, not a second consent gate.
+    if (widget.onVoiceSignIn case final signIn?) {
+      if (await showVoiceSignInSheet(context)) {
+        await runBestEffort(signIn, context: 'voice sign-in');
+      }
+      if (!context.mounted || _hostsInScope.isEmpty) return;
+    }
     // Built once here, not in the route builder, which can run more than once.
     final host = _hostsInScope.first;
     // A retained conversation is picked up where it was left: still on the
@@ -1063,6 +1113,7 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
       // is attached here and removed in [_dropVoiceSession], so it lasts as
       // long as the conversation does, not as long as its screen.
       session.addListener(_syncWake);
+      session.addListener(_syncVoiceCredits);
       setState(() {
         _voiceSession = session;
         _voiceHost = host;
@@ -1075,6 +1126,8 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
       MaterialPageRoute<void>(
         builder: (_) => VoiceScreen(
           session: session,
+          credits: widget.voiceCredits,
+          onSignIn: widget.onVoiceSignIn,
           agents: _voiceAgents,
           onOpenAgent: (agent) =>
               _openAgentScreen(host, agent, fromVoice: true),

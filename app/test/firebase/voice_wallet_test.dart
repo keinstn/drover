@@ -23,6 +23,24 @@ void main() {
     expect(wallet.entries.last.credits, 1);
   });
 
+  test('names the campaign grant rather than dropping it', () {
+    final wallet = parseVoiceWallet({
+      'credits': 3,
+      'entries': [
+        {'type': 'campaignGrant', 'credits': 3, 'at': 1758100000000},
+      ],
+    });
+
+    // The free credits have to be nameable: dropped, the balance would say
+    // three and the ledger behind it would say nothing at all.
+    expect(wallet.entries.single.type, VoiceLedgerType.grant);
+    expect(wallet.entries.single.credits, 3);
+    expect(
+      wallet.entries.single.at,
+      DateTime.fromMillisecondsSinceEpoch(1758100000000),
+    );
+  });
+
   test('drops a row whose type this build does not know', () {
     final wallet = parseVoiceWallet({
       'credits': 1,
