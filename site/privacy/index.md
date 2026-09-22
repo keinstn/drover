@@ -18,7 +18,7 @@ device and your own machine and goes nowhere else.
 
 Two optional features reach outside that path:
 
-- the **push-notification backend**, the only service the developer operates,
+- the **developer's backend**, the only service the developer operates,
   which tells your device that an agent is waiting for you and also keeps the
   voice assistant's credit balance;
 - the **voice assistant**, which sends your microphone audio and the agent
@@ -70,7 +70,7 @@ developer:
 
 Deleting the app removes all of this.
 
-## The push-notification backend
+## The developer's backend
 
 Push notifications are **optional**. They only start working after you pair a
 host, which is a deliberate action you take. If you never pair a host and
