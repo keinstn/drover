@@ -436,10 +436,6 @@ export const revokeHost = onCall({ enforceAppCheck: true }, async (request) => {
 // signed in and the client free to call again, whereas deleting the user first
 // would strand the remaining rows with no session left to retry from.
 //
-// `voiceSessions` documents are deliberately left alone. They are keyed by a
-// client-generated UUID and hold only that ID's uid and start time. Nothing
-// reaps them yet either, here or anywhere — see the note on `voiceSessionRef`.
-//
 // Apple token revocation does not happen here either. The client calls
 // `revokeTokenWithAuthorizationCode` and Firebase's own backend performs the
 // revoke from the Apple provider configuration in the console, so no `.p8` or
@@ -480,6 +476,26 @@ export const deleteAccount = onCall(
       batch.delete(pairingCode.ref);
     }
     await batch.commit();
+
+    // Keyed by a client-generated session ID, so `uid` is the only way back to
+    // them — and the only thing in one worth deleting. A batch of its own
+    // because a batch commits at most 500 writes, and the one above is already
+    // allowed to hold 500.
+    //
+    // ponytail: stops at 500 like the sweeps above. That is 500 calls by one
+    // account, against a free grant of 5 and a campaign of 130 calls in total,
+    // and a leftover is inert — its uid is gone, so no future mint can reuse
+    // the session ID. A Firestore TTL policy on `startedAt` sweeps the rest.
+    const voiceSessions = await db
+      .collection("voiceSessions")
+      .where("uid", "==", uid)
+      .limit(500)
+      .get();
+    const voiceBatch = db.batch();
+    for (const voiceSession of voiceSessions.docs) {
+      voiceBatch.delete(voiceSession.ref);
+    }
+    await voiceBatch.commit();
 
     await getAuth().deleteUser(uid);
     return { deleted: true };
@@ -661,10 +677,11 @@ function signInProviderOf(request: {
   return request.auth?.token.firebase.sign_in_provider;
 }
 
-// ponytail: one document per call and nothing reaps them. A stale one is
-// harmless — it is older than the window, so the next mint under that id pays
-// — but they accumulate. A Firestore TTL policy on `startedAt` clears them
-// without any code here.
+// ponytail: one document per call. `refundVoiceCall` deletes the one it undoes
+// and `deleteAccount` sweeps a deleted account's, but nothing reaps the rest: a
+// stale one is harmless — it is older than the window, so the next mint under
+// that id pays — and an account that is never deleted accumulates them forever.
+// A Firestore TTL policy on `startedAt` clears those without any code here.
 function voiceSessionRef(sessionId: string) {
   return db.collection("voiceSessions").doc(sessionId);
 }
