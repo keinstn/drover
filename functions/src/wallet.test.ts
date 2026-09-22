@@ -9,6 +9,7 @@ import {
   voiceCampaignCallLimit,
   voiceCampaignFreeGrant,
   voiceCampaignGrant,
+  voiceGrantEligible,
   voiceLedgerEntry,
   voiceMintDecision,
   voiceSessionReuseMs,
@@ -284,4 +285,16 @@ void test("stops granting when the campaign is stopped, but not at the ceiling",
   );
   assert.equal(grant(campaignAt({ enabled: false })), 0);
   assert.equal(grant(campaignAt({ freeGrant: 0 })), 0);
+});
+
+void test("admits only a signed-in account to the campaign", () => {
+  // Two callables turn on this one answer now: the grant above, and the
+  // paid-interest counter, which refuses an anonymous caller because an
+  // account that was never granted credits cannot have run out of its own.
+  // They must not drift into two different ideas of who is in the campaign.
+  assert.equal(voiceGrantEligible("apple.com"), true);
+  assert.equal(voiceGrantEligible("anonymous"), false);
+  assert.equal(voiceGrantEligible(undefined), false);
+  assert.equal(voiceGrantEligible(null), false);
+  assert.equal(voiceGrantEligible(42), false);
 });

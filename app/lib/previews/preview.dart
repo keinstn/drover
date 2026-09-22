@@ -70,6 +70,8 @@ const _scenariosByPreview = <String, List<String>>{
     'receipt',
     'error-receipt',
     'no-credits',
+    'paid-interest',
+    'paid-interest-done',
     'campaign-over',
   ],
 };
@@ -259,7 +261,9 @@ final _previews = <String, PreviewBuilder>{
   // mid-sentence — the credit is spent either way, so the error line and
   // the receipt are both on screen. 'no-credits' and 'campaign-over' refuse
   // the mint the two ways the server can, which is how their cards get
-  // looked at.
+  // looked at. 'paid-interest' and 'paid-interest-done' are the no-credits
+  // refusal again for an account that already signed in — the offer to say
+  // you would pay, before and after it has been recorded.
   'voice': (_, scenario) {
     final session = _voiceSession(scenario);
     // The screen only starts a call it can continue for free, so every
@@ -268,12 +272,21 @@ final _previews = <String, PreviewBuilder>{
     if (scenario != 'start') {
       WidgetsBinding.instance.addPostFrameCallback((_) => session.start());
     }
+    final paidInterest = _voicePaidInterest(scenario);
     return VoiceScreen(
       session: session,
       credits: _voiceCredits(scenario),
       // Non-null means "still anonymous", which is what puts the sign-in
-      // action on the no-credits card.
-      onSignIn: () async {},
+      // action on the no-credits card. Null for the two paid-interest
+      // scenarios, which are the same card for an account that already has
+      // an Apple ID — the one case where the other action shows.
+      onSignIn: paidInterest == null ? () async {} : null,
+      paidInterest: paidInterest,
+      // Records nothing: flipping the notifier is the whole of what the app
+      // shows, and a preview has no backend to record into.
+      onPaidInterest: paidInterest == null
+          ? null
+          : () async => paidInterest.value = true,
       agents: _voiceBarAgents,
       onOpenAgent: (_) {},
     );
@@ -477,9 +490,25 @@ class _StubVoiceTransport implements VoiceTransport {
 ValueNotifier<int?> _voiceCredits(String scenario) =>
     ValueNotifier(switch (scenario) {
       'receipt' || 'error-receipt' => 11,
-      'no-credits' || 'campaign-over' => 0,
+      'no-credits' ||
+      'campaign-over' ||
+      'paid-interest' ||
+      'paid-interest-done' => 0,
       _ => 12,
     });
+
+/// Whether the paid-interest offer is on the no-credits card, and whether it
+/// has been tapped. Null for every other scenario, which is what leaves the
+/// sign-in action there instead — the two are the same slot.
+///
+/// Two scenarios rather than one so the recorded state can be screenshotted
+/// without driving a tap first; tapping in 'paid-interest' reaches the same
+/// place, since the notifier is what the card reads.
+ValueNotifier<bool>? _voicePaidInterest(String scenario) => switch (scenario) {
+  'paid-interest' => ValueNotifier(false),
+  'paid-interest-done' => ValueNotifier(true),
+  _ => null,
+};
 
 /// A [VoiceSession] wired to stubs (no Firebase, mic or speaker touched),
 /// scripted per [scenario]: after ~800ms every scenario gets one finished
@@ -501,7 +530,11 @@ VoiceSession _voiceSession(String scenario) {
     connect: (_, _) async {
       // The two refusals the server can answer a mint with. Thrown from
       // connect, which is exactly where the real transport raises them.
-      if (scenario == 'no-credits') throw const VoiceOutOfCredits();
+      if (scenario == 'no-credits' ||
+          scenario == 'paid-interest' ||
+          scenario == 'paid-interest-done') {
+        throw const VoiceOutOfCredits();
+      }
       if (scenario == 'campaign-over') {
         throw const VoiceOutOfCredits(campaignOver: true);
       }
