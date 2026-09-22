@@ -1,8 +1,8 @@
 # Reading voice usage and cost from the CLI
 
 What the voice assistant costs, and how to see it without opening a console.
-The assistant itself is described in [voice-live.md](voice-live.md). Facts
-below were recorded on 2026-09-17 unless noted otherwise.
+The assistant itself is described in [voice.md](voice.md). Facts below were
+recorded on 2026-09-17 unless noted otherwise.
 
 Three different numbers live in three different places, and only two of them
 are reachable from a shell:

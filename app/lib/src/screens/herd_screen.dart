@@ -859,7 +859,7 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
           // on the AVAudioSession that `record`'s engine already holds and
           // `flutter_soloud` plays through. The likely loser is the call's
           // microphone, and nothing would tell [VoiceSession], leaving it
-          // `live` over a dead mic — the half-dead state `docs/voice-live.md`
+          // `live` over a dead mic — the half-dead state `docs/voice.md`
           // calls the worst outcome. The call wins because it is the one the
           // user is in the middle of; dictation is one tap of a keyboard
           // alternative. A flag, not a withheld [SpeechInput]: who owns the

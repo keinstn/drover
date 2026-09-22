@@ -40,10 +40,10 @@ notes (`claude-notes.md`, `copilot-notes.md`, `codex-notes.md`,
   launch after install may show a Hooks review panel; trust/enable the hook
   there, then start a fresh session.
 - Firebase AI Logic must be enabled on the Firebase project (Gemini Developer
-  API backend) for the voice assistant on the `voice-live` branch. This is a
-  one-time provisioning step — it creates/links the Gemini Developer API
-  project that `GEMINI_API_KEY` lives in — not a runtime dependency; the app
-  never calls AI Logic itself. See `docs/voice-live.md`.
+  API backend) for the voice assistant. This is a one-time provisioning step —
+  it creates/links the Gemini Developer API project that `GEMINI_API_KEY`
+  lives in — not a runtime dependency; the app never calls AI Logic itself.
+  See `docs/voice.md`.
 
 ## Marionette MCP
 
@@ -109,18 +109,20 @@ the previous release tag and commits it separately on top of current `main`,
 so the entry lands after the tagged commit rather than inside it. See
 `cliff.toml` for the commit grouping/skip rules.
 
-## Voice assistant (voice-live branch)
+That build-number counter ("Next Build Number", Xcode Cloud → Settings) is per
+app and shared by every workflow, and it can only ever be raised, never
+lowered — leave it alone. Internal TestFlight testing needs no review;
+external testing would need Beta App Review.
 
-The Gemini Live voice assistant is developed on the long-lived `voice-live`
-branch — feature PRs target it, not `main`. See `docs/voice-live.md` for the
-branch workflow, Firebase prerequisites, and simulator notes. `just
-voice-build` (run from `voice-live`, changes nothing locally) starts the
-"Voice Live" Xcode Cloud workflow, which goes to TestFlight internal testing
-only. That branch carries marketing version `1.1.0` while `main` stays
-`1.0.x`, so the two never share an App Store train. Gotcha: App Check is
-enforced on the `mintVoiceToken` callable, so every fresh simulator/device
-install needs its debug token registered in the Firebase console before any
-voice call succeeds.
+## Voice assistant
+
+The Gemini Live voice assistant is part of the app and ships through the
+normal release path above. See `docs/voice.md` for how it works, the Firebase
+prerequisites, and the simulator notes, and `docs/voice-billing.md` for the
+credit wallet and the free campaign. Gotcha: App Check is enforced on the
+`mintVoiceToken` callable, so every fresh simulator/device install needs its
+debug token registered in the Firebase console before any voice call
+succeeds.
 
 ## UI previews
 

@@ -1,9 +1,8 @@
-# Voice assistant (`voice-live` branch)
+# Voice assistant
 
-How the Gemini Live voice assistant is developed, built, and kept away from
-the App Store release train while it matures. This is a living reference —
-add findings with the date they were observed. Facts below were recorded on
-2026-09-12 unless noted otherwise.
+How the Gemini Live voice assistant works and how it is developed. This is a
+living reference — add findings with the date they were observed. Facts below
+were recorded on 2026-09-12 unless noted otherwise.
 
 ## Purpose
 
@@ -16,89 +15,13 @@ prompt, …). No Gemini API key lives on the device — the app calls the
 protects that callable, so only a build of this app (or a registered debug
 token) can use the project's quota.
 
-It lives on the long-lived `voice-live` branch rather than `main` because it
-needs several weeks of on-device iteration (session limits, echo handling,
-tool surface) before it is fit for the App Store, and because every build of
-it must reach TestFlight testers without ever being uploadable to the
-released `1.0.x` train.
-
-## Branch workflow
-
-- Feature PRs target `voice-live`, not `main`.
-- Pull `main` into `voice-live` about weekly, by rebasing: `git rebase
-  origin/main`, then `git push --force-with-lease`. Back the branch up first
-  (`git branch voice-live-prerebaseN origin/voice-live` and push it) — the
-  rewrite is the whole point, so the backup is the only way back. Xcode Cloud
-  resolves the branch by name and builds whatever the remote tip is, so a
-  rewrite doesn't disturb it; keeping the history linear is what makes the
-  eventual single `voice-live` → `main` PR readable. The cost is the usual
-  one: anyone else holding the branch has to reset onto the new tip.
-- When it is ready, open one PR `voice-live` → `main`, merge it, then run
-  `just release 1.1.0` from `main` as usual.
-- Re-decide the Settings toggle's default before that merge (2026-09-18): it
-  ships **on** here, where builds only reach TestFlight internal testers. The
-  per-session cost has never been measured and nothing meters it (see
-  `docs/voice-billing.md`), so on-by-default on the App Store train is a
-  separate decision from on-by-default on this branch.
-- Versioning: `voice-live` carries marketing version `1.1.0`; `main` stays
-  `1.0.x`. Apple closes a marketing version's pre-release train once it ships
-  (ITMS-90186, see "Releasing" in `CLAUDE.md`), and a `1.0.x` build from this
-  branch would either be rejected or, worse, end up in the shipped train.
-  Keeping the branch one minor ahead avoids both.
-- That rebase conflicts in at most two places, both in the commits that set
-  the branch up (#226, #227):
-  - `app/pubspec.yaml`'s `version:` line, whenever `main` released in between
-    (its `just release` commits bump that line). Keep `1.1.0` and take
-    `main`'s build number — the `+N` is cosmetic either way, since Xcode Cloud
-    assigns build numbers from its own counter. `just voice-build` refuses to
-    run if the marketing version equals `main`'s, so a botched resolution is
-    caught before a build starts.
-  - `app/pubspec.lock`, whenever a dependency bump landed on `main`. Never
-    hand-merge it: take `main`'s side and regenerate. During a rebase `--ours`
-    is `main`, not the branch — so `git checkout --ours app/pubspec.lock`,
-    then `fvm flutter pub get` to add the voice packages back on top. Check
-    the result with `fvm flutter pub outdated`: `firebase_ai` constrains
-    `firebase_core`, so pub can silently downgrade packages `main` just
-    upgraded. Direct and dev dependencies should still read "all up-to-date".
-- Verify the rebased tip locally before pushing — `fvm flutter analyze`, the
-  full `fvm flutter test`, and the `ci-ios-deps` steps by hand (`fvm flutter
-  build ios --config-only --release --no-codesign`, then `xcodebuild
-  -resolvePackageDependencies -workspace Runner.xcworkspace -scheme Runner`,
-  then `git diff --exit-code` on both `Package.resolved` files). That workflow
-  only triggers on `pull_request`, so a direct push to `voice-live` runs no
-  CI for it at all: local is the only gate. A real `fvm flutter build ios
-  --release --no-codesign` is worth the 100s too — it is the only check that
-  covers the native packages (`record`, `flutter_soloud`) and the native-assets
-  transitives, which a passing test suite and a resolution-only check both miss.
-
-## TestFlight builds
-
-Run `just voice-build` from `voice-live`. It changes nothing locally — no
-version bump, no commit, no push — it only checks that the local tip matches
-`origin/voice-live` (Xcode Cloud builds the remote tip) and that the marketing
-version differs from `main`'s, then starts the "Voice Live" Xcode Cloud
-workflow. The marketing version comes from the name part of pubspec's
-`version:`; the build number comes from Xcode Cloud's per-app counter, not
-from pubspec's `+N` (which is why there is nothing to bump). It never touches
-tags or `CHANGELOG.md`.
-
-One-time App Store Connect setup (done in the console, not scriptable):
-
-1. Xcode Cloud → Manage Workflows → add a workflow named exactly
-   **Voice Live** (the justfile looks it up by that name).
-2. Start conditions: manual only — remove the branch and pull-request
-   triggers, same reasoning as the `Default` workflow (see the comment above
-   `release` in the `justfile`).
-3. Environment/branch: `voice-live`.
-4. Archive action for iOS with the post-action **TestFlight Internal Testing**
-   only. Do not add an App Store distribution post-action.
-5. Leave "Next Build Number" alone (Xcode Cloud → Settings). The counter is
-   per app and shared by every workflow (Apple: "Setting the next build
-   number for Xcode Cloud builds"), so Voice Live builds simply continue
-   main's numbering and cannot collide with it. It can only ever be raised,
-   never lowered, so do not touch it for this branch.
-6. Testers: an internal tester group only. External testing needs Beta App
-   Review and is out of scope for this branch.
+It was built over several weeks of on-device iteration (session limits, echo
+handling, tool surface) on a long-lived `voice-live` branch, kept one minor
+version ahead of `main` so its TestFlight builds could never be uploaded to
+the released `1.0.x` App Store train, and merged into `main` in PR #302. A
+"Voice Live" Xcode Cloud workflow survives from that period — it archived
+TestFlight-internal-only builds of that branch and is now unused; voice ships
+through the normal `just release` path (see "Releasing" in `CLAUDE.md`).
 
 ## Firebase prerequisites
 
@@ -327,8 +250,7 @@ Already done for this project; recorded so a fresh setup can repeat it.
   (2026-09-18). It would let the mic keep streaming from a locked phone in a
   pocket, which contradicts the data boundary below and the reasoning behind
   `kVoiceSessionCap`, and background audio in an app whose main job is not
-  playback invites questions at review time — on the `1.1.0` submission this
-  branch is heading for. Resuming a session interrupted by a real call is a
+  playback invites questions at review time. Resuming a session interrupted by a real call is a
   separate feature: hold the resumption handle and reconnect on `resumed`.
 - **The model is told which agent's screen the user is on** (2026-09-21).
   Until now an unnamed agent — "what is it waiting for?", "tell it to carry
@@ -390,6 +312,26 @@ Already done for this project; recorded so a fresh setup can repeat it.
     session in reach; wiring it is issue #232. The failure is the safe one —
     the model falls back to asking or to the last event, rather than
     confidently naming the wrong agent.
+
+- The Settings toggle for voice ships **default-ON** (#260, 2026-09-18), and
+  that was re-decided and kept for the App Store release (2026-09-22). The
+  original worry was that the toggle guarded an unmetered cost; it does not.
+  What actually guards it is the consent sheet, which still gates every
+  transmission whatever the default, and Sign in with Apple, which is what
+  grants the credits a call spends — an account that never signs in never
+  opens a microphone and never costs anything. The toggle only decides
+  whether the button is visible, and a feature nobody finds produces no
+  evidence for the decision the free campaign exists to inform (see
+  `docs/voice-billing.md`).
+- A real `fvm flutter build ios --release --no-codesign` is the only check
+  that covers the native packages (`record`, `flutter_soloud`) and the
+  native-assets transitives — a passing test suite and a resolution-only
+  `xcodebuild -resolvePackageDependencies` both miss them. Worth the ~100 s
+  whenever anything touches those packages or the iOS build.
+- `firebase_ai` constrains `firebase_core`, so pub can silently downgrade
+  packages a dependency bump just upgraded. After any such bump, check `fvm
+  flutter pub outdated` — direct and dev dependencies should still read "all
+  up-to-date".
 
 ## Voicemail and callback model
 
