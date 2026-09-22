@@ -51,7 +51,10 @@ app/ios/Runner/GoogleService-Info.plist
 ```
 
 The file is excluded from Git. For CI/Xcode Cloud, inject it using that
-platform's secret or secure-file facility. Register the macOS app and add its
+platform's secret or secure-file facility. A fresh clone or worktree cannot
+build for iOS until it is copied in — and, since the artwork below joined it,
+cannot run `fvm flutter test` either: the asset bundle is built before any
+test runs, so a missing file aborts the whole suite rather than one target. Register the macOS app and add its
 plist only when distributing the macOS target; App Check is currently
 activated only on iOS.
 

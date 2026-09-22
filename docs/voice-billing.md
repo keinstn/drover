@@ -7,11 +7,12 @@ with Apple identity they hang off exist too — see "Identity", built 2026-09-20
 What is still a design note is everything that would put credits in that
 wallet: the in-app purchase, `verifyPurchase`, Server Notifications V2 and
 refunds, and the Cloud Run relay. Nothing is sold — credits get in by hand in
-the Firebase console, or from the free campaign below — and the voice assistant
-is free while it lives on the `voice-live` branch. Written 2026-09-13, revised
-2026-09-18 after the ephemeral-token measurements below, 2026-09-19 with the
-four flows drawn, and 2026-09-21 after the move to `gemini-3.8-live`, to record
-what had shipped, and again for the free campaign.
+the Firebase console, or from the free campaign below — so the voice assistant
+is free to use, bounded by the campaign's per-account grant and its ceiling.
+Written 2026-09-13, revised 2026-09-18 after the ephemeral-token measurements
+below, 2026-09-19 with the four flows drawn, and 2026-09-21 after the move to
+`gemini-3.8-live`, to record what had shipped, and again for the free
+campaign.
 
 If voice is ever sold, it is sold as prepaid **Voice Credits** through an Apple
 consumable in-app purchase. One piece of backend is needed whatever else is
