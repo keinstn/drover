@@ -11,6 +11,7 @@ import '../models/agent_info.dart';
 import '../models/agent_preset.dart';
 import '../utils/path.dart';
 import '../widgets/agent_switcher_bar.dart';
+import '../widgets/sign_in_with_apple_button.dart';
 import 'voice_drafts.dart';
 import 'voice_herd.dart';
 import 'voice_session.dart';
@@ -711,7 +712,7 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerRight,
-            child: FilledButton.tonal(
+            child: SignInWithAppleButton(
               key: const ValueKey('voice_refusal_sign_in'),
               // A failure here is almost always the user dismissing Apple's
               // own sheet, and the card and its button are still there to
@@ -719,7 +720,6 @@ class _VoiceScreenState extends State<VoiceScreen> with WidgetsBindingObserver {
               // stacked on the one already on screen.
               onPressed: () =>
                   unawaited(runBestEffort(onSignIn, context: 'voice sign-in')),
-              child: Text(l10n.settingsAccountSignIn),
             ),
           ),
         ],

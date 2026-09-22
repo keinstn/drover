@@ -464,7 +464,18 @@ void main() {
       expect(find.textContaining('buy', findRichText: true), findsNothing);
       expect(find.byType(VoiceScreen), findsNothing);
 
-      await tester.tap(find.byKey(const ValueKey('voice_sign_in_accept')));
+      // Apple's button, at Apple's floor: this sheet is the primary call to
+      // action, so it is also the one App Review measures first.
+      final accept = find.byKey(const ValueKey('voice_sign_in_accept'));
+      expect(
+        find.descendant(of: accept, matching: find.text('Sign in with Apple')),
+        findsOneWidget,
+      );
+      final acceptSize = tester.getSize(accept);
+      expect(acceptSize.width, greaterThanOrEqualTo(140));
+      expect(acceptSize.height, greaterThanOrEqualTo(30));
+
+      await tester.tap(accept);
       await tester.pumpAndSettle();
 
       expect(signedIn, 1);
