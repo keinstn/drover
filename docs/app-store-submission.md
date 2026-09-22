@@ -93,8 +93,9 @@ can tap, and tells you the moment an agent is waiting on you.
 NO SERVER IN BETWEEN
 Drover connects straight from your device to your own machine over SSH. There
 is no service in the middle. Your transcripts, your commands and your code go
-to your machine — the developer of this app cannot see them. The optional voice
-assistant is the one exception, and it sends to Google, not to the developer.
+to your machine — the developer of this app cannot see them. The voice
+assistant is the one exception, and it sends to Google, not to the developer,
+after the user accepts its disclosure.
 
 WHAT YOU CAN DO
 • See every agent and its status at a glance — waiting for you, working, done
@@ -118,11 +119,11 @@ that machine with key-based authentication, and Herdr 0.8.0 or newer.
 
 PRIVACY
 Dictation runs entirely on your device — Drover will not fall back to a server.
-The optional voice assistant is different: it is off until you turn it on, and
-while a voice session is running your speech and the agent context it needs are
-sent to Google's Gemini. Notifications carry a fixed message and never any of
-your transcript. Your SSH key is stored in the iOS Keychain and never leaves
-your device.
+The voice assistant is different: it asks for your consent before first use,
+and while a voice session is running your speech, both-side transcripts, agent
+context and message drafts are sent to Google's Gemini. Notifications carry a
+fixed message and never any of your transcript. Your SSH key is stored in the
+iOS Keychain and never leaves your device.
 
 Drover is an independent project. It is not affiliated with, endorsed by, or
 sponsored by the Herdr project, Anthropic, OpenAI, or GitHub, and is not
@@ -166,9 +167,10 @@ Drover は、すでにあなたが持っているマシンのためのクライ�
 
 プライバシー
 音声入力は完全に端末内で処理され、サーバーにフォールバックすることはありません。
-任意の音声アシスタントは別で、オンにしたときだけ動き、音声セッション中は発話と
-応答に必要なエージェントの情報が Google の Gemini に送信されます。通知には固定の
-文面のみが入り、トランスクリプトの内容は一切含まれません。SSH の秘密鍵は iOS
+音声アシスタントは別で、初回の明示的な同意後にのみ動き、音声セッション中は発話、
+双方の文字起こし、応答に必要なエージェントの情報、メッセージの下書きが Google の
+Gemini に送信されます。通知には固定の文面のみが入り、トランスクリプトの内容は一切
+含まれません。SSH の秘密鍵は iOS
 キーチェーンに保存され、端末の外に出ることはありません。
 
 Drover は独立したプロジェクトです。Herdr プロジェクト、Anthropic、OpenAI、
@@ -188,17 +190,28 @@ no guideline restricts it.
 
 ## App Review Information
 
-**Sign-in required: No.** Drover has no accounts. The demo makes the app fully
-reviewable without a Herdr host, so no demo credentials are needed.
+**Sign-in required for review: No.** Drover creates a Firebase anonymous
+account automatically at startup. Sign in with Apple is optional for the core
+app and is used to attach a durable account and receive/preserve the one-time
+free voice credits. The demo makes the core UI reviewable without a Herdr host,
+Apple sign-in, or credentials.
 
 ### Review notes
 
 ```
 Drover is a client for a machine the reviewer does not need. To see the app
-working with no setup at all, tap "Try the demo" on the first screen. It runs a
-scripted agent session entirely on the device — no host, no network, no
-account. From there you can open the agent, answer its permission prompt by
-tapping "Yes", and send a follow-up message.
+working without a Herdr host, tap "Try the demo" on the first screen. Its
+scripted agent session runs entirely on the device and needs no host or demo
+credentials. The app still initializes Firebase Anonymous Authentication and
+App Check at startup. From the demo you can open the agent, answer its
+permission prompt by tapping "Yes", and send a follow-up message.
+
+The voice-assistant entry point is visible by default, but no microphone audio
+or agent context is sent until the reviewer opens it and accepts the Google
+Gemini disclosure. A voice call lasts at most five minutes. Sign in with Apple
+is optional for the rest of the app; it is offered for the one-time free voice
+credits and account durability. Account deletion is available in Settings and
+deletes the backend account data.
 
 On the guideline about executing code: Drover does not download, generate or
 run code on the device. It displays and steers a process that is already
@@ -214,71 +227,76 @@ encryption and the export compliance questions are answered per build.
 
 ## App Privacy questionnaire
 
-The boundary that decides every answer: **data flowing over SSH to the user's
-own machine is not developer collection.** Only what lands in the developer's
-Firebase project counts — the anonymous auth uid, FCM tokens, `deviceId`,
-`hostId`, pairing-code hashes, credential hashes, de-duplication records and
-rate-limit counters, **and, from 1.1.0, everything the voice assistant sends
-to Gemini**: microphone audio, Google's transcripts of both sides, and the
-agent context in the tool results. The app streams that straight to Google's
-Gemini API, on a short-lived token the developer's own backend mints against
-the developer's own Gemini project, so it falls inside this boundary by the
-boundary's own rule — see the third judgment call below.
+This section is a **conservative recommendation, not an automatic update**.
+App Store Connect values are manual: before submitting, open App Store Connect
+→ the app → App Privacy, enter or amend every answer there, and recheck the
+current Apple definitions and the privacy disclosures for the exact Firebase
+and Gemini SDK versions in the submitted build. Nothing in this repository can
+change those values.
 
-| Data type | Collected | Notes |
+The boundary for the recommendation is broader than the developer's database.
+Data sent from the app to a third-party processor can count as collection even
+when the developer cannot view or retain the payload. SSH traffic sent only to
+the user's own machine remains outside that boundary. Included are Firebase
+account and notification identifiers, backend records and logs, current SDK
+privacy-manifest declarations, and the voice data sent directly to Gemini on a
+short-lived token minted against the developer's project.
+
+| Data type | Recommended answer | Purpose / linkage rationale |
 |---|---|---|
-| Contact info, Health, Financial, Location, Sensitive info, Contacts | **No** | No account exists; no name or email is ever requested |
-| User content — photos | **No** | Attached images go over SSH to the user's own machine |
-| User content — audio | **Yes** (from 1.1.0) | The voice assistant streams microphone audio straight to Gemini. Purpose: App Functionality. **Not** linked to identity. **Not** used for tracking. Dictation is unaffected: Apple's recognizer is on-device only and its audio never leaves |
-| User content — other | **Yes** (from 1.1.0) | The same sessions send Google's transcripts of both sides plus the agent context — agent names, titles, kinds and statuses, project folder names, a blocked agent's question and options, and an agent's last reply with code stripped out. Purpose: App Functionality. **Not** linked to identity. **Not** used for tracking |
-| Browsing / search history | **No** | |
-| Identifiers — Device ID | **Yes** | FCM push token and `deviceId`. Purpose: App Functionality. **Not** linked to identity. **Not** used for tracking |
-| Identifiers — User ID | **Yes** (judgment call) | The anonymous auth uid. See below |
-| Usage data | **No** | No analytics SDK |
-| Diagnostics | **No** (judgment call) | See below |
-| Purchases | **No** | Free, no IAP |
+| Contact info | **No** | Sign in with Apple is optional and requests no name or email scope. Recheck if its scopes change |
+| Health, Financial, Location, Sensitive info, Contacts | **No** | The shipped app does not request or transmit these categories |
+| User content — photos | **No** | Attached images go over SSH only to the user's own machine |
+| User content — audio | **Yes** | Gemini receives microphone audio. Purpose: App Functionality. Conservatively mark **Linked to User** because the third-party processing is not documented here as de-identified from every account/device signal. Not used for tracking |
+| User content — other | **Yes** | Gemini receives both-side transcripts, agent status/context and replies, questions/options, and message or launch drafts (including drafts before user confirmation). Purpose: App Functionality. Conservatively mark **Linked to User** for the same reason as audio. Not used for tracking |
+| Browsing / search history | **No** | None collected |
+| Identifiers — Device ID | **Yes** | FCM token, app `deviceId`, and App Check/app-attestation signals. Purpose: App Functionality. Conservatively mark **Linked to User** because device records are stored below the Firebase uid, even though Firebase Messaging's manifest marks its Device ID unlinked. Not used for tracking |
+| Identifiers — User ID | **Yes** | Firebase Auth creates a uid at startup and its privacy manifest declares User ID linked for App Functionality. Sign in with Apple can link that uid to a durable provider identifier. Mark **Linked to User**. Not used for tracking |
+| Usage data — Product Interaction | **Yes** (conservative) | The app sends an aggregate “would pay” tap and Firebase Messaging declares unlinked Other Data for Analytics. Purpose: Analytics; mark **Not Linked to User**. Recheck whether ASC maps the SDK's current `Other Data Types` declaration here or under Other Data |
+| Diagnostics — Other Diagnostic Data | **Yes** (conservative) | Firebase Auth and Firebase Messaging privacy manifests declare unlinked Other Diagnostic Data (Analytics and/or App Functionality), and App Check performs device/app attestation. Mark **Not Linked to User**. Backend operational logs reinforce choosing disclosure over a categorical No |
+| Other Data | **Yes** (conservative) | Firebase Messaging's privacy manifest declares unlinked Other Data Types for Analytics. Mark **Not Linked to User** if ASC exposes this category separately from Usage Data |
+| Purchases | **No** | Credits are free campaign units; the shipped app has no IAP |
 
-**Tracking: No.** No advertising identifier, no data-broker sharing, no
-cross-app tracking. Drover needs no App Tracking Transparency prompt.
+**Tracking: No.** There is no advertising identifier, data-broker sharing, or
+cross-company use for targeted advertising or measurement, so no App Tracking
+Transparency prompt is needed on the shipped behavior.
 
-Product page result: *Data Used to Track You* — none. *Data Linked to You* —
-none. *Data Not Linked to You* — Device ID, User ID and, from 1.1.0, Audio Data
-and Other User Content.
+Expected conservative product-page result: *Data Used to Track You* — none.
+*Data Linked to You* — User ID, Device ID, Audio Data, and Other User Content.
+*Data Not Linked to You* — Product Interaction/Other Usage Data, Other
+Diagnostic Data, and Other Data, subject to the category names App Store
+Connect currently presents.
 
-**These answers must be re-submitted in App Store Connect for the 1.1.0
-release.** The questionnaire is not part of the build and is not generated from
-this file: someone has to open App Store Connect → the app → App Privacy and
-change the answers by hand, copying them from the table above, before 1.1.0
-goes to review. A 1.1.0 build submitted against the 1.0.x answers is a
+### Why these answers are intentionally conservative
+
+**The Firebase account can become durable.** Anonymous Auth creates the uid at
+app startup. Before Apple linking it normally identifies an installation, but
+Sign in with Apple can attach a durable provider identifier and restore the
+same wallet across reinstalls or devices. The Firebase Auth manifest itself
+marks User ID as linked, so "Not Linked" is not a defensible blanket answer.
+
+**The developer does not receive the voice payload, but Google does.** The app
+streams microphone audio, both-side transcripts, context, replies, questions,
+and drafts directly to Gemini. The backend only authenticates and bills the
+session; it stores no audio or transcript. Collection is still declared because
+the app sends the data to a third party. The Linked recommendation is a
+precaution where Google's full account/device linkage for this API path cannot
+be proven absent from this repository; recheck Google's current service terms
+and disclosures rather than silently downgrading it.
+
+**No Firebase Analytics or Crashlytics does not make Usage Data and Diagnostics
+automatically No.** The bundled Firebase Auth and Messaging privacy manifests
+make their own collected-data declarations, App Check sends attestation data,
+the app sends an aggregate product-interest tap, and Cloud Functions writes
+operational delivery logs. The conservative recommendation declares the
+closest ASC categories as unlinked. Inspect the archived app's generated
+privacy report before submission, because SDK upgrades can change these
+answers.
+
+**These values must be entered and rechecked manually for the 1.1.0 release.**
+The questionnaire is not part of the build and is not generated from this
+file. A build submitted against the old 1.0.x answers would be a
 misdeclaration.
-
-### The three judgment calls
-
-**Is the anonymous uid a "User ID"?** It identifies an installation, not a
-person: created automatically, never tied to a name or email, not recoverable on
-a new device. Arguments exist both ways. **Declare it.** It costs nothing on the
-product page — it joins Device ID in the same "Not Linked to You" bucket —
-whereas under-declaring is a compliance problem.
-
-**Does the voice assistant's traffic count as collection, when the developer
-never sees it?** Google is a processor here, not the developer, and none of it
-is retained by or visible to the developer — so under the "reaches the
-developer" framing the old answers survive intact. **Declare it anyway.** The
-questionnaire asks what the *app* collects, not what the developer keeps, and
-data the app itself sends to a third party is collection for Apple's purposes.
-It is also sent on a credential the developer's backend mints, against the
-developer's own Gemini project, which is the same boundary that makes the
-notification backend countable. The same reasoning governs the published
-privacy policy: "never reaches the
-developer" is literally true of the voice path and still misleads, because what
-a reader takes from it is where their data goes, not who runs the server. So
-the policy states the Google path plainly instead of leaning on the framing.
-
-**Do the Cloud Functions logs count as "Diagnostics"?** There is no crash or
-performance SDK in the app. The backend logs host, pane and event identifiers
-plus delivery counts, which are server-side operational logs of API calls, not
-diagnostics gathered from the device, and they contain no content. **Answer No**,
-and make sure the privacy policy discloses the logging — it does.
 
 ## Other App Store Connect fields
 

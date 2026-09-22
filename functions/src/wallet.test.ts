@@ -12,6 +12,8 @@ import {
   voiceGrantEligible,
   voiceLedgerEntry,
   voiceMintDecision,
+  voiceSessionInitialMintCount,
+  voiceSessionMintLimit,
   voiceSessionReuseMs,
   walletCredits,
 } from "./wallet.js";
@@ -24,7 +26,11 @@ const openCampaign = voiceCampaign(null);
 
 function decide(
   credits: unknown,
-  session: { uid: unknown; startedAtMs: unknown } | null = null,
+  session: {
+    uid: unknown;
+    startedAtMs: unknown;
+    mintCount: unknown;
+  } | null = null,
   campaign: VoiceCampaign = openCampaign,
 ) {
   return voiceMintDecision({
@@ -45,18 +51,50 @@ function campaignAt(fields: Partial<Record<string, unknown>>): VoiceCampaign {
   });
 }
 
-void test("charges the first mint of a session and no later one", () => {
+void test("charges the first mint of a session and starts its count at one", () => {
   assert.equal(decide(2), "debit");
+  assert.equal(voiceSessionInitialMintCount, 1);
+});
+
+void test("reuses a live session below its mint limit", () => {
   assert.equal(
-    decide(2, { uid: "user-1", startedAtMs: now - 1000 }),
+    decide(2, {
+      uid: "user-1",
+      startedAtMs: now - 1000,
+      mintCount: voiceSessionMintLimit - 1,
+    }),
     "reuse",
-    "a re-mint for the same conversation must not be charged again",
+    "a valid reconnect must not be charged again",
   );
+});
+
+void test("refuses a live session at its mint limit", () => {
+  assert.equal(
+    decide(2, {
+      uid: "user-1",
+      startedAtMs: now - 1000,
+      mintCount: voiceSessionMintLimit,
+    }),
+    "mintLimit",
+  );
+});
+
+void test("fails closed on a missing or malformed live-session count", () => {
+  for (const mintCount of [undefined, 0, -1, 1.5, "1"]) {
+    assert.equal(
+      decide(2, { uid: "user-1", startedAtMs: now - 1000, mintCount }),
+      "mintLimit",
+    );
+  }
 });
 
 void test("charges again once the session is older than the reuse window", () => {
   assert.equal(
-    decide(2, { uid: "user-1", startedAtMs: now - voiceSessionReuseMs }),
+    decide(2, {
+      uid: "user-1",
+      startedAtMs: now - voiceSessionReuseMs,
+      mintCount: voiceSessionMintLimit,
+    }),
     "debit",
   );
 });
@@ -69,7 +107,11 @@ void test("refuses a mint the balance does not cover", () => {
 
 void test("refuses somebody else's session ID", () => {
   assert.equal(
-    decide(2, { uid: "user-2", startedAtMs: now - 1000 }),
+    decide(2, {
+      uid: "user-2",
+      startedAtMs: now - 1000,
+      mintCount: 1,
+    }),
     "foreign",
   );
 });
@@ -234,14 +276,14 @@ void test("prefers the campaign refusal over the empty balance", () => {
 void test("lets a paid-for call finish after the campaign closes", () => {
   const closed = campaignAt({ callsUsed: voiceCampaignCallLimit });
   assert.equal(
-    decide(0, { uid: "user-1", startedAtMs: now - 1000 }, closed),
+    decide(0, { uid: "user-1", startedAtMs: now - 1000, mintCount: 1 }, closed),
     "reuse",
     "a re-mint inside a live call must not be refused by the ceiling",
   );
   assert.equal(
     decide(
       0,
-      { uid: "user-1", startedAtMs: now - 1000 },
+      { uid: "user-1", startedAtMs: now - 1000, mintCount: 1 },
       campaignAt({ enabled: false }),
     ),
     "reuse",
