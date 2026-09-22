@@ -10,6 +10,7 @@ import 'package:drover/src/voice/voice_tools.dart';
 import 'package:drover/src/voice/voice_transport.dart';
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:record/record.dart';
 
 import 'fakes.dart';
 
@@ -1912,6 +1913,89 @@ void main() {
       expect(speaker.disposeCalls, 1);
       expect(transport.closeCalls, 1);
     });
+
+    test('an unexpected mic pause parks the call and explains why', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await settle();
+
+      mic.states.add(RecordState.pause);
+      await settle();
+
+      expect(s.status, VoiceSessionStatus.ended);
+      expect(s.resumable, isTrue);
+      expect(s.entries.map((e) => e.text), [VoiceSession.interruptedCode]);
+      expect(mic.stopCalls, 1);
+      expect(connector.last.closeCalls, 1);
+    });
+
+    test(
+      'an unexpected mic pause without a handle still parks the call',
+      () async {
+        final s = session();
+        await s.start();
+
+        mic.states.add(RecordState.pause);
+        await settle();
+
+        expect(s.status, VoiceSessionStatus.ended);
+        expect(s.parked, isTrue);
+        expect(s.resumable, isFalse);
+        expect(s.entries.map((e) => e.text), [VoiceSession.interruptedCode]);
+      },
+    );
+
+    test('a mic pause after stop does not add an interruption', () async {
+      final s = session();
+      await s.start();
+      await s.stop();
+
+      mic.states.add(RecordState.pause);
+      await settle();
+
+      expect(s.entries.map((e) => e.text), [VoiceSession.endedCode]);
+    });
+
+    test('start after an unexpected pause continues the call', () async {
+      final connector = FakeConnector();
+      final s = session(connect: connector.call);
+      await s.start();
+      connector.last.pushResumption('h1');
+      await settle();
+
+      mic.states.add(RecordState.pause);
+      await settle();
+      await s.start();
+
+      expect(connector.handles, [null, 'h1']);
+      expect(s.status, VoiceSessionStatus.live);
+      expect(s.entries.map((e) => e.text), [
+        VoiceSession.interruptedCode,
+        VoiceSession.resumedCode,
+      ]);
+
+      await s.stop();
+    });
+
+    test(
+      'start after an unexpected pause without a handle starts fresh',
+      () async {
+        final connector = FakeConnector();
+        final s = session(connect: connector.call);
+        await s.start();
+
+        mic.states.add(RecordState.pause);
+        await settle();
+        await s.start();
+
+        expect(connector.handles, [null, null]);
+        expect(s.status, VoiceSessionStatus.live);
+
+        await s.stop();
+      },
+    );
 
     test('start after it continues the same conversation', () async {
       final connector = FakeConnector();

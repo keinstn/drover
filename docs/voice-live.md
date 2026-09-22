@@ -220,17 +220,12 @@ Already done for this project; recorded so a fresh setup can repeat it.
   it — `inactive` fires on a Control Centre glance or an app-switcher flick,
   the same `paused`-only choice `main.dart`'s own `didChangeAppLifecycleState`
   doc comment argues for.
-- Still NOT handled (2026-09-18): an audio-session interruption that never
-  backgrounds the app. Siri on iOS 14+ is a compact overlay, and a ringing or
-  declined call is a banner; both stop at `inactive`, so `background()` never
-  fires — yet both take the audio session, and `record`'s default
-  `AudioInterruptionMode.pause` (the config in `voice_audio.dart` leaves it
-  unset) stops the mic with no auto-resume and no signal to `VoiceSession`.
-  That is the same half-dead state, still reachable. Ending on `inactive` is
-  not the answer, because a Control Centre glance lands there too. The fix is
-  to observe the interruption itself: `AudioRecorder.onStateChanged()` carries
-  `RecordState.pause` out of the plugin's own interruption handler, which is
-  also where resuming a session after a real call would hook in.
+- Handled (2026-09-22): an audio-session interruption that never backgrounds
+  the app is observed via `AudioRecorder.onStateChanged()`. When an unexpected
+  `RecordState.pause` is emitted (e.g., from Siri or a banner call), `VoiceSession`
+  parks the conversation like `background()` and logs `interruptedCode`,
+  transitioning to a state the screen can explain instead of remaining falsely
+  live. This is covered by unit and widget tests.
 - A call now survives leaving the app, and is continued rather than restarted
   (2026-09-19). `VoiceSession.background()` parks the session — it closes the
   mic and the socket, logs `backgroundedCode`, and keeps the resumption

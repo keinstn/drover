@@ -7,6 +7,7 @@ import 'package:record/record.dart';
 
 /// Microphone producing PCM16 16 kHz mono frames.
 abstract interface class VoiceMic {
+  Stream<RecordState> get state;
   Future<bool> hasPermission();
   Future<Stream<Uint8List>> start();
   Future<void> stop();
@@ -16,6 +17,9 @@ abstract interface class VoiceMic {
 /// [VoiceMic] over the `record` plugin.
 class RecordVoiceMic implements VoiceMic {
   final _recorder = AudioRecorder();
+
+  @override
+  Stream<RecordState> get state => _recorder.onStateChanged();
 
   @override
   Future<bool> hasPermission() => _recorder.hasPermission();

@@ -7,6 +7,7 @@ import 'package:drover/src/voice/voice_audio.dart';
 import 'package:drover/src/voice/voice_herd.dart';
 import 'package:drover/src/voice/voice_transport.dart';
 import 'package:firebase_ai/firebase_ai.dart';
+import 'package:record/record.dart';
 
 class FakeTransport implements VoiceTransport, VoiceUsageReporter {
   /// Usage totals a test can fill in, standing in for what the real socket
@@ -90,9 +91,13 @@ class FakeMic implements VoiceMic {
   final bool permitted;
   // Broadcast so a restarted session can listen again.
   final frames = StreamController<Uint8List>.broadcast();
+  final states = StreamController<RecordState>.broadcast();
   var startCalls = 0;
   var stopCalls = 0;
   var disposeCalls = 0;
+
+  @override
+  Stream<RecordState> get state => states.stream;
 
   @override
   Future<bool> hasPermission() async => permitted;
