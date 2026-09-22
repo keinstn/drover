@@ -19,7 +19,8 @@ device and your own machine and goes nowhere else.
 Two optional features reach outside that path:
 
 - the **push-notification backend**, the only service the developer operates,
-  which exists so your device can be told that an agent is waiting for you;
+  which tells your device that an agent is waiting for you and also keeps the
+  voice assistant's credit balance;
 - the **voice assistant**, which sends your microphone audio and the agent
   context it needs to **Google's Gemini** so that you can talk to your agents.
   It is off until you switch it on, and the first time you open it Drover asks
@@ -72,8 +73,9 @@ Deleting the app removes all of this.
 ## The push-notification backend
 
 Push notifications are **optional**. They only start working after you pair a
-host, which is a deliberate action you take. If you never pair, no data about
-you is stored on the backend at all.
+host, which is a deliberate action you take. If you never pair a host and
+never sign in with your Apple ID, no data about you is stored on the backend
+at all.
 
 The backend runs on Google Firebase (Authentication, Cloud Firestore, Cloud
 Functions, and Cloud Messaging). It stores exactly the following:
@@ -86,6 +88,9 @@ Functions, and Cloud Messaging). It stores exactly the following:
 | **Pairing codes**, stored only as a SHA-256 hash, with the account identifier and host identifier | To complete a pairing you initiated | **Automatically deleted after 10 minutes** |
 | **Notification de-duplication records** — timestamps only | So a repeated event does not notify you twice | **Automatically deleted after 24 hours** |
 | **Rate-limit counters** — a request count and timestamps | To prevent abuse of the backend | Rolling window |
+| **Voice credit balance** — a whole-number count, and timestamps for when it last changed and for your one-time free-campaign grant | So the backend knows whether you can start a call, and Settings can show you what you have left | Until you delete your data |
+| **Voice credit history** — one entry per credit added or spent (a call, a refund, or the free campaign's one-time grant), with the amount, a timestamp, and — for a call or its refund — an identifier for which call it belongs to, which the app does not show you | So there is a record behind the balance, and Settings can show your recent activity | Until you delete your data |
+| **Voice session record** — the account identifier and the time a call started, under the session ID your device creates for that call | So a reconnect within the same five-minute call is billed once, not twice | Not deleted when you delete your data; no automatic expiry yet |
 
 The anonymous account identifier is not linked to your name, email address, or
 Apple ID. It identifies an installation of the app, not a person.
