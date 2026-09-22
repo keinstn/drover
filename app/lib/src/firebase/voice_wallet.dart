@@ -78,6 +78,16 @@ VoiceLedgerEntry? _entry(Object? row) {
 /// server meant.
 int? _int(Object? value) => value is num ? value.toInt() : null;
 
+/// How much a sign-in's own wallet read just added, if anything.
+///
+/// A delta against the balance the app already held rather than a look at
+/// [VoiceWallet.entries]: an account that was granted its campaign credits
+/// before this sign-in (an Apple ID re-linked on a fresh install, say) still
+/// carries a `campaignGrant` row, and reading the ledger instead would toast
+/// every such sign-in as if it just happened.
+int creditsGranted({required int before, required int? after}) =>
+    after == null ? 0 : after - before;
+
 /// Asks the server for the balance — `firestore.rules` denies the client
 /// every read, so this callable is the only way the device learns its own.
 ///

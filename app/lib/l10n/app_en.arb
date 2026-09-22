@@ -298,6 +298,15 @@
       }
     }
   },
+  "voiceCreditsGranted": "{credits, plural, =1{1 free voice credit added} other{{credits} free voice credits added}}",
+  "@voiceCreditsGranted": {
+    "description": "Toast shown right after Apple sign-in grants the one-time free campaign credits.",
+    "placeholders": {
+      "credits": {
+        "type": "int"
+      }
+    }
+  },
   "voiceReceiptLength": "Length",
   "voiceReceiptLengthValue": "{minutes} min {seconds} s",
   "@voiceReceiptLengthValue": {

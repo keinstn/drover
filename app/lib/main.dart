@@ -426,10 +426,48 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
           FirebaseAuth.instance.signInWithProvider(AppleAuthProvider()),
     );
     setState(() => _appleSignedIn = true);
-    // The free credits are granted on a signed-in account's first wallet
-    // read, so the balance the app is holding is stale by exactly the thing
-    // the user just signed in for.
-    _refreshVoiceCredits();
+    // Not awaited: every caller either shows its own busy state until
+    // sign-in returns or (`_openVoice`) opens the call right after, and
+    // neither should wait on a wallet round trip just to learn whether a
+    // toast is owed.
+    unawaited(_announceCreditsGranted());
+  }
+
+  /// The free credits are granted on a signed-in account's first wallet
+  /// read, so the balance the app is holding is stale by exactly the thing
+  /// the user just signed in for.
+  ///
+  /// Skipped when [_voiceCredits] has never been read locally: `before`
+  /// would default to 0, and re-linking an Apple ID that already carries a
+  /// balance from a prior install (see `linkAppleAccount`'s
+  /// `credential-already-in-use` branch) would then toast that whole
+  /// existing balance as a fresh grant.
+  Future<void> _announceCreditsGranted() async {
+    final before = _voiceCredits.value;
+    if (before == null) return;
+    try {
+      final wallet = await _refreshVoiceCredits();
+      final granted = creditsGranted(before: before, after: wallet?.credits);
+      if (granted > 0) _showCreditsGranted(granted);
+    } catch (_) {
+      // Ignored: the chip and the ledger will pick up the balance on their
+      // own next read. Losing the one-off toast is the only cost.
+    }
+  }
+
+  /// The one visible sign of the campaign grant: everything else (the chip,
+  /// the ledger row) is a passive number that only speaks up if the user goes
+  /// looking. `_navKey`, not the tapped widget's own context, because sign-in
+  /// runs from three different screens and all of them may have already
+  /// navigated on by the time the wallet read lands.
+  void _showCreditsGranted(int credits) {
+    final overlay = _navKey.currentState?.overlay;
+    final context = _navKey.currentContext;
+    if (overlay == null || context == null) return;
+    showTopToastOnOverlay(
+      overlay,
+      AppLocalizations.of(context)!.voiceCreditsGranted(credits),
+    );
   }
 
   Future<void> _persistHosts() => widget.hostStore.saveHosts(

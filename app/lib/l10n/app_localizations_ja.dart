@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -631,6 +632,11 @@ class AppLocalizationsJa extends AppLocalizations {
   @override
   String voiceCredits(int credits) {
     return '$creditsクレジット';
+  }
+
+  @override
+  String voiceCreditsGranted(int credits) {
+    return '無料クレジットを$credits追加しました';
   }
 
   @override

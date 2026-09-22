@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -663,6 +664,17 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other: '$credits credits',
       one: '1 credit',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String voiceCreditsGranted(int credits) {
+    String _temp0 = intl.Intl.pluralLogic(
+      credits,
+      locale: localeName,
+      other: '$credits free voice credits added',
+      one: '1 free voice credit added',
     );
     return '$_temp0';
   }
