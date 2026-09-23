@@ -8,13 +8,13 @@ import 'demo_content.dart';
 
 const demoContentZh = DemoContent(
   scriptedTitle: '创建演示文件',
-  reviewTitle: '审查计费 webhook',
+  reviewTitle: '审阅计费 webhook',
   docsTitle: '更新 README',
   userTour: '简单讲讲这个 retry 辅助函数是怎么工作的。',
   assistantTour:
       '## retry 辅助函数\n'
       '\n'
-      '`withRetry` 会包装一次调用，失败时自动重试。有两点值得注意：\n'
+      '`withRetry` 会封装一次调用，失败时自动重试。有两点值得注意：\n'
       '\n'
       '- **attempts** — 放弃之前最多尝试几次\n'
       '- *rethrow* — 最后一次失败会原样抛出，绝不吞掉\n'

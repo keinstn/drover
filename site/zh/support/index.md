@@ -4,7 +4,7 @@ titleTemplate: false
 
 # Drover — 支持
 
-Drover 让你在手机上监督和操控跑在自己电脑上的 AI 编程智能体。
+Drover 让你在手机上监督和操控运行在自己电脑上的 AI 编程智能体。
 
 **联系方式：** kei.sj.nstn@gmail.com — 这是找到开发者最快的途径。你也可以在 https://github.com/keinstn/drover/issues 提 issue。
 
@@ -12,9 +12,9 @@ Drover 让你在手机上监督和操控跑在自己电脑上的 AI 编程智能
 
 ## 使用 Drover 需要准备什么
 
-Drover 是连接你已有机器的客户端，它没法单独工作。你需要：
+Drover 是连接你已有机器的客户端，无法单独运行。你需要：
 
-1. **一台运行 [Herdr](https://herdr.dev) 的电脑**，并且你的编程智能体跑在里面。
+1. **一台运行 [Herdr](https://herdr.dev) 的电脑**，并且你的编程智能体运行在其中。
 2. **能用密钥认证 SSH 连到那台机器。**
    - macOS: 系统设置 → 通用 → 共享 → 远程登录 (System Settings → General → Sharing → Remote Login)。
    - Windows: 安装 OpenSSH Server 功能。如果用的是**管理员**账户，公钥必须放在 `C:\ProgramData\ssh\administrators_authorized_keys`，而不是 `~\.ssh\authorized_keys`，否则连接会以 "All authentication methods failed"（所有认证方式均失败）告终。

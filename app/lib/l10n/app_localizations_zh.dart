@@ -58,7 +58,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get hostSetupSave => '保存';
 
   @override
-  String get hostSetupDemoIntro => '第一次使用 drover？先试试按剧本演示的会话，无需主机。';
+  String get hostSetupDemoIntro => '刚开始使用 drover？先试试预设的演示会话——无需主机。';
 
   @override
   String get hostSetupDemoButton => '试用演示';
@@ -73,7 +73,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get demoBannerSetupConnection => '设置连接';
 
   @override
-  String get demoBannerDoneCopy => '这是演示。连接你自己的主机后，一切就会变成真实的。';
+  String get demoBannerDoneCopy => '这只是演示。连接到你自己的主机后，就能进行真实操作。';
 
   @override
   String get hostListTitle => '主机';
@@ -503,7 +503,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsDemo => '试用演示';
 
   @override
-  String get settingsDemoSubtitle => '按剧本演示的会话——无需主机';
+  String get settingsDemoSubtitle => '预设演示会话——无需主机';
 
   @override
   String get settingsVersion => '版本';
@@ -525,11 +525,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsVoiceCredits => '语音额度';
 
   @override
-  String get settingsVoiceCreditsSubtitle => '一个额度可进行一次通话，最长五分钟。';
+  String get settingsVoiceCreditsSubtitle => '一次通话消耗一个额度，最长五分钟。';
 
   @override
   String get settingsVoiceCreditsCampaign =>
-      '语音功能目前免费：使用 Apple 登录后会获得少量免费额度，仅发放一次。';
+      '语音功能目前免费：使用 Apple 登录后会一次性获得少量免费通话额度。';
 
   @override
   String get settingsVoiceCreditsActivity => '最近的额度记录';
@@ -569,7 +569,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get accountDeleteBody =>
-      '你的登录信息、主机配对和所有语音额度都将永久删除。额度无法退款或转移到其他账户。主机仍会在此设备上保持设置，但每台主机都需要重新配对才能接收通知。';
+      '你的登录信息、主机配对和所有语音额度都将永久删除。额度无法退款或转移到其他账户。主机设置仍会保留在此设备上，但每台主机都需要重新配对才能接收通知。';
 
   @override
   String get accountDeleteConfirm => '删除';
@@ -582,8 +582,8 @@ class AppLocalizationsZh extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       credits,
       locale: localeName,
-      other: '$credits 个额度',
-      one: '1 个额度',
+      other: '$credits 次通话额度',
+      one: '1 次通话额度',
     );
     return '其中包含 $_temp0。';
   }
@@ -631,11 +631,11 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get voiceNoCreditsBody =>
-      '通话需要一个额度，但你已经没有额度了。免费额度仅发放一次，并且发放给已登录的账户。没有进行录音——麦克风从未打开，音频也没有离开手机。';
+      '通话需要一个额度，但你已经没有额度了。免费额度只向已登录的账户发放一次。没有进行录音——麦克风从未打开，音频也没有离开手机。';
 
   @override
   String get voicePaidInterestPrompt =>
-      '目前没有付费方案，也可能永远不会有。如果你愿意付费继续与智能体交流，告诉开发者是他唯一能知道这一点的方式。';
+      '目前没有付费方案，也可能永远不会有。如果你愿意付费继续与智能体交流，告诉开发者你愿意付费，是让他知道这件事的唯一方式。';
 
   @override
   String get voicePaidInterestAction => '我愿意为此付费';
@@ -649,15 +649,15 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get voiceCampaignOverBody =>
-      '语音功能在额度用完前免费，但所有人的额度都已经发完——这不是你的余额问题，你这边也没有需要处理的事。没有进行录音：麦克风从未打开。';
+      '语音功能在额度用完前免费，但所有人的额度都已经发完——这不是你的余额出了问题，你无需做任何处理。没有进行录音：麦克风从未打开。';
 
   @override
   String voiceCredits(int credits) {
     String _temp0 = intl.Intl.pluralLogic(
       credits,
       locale: localeName,
-      other: '$credits 个额度',
-      one: '1 个额度',
+      other: '$credits 次通话额度',
+      one: '1 次通话额度',
     );
     return '$_temp0';
   }
@@ -667,8 +667,8 @@ class AppLocalizationsZh extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       credits,
       locale: localeName,
-      other: '已添加 $credits 个免费语音额度',
-      one: '已添加 1 个免费语音额度',
+      other: '已获得 $credits 次免费通话额度',
+      one: '已获得 1 次免费通话额度',
     );
     return '$_temp0';
   }
@@ -688,14 +688,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get voiceReceiptBalance => '余额';
 
   @override
-  String get voiceReceiptFootnote => '一个额度一次通话——无论期间重新连接多少次。';
+  String get voiceReceiptFootnote => '一次通话消耗一个额度——无论期间重新连接多少次。';
 
   @override
-  String get voiceSignInTitle => '登录以获得免费额度';
+  String get voiceSignInTitle => '登录以获得免费通话额度';
 
   @override
   String get voiceSignInBody =>
-      '语音助手目前免费，免费额度会发放给已登录的账户。使用 Apple 登录后会添加额度——仅一次——即使重新安装 drover 也能保留。drover 只向 Apple 请求稳定标识符：不请求姓名或电子邮件地址。';
+      '语音助手目前免费，免费通话额度会发放给已登录的账户。使用 Apple 登录后会一次性获得少量免费通话额度，即使重新安装 drover 也能保留。drover 只向 Apple 请求稳定标识符：不请求姓名或电子邮件地址。';
 
   @override
   String voiceToolCalled(String name) {
@@ -800,7 +800,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get voiceConsentBody =>
-      '语音助手运行于 Google Gemini Live。会话打开期间，你的麦克风音频以及对话双方的文字记录会发送给 Google，同时还会发送回答所需的上下文：智能体状态、会话标题和类型、项目文件夹名称、智能体正在等待的问题及其选项，以及智能体最近一次回复的纯文字部分——智能体完成工作时，即使你什么都没说，这条回复也会单独发送。回复中的代码（无论是代码块还是行内代码）都会被移除；操作失败时只会发送简短的错误码，而不是终端输出。文字会按原样发送，因此智能体在句子或问题措辞中写下的路径也会随之发送。会话未打开时不会发送任何内容。你使用 drover 的其他部分时，通话仍会继续聆听；离开应用会关闭麦克风并停止发送，回到对话时会自动重新打开麦克风并从离开处继续。会话达到时间限制后会自动结束，离开应用的时间也计入限制。只有“结束”会彻底结束通话，你可以随时点按它。';
+      '语音助手运行于 Google Gemini Live。会话进行期间，你的麦克风音频以及对话双方的文字记录会发送给 Google，同时还会发送回答所需的上下文：智能体状态、会话标题和类型、项目文件夹名称、智能体正在等待的问题及其选项，以及智能体最近一次回复的纯文字部分——智能体完成工作时，即使你什么都没说，这条回复也会单独发送。回复中的代码（无论是代码块还是行内代码）都会被移除；操作失败时只会发送简短的错误码，而不是终端输出。这些文字会按原样发送，因此智能体在句子或问题的表述中写下的路径也会随之发送。会话未打开时不会发送任何内容。你使用 drover 的其他部分时，通话会继续保持聆听状态；离开应用会关闭麦克风并停止发送，回到对话时会自动重新打开麦克风并从离开处继续。会话达到时间限制后会自动结束，离开应用的时间也计入限制。只有“结束”会彻底结束通话，你可以随时点按它。';
 
   @override
   String get voiceConsentAccept => '允许并继续';
