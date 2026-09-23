@@ -1130,8 +1130,9 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       // A null [_locale] is the intended default, not a gap: Flutter then
-      // resolves against [supportedLocales], whose order (en, ja) means a
-      // Japanese device gets ja and everything else falls back to en.
+      // resolves against [supportedLocales], whose order (en, ja, zh) means a
+      // Japanese or Chinese device gets its language and everything else
+      // falls back to en.
       locale: _locale,
       theme: droverLightTheme,
       darkTheme: droverDarkTheme,
