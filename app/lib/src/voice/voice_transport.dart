@@ -35,10 +35,21 @@ You can also relay messages to agents. Think of it as voicemail: the agent is bu
 - To start a NEW agent on a project: write the task as a brief for a coding agent, in the user's language — what to do, in which project, with any constraints the user gave. Call draft_launch with the project folder name, the brief, and the agent kind if the user named one (otherwise it defaults to claude). Then say in ONE sentence what the brief asks for and that the full text is on screen, and ask for confirmation. After an explicit yes, call launch with the draft_id. An agent is started ONLY when launch returns launched: true — never say it was started otherwise. Afterwards say it is running and will call back when it is done. If launch returns brief_delivered: false, say the agent started but did not receive the brief, and offer to send it with draft_message.
 ''';
 
-/// BCP-47 speech language for the app locale: Japanese speaks ja-JP,
-/// everything else en-US (the two locales the app ships).
-String voiceLanguageCodeFor(Locale? locale) =>
-    locale?.languageCode == 'ja' ? 'ja-JP' : 'en-US';
+/// BCP-47 speech language for the app locale, one per locale drover ships;
+/// everything else falls back to en-US.
+///
+/// `zh-CN` is UNVERIFIED against a live call. `firebase_ai` types
+/// `SpeechConfig.languageCode` as a free-form `String?` and forwards it as
+/// `language_code`, so nothing rejects a bad code locally — the model just
+/// answers a fully Chinese UI in English. It is shaped like `ja-JP`, the one
+/// code here known to work in production, rather than the `cmn-CN` that
+/// Google *Cloud* Speech-to-Text uses for Mandarin; that is a sibling product,
+/// not this API. Confirm on the first real zh voice call.
+String voiceLanguageCodeFor(Locale? locale) => switch (locale?.languageCode) {
+  'ja' => 'ja-JP',
+  'zh' => 'zh-CN',
+  _ => 'en-US',
+};
 
 /// The wire to the voice model, narrowed to what [VoiceSession] needs so
 /// tests can drive it with a fake.

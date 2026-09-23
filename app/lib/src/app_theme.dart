@@ -53,20 +53,27 @@ const droverMonoFamily = 'packages/gpt_markdown/JetBrainsMono';
 /// `>= → ==` rendered as `≥ → =`, hiding the edit being reviewed.
 const droverMonoFeatures = <FontFeature>[FontFeature.disable('calt')];
 
-/// Uppercases [text] outside Japanese. Uppercase is a Latin device: full-width
+/// Whether [context]'s locale is written in CJK script, i.e. one the Latin
+/// label ramp is wrong for. One predicate rather than a check per call site:
+/// every locale drover adds with full-width glyphs needs the same treatment,
+/// and the `ja`-only checks this replaced silently left Chinese on the Latin
+/// ramp when zh shipped.
+bool _isCjk(BuildContext context) =>
+    const {'ja', 'zh'}.contains(Localizations.localeOf(context).languageCode);
+
+/// Uppercases [text] outside CJK. Uppercase is a Latin device: full-width
 /// glyphs have no case, and the tracking that makes caps legible collides them.
 /// Use this instead of calling `toUpperCase()` on a localized string.
 String droverLabelText(BuildContext context, String text) =>
-    Localizations.localeOf(context).languageCode == 'ja'
-    ? text
-    : text.toUpperCase();
+    _isCjk(context) ? text : text.toUpperCase();
 
 /// The label ramp: mono, uppercase-tracked, small — status chips, section and
 /// workspace headers, host lines, key caps.
 ///
-/// In Japanese it becomes the platform gothic instead ([droverMonoFamily] has
-/// no Japanese coverage), half a point larger at a heavier weight because CJK
-/// strokes thin out at these sizes, and with gentler tracking. Sizes in use:
+/// In CJK it becomes the platform gothic instead ([droverMonoFamily] covers
+/// neither Japanese nor Chinese), half a point larger at a heavier weight
+/// because CJK strokes thin out at these sizes, and with gentler tracking.
+/// Sizes in use:
 /// 9.0 status chip / elapsed, 9.5 headers and filter chips, 10.5 host line and
 /// key caps.
 TextStyle droverLabelStyle(
@@ -75,14 +82,14 @@ TextStyle droverLabelStyle(
   Color? color,
   FontWeight? weight,
 }) {
-  final ja = Localizations.localeOf(context).languageCode == 'ja';
+  final cjk = _isCjk(context);
   return TextStyle(
-    fontFamily: ja ? null : droverMonoFamily,
-    fontFeatures: ja ? null : droverMonoFeatures,
-    fontSize: ja ? fontSize + 0.5 : fontSize,
-    fontWeight: weight ?? (ja ? FontWeight.w600 : FontWeight.w500),
+    fontFamily: cjk ? null : droverMonoFamily,
+    fontFeatures: cjk ? null : droverMonoFeatures,
+    fontSize: cjk ? fontSize + 0.5 : fontSize,
+    fontWeight: weight ?? (cjk ? FontWeight.w600 : FontWeight.w500),
     // Proportional to the requested size, so the ramp tracks consistently.
-    letterSpacing: fontSize * (ja ? 0.045 : 0.08),
+    letterSpacing: fontSize * (cjk ? 0.045 : 0.08),
     color: color,
   );
 }

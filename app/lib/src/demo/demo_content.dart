@@ -11,17 +11,18 @@
 //    explanations.
 //  - ENGLISH ALWAYS — anything the *CLI* emits: permission-prompt bodies, live
 //    terminal text, the mode indicator, tool names, and code/diff contents. A
-//    Japanese developer really does see English CLI chrome in production, and
-//    drover's own parsers match literals like `'Esc to cancel'`
-//    (`claude_askuser_submitter.dart`), so translating CLI output would both
-//    fabricate output the real tool never emits and risk breaking those
-//    parsers.
+//    Japanese or Chinese developer really does see English CLI chrome in
+//    production, and drover's own parsers match literals like
+//    `'Esc to cancel'` (`claude_askuser_submitter.dart`), so translating CLI
+//    output would both fabricate output the real tool never emits and risk
+//    breaking those parsers.
 library;
 
 import 'dart:ui' show Locale;
 
 import 'demo_content_en.dart';
 import 'demo_content_ja.dart';
+import 'demo_content_zh.dart';
 
 /// Every locale-dependent string in the scripted demo session. Code and diff
 /// bodies are NOT here — they live inside [assistantTour] verbatim and stay
@@ -72,8 +73,11 @@ class DemoContent {
 
 /// The demo content for [locale], falling back to English for every locale
 /// drover has no scripted session for.
-DemoContent demoContentFor(Locale? locale) =>
-    locale?.languageCode == 'ja' ? demoContentJa : demoContentEn;
+DemoContent demoContentFor(Locale? locale) => switch (locale?.languageCode) {
+  'ja' => demoContentJa,
+  'zh' => demoContentZh,
+  _ => demoContentEn,
+};
 
 /// The fenced Dart block inside every locale's [DemoContent.assistantTour].
 /// Shared rather than copied per locale: it is file content, not prose, so it

@@ -52,6 +52,42 @@ export default defineConfig({
         },
       },
     },
+    zh: {
+      label: '简体中文',
+      lang: 'zh-Hans',
+      description: '在手机上监督和操控跑在你自己电脑上的 AI 编程智能体。',
+      // Same as `ja`: `socialLinks` and `title` are deliberately absent so the
+      // shallow merge over root's `themeConfig` keeps inheriting them.
+      themeConfig: {
+        nav: [
+          { text: '支持', link: '/zh/support/' },
+          // There is only one canonical privacy policy, the English one, and it
+          // is the text registered in App Store Connect — so every locale's
+          // privacy link points at `/privacy/`, never a translated copy.
+          { text: '隐私政策', link: '/privacy/' },
+          { text: 'GitHub', link: 'https://github.com/keinstn/drover' },
+        ],
+        outline: { label: '本页内容' },
+        darkModeSwitchLabel: '外观',
+        lightModeSwitchTitle: '切换到浅色主题',
+        darkModeSwitchTitle: '切换到深色主题',
+        returnToTopLabel: '回到顶部',
+        langMenuLabel: '切换语言',
+        skipToContentLabel: '跳到正文',
+        notFound: {
+          title: '找不到这个页面',
+          quote: '你要找的页面可能已经移动或删除了。',
+          linkLabel: '回到首页',
+          linkText: '返回首页',
+        },
+        // Raw HTML here too: these hrefs are NOT rewritten with `base`. Note the
+        // privacy href has no `zh/` — it is the English policy on purpose.
+        footer: {
+          message: `<a href="${base}privacy/">隐私政策（英文）</a> · <a href="${base}zh/support/">支持</a> · <a href="https://github.com/keinstn/drover">GitHub</a>`,
+          copyright: 'Copyright © 2026 Keisuke Nishitani',
+        },
+      },
+    },
   },
   // Markdown images only — the three band screenshots are below the fold and
   // were ~739 KB of the landing page's ~1.02 MB. The frontmatter `hero.image`

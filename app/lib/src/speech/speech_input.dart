@@ -166,9 +166,11 @@ class SpeechInputController implements SpeechInput {
 
   String? get _recognitionLocaleId {
     if (recognitionLocaleId != null) return recognitionLocaleId;
-    return ui.PlatformDispatcher.instance.locale.languageCode == 'ja'
-        ? 'ja_JP'
-        : null;
+    return switch (ui.PlatformDispatcher.instance.locale.languageCode) {
+      'ja' => 'ja_JP',
+      'zh' => 'zh_CN',
+      _ => null,
+    };
   }
 
   Future<bool> _supportsOnDeviceRecognition() async {

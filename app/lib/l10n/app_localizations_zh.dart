@@ -58,7 +58,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get hostSetupSave => '保存';
 
   @override
-  String get hostSetupDemoIntro => '第一次使用 drover？先试试无需主机的脚本演示会话。';
+  String get hostSetupDemoIntro => '第一次使用 drover？先试试按剧本演示的会话，无需主机。';
 
   @override
   String get hostSetupDemoButton => '试用演示';
@@ -96,7 +96,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get hostAllHosts => '所有主机';
 
   @override
-  String get hostPickLaunchTarget => '启动位置…';
+  String get hostPickLaunchTarget => '在哪台主机上启动…';
 
   @override
   String get commonCancel => '取消';
@@ -112,8 +112,8 @@ class AppLocalizationsZh extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count 个代理',
-      one: '1 个代理',
+      other: '$count 个智能体',
+      one: '1 个智能体',
     );
     return '成功 — $_temp0';
   }
@@ -122,7 +122,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get notificationRegistrationFailed => '无法启用通知。请重新打开 Drover 再试一次。';
 
   @override
-  String get notificationTargetUnavailable => '此通知中的代理已不可用。';
+  String get notificationTargetUnavailable => '此通知中的智能体已不可用。';
 
   @override
   String get hostPairNotifications => '创建通知配对码';
@@ -160,7 +160,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get hostPairAutoPairedTitle => '通知已配对';
 
   @override
-  String get hostPairAutoPairedBody => '此主机现已配对，可接收代理阻塞时的推送通知。';
+  String get hostPairAutoPairedBody => '此主机现已配对，可在智能体需要回复时接收推送通知。';
 
   @override
   String get commonClose => '关闭';
@@ -180,7 +180,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get errorHostConnectionLost =>
-      '与主机的连接已断开。如果你通过 VPN 连接，请检查 VPN 仍处于活动状态。';
+      '与主机的连接已断开。如果你通过 VPN 连接，请确认 VPN 是否仍在连接。';
 
   @override
   String get errorHerdrServerUnreachable =>
@@ -188,7 +188,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String herdrVersionTooOld(String found, String minimum) {
-    return '此主机上的 herdr $found 低于支持的最低版本 $minimum。请更新主机上的 herdr 才能启动代理。';
+    return '此主机上的 herdr $found 低于支持的最低版本 $minimum。请更新主机上的 herdr 才能启动智能体。';
   }
 
   @override
@@ -204,7 +204,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get commonStop => '停止';
 
   @override
-  String get commonLaunchAgent => '启动代理';
+  String get commonLaunchAgent => '启动智能体';
 
   @override
   String get agentStatusIdle => '休息中';
@@ -240,7 +240,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentComposerHint => '发送消息…';
 
   @override
-  String get agentCycleModeTooltip => '切换代理模式（shift+tab）';
+  String get agentCycleModeTooltip => '切换智能体模式（shift+tab）';
 
   @override
   String get agentRemoveImage => '移除图片';
@@ -255,7 +255,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentAttachFromCamera => '相机';
 
   @override
-  String get agentStopAgent => '停止代理';
+  String get agentStopAgent => '停止智能体';
 
   @override
   String get agentStopDictation => '停止听写';
@@ -323,11 +323,11 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String herdAgentBlocked(String name) {
-    return '$name 已阻塞';
+    return '$name 在等你回复';
   }
 
   @override
-  String get herdStopDialogTitle => '停止代理？';
+  String get herdStopDialogTitle => '停止智能体？';
 
   @override
   String herdStopDialogBody(String name, String paneId) {
@@ -335,7 +335,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get herdNoAgents => '未找到代理';
+  String get herdNoAgents => '未找到智能体';
 
   @override
   String get herdRenameWorkspaceTitle => '重命名工作区';
@@ -344,10 +344,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get herdRenameWorkspaceField => '工作区名称';
 
   @override
-  String get herdRenameAgentTitle => '重命名代理';
+  String get herdRenameAgentTitle => '重命名智能体';
 
   @override
-  String get herdRenameAgentField => '代理名称';
+  String get herdRenameAgentField => '智能体名称';
 
   @override
   String get herdGreetingIntro => '欢迎回来。';
@@ -357,14 +357,14 @@ class AppLocalizationsZh extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count 个代理',
-      one: '1 个代理',
+      other: '$count 个智能体',
+      one: '1 个智能体',
     );
     return '$_temp0';
   }
 
   @override
-  String get herdGreetingWaitingSuffix => ' 正在等待你的回复。';
+  String get herdGreetingWaitingSuffix => '正在等待你的回复。';
 
   @override
   String get herdGreetingAllClear => '大家都在按计划进行。';
@@ -383,7 +383,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get herdSnippetThinking => '正在思考…';
+  String get herdSnippetThinking => '正在琢磨…';
 
   @override
   String get agentSwitcherHerdTab => '全部';
@@ -392,7 +392,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get launchButton => '启动';
 
   @override
-  String get launchNoAgents => '主机上没有可启动的代理';
+  String get launchNoAgents => '主机上没有可启动的智能体';
 
   @override
   String get launchWorkingDir => '工作目录';
@@ -401,7 +401,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get launchWorkingDirRequired => '必须填写工作目录';
 
   @override
-  String get launchAgentName => '代理名称';
+  String get launchAgentName => '智能体名称';
 
   @override
   String get launchNewWorkspace => '新建工作区';
@@ -475,10 +475,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsNotifications => '通知';
 
   @override
-  String get settingsNotifyBlocked => '代理阻塞时';
+  String get settingsNotifyBlocked => '智能体需要回复时';
 
   @override
-  String get settingsNotifyDone => '代理完成时';
+  String get settingsNotifyDone => '智能体完成时';
 
   @override
   String get settingsNotifyPluginUpdateTitle => '更新通知插件';
@@ -503,7 +503,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsDemo => '试用演示';
 
   @override
-  String get settingsDemoSubtitle => '脚本会话——无需主机';
+  String get settingsDemoSubtitle => '按剧本演示的会话——无需主机';
 
   @override
   String get settingsVersion => '版本';
@@ -519,7 +519,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsVoiceAssistantSubtitle =>
-      '与 drover 谈谈你的代理。对话期间，代理状态和回复的简短摘要会发送到 Google Gemini Live API。';
+      '与 drover 谈谈你的智能体。对话期间，智能体状态和回复的简短摘要会发送到 Google Gemini Live API。';
 
   @override
   String get settingsVoiceCredits => '语音额度';
@@ -553,10 +553,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsAccount => '账户';
 
   @override
-  String get settingsAccountSignIn => '使用 Apple 登录';
+  String get settingsAccountSignIn => '通过Apple登录';
 
   @override
-  String get settingsAccountSignedIn => '已使用 Apple 登录';
+  String get settingsAccountSignedIn => '已通过 Apple 登录';
 
   @override
   String get settingsAccountSignInFailed => '无法登录。点按以重试。';
@@ -635,14 +635,14 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get voicePaidInterestPrompt =>
-      '目前没有付费方案，也可能永远不会有。如果你愿意付费继续与代理交流，这是开发者唯一能知道这一点的方式。';
+      '目前没有付费方案，也可能永远不会有。如果你愿意付费继续与智能体交流，告诉开发者是他唯一能知道这一点的方式。';
 
   @override
   String get voicePaidInterestAction => '我愿意为此付费';
 
   @override
   String get voicePaidInterestDone =>
-      '谢谢——我们已记录你的意愿。这不是购买，也不是排队登记；语音功能是否会成为付费方案仍未决定。';
+      '谢谢——已经记录下来了。这不是购买，也不是排队登记；语音功能是否会成为付费方案仍未决定。';
 
   @override
   String get voiceCampaignOverTitle => '免费额度已发完';
@@ -731,10 +731,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get voiceHint =>
-      '“哪个代理在等我？”\n“告诉 claude 也要添加测试”\n“发票 PDF 生成有问题——我该怎么描述？”';
+      '“哪个智能体在等我？”\n“告诉 claude 也要添加测试”\n“发票 PDF 生成有问题——我该怎么提需求？”';
 
   @override
-  String get voiceHintHandoff => '边聊边理清思路。确定后，通话会启动一个新代理来处理。';
+  String get voiceHintHandoff => '边聊边理清思路。确定后，通话会启动一个新智能体来处理。';
 
   @override
   String voiceEventFinished(String name) {
@@ -747,7 +747,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get voiceEventAnnounceFailed => '无法读取代理状态';
+  String get voiceEventAnnounceFailed => '无法读取智能体状态';
 
   @override
   String voiceDraftPending(String agent) {
@@ -787,7 +787,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get voiceLaunchStart => '启动';
 
   @override
-  String get voiceLaunchFailed => '无法启动代理';
+  String get voiceLaunchFailed => '无法启动智能体';
 
   @override
   String get voiceCapReached => '已达到会话时间限制';
@@ -800,7 +800,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get voiceConsentBody =>
-      '语音助手运行于 Google Gemini Live。会话打开期间，你的麦克风音频以及对话双方的文字记录会发送给 Google，同时还会发送回答所需的上下文：代理状态、会话标题和类型、项目文件夹名称、代理正在等待的问题及其选项，以及代理最近一次以散文形式写下的回复——代理完成工作时，即使你什么都没说，这条回复也会单独发送。回复中的代码（无论是代码块还是行内代码）都会被移除；操作失败时会发送简短的代码，而不是终端输出。文字会按原样发送，因此代理在句子或问题措辞中写下的路径也会随之发送。会话未打开时不会发送任何内容。你使用 drover 的其他部分时，通话仍会继续聆听；离开应用会关闭麦克风并停止发送，回到对话时会自动重新打开麦克风并从离开处继续。会话达到时间限制后会自动结束，离开应用的时间也计入限制。只有“结束”会彻底结束通话，你可以随时点按它。';
+      '语音助手运行于 Google Gemini Live。会话打开期间，你的麦克风音频以及对话双方的文字记录会发送给 Google，同时还会发送回答所需的上下文：智能体状态、会话标题和类型、项目文件夹名称、智能体正在等待的问题及其选项，以及智能体最近一次回复的纯文字部分——智能体完成工作时，即使你什么都没说，这条回复也会单独发送。回复中的代码（无论是代码块还是行内代码）都会被移除；操作失败时只会发送简短的错误码，而不是终端输出。文字会按原样发送，因此智能体在句子或问题措辞中写下的路径也会随之发送。会话未打开时不会发送任何内容。你使用 drover 的其他部分时，通话仍会继续聆听；离开应用会关闭麦克风并停止发送，回到对话时会自动重新打开麦克风并从离开处继续。会话达到时间限制后会自动结束，离开应用的时间也计入限制。只有“结束”会彻底结束通话，你可以随时点按它。';
 
   @override
   String get voiceConsentAccept => '允许并继续';

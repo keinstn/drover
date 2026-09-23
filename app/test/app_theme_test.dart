@@ -725,6 +725,20 @@ void main() {
       // ASCII embedded in a Japanese label would single it out.
       expect(droverLabelText(context, 'workspaces'), 'workspaces');
     });
+
+    testWidgets('treats Chinese the same as Japanese', (tester) async {
+      final context = await contextFor(tester, 'zh');
+
+      // The ramp keys off CJK script, not off `ja`: [droverMonoFamily] has no
+      // Chinese coverage either, so zh must land on the gothic branch rather
+      // than on the Latin one.
+      final style = droverLabelStyle(context);
+      expect(style.fontFamily, isNull);
+      expect(style.fontSize, 10.0);
+      expect(style.fontWeight, FontWeight.w600);
+      expect(style.letterSpacing, closeTo(9.5 * 0.045, 0.001));
+      expect(droverLabelText(context, 'workspaces'), 'workspaces');
+    });
   });
 
   group('StatusPill', () {

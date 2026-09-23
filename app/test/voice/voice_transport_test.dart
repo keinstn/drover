@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' show Locale;
 
 import 'package:drover/src/voice/voice_transport.dart';
 import 'package:firebase_ai/firebase_ai.dart';
@@ -147,6 +148,17 @@ void main() {
       (setup['generation_config']! as Map<String, Object?>)['speechConfig'],
       isNotNull,
     );
+  });
+
+  test('every shipped locale gets its own speech language', () {
+    // One code per locale the app ships, so a Chinese UI is not narrated in
+    // English. This pins the mapping, not the wire format: the API validates
+    // the code server-side, so see `voiceLanguageCodeFor` for what is still
+    // unconfirmed about `zh-CN`.
+    expect(voiceLanguageCodeFor(const Locale('ja')), 'ja-JP');
+    expect(voiceLanguageCodeFor(const Locale('zh')), 'zh-CN');
+    expect(voiceLanguageCodeFor(const Locale('en')), 'en-US');
+    expect(voiceLanguageCodeFor(null), 'en-US');
   });
 
   test('a resume handle goes into the setup', () async {

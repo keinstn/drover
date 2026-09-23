@@ -11,6 +11,7 @@ import 'package:drover/src/demo/demo_backend.dart';
 import 'package:drover/src/demo/demo_content.dart';
 import 'package:drover/src/demo/demo_content_en.dart';
 import 'package:drover/src/demo/demo_content_ja.dart';
+import 'package:drover/src/demo/demo_content_zh.dart';
 import 'package:drover/src/demo/demo_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -332,6 +333,53 @@ void main() {
       );
       expect(
         find.textContaining(demoContentJa.userTour, findRichText: true),
+        findsOneWidget,
+      );
+
+      // Deliberately English, and asserted so nobody "fixes" it: the
+      // permission prompt body is CLI output, and drover's own parsers match
+      // its literals (see claude_askuser_submitter.dart's 'Esc to cancel').
+      expect(
+        find.textContaining('Do you want to proceed?', findRichText: true),
+        findsAtLeastNWidgets(1),
+      );
+      // Same for code and diff contents, which are file contents, not prose.
+      expect(
+        find.textContaining(_codeOnlyLine, findRichText: true),
+        findsAtLeastNWidgets(1),
+      );
+      expect(
+        find.textContaining(_diffOnlyLine, findRichText: true),
+        findsAtLeastNWidgets(1),
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'in zh, what the user wrote is Simplified Chinese and what the CLI '
+    'emitted stays English',
+    (tester) async {
+      _useTallViewport(tester);
+
+      final backend = DemoBackend(content: demoContentFor(const Locale('zh')));
+      await tester.pumpWidget(_demo(backend, locale: const Locale('zh')));
+      await _settle(tester);
+
+      // The session title on the herd screen is the user's own words.
+      expect(find.text(demoContentZh.scriptedTitle), findsOneWidget);
+      expect(find.text(demoContentZh.reviewTitle), findsOneWidget);
+
+      await _openScriptedAgent(tester);
+
+      // Localized: the user's turns and the assistant's prose.
+      expect(
+        find.textContaining(demoContentZh.userSetup, findRichText: true),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(demoContentZh.userTour, findRichText: true),
         findsOneWidget,
       );
 

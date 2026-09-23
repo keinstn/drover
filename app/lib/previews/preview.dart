@@ -59,7 +59,7 @@ typedef PreviewBuilder = Widget Function(BuildContext context, String scenario);
 const _scenariosByPreview = <String, List<String>>{
   'agent': ['idle', 'blocked', 'native', 'askuser'],
   'host-setup': ['idle', 'plugin-detected', 'auto-pair-failure'],
-  'errors': ['en', 'ja'],
+  'errors': ['en', 'ja', 'zh'],
   'herd': ['idle', 'herdr-too-old'],
   'voice': [
     'live',
@@ -328,11 +328,15 @@ final _previews = <String, PreviewBuilder>{
     },
   ),
   // Every ErrorMessageView kind side by side, so the localized headlines and
-  // the collapsible details can be eyeballed. SCENARIO=ja renders the whole
-  // list under the Japanese locale via a Localizations override.
+  // the collapsible details can be eyeballed. The scenario name *is* the
+  // locale, so each language drover ships can be read end to end here.
   'errors': (context, scenario) => Localizations.override(
     context: context,
-    locale: scenario == 'ja' ? const Locale('ja') : const Locale('en'),
+    locale: Locale(
+      AppLocalizations.supportedLocales.any((l) => l.languageCode == scenario)
+          ? scenario
+          : 'en',
+    ),
     child: Builder(
       builder: (context) => Scaffold(
         appBar: AppBar(title: const Text('Error states')),
