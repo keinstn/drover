@@ -1,3 +1,84 @@
+## [1.1.0] - 2026-09-23
+
+### 🚀 Features
+
+- *(app)* Add the voice assistant foundation (Gemini Live, opt-in) (#227)
+- *(app)* Voicemail-and-callback flow for the voice assistant (#228)
+- *(app)* Ground voice message sending in two-step drafts (#229)
+- *(app)* Resume the voice session across Live connection drops (#235)
+- *(app)* Launch an agent by voice through a two-step draft (#236)
+- *(app)* Enable barge-in on release builds (#237)
+- *(app)* Answer multi-question AskUserQuestion prompts by voice (#240)
+- *(app)* Gate the voice assistant on consent and cap a session (#254)
+- *(app)* Move the voice entry point beside the launch FAB (#258)
+- *(app)* Redesign the voice assistant as a stage (#259)
+- *(app)* Ship the voice assistant on, and make its toggle a real revoke (#260)
+- *(app)* Make the voice orb follow the voice (#261)
+- *(app)* Make the voice screen a transcript lit from its bottom edge (#262)
+- *(app)* Light the voice screen in both themes, and brighter (#263)
+- *(app)* Keep the screen awake during a voice session, and end it on background (#265)
+- *(app)* Open the voice session on a server-minted Live token (#267)
+- *(app)* Route voice sessions through the minted token (#268)
+- Sell a call, not a minute — shorten the cap and outlive it (#269)
+- *(app)* Read what a voice call billed for, on the device (#270)
+- *(app)* Link an Apple ID to the account, before anything hangs off it (#272)
+- *(app)* Continue a voice call instead of dropping it (#275)
+- *(app)* Keep a voice call listening across drover (#276)
+- *(voice)* Charge a voice call against a credit wallet (#274)
+- *(app)* Let someone delete their account from inside drover (#279)
+- *(app)* Show the account what its voice credits are doing (#280)
+- *(voice)* Show the herd under the voice screen's header (#281)
+- *(voice)* Make a new call wait for a tap on the voice screen (#282)
+- *(voice)* Say what else the call can do before it starts (#284)
+- *(voice)* Tell the model which agent's screen is open (#285)
+- *(voice)* Move to the stable Live model and make compression fire (#289)
+- *(settings)* Nudge to re-pair hosts right after account deletion (#293)
+- *(voice)* Cap the free campaign and grant its credits (#294)
+- *(voice)* Show what a call costs and what is left (#295)
+- *(voice)* Toast the free credits an Apple sign-in just granted (#298)
+- *(voice)* Let someone say they would pay, once the free calls run out (#299)
+- *(app)* Label the voice assistant as experimental in-app (#305)
+
+### 🐛 Bug Fixes
+
+- *(app)* Gate the mic until the echo canceller has warmed up (#242)
+- *(app)* Stop leaking host stderr and inline code to Gemini (#255)
+- *(app)* Say both sides of a voice call are transcribed (#257)
+- *(app)* Report usage when a call ends in error too (#271)
+- *(voice)* Keep a parked call that still has its credit (#283)
+- Stop agent launches colliding on the herdr agent name (#286)
+- *(voice)* Re-anchor the pinned drafts on a new card (#287)
+- *(voice)* Recover from audio session interruptions (#297)
+- *(voice)* Delete a deleted account's voice session records (#300)
+- *(app)* Build Sign in with Apple to Apple's button spec (#301)
+- Bound voice token reuse and correct privacy docs (#303)
+
+### 🚜 Refactor
+
+- *(voice)* Drop the Firebase AI Logic fallback transport (#290)
+
+### 📚 Documentation
+
+- Describe the voice-live rebase, not a merge
+- Document voice billing visibility and the credits design (#252)
+- Disclose the Gemini voice data flow in the privacy policy (#256)
+- Record what Gemini Live reports as usage (#264)
+- Record that an ephemeral token can gate a voice session (#266)
+- *(voice-billing)* Draw the four flows the wallet has to implement (#273)
+- *(app)* The mint is no longer free to fall back from (#278)
+- Say what Firebase AI Logic is still for (#291)
+- Describe the voice path the app actually takes (#292)
+- Disclose the voice wallet, ledger and session record (#296)
+- Retire the voice-live branch machinery
+
+### 🧪 Testing
+
+- *(app)* Scroll to the version row before asserting on it
+
+### ⚙️ Miscellaneous Tasks
+
+- Set up the voice-live integration branch (#226)
+- *(tool)* Let the live probes vary model, compression and system prompt (#288)
 ## [1.0.6] - 2026-09-22
 
 ### 🚀 Features
