@@ -1,6 +1,6 @@
 ---
 name: screenshots
-description: Capture drover's App Store screenshots — the 6.9" en and ja sets, shot from the shipped demo mode on an iOS simulator. Use when asked to take, redo, or refresh the store screenshots (e.g. "スクショを撮り直して", "recapture the App Store screenshots").
+description: Capture drover's App Store screenshots — the 6.9" en, ja and zh sets, shot from the shipped demo mode on an iOS simulator. Use when asked to take, redo, or refresh the store screenshots (e.g. "スクショを撮り直して", "recapture the App Store screenshots").
 ---
 
 # App Store screenshots
@@ -15,7 +15,7 @@ device language, reboot, re-apply the status bar override) and
 `just sim-shot <locale> <name>` (capture into
 `site/public/screenshots/<locale>/<name>.png` and print its pixel size).
 
-Run them from a worktree off `main`. `site/` and all eight captures are
+Run them from a worktree off `main`. `site/` and all twelve captures are
 tracked there now, so `sim-shot` overwrites versioned files and the diff shows
 what changed. (This used to say to work on a `feat/store-screenshots` branch
 because `site/` lived only there — that branch is gone and the instruction sent
@@ -29,7 +29,7 @@ every capture, so a wrong device is visible immediately rather than at upload.
 
 ## The four shots, and why each earns its slot
 
-Captured for both `en` and `ja`, in this order — the order is the point, the
+Captured for `en`, `ja` and `zh`, in this order — the order is the point, the
 first shot is what most viewers see:
 
 | Name | Content | Why |
@@ -50,7 +50,7 @@ assets must depict what ships. Run the real entrypoint and enter demo mode.
 
 First-run setup screen (capture `04-setup` here) → tap `enter_demo_button` →
 herd screen (`03-herd`) → tap the scripted agent's tile, titled
-`Set up a demo file` / `デモ用のファイルを作る` → the agent view.
+`Set up a demo file` / `デモ用のファイルを作る` / `创建演示文件` → the agent view.
 
 The agent view opens scrolled to the live terminal, so the chat starts
 off-screen above. Treat the scroll as an intent, not a coordinate: bring the
@@ -70,11 +70,16 @@ language setting *is* reachable from demo mode, but switching there after
 entering flips the UI chrome while leaving the whole transcript in the old
 language — a mixed set that looks like a bug in the app.
 
-The ja set legitimately mixes languages, and that is correct. The demo
+The ja and zh sets legitimately mix languages, and that is correct. The demo
 localises what the **user** would have written — session titles, user turns,
 assistant prose — and deliberately leaves in English what the **CLI emits**:
 the permission prompt body, the live terminal, mode indicators, and code
-identifiers. Do not "fix" the English in a ja capture.
+identifiers. Do not "fix" the English in a ja or zh capture.
+
+`just sim-prep zh` writes `zh-Hans` into `AppleLanguages`, not the `zh` you
+type: a bare `zh` leaves the simulator in English **without erroring**, so a
+whole set can be shot in the wrong language and look merely wrong rather than
+broken. The recipe echoes the language it actually set — read that line.
 
 ## Where the navigation contract is enforced
 

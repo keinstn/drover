@@ -1,0 +1,467 @@
+{
+  "@@locale": "zh",
+  "hostSetupTitle": "主机设置",
+  "hostSetupNameLabel": "名称（可选）",
+  "hostSetupHostLabel": "主机",
+  "hostSetupHostRequired": "必须填写主机",
+  "hostSetupPortLabel": "端口",
+  "hostSetupPortInvalid": "端口必须是 1 到 65535 之间的数字",
+  "hostSetupUserLabel": "用户",
+  "hostSetupUserRequired": "必须填写用户",
+  "hostSetupPrivateKeyLabel": "私钥 PEM",
+  "hostSetupPrivateKeyRequired": "必须填写私钥",
+  "hostSetupPrivateKeyInvalid": "这看起来不像私钥。请粘贴包含 BEGIN 和 END 行的完整 PEM 内容。",
+  "hostSetupPassphraseLabel": "密码短语",
+  "hostSetupAdvanced": "高级",
+  "hostSetupHerdrBinLabel": "Herdr 二进制文件路径",
+  "hostSetupTestConnection": "测试连接",
+  "hostSetupSave": "保存",
+  "hostSetupDemoIntro": "刚开始使用 drover？先试试预设的演示会话——无需主机。",
+  "hostSetupDemoButton": "试用演示",
+  "demoHostDisplayName": "演示",
+  "demoBannerExit": "退出演示",
+  "demoBannerSetupConnection": "设置连接",
+  "demoBannerDoneCopy": "这只是演示。连接到你自己的主机后，就能进行真实操作。",
+  "hostListTitle": "主机",
+  "hostDeleteDialogTitle": "删除主机？",
+  "hostDeleteDialogBody": "将删除 {name} 的已保存连接信息（包括 SSH 密钥）。",
+  "@hostDeleteDialogBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hostSwitcherTitle": "切换主机",
+  "hostSwitcherManage": "管理主机",
+  "hostAllHosts": "所有主机",
+  "hostPickLaunchTarget": "在哪台主机上启动…",
+  "commonCancel": "取消",
+  "commonEdit": "编辑",
+  "commonDelete": "删除",
+  "testConnectionOk": "成功 — {count, plural, =1{1 个智能体} other{{count} 个智能体}}",
+  "@testConnectionOk": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notificationRegistrationFailed": "无法启用通知。请重新打开 Drover 再试一次。",
+  "notificationTargetUnavailable": "此通知中的智能体已不可用。",
+  "hostPairNotifications": "创建通知配对码",
+  "hostPairingCodeTitle": "配对通知插件",
+  "hostPairingCodeIntro": "Drover 未在此主机上找到通知插件。请在 Herdr 主机上运行以下命令安装插件，然后再次点按“创建通知配对码”——Drover 会找到它并完成配对。",
+  "hostPairingInstallCommandLabel": "安装插件",
+  "hostPairingManualNote": "想要手动配对？插件自己的设置脚本会要求输入下面的代码和 URL。",
+  "hostPairingCodeLabel": "配对码",
+  "hostPairingUrlLabel": "完成 URL",
+  "hostPairAutoDetectedTitle": "检测到通知插件",
+  "hostPairAutoDetectedBody": "Drover 发现此主机已经关联了 drover.notify 插件。要自动设置推送通知配对吗？",
+  "hostPairAutoDetectedConfirm": "设置",
+  "hostPairAutoPairedTitle": "通知已配对",
+  "hostPairAutoPairedBody": "此主机现已配对，可在智能体需要回复时接收推送通知。",
+  "commonClose": "关闭",
+  "commonCopy": "复制",
+  "errorHostKeyMismatch": "主机的 SSH 密钥与首次连接时信任的密钥不匹配。如果你没有重建或更换服务器，连接可能遭到拦截——请不要继续。",
+  "errorSshAuth": "无法登录主机。请检查用户名、私钥和密码短语。",
+  "errorHostConnection": "无法连接主机。请检查主机是否在线，以及地址和端口是否正确。",
+  "errorHostConnectionLost": "与主机的连接已断开。如果你通过 VPN 连接，请确认 VPN 是否仍在连接。",
+  "errorHerdrServerUnreachable": "已连接到主机，但 herdr 未在其上运行。请在主机上启动 herdr，然后重试。",
+  "herdrVersionTooOld": "此主机上的 herdr {found} 低于支持的最低版本 {minimum}。请更新主机上的 herdr 才能启动智能体。",
+  "@herdrVersionTooOld": {
+    "placeholders": {
+      "found": {
+        "type": "String"
+      },
+      "minimum": {
+        "type": "String"
+      }
+    }
+  },
+  "errorGeneric": "出了点问题。",
+  "errorDetailsLabel": "详细信息",
+  "commonRetry": "重试",
+  "commonStop": "停止",
+  "commonLaunchAgent": "启动智能体",
+  "agentStatusIdle": "休息中",
+  "agentStatusWorking": "工作中",
+  "agentStatusBlocked": "等待你的回复",
+  "agentStatusDone": "已完成",
+  "agentStatusUnknown": "未知",
+  "agentModeNormal": "普通",
+  "agentModeAcceptEdit": "接受编辑",
+  "agentModePlan": "计划",
+  "agentModeAuto": "自动",
+  "agentModeBypass": "绕过",
+  "agentComposerHint": "发送消息…",
+  "agentCycleModeTooltip": "切换智能体模式（shift+tab）",
+  "agentRemoveImage": "移除图片",
+  "agentAttachImage": "添加附件",
+  "agentAttachFromLibrary": "照片",
+  "agentAttachFromCamera": "相机",
+  "agentStopAgent": "停止智能体",
+  "agentStopDictation": "停止听写",
+  "agentDictateMessage": "听写消息",
+  "agentSendEscape": "发送 Esc 键",
+  "agentSendEnter": "发送 Enter 键",
+  "agentShowArrowKeys": "显示按键",
+  "agentHideArrowKeys": "隐藏按键",
+  "agentSendArrowLeft": "发送左方向键",
+  "agentSendArrowUp": "发送上方向键",
+  "agentSendArrowDown": "发送下方向键",
+  "agentSendArrowRight": "发送右方向键",
+  "agentNativeHistory": "对话历史",
+  "agentLiveTerminal": "实时终端",
+  "agentThinking": "思考中…",
+  "agentHistoryBeginning": "已到达保留的终端历史记录开头",
+  "agentAskUserSend": "发送",
+  "agentAskUserClose": "关闭",
+  "agentAskUserCustomHint": "输入内容…",
+  "agentAskUserQuestionNumber": "第 {current} 个问题，共 {total} 个",
+  "@agentAskUserQuestionNumber": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "agentAskUserDismissed": "此问题已不可用",
+  "agentAskUserSubmitError": "无法提交回答：{error}",
+  "@agentAskUserSubmitError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "herdAgentBlocked": "{name} 在等你回复",
+  "@herdAgentBlocked": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "herdStopDialogTitle": "停止智能体？",
+  "herdStopDialogBody": "将停止 {name}（{paneId}）。当前工作会被中断。",
+  "@herdStopDialogBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "paneId": {
+        "type": "String"
+      }
+    }
+  },
+  "herdNoAgents": "未找到智能体",
+  "herdRenameWorkspaceTitle": "重命名工作区",
+  "herdRenameWorkspaceField": "工作区名称",
+  "herdRenameAgentTitle": "重命名智能体",
+  "herdRenameAgentField": "智能体名称",
+  "herdGreetingIntro": "欢迎回来。",
+  "herdGreetingWaitingCount": "{count, plural, =1{1 个智能体} other{{count} 个智能体}}",
+  "@herdGreetingWaitingCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "herdGreetingWaitingSuffix": "正在等待你的回复。",
+  "herdGreetingAllClear": "大家都在按计划进行。",
+  "herdElapsedNow": "刚刚",
+  "herdElapsedMinutes": "{minutes} 分钟前",
+  "@herdElapsedMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "herdElapsedHours": "{hours} 小时前",
+  "@herdElapsedHours": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "herdSnippetThinking": "正在琢磨…",
+  "agentSwitcherHerdTab": "全部",
+  "launchButton": "启动",
+  "launchNoAgents": "主机上没有可启动的智能体",
+  "launchWorkingDir": "工作目录",
+  "launchWorkingDirRequired": "必须填写工作目录",
+  "launchAgentName": "智能体名称",
+  "launchNewWorkspace": "新建工作区",
+  "launchExistingWorkspace": "现有工作区",
+  "launchWorkspaceName": "工作区名称",
+  "launchWorkspaceNameRequired": "必须填写工作区名称",
+  "launchUseNewWorkspace": "改用新工作区",
+  "launchNoExistingWorkspaces": "没有现有工作区",
+  "launchSelectWorkspace": "选择工作区",
+  "launchUnnamedWorkspace": "未命名工作区（{id}）",
+  "@launchUnnamedWorkspace": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "launchBrowseDir": "浏览",
+  "dirPickerTitle": "选择目录",
+  "dirPickerUse": "使用此目录",
+  "dirPickerParent": "上级目录",
+  "dirPickerShowHidden": "显示隐藏文件夹",
+  "dirPickerEmpty": "没有子文件夹",
+  "settingsTitle": "设置",
+  "settingsAppearance": "外观",
+  "settingsTheme": "主题",
+  "settingsThemeSystem": "系统",
+  "settingsThemeLight": "浅色",
+  "settingsThemeDark": "深色",
+  "settingsLanguage": "语言",
+  "settingsLanguageSystem": "系统",
+  "settingsNotifications": "通知",
+  "settingsNotifyBlocked": "智能体需要回复时",
+  "settingsNotifyDone": "智能体完成时",
+  "settingsNotifyPluginUpdateTitle": "更新通知插件",
+  "settingsNotifyPluginUpdateSubtitle": "{host} 正在运行 {version}",
+  "@settingsNotifyPluginUpdateSubtitle": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsNotifyPluginUpdateIntro": "{host} 正在运行 drover-notify {version}。请在 Herdr 主机上重新安装它，以获得最新通知。",
+  "@settingsNotifyPluginUpdateIntro": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsNotifyPluginUninstallLabel": "1. 移除旧插件",
+  "settingsNotifyPluginInstallLabel": "2. 安装最新版",
+  "settingsDemo": "试用演示",
+  "settingsDemoSubtitle": "预设演示会话——无需主机",
+  "settingsVersion": "版本",
+  "settingsVersionCopied": "已复制版本",
+  "settingsAssistant": "助手",
+  "settingsVoiceAssistant": "语音助手（实验性）",
+  "settingsVoiceAssistantSubtitle": "与 drover 谈谈你的智能体。对话期间，智能体状态和回复的简短摘要会发送到 Google Gemini Live API。",
+  "settingsVoiceCredits": "语音额度",
+  "settingsVoiceCreditsSubtitle": "一次通话消耗一个额度，最长五分钟。",
+  "settingsVoiceCreditsCampaign": "语音功能目前免费：使用 Apple 登录后会一次性获得少量免费通话额度。",
+  "@settingsVoiceCreditsCampaign": {
+    "description": "One line under the balance row explaining the free campaign. The credits are granted once and never refilled, and there is nothing to buy — so it must promise no more of them, and must not read as an offer."
+  },
+  "settingsVoiceCreditsActivity": "最近的额度记录",
+  "settingsVoiceCreditsNone": "暂无记录。",
+  "settingsVoiceCreditsFailed": "无法加载你的余额。",
+  "voiceLedgerCall": "语音通话",
+  "voiceLedgerRefund": "退回",
+  "voiceLedgerGrant": "免费额度",
+  "settingsAccount": "账户",
+  "settingsAccountSignIn": "通过Apple登录",
+  "settingsAccountSignedIn": "已通过 Apple 登录",
+  "settingsAccountSignInFailed": "无法登录。点按以重试。",
+  "settingsAccountDelete": "删除账户",
+  "accountDeleteTitle": "删除账户？",
+  "accountDeleteBody": "你的登录信息、主机配对和所有语音额度都将永久删除。额度无法退款或转移到其他账户。主机设置仍会保留在此设备上，但每台主机都需要重新配对才能接收通知。",
+  "accountDeleteConfirm": "删除",
+  "accountDeleteFailed": "无法删除账户。点按以重试。",
+  "accountDeleteBalance": "其中包含 {credits, plural, =1{1 次通话额度} other{{credits} 次通话额度}}。",
+  "@accountDeleteBalance": {
+    "placeholders": {
+      "credits": {
+        "type": "int"
+      }
+    }
+  },
+  "accountDeletedTitle": "账户已删除",
+  "accountDeletedNotifyBody": "通知配对也已随之移除。请重新配对每台主机，以继续接收通知。",
+  "accountDeletedManageHosts": "管理主机",
+  "herdVoiceButton": "语音助手（实验性）",
+  "herdVoiceButtonLive": "语音通话进行中",
+  "voiceStatusConnecting": "连接中…",
+  "voiceStatusReady": "就绪",
+  "voiceStatusLive": "正在聆听",
+  "voiceStatusSpeaking": "正在说话",
+  "voiceStatusEnded": "已结束",
+  "voiceStatusError": "错误：{error}",
+  "@voiceStatusError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "voiceMicPermissionDenied": "麦克风访问权限已关闭。请在设置中允许访问，才能与 drover 对话。",
+  "voiceNoCreditsTitle": "没有剩余额度",
+  "voiceNoCreditsBody": "通话需要一个额度，但你已经没有额度了。免费额度只向已登录的账户发放一次。没有进行录音——麦克风从未打开，音频也没有离开手机。",
+  "@voiceNoCreditsBody": {
+    "description": "Shown to a signed-in account that has spent its credits and to an anonymous one that was never granted any, directly above a Sign in with Apple button that only the second reader gets. The middle sentence therefore states how the grant works instead of addressing either reader's own balance: it tells the anonymous reader why that button helps, and tells the signed-in reader, truthfully, that there are no more coming. It must promise no refill."
+  },
+  "voicePaidInterestPrompt": "目前没有付费方案，也可能永远不会有。如果你愿意付费继续与智能体交流，告诉开发者你愿意付费，是让他知道这件事的唯一方式。",
+  "@voicePaidInterestPrompt": {
+    "description": "Shown on the no-credits card to an account that is already signed in, where the Sign in with Apple button would otherwise be, above the button in voicePaidInterestAction. Must not imply a paid plan is coming, planned, or will be offered to this reader: it genuinely might never exist, which is what the tap is being collected to decide. Must not promise to notify them, because nothing will."
+  },
+  "voicePaidInterestAction": "我愿意为此付费",
+  "@voicePaidInterestAction": {
+    "description": "The button under voicePaidInterestPrompt. First person, because it is the reader's own statement being recorded, not an offer being accepted. Not 'Buy', not 'Join the waitlist', not 'Notify me' — none of those happen."
+  },
+  "voicePaidInterestDone": "谢谢——已经记录下来了。这不是购买，也不是排队登记；语音功能是否会成为付费方案仍未决定。",
+  "@voicePaidInterestDone": {
+    "description": "Replaces the prompt and its button once the tap has been recorded, and still shows after a restart because the state comes from the server. A thank-you and a statement of fact, deliberately not a teaser: the second sentence exists to close off the two readings the button could otherwise invite."
+  },
+  "voiceCampaignOverTitle": "免费额度已发完",
+  "voiceCampaignOverBody": "语音功能在额度用完前免费，但所有人的额度都已经发完——这不是你的余额出了问题，你无需做任何处理。没有进行录音：麦克风从未打开。",
+  "voiceCredits": "{credits, plural, =1{1 次通话额度} other{{credits} 次通话额度}}",
+  "@voiceCredits": {
+    "description": "A balance or a cost, as a count of voice credits. Used by the chip in the voice screen's status row and by the receipt's Cost row.",
+    "placeholders": {
+      "credits": {
+        "type": "int"
+      }
+    }
+  },
+  "voiceCreditsGranted": "{credits, plural, =1{已获得 1 次免费通话额度} other{已获得 {credits} 次免费通话额度}}",
+  "@voiceCreditsGranted": {
+    "description": "Toast shown right after Apple sign-in grants the one-time free campaign credits.",
+    "placeholders": {
+      "credits": {
+        "type": "int"
+      }
+    }
+  },
+  "voiceReceiptLength": "时长",
+  "voiceReceiptLengthValue": "{minutes} 分 {seconds} 秒",
+  "@voiceReceiptLengthValue": {
+    "description": "How long the call was actually connected. Minutes and seconds are always both shown, so a short call reads 0 min 12 s rather than as a bare number.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      },
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "voiceReceiptCost": "费用",
+  "voiceReceiptBalance": "余额",
+  "voiceReceiptFootnote": "一次通话消耗一个额度——无论期间重新连接多少次。",
+  "voiceSignInTitle": "登录以获得免费通话额度",
+  "voiceSignInBody": "语音助手目前免费，免费通话额度会发放给已登录的账户。使用 Apple 登录后会一次性获得少量免费通话额度，即使重新安装 drover 也能保留。drover 只向 Apple 请求稳定标识符：不请求姓名或电子邮件地址。",
+  "voiceToolCalled": "已调用 {name}",
+  "@voiceToolCalled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "voiceInterrupted": "已中断",
+  "voiceGoingAway": "即将重新连接",
+  "voiceResumed": "已重新连接，继续进行",
+  "voiceEnded": "会话已结束",
+  "voiceEnd": "结束",
+  "voiceRestart": "重新开始",
+  "voiceStart": "开始",
+  "voiceGreeting": "我们从什么开始？",
+  "voiceClose": "关闭",
+  "voiceHint": "“哪个智能体在等我？”\n“告诉 claude 也要添加测试”\n“发票 PDF 生成有问题——我该怎么提需求？”",
+  "@voiceHint": {
+    "description": "Three things to say out loud, one per line, under the greeting on a voice screen that has not started. One per capability: ask about the herd, leave an agent a message, and talk out something that has no agent yet."
+  },
+  "voiceHintHandoff": "边聊边理清思路。确定后，通话会启动一个新智能体来处理。",
+  "voiceEventFinished": "{name} 已完成",
+  "@voiceEventFinished": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "voiceEventBlocked": "{name} 正在等待你的回复",
+  "@voiceEventBlocked": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "voiceEventAnnounceFailed": "无法读取智能体状态",
+  "voiceDraftPending": "等待发送给 {agent}",
+  "@voiceDraftPending": {
+    "placeholders": {
+      "agent": {
+        "type": "String"
+      }
+    }
+  },
+  "voiceDraftSent": "已发送给 {agent}",
+  "@voiceDraftSent": {
+    "placeholders": {
+      "agent": {
+        "type": "String"
+      }
+    }
+  },
+  "voiceDraftSend": "发送",
+  "voiceUnsentDrafts": "仍有草稿等待发送——其卡片上的按钮仍然可用",
+  "voiceSendFailed": "无法发送消息",
+  "voiceLaunchPending": "等待在 {project} 中启动 {kind}",
+  "@voiceLaunchPending": {
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      },
+      "project": {
+        "type": "String"
+      }
+    }
+  },
+  "voiceLaunchHeader": "{project} 中的 {kind}",
+  "@voiceLaunchHeader": {
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      },
+      "project": {
+        "type": "String"
+      }
+    }
+  },
+  "voiceLaunchStarted": "已在 {project} 中启动 {kind}",
+  "@voiceLaunchStarted": {
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      },
+      "project": {
+        "type": "String"
+      }
+    }
+  },
+  "voiceLaunchStart": "启动",
+  "voiceLaunchFailed": "无法启动智能体",
+  "voiceCapReached": "已达到会话时间限制",
+  "voiceBackgrounded": "应用已转入后台",
+  "voiceConsentTitle": "实验性功能：语音使用 Google Gemini",
+  "voiceConsentBody": "语音助手运行于 Google Gemini Live。会话进行期间，你的麦克风音频以及对话双方的文字记录会发送给 Google，同时还会发送回答所需的上下文：智能体状态、会话标题和类型、项目文件夹名称、智能体正在等待的问题及其选项，以及智能体最近一次回复的纯文字部分——智能体完成工作时，即使你什么都没说，这条回复也会单独发送。回复中的代码（无论是代码块还是行内代码）都会被移除；操作失败时只会发送简短的错误码，而不是终端输出。这些文字会按原样发送，因此智能体在句子或问题的表述中写下的路径也会随之发送。会话未打开时不会发送任何内容。你使用 drover 的其他部分时，通话会继续保持聆听状态；离开应用会关闭麦克风并停止发送，回到对话时会自动重新打开麦克风并从离开处继续。会话达到时间限制后会自动结束，离开应用的时间也计入限制。只有“结束”会彻底结束通话，你可以随时点按它。",
+  "voiceConsentAccept": "允许并继续",
+  "voiceConsentDecline": "暂不允许"
+}

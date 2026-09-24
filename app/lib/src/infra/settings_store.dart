@@ -122,11 +122,12 @@ class SettingsStore {
     _ => ThemeMode.system,
   };
 
-  // Only 'en'/'ja' (the app's supportedLocales) are valid; anything else,
-  // including 'system', loads as null (follow the device locale).
+  // Only the app's supportedLocales are valid; anything else, including
+  // 'system', loads as null (follow the device locale).
   Locale? _localeFrom(String? value) => switch (value) {
     'en' => const Locale('en'),
     'ja' => const Locale('ja'),
+    'zh' => const Locale('zh'),
     _ => null,
   };
 }

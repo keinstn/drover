@@ -275,14 +275,18 @@ _sim-udid:
 sim-prep locale:
     #!/usr/bin/env bash
     set -euo pipefail
+    # `lang` is what iOS wants in AppleLanguages and is NOT always the locale
+    # directory name: Chinese must be written as `zh-Hans`, because a bare `zh`
+    # leaves the simulator in English without erroring.
     case "{{locale}}" in
-        en) region=en_US ;;
-        ja) region=ja_JP ;;
-        *) echo "unsupported locale '{{locale}}' (expected en or ja)" >&2; exit 1 ;;
+        en) lang=en      ; region=en_US ;;
+        ja) lang=ja      ; region=ja_JP ;;
+        zh) lang=zh-Hans ; region=zh_CN ;;
+        *) echo "unsupported locale '{{locale}}' (expected en, ja or zh)" >&2; exit 1 ;;
     esac
     udid=$(just sim="{{sim}}" _sim-udid)
     xcrun simctl bootstatus "$udid" -b >/dev/null
-    xcrun simctl spawn "$udid" defaults write -g AppleLanguages -array "{{locale}}"
+    xcrun simctl spawn "$udid" defaults write -g AppleLanguages -array "$lang"
     xcrun simctl spawn "$udid" defaults write -g AppleLocale -string "$region"
     xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true
     xcrun simctl bootstatus "$udid" -b >/dev/null
@@ -290,7 +294,7 @@ sim-prep locale:
         --time "9:41" \
         --batteryState charged --batteryLevel 100 \
         --wifiBars 3 --cellularBars 4 --dataNetwork wifi
-    echo "{{sim}} ($udid) ready: language {{locale}}, locale $region, status bar 9:41"
+    echo "{{sim}} ($udid) ready: language $lang, locale $region, status bar 9:41"
 
 # Takes a locale and a name, never an arbitrary path: eight finished captures
 # were once staged in a system temp directory that got cleaned, so this recipe
@@ -302,8 +306,8 @@ sim-shot locale name:
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{locale}}" in
-        en|ja) ;;
-        *) echo "unsupported locale '{{locale}}' (expected en or ja)" >&2; exit 1 ;;
+        en|ja|zh) ;;
+        *) echo "unsupported locale '{{locale}}' (expected en, ja or zh)" >&2; exit 1 ;;
     esac
     if ! printf '%s' "{{name}}" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
         echo "invalid name '{{name}}' (letters, digits, '.', '_', '-')" >&2

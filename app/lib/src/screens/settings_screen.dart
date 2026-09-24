@@ -676,13 +676,14 @@ String _themeModeLabel(AppLocalizations l10n, ThemeMode mode) => switch (mode) {
   ThemeMode.dark => l10n.settingsThemeDark,
 };
 
-// The system option is localized; 日本語/English are hardcoded literals (not
+// The system option is localized; language names are hardcoded literals (not
 // l10n strings) so a user who picked a language they can't read can still
 // find their way back to the row that lets them change it.
 String _localeLabel(AppLocalizations l10n, Locale? locale) =>
     switch (locale?.languageCode) {
       'ja' => '日本語',
       'en' => 'English',
+      'zh' => '简体中文',
       _ => l10n.settingsLanguageSystem,
     };
 
@@ -775,6 +776,16 @@ Future<void> _showLanguageSheet(
           onTap: () {
             Navigator.pop(context);
             onSelect(const Locale('en'));
+          },
+        ),
+        _option(
+          context,
+          key: const ValueKey('settings_language_option_zh'),
+          label: '简体中文',
+          selected: current?.languageCode == 'zh',
+          onTap: () {
+            Navigator.pop(context);
+            onSelect(const Locale('zh'));
           },
         ),
       ],

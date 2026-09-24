@@ -82,7 +82,11 @@ void main() {
   });
 
   test('saveLocale()/load() roundtrips each supported locale', () async {
-    for (final locale in [const Locale('en'), const Locale('ja')]) {
+    for (final locale in [
+      const Locale('en'),
+      const Locale('ja'),
+      const Locale('zh'),
+    ]) {
       SharedPreferences.setMockInitialValues({});
       await store.saveLocale(locale);
 

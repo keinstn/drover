@@ -334,6 +334,23 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('tapping the language row and picking 简体中文 reports Locale(zh)', (
+    tester,
+  ) async {
+    Locale? picked;
+    await tester.pumpWidget(_app(onLocaleChanged: (locale) => picked = locale));
+
+    await tester.tap(find.byKey(const ValueKey('settings_language_tile')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('settings_language_option_zh')));
+    await tester.pumpAndSettle();
+
+    expect(picked, const Locale('zh'));
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('picking System from the language sheet reports null', (
     tester,
   ) async {
