@@ -1,3 +1,8 @@
+## [1.1.1] - 2026-09-24
+
+### 🚀 Features
+
+- *(i18n)* Add Simplified Chinese support (#306)
 ## [1.1.0] - 2026-09-23
 
 ### 🚀 Features
