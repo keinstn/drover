@@ -20,7 +20,7 @@
   "main": "lib/index.js",
   "dependencies": {
     "firebase-admin": "^14.4.0",
-    "firebase-functions": "^7.3.2"
+    "firebase-functions": "^7.4.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.13",
