@@ -60,7 +60,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_secure_storage_platform_interface: ^2.0.3
+  flutter_secure_storage_platform_interface: ^2.1.1
   firebase_core_platform_interface: ^8.1.0
   firebase_messaging_platform_interface: ^4.10.0
 
