@@ -64,7 +64,9 @@ abstract class HostPlatform {
 
   /// Exec line that prints each of [bins] that resolves on the host PATH,
   /// one name per line (names echoed verbatim so the caller can parse
-  /// identically on both OSes).
+  /// identically on both OSes). On Unix this also probes the account's login
+  /// shell, since non-interactive `sh` PATH can miss fish/zsh-only additions
+  /// (e.g. `fish_add_path`).
   String detectAgentsCommand(List<String> bins);
 
   /// Exec line printing the absolute path of [bin] resolved on the host
@@ -140,16 +142,39 @@ class UnixHostPlatform extends HostPlatform {
     // `sh -lc` rather than `bash -lc`: `command -v` is POSIX, and some hosts
     // (e.g. Alpine) have no bash.
     final quoted = bins.map(shQuote).join(' ');
-    final script =
+    final loop =
         'for a in $quoted; do command -v "\$a" >/dev/null 2>&1 && echo "\$a"; done';
-    return 'sh -lc ${shQuote(script)}';
+    // `sh -lc` only sees `~/.profile` (dash), missing fish/zsh-only PATH
+    // additions like `fish_add_path`. Re-probe through the account's actual
+    // login shell ($SHELL, set by sshd) and keep only its absolute-path
+    // hits, turned back into bare names — junk/motd lines on stdout don't
+    // start with `/` and are dropped. The inner script is double-quoted
+    // (not shQuote'd) so it stays a single level of quoting when this whole
+    // script is shQuote'd below; nesting shQuote inside shQuote here would
+    // desync under fish's single-quote escaping rules.
+    final innerProbe = bins.map((b) => 'command -v ${shQuote(b)}').join('; ');
+    final loginProbe =
+        '"\${SHELL:-sh}" -lc "$innerProbe" </dev/null 2>/dev/null | '
+        'while IFS= read -r p; do case "\$p" in /*) echo "\${p##*/}";; esac; done';
+    return 'sh -lc ${shQuote('$loop; $loginProbe')}';
   }
 
   @override
-  String whichCommand(String bin) =>
-      // `sh -lc` for the same reasons as [detectAgentsCommand]: a login
-      // shell's PATH, `command -v` is POSIX, and some hosts have no bash.
-      'sh -lc ${shQuote('command -v ${shQuote(bin)}')}';
+  String whichCommand(String bin) {
+    // `sh -lc` first, for the same reasons as [detectAgentsCommand]. Only on
+    // a miss (e.g. fish/zsh-only PATH via `fish_add_path`), fall back to the
+    // login shell and keep its first line resolving to exactly this bin —
+    // unlike detectAgentsCommand's basename intersect, a bare `/*` accept
+    // here would let an unrelated rc-file line ending in a slash (e.g. an
+    // nvm/motd notice) through as the resolved path.
+    final quotedBin = shQuote(bin);
+    final probe = 'command -v $quotedBin';
+    final loginProbe =
+        '"\${SHELL:-sh}" -lc "$probe" </dev/null 2>/dev/null | '
+        'while IFS= read -r p; do case "\$p" in '
+        '/*/$quotedBin) echo "\$p"; break;; esac; done';
+    return 'sh -lc ${shQuote('$probe || $loginProbe')}';
+  }
 
   @override
   String runProgramCommand(String program, List<String> args) =>
