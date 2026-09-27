@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drover/src/demo/demo_herdr.dart';
 import 'package:drover/src/herdr/command_runner.dart';
@@ -79,16 +80,28 @@ void main() {
       );
     });
 
-    test('detectAgentsCommand probes via sh -lc and command -v', () {
+    test('detectAgentsCommand probes via sh -lc and command -v, then the '
+        'login shell for names sh missed', () {
       final command = unix.detectAgentsCommand(['claude', 'codex']);
       expect(command, startsWith('sh -lc '));
       expect(command, contains('command -v'));
       expect(command, contains("'claude'"));
       expect(command, contains("'codex'"));
+      expect(command, contains(r'"${SHELL:-sh}" -lc'));
+      expect(command, contains('</dev/null 2>/dev/null'));
     });
 
-    test('whichCommand probes via sh -lc and command -v byte-for-byte', () {
-      expect(unix.whichCommand('node'), "sh -lc 'command -v '\\''node'\\'''");
+    test('whichCommand probes via sh -lc and command -v, falling back to '
+        'the login shell, byte-for-byte', () {
+      expect(
+        unix.whichCommand('node'),
+        "sh -lc 'command -v '\\''node'\\'' || \"\${SHELL:-sh}\" -lc "
+        '"command -v '
+        "'\\''node'\\''\" </dev/null 2>/dev/null | while IFS= read -r p; do "
+        'case "\$p" in /*/'
+        "'\\''node'\\''"
+        ') echo "\$p"; break;; esac; done\'',
+      );
     });
 
     test('runProgramCommand quotes every token', () {
@@ -174,6 +187,146 @@ void main() {
         "command find '/x/y' -name 'img-*' -mtime +2 -delete",
       );
     });
+  });
+
+  group('UnixHostPlatform login-shell fallback (real sh, not a stub)', () {
+    // `sh -c` here stands in for the SSH exec channel's login shell, exactly
+    // as sshd would run the assembled command. HOME points at an empty temp
+    // dir (no real ~/.profile). PATH is still scoped to the temp bin dir
+    // plus the system dirs `sh` itself needs, but on macOS `sh -lc` sources
+    // /etc/profile, whose path_helper re-prepends /usr/local/bin (and
+    // anything else listed in /etc/paths.d) regardless of the PATH we pass
+    // in — so a real host binary there could still leak in. "not found"
+    // assertions therefore probe a name that cannot exist on any host
+    // (`drover-no-such-bin`) rather than relying on the scoped PATH alone.
+    const unix = UnixHostPlatform();
+    late Directory tmp;
+    late String markerFile;
+    late String fakeLoginShell;
+
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('host_platform_test_');
+      Directory('${tmp.path}/bin').createSync();
+      Directory('${tmp.path}/home').createSync();
+      File(
+        '${tmp.path}/bin/claude',
+      ).writeAsStringSync('#!/bin/sh\necho stub-claude\n');
+      Process.runSync('chmod', ['+x', '${tmp.path}/bin/claude']);
+
+      markerFile = '${tmp.path}/login-shell-invoked';
+      fakeLoginShell = '${tmp.path}/fake_login_shell.sh';
+      // Fakes the fish/zsh case: resolves `pi` (missing from `sh`'s PATH) —
+      // printing a junk absolute-path rc-file line first, to prove
+      // whichCommand only accepts a line ending in the exact bin — also
+      // resolves `claude` (to a WRONG path, proving sh wins when both
+      // resolve), and emits an unrelated non-path junk line (e.g. motd).
+      File(fakeLoginShell).writeAsStringSync(
+        '#!/bin/sh\n'
+        'touch "\$MARKER_FILE"\n'
+        'case "\$2" in *pi*) '
+        'echo "/home/u/.nvm activated"; '
+        'echo "/fake/loginshell/bin/pi" ;; '
+        'esac\n'
+        'case "\$2" in '
+        '*claude*) echo "/fake/loginshell/bin/claude-wrong" ;; '
+        'esac\n'
+        'echo "motd junk"\n',
+      );
+      Process.runSync('chmod', ['+x', fakeLoginShell]);
+    });
+
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    Future<ProcessResult> runViaOuterShell(String command, String shell) =>
+        Process.run(
+          '/bin/sh',
+          ['-c', command],
+          environment: {
+            'PATH': '${tmp.path}/bin:/usr/bin:/bin',
+            'HOME': '${tmp.path}/home',
+            'SHELL': shell,
+            'MARKER_FILE': markerFile,
+          },
+          includeParentEnvironment: false,
+        );
+
+    test('detectAgentsCommand unions the sh loop with login-shell hits, '
+        'dropping non-path junk', () async {
+      final result = await runViaOuterShell(
+        unix.detectAgentsCommand(['claude', 'pi', 'drover-no-such-bin']),
+        fakeLoginShell,
+      );
+      final lines = (result.stdout as String).trim().split('\n');
+      expect(lines, containsAll(['claude', 'pi']));
+      expect(lines, isNot(contains('drover-no-such-bin')));
+      expect(lines, isNot(contains('motd junk')));
+    }, skip: Platform.isWindows);
+
+    test('whichCommand falls back to the login shell when sh misses, '
+        'ignoring an unrelated absolute-path rc-file line', () async {
+      final result = await runViaOuterShell(
+        unix.whichCommand('pi'),
+        fakeLoginShell,
+      );
+      expect(result.stdout, '/fake/loginshell/bin/pi\n');
+    }, skip: Platform.isWindows);
+
+    test('whichCommand prefers the sh result over the login shell', () async {
+      final result = await runViaOuterShell(
+        unix.whichCommand('claude'),
+        fakeLoginShell,
+      );
+      expect((result.stdout as String).trim(), '${tmp.path}/bin/claude');
+      // The login shell must never even run: `||` short-circuits once `sh`
+      // resolves it.
+      expect(File(markerFile).existsSync(), isFalse);
+    }, skip: Platform.isWindows);
+
+    test('whichCommand prints nothing when neither sh nor the login shell '
+        'resolve the bin', () async {
+      final result = await runViaOuterShell(
+        unix.whichCommand('drover-no-such-bin'),
+        fakeLoginShell,
+      );
+      expect(result.stdout, isEmpty);
+    }, skip: Platform.isWindows);
+
+    test('whichCommand yields nothing when SHELL fails and sh alone does not '
+        'resolve the bin', () async {
+      final failingShell = '${tmp.path}/failing_shell.sh';
+      File(
+        failingShell,
+      ).writeAsStringSync('#!/bin/sh\necho "boom" >&2\nexit 1\n');
+      Process.runSync('chmod', ['+x', failingShell]);
+
+      final result = await runViaOuterShell(
+        unix.whichCommand('pi'),
+        failingShell,
+      );
+      expect(result.stdout, isEmpty);
+      expect(result.stderr, isEmpty);
+    }, skip: Platform.isWindows);
+
+    test('detectAgentsCommand still yields the sh-loop result when SHELL '
+        'fails, contributing nothing from the login-shell probe', () async {
+      final failingShell = '${tmp.path}/failing_shell.sh';
+      File(
+        failingShell,
+      ).writeAsStringSync('#!/bin/sh\necho "boom" >&2\nexit 1\n');
+      Process.runSync('chmod', ['+x', failingShell]);
+
+      final result = await runViaOuterShell(
+        unix.detectAgentsCommand(['claude', 'pi']),
+        failingShell,
+      );
+      final lines = (result.stdout as String)
+          .trim()
+          .split('\n')
+          .where((l) => l.isNotEmpty)
+          .toList();
+      expect(lines, ['claude']);
+      expect(result.stderr, isEmpty);
+    }, skip: Platform.isWindows);
   });
 
   group('WindowsHostPlatform', () {
