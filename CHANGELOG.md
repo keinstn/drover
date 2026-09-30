@@ -1,3 +1,8 @@
+## [1.1.2] - 2026-09-30
+
+### 🐛 Bug Fixes
+
+- *(herdr)* Probe the login shell when detecting agent binaries (#313)
 ## [1.1.1] - 2026-09-24
 
 ### 🚀 Features
