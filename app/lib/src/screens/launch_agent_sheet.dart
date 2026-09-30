@@ -14,7 +14,8 @@ import 'directory_picker_sheet.dart';
 enum _WorkspaceMode { newWorkspace, existing }
 
 /// Sheet body for launching a new agent: pick a preset, a cwd, and whether to
-/// place it in a new or existing workspace.
+/// place it in a new or existing workspace. Pops the launched agent's pane id,
+/// or nothing when cancelled.
 class LaunchAgentSheet extends StatefulWidget {
   const LaunchAgentSheet({
     super.key,
@@ -151,8 +152,9 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
           : null;
       final wsId = workspace?.workspaceId ?? _selectedWorkspaceId!;
       String? splitPaneId;
+      final String paneId;
       try {
-        final paneId =
+        paneId =
             workspace?.paneId ??
             (splitPaneId = await widget.client.splitPane(
               workspaceId: wsId,
@@ -182,7 +184,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         rethrow;
       }
       if (!mounted) return;
-      Navigator.pop(context, true);
+      Navigator.pop(context, paneId);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -255,7 +257,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                           style: droverNeutralButtonStyle(scheme),
                           onPressed: _busy
                               ? null
-                              : () => Navigator.pop(context, false),
+                              : () => Navigator.pop(context),
                           child: Text(l10n.commonCancel),
                         ),
                       ),

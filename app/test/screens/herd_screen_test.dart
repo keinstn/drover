@@ -2610,6 +2610,89 @@ void main() {
     },
   );
 
+  /// Answers the launch sheet's commands; once `agent start` has run, the
+  /// listing carries the new `wZ:p1` agent only when [listsLaunched] is set.
+  CommandResult Function(String) launchResponder({
+    required bool listsLaunched,
+  }) {
+    var started = false;
+    return (command) {
+      if (command.contains('command -v')) return ok('claude\n');
+      if (command.contains("'workspace' 'create'")) {
+        return ok(
+          '{"id":"1","result":{"workspace":'
+          '{"workspace_id":"wZ","label":"proj"},'
+          '"root_pane":{"pane_id":"wZ:p1"}}}',
+        );
+      }
+      if (command.contains("'agent' 'start'")) {
+        started = true;
+        return ok('{"id":"1","result":{"type":"agent_started"}}');
+      }
+      if (command.contains("'agent' 'list'") && started && listsLaunched) {
+        return ok(
+          '{"id":"1","result":{"agents":['
+          '{"agent":"claude","agent_status":"idle","cwd":"/tmp/proj",'
+          '"focused":false,"pane_id":"wZ:p1","tab_id":"wZ:t1",'
+          '"workspace_id":"wZ","name":"Agent New"}]}}',
+        );
+      }
+      return _respond(command);
+    };
+  }
+
+  Future<void> launchFromSheet(WidgetTester tester) async {
+    await tester.tap(find.byKey(const ValueKey('launch_agent_fab')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('cwd_field')),
+      '/tmp/proj',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('launch_button')));
+    // Not pumpAndSettle: the pushed agent screen polls on a timer.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+  }
+
+  testWidgets('a launch from the sheet opens the new agent', (tester) async {
+    final client = HerdrClient(
+      FakeCommandRunner(launchResponder(listsLaunched: true)),
+    );
+
+    await tester.pumpWidget(_herdApp(client: client));
+    await tester.pump();
+    await tester.pump();
+    await launchFromSheet(tester);
+
+    expect(find.byType(LaunchAgentSheet), findsNothing);
+    expect(find.byType(AgentScreen), findsOneWidget);
+    expect(find.text('Agent New'), findsWidgets);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a launched agent missing from the listing stays on the herd', (
+    tester,
+  ) async {
+    final client = HerdrClient(
+      FakeCommandRunner(launchResponder(listsLaunched: false)),
+    );
+
+    await tester.pumpWidget(_herdApp(client: client));
+    await tester.pump();
+    await tester.pump();
+    await launchFromSheet(tester);
+
+    expect(find.byType(LaunchAgentSheet), findsNothing);
+    expect(find.byType(AgentScreen), findsNothing);
+    expect(find.byType(HerdScreen), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   group('HerdHostRef', () {
     test('equality and hashCode account for hostEverConnected', () {
       const a = HerdHostRef(hostId: 'h', displayName: 'H', revision: 0);
