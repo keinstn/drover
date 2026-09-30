@@ -799,7 +799,7 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _openLaunchSheet(HerdHostRef host) async {
-    final launched = await showModalBottomSheet<bool>(
+    final paneId = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       // LaunchAgentSheet paints its own panel; without this the route's own
@@ -816,7 +816,22 @@ class _HerdScreenState extends State<HerdScreen> with WidgetsBindingObserver {
         ),
       ),
     );
-    if (launched == true) unawaited(_loadHost(host));
+    if (paneId == null) return;
+    unawaited(_loadHost(host));
+    // Lands the user on the agent they just started. A fresh listing rather
+    // than the bucket, which `_loadHost` may skip refreshing; a failed or
+    // agent-less listing just leaves them on the herd, as does a route the
+    // user opened meanwhile (the new card is already tappable by then).
+    final AgentInfo? agent;
+    try {
+      final agents = await widget.clientFor(host).listAgents();
+      agent = agents.where((a) => a.paneId == paneId).firstOrNull;
+    } catch (_) {
+      return;
+    }
+    if (agent == null || !mounted) return;
+    if (ModalRoute.of(context)?.isCurrent != true) return;
+    unawaited(_openAgentScreen(host, agent));
   }
 
   /// Pushes the detail screen for [agent], suspending the periodic

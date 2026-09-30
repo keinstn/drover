@@ -104,7 +104,7 @@ class _Harness extends StatefulWidget {
 }
 
 class _HarnessState extends State<_Harness> {
-  bool? poppedValue;
+  String? poppedValue;
 
   @override
   Widget build(BuildContext context) {
@@ -112,7 +112,7 @@ class _HarnessState extends State<_Harness> {
       body: Center(
         child: ElevatedButton(
           onPressed: () async {
-            poppedValue = await showModalBottomSheet<bool>(
+            poppedValue = await showModalBottomSheet<String>(
               context: context,
               isScrollControlled: true,
               builder: (_) => LaunchAgentSheet(
@@ -191,7 +191,7 @@ void main() {
       expect(runner.commands.any((c) => c.contains("'pane' 'split'")), isFalse);
 
       final state = tester.state<_HarnessState>(find.byType(_Harness));
-      expect(state.poppedValue, true);
+      expect(state.poppedValue, 'wZ:p1');
     },
   );
 
@@ -249,7 +249,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final state = tester.state<_HarnessState>(find.byType(_Harness));
-    expect(state.poppedValue, false);
+    expect(state.poppedValue, isNull);
     expect(runner.commands.any((c) => c.contains("'agent' 'start'")), isFalse);
   });
 
@@ -296,6 +296,8 @@ void main() {
     expect(splitIndex, greaterThanOrEqualTo(0));
     expect(startIndex, greaterThan(splitIndex));
     expect(runner.commands[startIndex], contains("'--pane' 'wA:p2'"));
+    final state = tester.state<_HarnessState>(find.byType(_Harness));
+    expect(state.poppedValue, 'wA:p2');
   });
 
   testWidgets('new workspace name defaults to the cwd segment', (tester) async {
@@ -475,7 +477,7 @@ void main() {
         isFalse,
       );
       final state = tester.state<_HarnessState>(find.byType(_Harness));
-      expect(state.poppedValue, true);
+      expect(state.poppedValue, 'wZ:p1');
     },
   );
 
