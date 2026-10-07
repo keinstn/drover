@@ -19,11 +19,15 @@ notes (`claude-notes.md`, `copilot-notes.md`, `codex-notes.md`,
 - [marionette_mcp](https://pub.dev/packages/marionette_mcp) (lets Claude Code
   inspect/tap/screenshot the running app via the Dart VM service): `dart pub global
   activate marionette_mcp`, then ensure `~/.pub-cache/bin` is on PATH.
-- [`asc`](https://asccli.sh) (starts Xcode Cloud builds — only needed to
-  release): `brew install asc`, then `asc auth login --name drover --key-id …
-  --issuer-id … --private-key …p8`. An App Store Connect API key with the
-  **Developer** role is enough. Credentials go to the system keychain, so the
-  `.p8` can be deleted afterwards.
+- [`asc`](https://asccli.sh) (starts Xcode Cloud builds and submits versions
+  for review — only needed to release): `brew install asc`, then `asc auth
+  login --name drover --key-id … --issuer-id … --private-key …p8`. Starting
+  builds needs only the **Developer** role; writing version metadata and
+  submitting needs **App Manager**. Credentials go to the system keychain, so
+  the `.p8` can be deleted afterwards. Then `asc install-skills` and link
+  `asc-release-flow`, `asc-whats-new-writer` and `asc-submission-health` from
+  `~/.agents/skills/` into `~/.claude/skills/` — the rest of the pack isn't
+  needed here.
 - [git-cliff](https://git-cliff.org) (generates `CHANGELOG.md` entries — only
   needed for `just tag-release`, run after a version actually ships):
   `brew install git-cliff`.
@@ -108,6 +112,21 @@ then generates a `CHANGELOG.md` section from the Conventional Commits since
 the previous release tag and commits it separately on top of current `main`,
 so the entry lands after the tagged commit rather than inside it. See
 `cliff.toml` for the commit grouping/skip rules.
+
+Submitting a processed build for review follows the `asc-release-flow` and
+`asc-whats-new-writer` skills, with these drover-specific rules:
+
+- Create the version with `--copy-metadata-from <previous semver>
+  --exclude-fields whatsNew`; only What's New is written fresh.
+- What's New goes in all three locales — en-US, ja, zh-Hans — and covers
+  user-visible changes only; dependency bumps collapse into one "updated
+  underlying libraries" line. Match the previous version's notes for voice.
+- France must stay unavailable (`asc pricing availability
+  territory-availabilities` shows `FRA` with `available=false`). The
+  export-compliance answer depends on it — see `docs/app-store-submission.md`.
+- Check the phased-release setting on the new version before submitting.
+- Run `asc review submit` only after the user explicitly approves the draft.
+- After it ships, `just tag-release <semver>` as above.
 
 That build-number counter ("Next Build Number", Xcode Cloud → Settings) is per
 app and shared by every workflow, and it can only ever be raised, never
