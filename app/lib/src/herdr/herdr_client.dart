@@ -424,7 +424,14 @@ class HerdrClient {
   ///
   /// Herdr may briefly report a newly created or split pane as
   /// `agent_pane_busy` while its shell initializes, so retry that race only.
-  Future<void> startAgent({
+  ///
+  /// Returns whether the agent came up ready for prompts. `agent_not_ready`
+  /// is either an agent blocked at a startup prompt (e.g. a folder-trust
+  /// dialog), which herdr keeps alive for the user to answer, or a readiness
+  /// timeout that may have left nothing behind. Only a blocked agent listed
+  /// in [paneId] counts as started (false); otherwise the original error is
+  /// rethrown, even when that listing itself fails.
+  Future<bool> startAgent({
     required String name,
     required String kind,
     required String paneId,
@@ -432,14 +439,30 @@ class HerdrClient {
     for (var attempt = 0; ; attempt++) {
       try {
         await _run(['agent', 'start', name, '--kind', kind, '--pane', paneId]);
-        return;
+        return true;
       } on HerdrException catch (e) {
+        if (e.code == 'agent_not_ready') {
+          if (await _blockedIn(paneId)) return false;
+          rethrow;
+        }
         if (e.code != 'agent_pane_busy' ||
             attempt >= _startAgentPaneBusyBackoffs.length) {
           rethrow;
         }
         await _sleep(_startAgentPaneBusyBackoffs[attempt]);
       }
+    }
+  }
+
+  /// Whether a blocked agent is listed in [paneId]; false if the listing
+  /// fails, so the caller's real error is the one that surfaces.
+  Future<bool> _blockedIn(String paneId) async {
+    try {
+      return (await listAgents()).any(
+        (a) => a.paneId == paneId && a.status == AgentStatus.blocked,
+      );
+    } catch (_) {
+      return false;
     }
   }
 

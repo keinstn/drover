@@ -204,7 +204,10 @@ List<VoiceTool> droverVoiceTools(VoiceHerd herd, VoiceDrafts drafts) {
           'Starts the drafted agent and hands it its brief. Call ONLY after '
           'the user explicitly confirmed. The agent is started only when '
           'this returns launched: true; brief_delivered false means it is '
-          'running but never got the brief.',
+          'running but never got the brief. blocked_at_startup true means '
+          'the agent is waiting at a startup prompt (e.g. a folder-trust '
+          'question): tell the user to answer it on the agent\'s screen '
+          'first, and do NOT send the brief as a message until they have.',
       parameters: {
         'draft_id': Schema.string(
           description: 'The draft_id returned by draft_launch.',
@@ -247,6 +250,7 @@ List<VoiceTool> droverVoiceTools(VoiceHerd herd, VoiceDrafts drafts) {
           'agent': launched.title,
           'project': lastPathSegment(draft.cwd),
           'brief_delivered': launched.briefDelivered,
+          'blocked_at_startup': launched.blocked,
         };
       },
     ),

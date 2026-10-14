@@ -5,6 +5,18 @@ as observed over herdr. For herdr's own behaviours (which apply to every agent
 — workspace handling, the `shift+tab` encoding bug, the text-only input
 channel, the `agent_session` mechanism), see `../herdr-notes.md`.
 
+## Startup
+
+- **The folder-trust dialog blocks a fresh host/directory at launch.**
+  (2026-10-15, herdr 0.9.4) In a directory Claude Code has never opened on
+  that host, it starts with "Quick safety check: Is this a project you created
+  or one you trust?" and waits. herdr reports this as `agent_not_ready` from
+  `agent start` while keeping the agent alive (see `../herdr-notes.md` for how
+  drover handles that). The dialog is an un-numbered `❯ No, exit / Yes, I
+  trust this folder` list, answered with arrows + Enter (not a digit). Trust
+  is stored per host, which is why a directory already trusted on one host
+  still blocks on another.
+
 ## Mode cycling
 
 - **Cycle order via the raw backtab workaround.** (2026-07-18, herdr issue

@@ -82,6 +82,30 @@ CommandResult _responseWithTakenAgentName(String command) {
   return _response(command);
 }
 
+/// Answers every start with herdr's `agent_not_ready`, and lists [agents]
+/// (raw `agent list` entries) as the agents herdr still holds afterwards.
+CommandResult Function(String) _responseWithAgentNotReady(String agents) =>
+    (command) {
+      if (command.contains("'agent' 'start'")) {
+        return ok(
+          '{"id":"1","error":{"code":"agent_not_ready",'
+          '"message":"agent claude-proj is blocked during startup"}}',
+        );
+      }
+      if (command.contains("'agent' 'list'")) {
+        return ok('{"id":"1","result":{"agents":[$agents]}}');
+      }
+      if (command.contains("'workspace' 'close'")) {
+        return ok('{"id":"1","result":{}}');
+      }
+      return _response(command);
+    };
+
+const _blockedClaudeProj =
+    '{"pane_id":"wZ:p1","workspace_id":"wZ","tab_id":"wZ:t1",'
+    '"agent":"claude","name":"claude-proj","agent_status":"blocked",'
+    '"cwd":"/tmp/proj","focused":false}';
+
 CommandResult _responseWithDuplicateWorkspaceLabels(String command) {
   if (command.contains("'workspace' 'list'")) {
     return ok(
@@ -478,6 +502,77 @@ void main() {
       );
       final state = tester.state<_HarnessState>(find.byType(_Harness));
       expect(state.poppedValue, 'wZ:p1');
+    },
+  );
+
+  testWidgets(
+    'an agent blocked at a startup prompt keeps its workspace and opens',
+    (tester) async {
+      final runner = FakeCommandRunner(
+        _responseWithAgentNotReady(_blockedClaudeProj),
+      );
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: _Harness(client: client),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const ValueKey('cwd_field')),
+        '/tmp/proj',
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('launch_button')));
+      await tester.pumpAndSettle();
+
+      // The user still has to answer the prompt, so nothing is rolled back.
+      expect(
+        runner.commands.any((c) => c.contains("'workspace' 'close'")),
+        isFalse,
+      );
+      final state = tester.state<_HarnessState>(find.byType(_Harness));
+      expect(state.poppedValue, 'wZ:p1');
+    },
+  );
+
+  testWidgets(
+    'agent_not_ready with no live agent still rolls the workspace back',
+    (tester) async {
+      final runner = FakeCommandRunner(_responseWithAgentNotReady(''));
+      final client = HerdrClient(runner);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: _Harness(client: client),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const ValueKey('cwd_field')),
+        '/tmp/proj',
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('launch_button')));
+      await tester.pumpAndSettle();
+
+      expect(
+        runner.commands.where((c) => c.contains("'workspace' 'close' 'wZ'")),
+        hasLength(1),
+      );
+      final state = tester.state<_HarnessState>(find.byType(_Harness));
+      expect(state.poppedValue, isNull);
     },
   );
 

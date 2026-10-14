@@ -41,38 +41,51 @@ void main() {
   group('startAgentWithFreeName', () {
     test('uses the plain slug when it is free', () async {
       final tried = <String>[];
-      final name = await startAgentWithFreeName(
+      final result = await startAgentWithFreeName(
         base: 'Drover Repo',
-        start: (name) async => tried.add(name),
+        start: (name) async {
+          tried.add(name);
+          return true;
+        },
       );
-      expect(name, 'drover-repo');
+      expect(result, (name: 'drover-repo', ready: true));
       expect(tried, ['drover-repo']);
+    });
+
+    test('passes through a start that came up not ready', () async {
+      final result = await startAgentWithFreeName(
+        base: 'drover',
+        start: (name) async => false,
+      );
+      expect(result, (name: 'drover', ready: false));
     });
 
     test('advances to -2 when the slug is taken', () async {
       final tried = <String>[];
-      final name = await startAgentWithFreeName(
+      final result = await startAgentWithFreeName(
         base: 'drover',
         start: (name) async {
           tried.add(name);
           if (name == 'drover') {
             throw const HerdrException('agent_name_taken', 'taken');
           }
+          return true;
         },
       );
-      expect(name, 'drover-2');
+      expect(result, (name: 'drover-2', ready: true));
       expect(tried, ['drover', 'drover-2']);
     });
 
     test('keeps a suffixed name within 32 characters', () async {
       final tried = <String>[];
-      final name = await startAgentWithFreeName(
+      final (:name, ready: _) = await startAgentWithFreeName(
         base: 'a' * 40,
         start: (name) async {
           tried.add(name);
           if (tried.length == 1) {
             throw const HerdrException('agent_name_taken', 'taken');
           }
+          return true;
         },
       );
       expect(name.length, 32);

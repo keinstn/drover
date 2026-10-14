@@ -29,14 +29,16 @@ String agentNameSlug(String base) {
 }
 
 /// Starts an agent under a free, herdr-legal name derived from [base],
-/// retrying while herdr reports the name taken. Returns the name used.
+/// retrying while herdr reports the name taken. Returns the name used, and
+/// [start]'s verdict on whether the agent came up ready for prompts (see
+/// `HerdrClient.startAgent`).
 ///
 /// Collisions are only visible to herdr — another pane may have claimed the
 /// name between our check and our start — so we let herdr be the judge and
 /// walk a numeric suffix rather than pre-listing live agents.
-Future<String> startAgentWithFreeName({
+Future<({String name, bool ready})> startAgentWithFreeName({
   required String base,
-  required Future<void> Function(String name) start,
+  required Future<bool> Function(String name) start,
 }) async {
   final slug = agentNameSlug(base);
   for (var attempt = 1; ; attempt++) {
@@ -45,8 +47,7 @@ Future<String> startAgentWithFreeName({
         ? slug
         : '${_truncate(slug, 32 - suffix.length)}$suffix';
     try {
-      await start(name);
-      return name;
+      return (name: name, ready: await start(name));
     } on HerdrException catch (e) {
       if (e.code != 'agent_name_taken' || attempt >= 99) rethrow;
     }

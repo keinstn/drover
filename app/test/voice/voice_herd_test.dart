@@ -606,11 +606,13 @@ Ship it.''';
         '"terminal_title_stripped":"Add retries"}]}}';
 
     /// A herd whose `agent list` walks [statuses] (the last one repeating)
-    /// and whose pane reads [panes] (likewise).
+    /// and whose pane reads [panes] (likewise); with [noAgents] it lists none.
     ({HerdVoiceHerd herd, _FakeRunner runner}) launcher({
       List<String> statuses = const ['idle'],
       List<String> panes = const ['> add retries'],
       bool startFails = false,
+      bool startNotReady = false,
+      bool noAgents = false,
       Set<String> namesTaken = const {},
     }) {
       var listCalls = 0;
@@ -619,6 +621,7 @@ Ship it.''';
       runner = _FakeRunner((command) {
         if (command.contains("'workspace' 'create'")) return workspace;
         if (command.contains("'agent' 'list'")) {
+          if (noAgents) return '{"id":"1","result":{"agents":[]}}';
           final i = listCalls++;
           return agentList(
             statuses[i < statuses.length ? i : statuses.length - 1],
@@ -627,6 +630,10 @@ Ship it.''';
         if (command.contains("'agent' 'start'")) {
           if (startFails) {
             return '{"id":"1","error":{"code":"no_agent","message":"nope"}}';
+          }
+          if (startNotReady) {
+            return '{"id":"1","error":{"code":"agent_not_ready",'
+                '"message":"blocked during startup"}}';
           }
           if (namesTaken.any((n) => command.contains("'agent' 'start' '$n'"))) {
             return '{"id":"1","error":{"code":"agent_name_taken",'
@@ -666,6 +673,7 @@ Ship it.''';
           paneId: 'w2:p1',
           title: 'Add retries',
           briefDelivered: true,
+          blocked: false,
         ));
         expect(
           runner.commands
@@ -707,6 +715,61 @@ Ship it.''';
       );
     });
 
+    test(
+      'keeps an agent blocked at a startup prompt and hands the brief back',
+      () async {
+        final (:herd, :runner) = launcher(
+          startNotReady: true,
+          statuses: ['blocked'],
+        );
+
+        final result = await herd.launch(
+          kind: 'claude',
+          cwd: '/home/me/proj',
+          brief: 'add retries',
+        );
+
+        expect(result, (
+          paneId: 'w2:p1',
+          title: 'claude',
+          briefDelivered: false,
+          blocked: true,
+        ));
+        expect(
+          runner.commands.any((c) => c.contains("'workspace' 'close'")),
+          isFalse,
+        );
+        expect(
+          runner.commands.any((c) => c.contains("'agent' 'prompt'")),
+          isFalse,
+        );
+        // Only startAgent's own check: no idle wait on a known-blocked agent.
+        expect(
+          runner.commands.where((c) => c.contains("'agent' 'list'")),
+          hasLength(1),
+        );
+      },
+    );
+
+    test('rolls back an agent_not_ready start when no agent is left', () async {
+      final (:herd, :runner) = launcher(startNotReady: true, noAgents: true);
+
+      await expectLater(
+        herd.launch(kind: 'claude', cwd: '/home/me/proj', brief: 'x'),
+        throwsA(
+          isA<HerdrException>().having(
+            (e) => e.code,
+            'code',
+            'agent_not_ready',
+          ),
+        ),
+      );
+      expect(
+        runner.commands.where((c) => c.contains("'workspace' 'close' 'w2'")),
+        hasLength(1),
+      );
+    });
+
     test('starts under the next free name when the kind is taken', () async {
       final (:herd, :runner) = launcher(namesTaken: {'claude'});
 
@@ -720,6 +783,7 @@ Ship it.''';
         paneId: 'w2:p1',
         title: 'Add retries',
         briefDelivered: true,
+        blocked: false,
       ));
       expect(
         runner.commands.where((c) => c.contains("'agent' 'start'")).toList(),
