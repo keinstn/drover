@@ -613,14 +613,95 @@ void main() {
         },
       );
 
-      await client.startAgent(name: 'proj', kind: 'claude', paneId: 'wJ:p1');
+      final ready = await client.startAgent(
+        name: 'proj',
+        kind: 'claude',
+        paneId: 'wJ:p1',
+      );
 
+      expect(ready, isTrue);
       expect(
         runner.commands.single,
         "~/.local/bin/herdr 'agent' 'start' 'proj' '--kind' 'claude' "
         "'--pane' 'wJ:p1'",
       );
       expect(sleeps, isEmpty);
+    });
+  });
+
+  group('HerdrClient.startAgent agent_not_ready', () {
+    const notReady =
+        '{"id":"1","error":{"code":"agent_not_ready",'
+        '"message":"agent proj is blocked during startup"}}';
+
+    String agentList(String paneId, String status) =>
+        '{"id":"1","result":{"agents":[{"pane_id":"$paneId",'
+        '"workspace_id":"wJ","tab_id":"wJ:t1","agent":"claude",'
+        '"agent_status":"$status","cwd":"/tmp/proj","focused":false}]}}';
+
+    /// Answers the start with `agent_not_ready` and `agent list` with [list]
+    /// (a throw from it surfaces as a transport error).
+    HerdrClient client(CommandResult Function() list) => HerdrClient(
+      FakeCommandRunner((command) {
+        if (command.contains("'agent' 'start'")) return ok(notReady);
+        if (command.contains("'agent' 'list'")) return list();
+        throw StateError('unexpected command: $command');
+      }),
+      sleep: (_) async {},
+    );
+
+    final throwsNotReady = throwsA(
+      isA<HerdrException>()
+          .having((e) => e.code, 'code', 'agent_not_ready')
+          .having(
+            (e) => e.message,
+            'message',
+            'agent proj is blocked during startup',
+          ),
+    );
+
+    test('reports a blocked agent in the pane as started, not ready', () async {
+      final ready = await client(
+        () => ok(agentList('wJ:p1', 'blocked')),
+      ).startAgent(name: 'proj', kind: 'claude', paneId: 'wJ:p1');
+
+      expect(ready, isFalse);
+    });
+
+    test('rethrows when the agent in the pane is not blocked', () async {
+      await expectLater(
+        client(
+          () => ok(agentList('wJ:p1', 'working')),
+        ).startAgent(name: 'proj', kind: 'claude', paneId: 'wJ:p1'),
+        throwsNotReady,
+      );
+    });
+
+    test('rethrows when only another pane holds a blocked agent', () async {
+      await expectLater(
+        client(
+          () => ok(agentList('wJ:p2', 'blocked')),
+        ).startAgent(name: 'proj', kind: 'claude', paneId: 'wJ:p1'),
+        throwsNotReady,
+      );
+    });
+
+    test('rethrows when no agent is left', () async {
+      await expectLater(
+        client(
+          () => ok('{"id":"1","result":{"agents":[]}}'),
+        ).startAgent(name: 'proj', kind: 'claude', paneId: 'wJ:p1'),
+        throwsNotReady,
+      );
+    });
+
+    test('rethrows the original error when the listing fails', () async {
+      await expectLater(
+        client(
+          () => throw StateError('connection lost'),
+        ).startAgent(name: 'proj', kind: 'claude', paneId: 'wJ:p1'),
+        throwsNotReady,
+      );
     });
   });
 

@@ -163,6 +163,8 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         // Slugs a hand-typed illegal name and walks past one a live agent
         // already holds. It stays inside this try so a taken name is not
         // mistaken for a failed start and does not roll the pane back.
+        // An agent blocked at a startup prompt (`ready: false`) is kept too:
+        // the agent screen it pops to is where the user answers that prompt.
         await startAgentWithFreeName(
           base: name,
           start: (name) => widget.client.startAgent(

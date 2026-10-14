@@ -177,6 +177,24 @@ which agent is running in the pane.
   ... }` string on stderr with exit 0 for the same situation, which drover
   surfaces as an opaque message users misread as an SSH failure (issue #160);
   that is why the minimum supported herdr version moved to 0.8.0.
+- **`agent start` returns `agent_not_ready` for an agent blocked at a startup
+  prompt — but keeps it alive.** (2026-10-15, herdr 0.9.4) When the agent CLI
+  stops at a prompt before it is ready (e.g. Claude Code's folder-trust dialog,
+  see `agents/claude-notes.md`), `agent start` returns an error envelope with
+  code `agent_not_ready` ("agent X is blocked during startup and is not ready
+  for prompts") immediately. Per herdr's own help text it "keeps the name
+  available for `agent read` and `agent send-keys`": the agent is live, named,
+  and waiting for an answer. The same code may also be used when the 30s
+  readiness wait times out, where the agent may be gone. `HerdrClient.startAgent`
+  therefore checks `agent list` for an agent in that pane (matched on pane
+  only — the pane was just created for this start) whose status is `blocked`:
+  if there is one, the start counts as started-but-not-ready (no rollback —
+  the launch sheet opens the agent screen, where the pane text and the
+  arrow/Enter keys row let the user answer; voice skips the idle wait and
+  reports `blocked_at_startup` to the model). Anything else — no agent, an
+  agent that is not `blocked` (a slow agent that merely timed out), or a
+  failed listing — rethrows the original `agent_not_ready` and rolls back as
+  before.
 
 ## Measurements (Stage 0, 2026-07-18, localhost loopback, Claude Code agent)
 

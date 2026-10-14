@@ -360,6 +360,7 @@ void main() {
         'agent': 'claude',
         'project': 'x',
         'brief_delivered': true,
+        'blocked_at_startup': false,
       });
       expect(herd.launched.single, ('claude', '/tmp/x', 'ship it'));
       expect(drafts.pending, isEmpty);
@@ -373,6 +374,19 @@ void main() {
 
       expect(result['launched'], isTrue);
       expect(result['brief_delivered'], isFalse);
+    });
+
+    test('launch reports an agent blocked at a startup prompt', () async {
+      await tool('draft_launch').run({'project': 'x', 'brief': 'ship it'});
+      herd
+        ..briefDelivered = false
+        ..blocked = true;
+
+      final result = await tool('launch').run({'draft_id': 'd1'});
+
+      expect(result['launched'], isTrue);
+      expect(result['brief_delivered'], isFalse);
+      expect(result['blocked_at_startup'], isTrue);
     });
 
     test('launch with an unknown or message draft id starts nothing', () async {

@@ -89,8 +89,15 @@ abstract interface class VoiceHerd {
 
 /// What [VoiceHerd.launch] produced: the started agent, plus whether its
 /// brief was confirmed delivered (false means the agent is up but empty, so
-/// the brief still has to be sent as a message).
-typedef VoiceLaunch = ({String paneId, String title, bool briefDelivered});
+/// the brief still has to be sent as a message), and whether it is [blocked]
+/// at a startup prompt (e.g. a folder-trust question) the user must answer
+/// on its screen before any message can land.
+typedef VoiceLaunch = ({
+  String paneId,
+  String title,
+  bool briefDelivered,
+  bool blocked,
+});
 
 /// Unannounced agent events for one host. HerdScreen adds; VoiceSession
 /// drains.
@@ -466,12 +473,12 @@ class HerdVoiceHerd implements VoiceHerd {
   }) async {
     final folder = lastPathSegment(cwd);
     final workspace = await _client.createWorkspace(label: folder, cwd: cwd);
-    final String name;
+    final ({String name, bool ready}) started;
     try {
       // Every kind is already a legal slug, so the retry only ever appends a
       // numeric suffix — and it must stay inside this try so a taken name is
       // not mistaken for a failed start and does not roll the workspace back.
-      name = await startAgentWithFreeName(
+      started = await startAgentWithFreeName(
         base: kind,
         start: (name) => _client.startAgent(
           name: name,
@@ -487,20 +494,42 @@ class HerdVoiceHerd implements VoiceHerd {
       } catch (_) {}
       rethrow;
     }
+    final (:name, :ready) = started;
     final paneId = workspace.paneId;
+    // Blocked at a startup prompt (e.g. a folder-trust dialog): it will not
+    // turn idle until the user answers it, so the idle wait would only burn
+    // its whole budget. Hand the brief back straight away.
+    if (!ready) {
+      return (
+        paneId: paneId,
+        title: name,
+        briefDelivered: false,
+        blocked: true,
+      );
+    }
     final agent = await _awaitIdle(paneId);
     final title = agent == null ? name : voiceAgentTitle(agent);
     // Not idle within the bound: prompting now is exactly the send herdr
     // drops, so hand the brief back to the caller instead.
     if (agent == null) {
-      return (paneId: paneId, title: title, briefDelivered: false);
+      return (
+        paneId: paneId,
+        title: title,
+        briefDelivered: false,
+        blocked: false,
+      );
     }
     var delivered = await _deliverBrief(paneId, brief);
     // herdr can silently drop a prompt sent right after `agent start`, even
     // with the status already reading idle (docs/herdr-notes.md), so the
     // pane is re-read and the brief sent once more if it is not there.
     if (!delivered) delivered = await _deliverBrief(paneId, brief);
-    return (paneId: paneId, title: title, briefDelivered: delivered);
+    return (
+      paneId: paneId,
+      title: title,
+      briefDelivered: delivered,
+      blocked: false,
+    );
   }
 
   /// Polls until [paneId] is listed as an idle agent; null once the poll

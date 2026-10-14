@@ -271,6 +271,9 @@ class FakeVoiceHerd implements VoiceHerd {
   /// What [launch] reports about the brief.
   bool briefDelivered = true;
 
+  /// What [launch] reports about a startup prompt blocking the agent.
+  bool blocked = false;
+
   /// When set, [launch] waits for it before returning — the in-flight window
   /// a second launch must not slip into.
   Completer<void>? launchGate;
@@ -284,6 +287,11 @@ class FakeVoiceHerd implements VoiceHerd {
     if (launchError != null) throw launchError!;
     launched.add((kind, cwd, brief));
     await launchGate?.future;
-    return (paneId: 'w:new', title: kind, briefDelivered: briefDelivered);
+    return (
+      paneId: 'w:new',
+      title: kind,
+      briefDelivered: briefDelivered,
+      blocked: blocked,
+    );
   }
 }
