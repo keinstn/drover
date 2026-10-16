@@ -1,3 +1,12 @@
+## [1.1.4] - 2026-10-16
+
+### 🐛 Bug Fixes
+
+- *(app)* Keep agents blocked at a startup prompt instead of rolling back (#322)
+
+### 📚 Documentation
+
+- Document asc review submission in releasing guide (#316)
 ## [1.1.3] - 2026-10-08
 
 ### 🚀 Features
