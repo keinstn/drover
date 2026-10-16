@@ -43,7 +43,7 @@ dependencies:
   intl: any
   marionette_flutter: ^0.7.0
   speech_to_text: ^7.4.0
-  image_picker: ^1.2.3
+  image_picker: ^1.2.4
   firebase_core: ^4.14.0
   firebase_auth: ^6.6.1
   firebase_messaging: ^16.6.0
