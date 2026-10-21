@@ -5,9 +5,6 @@ const _themeModeKey = 'theme_mode';
 const _localeKey = 'locale';
 const _notifyOnBlockedKey = 'notify_on_blocked';
 const _notifyOnDoneKey = 'notify_on_done';
-const _voiceAssistantKey = 'voice_assistant_enabled';
-const _voiceConsentVersionKey = 'voice_consent_version';
-const _voicePaidInterestKey = 'voice_paid_interest';
 
 /// The user's app-level preferences.
 class AppSettings {
@@ -16,9 +13,6 @@ class AppSettings {
     this.locale,
     this.notifyOnBlocked = true,
     this.notifyOnDone = true,
-    this.voiceAssistantEnabled = true,
-    this.voiceConsentVersion = 0,
-    this.voicePaidInterest = false,
   });
 
   final ThemeMode themeMode;
@@ -31,30 +25,6 @@ class AppSettings {
   /// backend suppresses that kind for a device that has never sent the field.
   final bool notifyOnBlocked;
   final bool notifyOnDone;
-
-  /// The off switch: shows the voice-assistant entry point on the herd
-  /// screen. Not the opt-in — [voiceConsentVersion] gates everything that
-  /// leaves the device, and turning this off clears it.
-  final bool voiceAssistantEnabled;
-
-  /// Which version of the voice disclosure the user accepted; 0 is "none
-  /// yet". Anything below `kVoiceConsentVersion` blocks the session before
-  /// anything is recorded or sent and puts the sheet back up — App Store
-  /// guideline 5.1.2(i) wants the disclosure the user agreed to to be the
-  /// one describing what the app now does. A version rather than a flag
-  /// because the copy changes: installs carrying the old `bool` under the
-  /// old key read 0 here and are asked again, which is the safe direction.
-  final int voiceConsentVersion;
-
-  /// Whether this device has already told the developer its owner would pay
-  /// to keep using the voice assistant.
-  ///
-  /// Here rather than on the server because the server stores no uid against
-  /// that tap — only a total — so there is nowhere else for it to live. That
-  /// makes it a property of the install: a reinstall, or the same person on a
-  /// second device, offers the tap again. Deliberate, and the reason the
-  /// count is read as taps rather than people.
-  final bool voicePaidInterest;
 }
 
 /// Persists [AppSettings] in shared_preferences.
@@ -66,9 +36,6 @@ class SettingsStore {
       locale: _localeFrom(prefs.getString(_localeKey)),
       notifyOnBlocked: prefs.getBool(_notifyOnBlockedKey) ?? true,
       notifyOnDone: prefs.getBool(_notifyOnDoneKey) ?? true,
-      voiceAssistantEnabled: prefs.getBool(_voiceAssistantKey) ?? true,
-      voiceConsentVersion: prefs.getInt(_voiceConsentVersionKey) ?? 0,
-      voicePaidInterest: prefs.getBool(_voicePaidInterestKey) ?? false,
     );
   }
 
@@ -93,25 +60,6 @@ class SettingsStore {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_notifyOnBlockedKey, onBlocked);
     await prefs.setBool(_notifyOnDoneKey, onDone);
-  }
-
-  Future<void> saveVoiceAssistantEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_voiceAssistantKey, enabled);
-  }
-
-  /// Records the accepted disclosure version, or 0 to revoke.
-  Future<void> saveVoiceConsentVersion(int version) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_voiceConsentVersionKey, version);
-  }
-
-  /// Remembers that this device has sent the paid-interest tap. One way
-  /// only: there is nothing to take back, because nothing identifies the
-  /// sender on the other end.
-  Future<void> saveVoicePaidInterest() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_voicePaidInterestKey, true);
   }
 
   // Unrecognised/missing values fall back to the default rather than

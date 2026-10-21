@@ -18,7 +18,6 @@ import 'package:drover/src/notifications/host_pairing.dart';
 import 'package:drover/src/notifications/notification_registration.dart';
 import 'package:drover/src/screens/host_setup_screen.dart';
 import 'package:drover/src/speech/speech_input.dart';
-import 'package:drover/src/voice/voice_consent_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -366,69 +365,6 @@ void main() {
     final stored = await SettingsStore().load();
     expect(stored.notifyOnBlocked, isFalse);
     expect(stored.notifyOnDone, isTrue);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('switching the voice assistant off clears the stored consent', (
-    tester,
-  ) async {
-    SharedPreferences.setMockInitialValues({
-      'voice_consent_version': kVoiceConsentVersion,
-    });
-    tester.view.physicalSize = const Size(800, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    await tester.pumpWidget(_app(hostStore: _SpyHostStore()));
-    await tester.pump();
-    await tester.pump();
-
-    await tester.tap(find.byKey(const ValueKey('enter_demo_button')));
-    await tester.pump();
-    await tester.pump();
-
-    await tester.tap(find.byIcon(Icons.settings));
-    await tester.pumpAndSettle();
-
-    final voiceSwitch = find.descendant(
-      of: find.byKey(const ValueKey('settings_voice_assistant_tile')),
-      matching: find.byType(Switch),
-    );
-    // The switch ships on, so the tap below is the off direction.
-    expect(tester.widget<Switch>(voiceSwitch).value, isTrue);
-
-    await tester.tap(
-      find.byKey(const ValueKey('settings_voice_assistant_tile')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(tester.widget<Switch>(voiceSwitch).value, isFalse);
-    var stored = await SettingsStore().load();
-    expect(stored.voiceAssistantEnabled, isFalse);
-    expect(stored.voiceConsentVersion, 0);
-
-    // Back on must not re-grant what the user just revoked — the herd
-    // screen's consent sheet has to ask again.
-    await tester.tap(
-      find.byKey(const ValueKey('settings_voice_assistant_tile')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(tester.widget<Switch>(voiceSwitch).value, isTrue);
-    stored = await SettingsStore().load();
-    expect(stored.voiceAssistantEnabled, isTrue);
-    expect(stored.voiceConsentVersion, 0);
-
-    // Rendered proof that the revoke bites: back on the herd screen, the
-    // voice button meets the sheet again rather than opening a session.
-    await tester.pageBack();
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('voice_button')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Experimental: voice uses Google Gemini'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

@@ -25,13 +25,11 @@ const _agentB = AgentInfo(
   focused: false,
 );
 
-/// Pumps the bar under a non-zero bottom safe-area inset, so "no inset at the
-/// top anchor" is an assertion that can actually fail.
+/// Pumps the bar under a non-zero bottom safe-area inset, so folding it into
+/// the padding is an assertion that can actually fail.
 Widget _app({
   required List<AgentInfo> agents,
-  String? currentPaneId,
-  AgentSwitcherBarAnchor anchor = AgentSwitcherBarAnchor.bottom,
-  int minAgents = 2,
+  required String currentPaneId,
   void Function(AgentInfo agent)? onSelect,
   VoidCallback? onOpenHerd,
   double bottomInset = 34,
@@ -52,8 +50,6 @@ Widget _app({
               AgentSwitcherBar(
                 agents: agents,
                 currentPaneId: currentPaneId,
-                anchor: anchor,
-                minAgents: minAgents,
                 onSelect: onSelect ?? (_) {},
                 onOpenHerd: onOpenHerd ?? () {},
               ),
@@ -90,89 +86,21 @@ EdgeInsets _barPadding(WidgetTester tester) {
   return container.padding! as EdgeInsets;
 }
 
-Border _ringOf(WidgetTester tester, String paneId) {
-  final container = tester
-      .widgetList<Container>(
-        find.descendant(
-          of: find.byKey(ValueKey('switcher_agent_$paneId')),
-          matching: find.byType(Container),
-        ),
-      )
-      .firstWhere((c) => c.foregroundDecoration is BoxDecoration);
-  return (container.foregroundDecoration as BoxDecoration).border! as Border;
-}
-
 void main() {
-  testWidgets(
-    'the bottom anchor folds the safe-area inset into its padding and '
-    'draws its hairline on top',
-    (tester) async {
-      await tester.pumpWidget(
-        _app(agents: const [_agentA, _agentB], currentPaneId: 'wB:p1'),
-      );
-      await tester.pumpAndSettle();
-
-      expect(_barPadding(tester), const EdgeInsets.fromLTRB(14, 9, 14, 9 + 34));
-      final border = _barDecoration(tester).border! as Border;
-      expect(border.top.color, droverDarkTheme.colorScheme.outlineVariant);
-      expect(border.bottom, BorderSide.none);
-    },
-  );
-
-  testWidgets(
-    'the top anchor takes no safe-area inset and draws its hairline below',
-    (tester) async {
-      await tester.pumpWidget(
-        _app(
-          agents: const [_agentA, _agentB],
-          currentPaneId: 'wB:p1',
-          anchor: AgentSwitcherBarAnchor.top,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // Plain 9 despite the 34px inset the harness supplies: the header above
-      // has already cleared the safe area.
-      expect(_barPadding(tester), const EdgeInsets.fromLTRB(14, 9, 14, 9));
-      final border = _barDecoration(tester).border! as Border;
-      expect(border.bottom.color, droverDarkTheme.colorScheme.outlineVariant);
-      expect(border.top, BorderSide.none);
-    },
-  );
-
-  testWidgets('the top anchor collapses to nothing when hidden', (
-    tester,
-  ) async {
+  testWidgets('the bar folds the safe-area inset into its padding and '
+      'draws its hairline on top', (tester) async {
     await tester.pumpWidget(
-      _app(
-        agents: const [_agentA],
-        currentPaneId: 'wA:p1',
-        anchor: AgentSwitcherBarAnchor.top,
-      ),
+      _app(agents: const [_agentA, _agentB], currentPaneId: 'wB:p1'),
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('switcher_herd_tab')), findsNothing);
-    expect(
-      tester.getSize(find.byType(AgentSwitcherBar)),
-      const Size(800, 0),
-      reason: 'no home-indicator clearance to keep under a header',
-    );
+    expect(_barPadding(tester), const EdgeInsets.fromLTRB(14, 9, 14, 9 + 34));
+    final border = _barDecoration(tester).border! as Border;
+    expect(border.top.color, droverDarkTheme.colorScheme.outlineVariant);
+    expect(border.bottom, BorderSide.none);
   });
 
-  testWidgets('minAgents: 1 shows the bar with a single agent', (tester) async {
-    await tester.pumpWidget(
-      _app(agents: const [_agentA], currentPaneId: null, minAgents: 1),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const ValueKey('switcher_herd_tab')), findsOneWidget);
-    expect(find.byKey(const ValueKey('switcher_agent_wA:p1')), findsOneWidget);
-  });
-
-  testWidgets('the default gate still hides the bar with a single agent', (
-    tester,
-  ) async {
+  testWidgets('hides the bar with a single agent', (tester) async {
     await tester.pumpWidget(
       _app(agents: const [_agentA], currentPaneId: 'wA:p1'),
     );
@@ -180,34 +108,4 @@ void main() {
 
     expect(find.byKey(const ValueKey('switcher_herd_tab')), findsNothing);
   });
-
-  testWidgets(
-    'currentPaneId: null rings nothing and leaves every cell tappable',
-    (tester) async {
-      final selected = <String>[];
-      await tester.pumpWidget(
-        _app(
-          agents: const [_agentA, _agentB],
-          currentPaneId: null,
-          onSelect: (agent) => selected.add(agent.paneId),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // The transparent ring stays — it is what keeps the 44px footprint
-      // identical whether or not a cell is current.
-      expect(_ringOf(tester, 'wA:p1').top.color, Colors.transparent);
-      expect(_ringOf(tester, 'wB:p1').top.color, Colors.transparent);
-
-      final labelColors = tester
-          .widgetList<Text>(find.byType(Text))
-          .map((t) => t.style?.color)
-          .toSet();
-      expect(labelColors, isNot(contains(DroverColors.dark.accentText)));
-
-      await tester.tap(find.byKey(const ValueKey('switcher_agent_wA:p1')));
-      await tester.tap(find.byKey(const ValueKey('switcher_agent_wB:p1')));
-      expect(selected, ['wA:p1', 'wB:p1']);
-    },
-  );
 }

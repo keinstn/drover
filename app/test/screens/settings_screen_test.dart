@@ -2,10 +2,7 @@ import 'dart:async';
 
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
-import 'package:drover/src/firebase/apple_account.dart';
-import 'package:drover/src/firebase/voice_wallet.dart';
 import 'package:drover/src/notifications/notify_plugin_version.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:drover/src/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,17 +17,10 @@ Widget _app({
   ValueChanged<Locale?>? onLocaleChanged,
   ValueChanged<bool>? onNotifyOnBlockedChanged,
   ValueChanged<bool>? onNotifyOnDoneChanged,
-  bool voiceAssistantEnabled = false,
-  ValueChanged<bool>? onVoiceAssistantChanged,
-  bool appleSignedIn = false,
-  Future<void> Function()? onSignInWithApple,
-  Future<void> Function()? onDeleteAccount,
   VoidCallback? onManageHosts,
   VoidCallback? onEnterDemo,
   String? appVersion,
   List<Future<StaleNotifyPlugin?>>? staleNotifyPlugins,
-  bool hasHosts = false,
-  Future<VoiceWallet>? voiceWallet,
   // The locale the screen is *rendered* in, as opposed to `locale`, which is
   // the value its language row displays.
   Locale? uiLocale,
@@ -50,17 +40,10 @@ Widget _app({
       onLocaleChanged: onLocaleChanged ?? (_) {},
       onNotifyOnBlockedChanged: onNotifyOnBlockedChanged ?? (_) {},
       onNotifyOnDoneChanged: onNotifyOnDoneChanged ?? (_) {},
-      voiceAssistantEnabled: voiceAssistantEnabled,
-      onVoiceAssistantChanged: onVoiceAssistantChanged ?? (_) {},
-      appleSignedIn: appleSignedIn,
-      onSignInWithApple: onSignInWithApple ?? () async {},
-      onDeleteAccount: onDeleteAccount ?? () async {},
       onManageHosts: onManageHosts ?? () {},
       onEnterDemo: onEnterDemo,
       appVersion: appVersion,
       staleNotifyPlugins: staleNotifyPlugins,
-      hasHosts: hasHosts,
-      voiceWallet: voiceWallet,
     ),
   );
 }
@@ -79,17 +62,10 @@ class _SettingsHost extends StatefulWidget {
     required this.onLocaleChanged,
     required this.onNotifyOnBlockedChanged,
     required this.onNotifyOnDoneChanged,
-    required this.voiceAssistantEnabled,
-    required this.onVoiceAssistantChanged,
-    required this.appleSignedIn,
-    required this.onSignInWithApple,
-    required this.onDeleteAccount,
     required this.onManageHosts,
     required this.onEnterDemo,
     required this.appVersion,
     required this.staleNotifyPlugins,
-    required this.hasHosts,
-    required this.voiceWallet,
   });
 
   final ThemeMode themeMode;
@@ -100,17 +76,10 @@ class _SettingsHost extends StatefulWidget {
   final ValueChanged<Locale?> onLocaleChanged;
   final ValueChanged<bool> onNotifyOnBlockedChanged;
   final ValueChanged<bool> onNotifyOnDoneChanged;
-  final bool voiceAssistantEnabled;
-  final ValueChanged<bool> onVoiceAssistantChanged;
-  final bool appleSignedIn;
-  final Future<void> Function() onSignInWithApple;
-  final Future<void> Function() onDeleteAccount;
   final VoidCallback onManageHosts;
   final VoidCallback? onEnterDemo;
   final String? appVersion;
   final List<Future<StaleNotifyPlugin?>>? staleNotifyPlugins;
-  final bool hasHosts;
-  final Future<VoiceWallet>? voiceWallet;
 
   @override
   State<_SettingsHost> createState() => _SettingsHostState();
@@ -119,8 +88,6 @@ class _SettingsHost extends StatefulWidget {
 class _SettingsHostState extends State<_SettingsHost> {
   late bool _notifyOnBlocked = widget.notifyOnBlocked;
   late bool _notifyOnDone = widget.notifyOnDone;
-  late bool _voiceAssistantEnabled = widget.voiceAssistantEnabled;
-  late bool _appleSignedIn = widget.appleSignedIn;
 
   @override
   Widget build(BuildContext context) {
@@ -139,61 +106,12 @@ class _SettingsHostState extends State<_SettingsHost> {
         setState(() => _notifyOnDone = value);
         widget.onNotifyOnDoneChanged(value);
       },
-      voiceAssistantEnabled: _voiceAssistantEnabled,
-      onVoiceAssistantChanged: (value) {
-        setState(() => _voiceAssistantEnabled = value);
-        widget.onVoiceAssistantChanged(value);
-      },
-      appleSignedIn: _appleSignedIn,
-      // Models `main.dart`'s contract: the caller flips the flag only after
-      // the link succeeds, and a throw leaves the row signed out.
-      onSignInWithApple: () async {
-        await widget.onSignInWithApple();
-        setState(() => _appleSignedIn = true);
-      },
-      // Models `main.dart` again: the caller drops the flag once the
-      // account is gone.
-      onDeleteAccount: () async {
-        await widget.onDeleteAccount();
-        setState(() => _appleSignedIn = false);
-      },
       onManageHosts: widget.onManageHosts,
       onEnterDemo: widget.onEnterDemo,
       appVersion: widget.appVersion,
       staleNotifyPlugins: widget.staleNotifyPlugins,
-      hasHosts: widget.hasHosts,
-      voiceWallet: widget.voiceWallet,
     );
   }
-}
-
-/// The sections above push the account row past the fold, and a lazy
-/// ListView never builds an off-screen row.
-Future<void> _revealAccountRow(WidgetTester tester) =>
-    tester.scrollUntilVisible(
-      find.byKey(const ValueKey('settings_account_tile')),
-      200,
-    );
-
-/// Settles after the scroll: `scrollUntilVisible` finishes with an
-/// `ensureVisible` jump it never pumps, so a tap straight afterwards hit-tests
-/// against where the row used to be.
-Future<void> _revealDeleteRow(WidgetTester tester) async {
-  await tester.scrollUntilVisible(
-    find.byKey(const ValueKey('settings_account_delete_tile')),
-    200,
-  );
-  await tester.pumpAndSettle();
-}
-
-/// The credits block sits below the notification switches, same as the
-/// account rows — and a lazy ListView never builds what is off screen.
-Future<void> _revealCreditsRow(WidgetTester tester) async {
-  await tester.scrollUntilVisible(
-    find.byKey(const ValueKey('settings_voice_credits_tile')),
-    200,
-  );
-  await tester.pumpAndSettle();
 }
 
 bool _renderedSwitch(WidgetTester tester, String tileKey) => tester
@@ -371,33 +289,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(picked, isNull);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('toggling the voice assistant switch reports the new value', (
-    tester,
-  ) async {
-    bool? reported;
-    await tester.pumpWidget(
-      _app(onVoiceAssistantChanged: (enabled) => reported = enabled),
-    );
-
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('settings_voice_assistant_tile')),
-      200,
-    );
-    await tester.tap(
-      find.byKey(const ValueKey('settings_voice_assistant_tile')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(reported, isTrue);
-    // The switch sits under its own section header, not under Appearance.
-    // Rendered through the label ramp, which uppercases outside Japanese.
-    expect(find.text('ASSISTANT'), findsOneWidget);
-    // The label calls out that the feature is still experimental.
-    expect(find.text('Voice assistant (Experimental)'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -697,643 +588,6 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
-
-  testWidgets('signed out, the account row offers Sign in with Apple', (
-    tester,
-  ) async {
-    await tester.pumpWidget(_app());
-    await _revealAccountRow(tester);
-
-    expect(find.text('ACCOUNT'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('settings_account_tile')),
-        matching: find.text('Sign in with Apple'),
-      ),
-      findsOneWidget,
-    );
-    // Apple's own button, not a list row wearing an apple icon: App Review
-    // measures it, so the row has to render it at least as big as Apple's
-    // floor of 140x30pt.
-    final button = tester.getSize(
-      find.byKey(const ValueKey('settings_account_sign_in')),
-    );
-    expect(button.width, greaterThanOrEqualTo(140));
-    expect(button.height, greaterThanOrEqualTo(30));
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('in Japanese the account row carries Apple\'s own wording', (
-    tester,
-  ) async {
-    await tester.pumpWidget(_app(uiLocale: const Locale('ja')));
-    await _revealAccountRow(tester);
-
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('settings_account_sign_in')),
-        matching: find.text('Appleでサインイン'),
-      ),
-      findsOneWidget,
-    );
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('signed in, the account row says so and renders no identifier', (
-    tester,
-  ) async {
-    await tester.pumpWidget(_app(appleSignedIn: true));
-    await _revealAccountRow(tester);
-
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('settings_account_tile')),
-        matching: find.text('Signed in with Apple'),
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Sign in with Apple'), findsNothing);
-    // No scopes are requested, so no address can reach the screen. The
-    // guard is cheap; the seam — a bool, not a user — is the real proof.
-    expect(find.textContaining('@'), findsNothing);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('a failed sign-in is rendered on the row, which stays tappable', (
-    tester,
-  ) async {
-    var attempts = 0;
-    await tester.pumpWidget(
-      _app(
-        onSignInWithApple: () async {
-          attempts++;
-          throw Exception('the user dismissed the Apple sheet');
-        },
-      ),
-    );
-    await _revealAccountRow(tester);
-
-    await tester.tap(find.byKey(const ValueKey('settings_account_sign_in')));
-    await tester.pumpAndSettle();
-
-    expect(attempts, 1);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('settings_account_tile')),
-        matching: find.text("Couldn't sign in. Tap to try again."),
-      ),
-      findsOneWidget,
-    );
-    // Still the signed-out row: a failure must not read as an account.
-    expect(find.text('Sign in with Apple'), findsOneWidget);
-    expect(find.text('Signed in with Apple'), findsNothing);
-
-    // And the retry the message under the button promises actually fires.
-    await tester.tap(find.byKey(const ValueKey('settings_account_sign_in')));
-    await tester.pumpAndSettle();
-    expect(attempts, 2);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets(
-    'an Apple ID already attached to another account ends signed in: the '
-    'link fails with credential-already-in-use and the older uid is adopted',
-    (tester) async {
-      var signedInWithProvider = false;
-      await tester.pumpWidget(
-        _app(
-          onSignInWithApple: () => linkAppleAccount(
-            // What a reinstalled device gets: its anonymous uid is new, but
-            // the Apple ID still belongs to the uid from before.
-            link: () async => throw FirebaseException(
-              plugin: 'firebase_auth',
-              code: 'credential-already-in-use',
-            ),
-            signIn: () async => signedInWithProvider = true,
-          ),
-        ),
-      );
-      await _revealAccountRow(tester);
-
-      await tester.tap(find.byKey(const ValueKey('settings_account_sign_in')));
-      await tester.pumpAndSettle();
-
-      expect(signedInWithProvider, isTrue);
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('settings_account_tile')),
-          matching: find.text('Signed in with Apple'),
-        ),
-        findsOneWidget,
-      );
-      expect(find.text("Couldn't sign in. Tap to try again."), findsNothing);
-
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
-
-  testWidgets('any other link failure is reported, not swallowed', (
-    tester,
-  ) async {
-    var signedInWithProvider = false;
-    await tester.pumpWidget(
-      _app(
-        onSignInWithApple: () => linkAppleAccount(
-          link: () async => throw FirebaseException(
-            plugin: 'firebase_auth',
-            code: 'network-request-failed',
-          ),
-          signIn: () async => signedInWithProvider = true,
-        ),
-      ),
-    );
-    await _revealAccountRow(tester);
-
-    await tester.tap(find.byKey(const ValueKey('settings_account_sign_in')));
-    await tester.pumpAndSettle();
-
-    expect(signedInWithProvider, isFalse);
-    expect(find.text("Couldn't sign in. Tap to try again."), findsOneWidget);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('the delete row is offered to an anonymous account too', (
-    tester,
-  ) async {
-    await tester.pumpWidget(_app());
-    await _revealDeleteRow(tester);
-
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('settings_account_delete_tile')),
-        matching: find.text('Delete account'),
-      ),
-      findsOneWidget,
-    );
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('the dialog spells out that credits go with the account', (
-    tester,
-  ) async {
-    var deletes = 0;
-    await tester.pumpWidget(_app(onDeleteAccount: () async => deletes++));
-    await _revealDeleteRow(tester);
-
-    await tester.tap(
-      find.byKey(const ValueKey('settings_account_delete_tile')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Delete your account?'), findsOneWidget);
-    expect(
-      find.text(
-        'Your sign-in, host pairings and any voice credits are deleted for '
-        'good. Credits cannot be refunded or moved to another account. The '
-        'hosts stay set up on this device, and would each need pairing again '
-        'for notifications.',
-      ),
-      findsOneWidget,
-    );
-    expect(find.byKey(const ValueKey('account_delete_cancel')), findsOneWidget);
-    // Nothing has happened yet: the dialog asks, it does not act.
-    expect(deletes, 0);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('cancelling the dialog deletes nothing', (tester) async {
-    var deletes = 0;
-    await tester.pumpWidget(_app(onDeleteAccount: () async => deletes++));
-    await _revealDeleteRow(tester);
-
-    await tester.tap(
-      find.byKey(const ValueKey('settings_account_delete_tile')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('account_delete_cancel')));
-    await tester.pumpAndSettle();
-
-    expect(deletes, 0);
-    expect(find.text('Delete your account?'), findsNothing);
-    // And the row is still there to try again.
-    expect(
-      find.byKey(const ValueKey('settings_account_delete_tile')),
-      findsOneWidget,
-    );
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('confirming deletes, and the row stops reading as signed in', (
-    tester,
-  ) async {
-    var deletes = 0;
-    await tester.pumpWidget(
-      _app(appleSignedIn: true, onDeleteAccount: () async => deletes++),
-    );
-    await _revealDeleteRow(tester);
-
-    await tester.tap(
-      find.byKey(const ValueKey('settings_account_delete_tile')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('account_delete_confirm')));
-    await tester.pumpAndSettle();
-
-    expect(deletes, 1);
-    expect(find.text('Delete your account?'), findsNothing);
-    expect(find.text('Signed in with Apple'), findsNothing);
-    expect(find.text('Sign in with Apple'), findsOneWidget);
-    // No host was configured, so there is nothing to re-pair.
-    expect(find.text('Account deleted'), findsNothing);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets(
-    'a successful delete with a host configured offers to re-pair it',
-    (tester) async {
-      var manageCalls = 0;
-      await tester.pumpWidget(
-        _app(onManageHosts: () => manageCalls++, hasHosts: true),
-      );
-      await _revealDeleteRow(tester);
-
-      await tester.tap(
-        find.byKey(const ValueKey('settings_account_delete_tile')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('account_delete_confirm')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Account deleted'), findsOneWidget);
-      await tester.tap(find.text('Manage hosts'));
-      await tester.pumpAndSettle();
-
-      expect(manageCalls, 1);
-
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
-
-  testWidgets('dismissing the re-pair nudge does not open host management', (
-    tester,
-  ) async {
-    var manageCalls = 0;
-    await tester.pumpWidget(
-      _app(onManageHosts: () => manageCalls++, hasHosts: true),
-    );
-    await _revealDeleteRow(tester);
-
-    await tester.tap(
-      find.byKey(const ValueKey('settings_account_delete_tile')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('account_delete_confirm')));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
-
-    expect(manageCalls, 0);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('a failed delete is rendered on the row, which stays tappable', (
-    tester,
-  ) async {
-    var attempts = 0;
-    await tester.pumpWidget(
-      _app(
-        onDeleteAccount: () async {
-          attempts++;
-          throw Exception('the callable failed');
-        },
-      ),
-    );
-    await _revealDeleteRow(tester);
-
-    await tester.tap(
-      find.byKey(const ValueKey('settings_account_delete_tile')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('account_delete_confirm')));
-    await tester.pumpAndSettle();
-
-    expect(attempts, 1);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('settings_account_delete_tile')),
-        matching: find.text('Could not delete the account. Tap to try again.'),
-      ),
-      findsOneWidget,
-    );
-
-    // The half the title claims: a failure must not leave the row dead. One
-    // more tap has to reach the dialog again.
-    await tester.tap(
-      find.byKey(const ValueKey('settings_account_delete_tile')),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey('account_delete_confirm')),
-      findsOneWidget,
-    );
-    await tester.tap(find.byKey(const ValueKey('account_delete_confirm')));
-    await tester.pumpAndSettle();
-    expect(attempts, 2);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('a delete in flight cannot be started twice', (tester) async {
-    final held = Completer<void>();
-    var attempts = 0;
-    await tester.pumpWidget(
-      _app(
-        onDeleteAccount: () {
-          attempts++;
-          return held.future;
-        },
-      ),
-    );
-    await _revealDeleteRow(tester);
-
-    await tester.tap(
-      find.byKey(const ValueKey('settings_account_delete_tile')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('account_delete_confirm')));
-    await tester.pumpAndSettle();
-
-    await tester.tap(
-      find.byKey(const ValueKey('settings_account_delete_tile')),
-      warnIfMissed: false,
-    );
-    await tester.pumpAndSettle();
-    expect(attempts, 1);
-    // No second confirmation either: the row swallowed the tap outright.
-    expect(find.text('Delete your account?'), findsNothing);
-
-    held.complete();
-    await tester.pumpAndSettle();
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('the balance renders under the assistant switch', (tester) async {
-    await tester.pumpWidget(
-      _app(
-        voiceWallet: Future.value(const VoiceWallet(credits: 4, entries: [])),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await _revealCreditsRow(tester);
-
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('settings_voice_credits_tile')),
-        matching: find.text('4'),
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Voice credits'), findsOneWidget);
-    expect(
-      find.text('One credit is one call, up to five minutes.'),
-      findsOneWidget,
-    );
-    // An empty ledger says so rather than leaving a gap under its heading.
-    expect(find.text('RECENT CREDIT ACTIVITY'), findsOneWidget);
-    expect(find.text('Nothing yet.'), findsOneWidget);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('the campaign grant reads as free credits, added', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _app(
-        voiceWallet: Future.value(
-          VoiceWallet(
-            credits: 3,
-            entries: [
-              VoiceLedgerEntry(
-                type: VoiceLedgerType.grant,
-                credits: 3,
-                at: DateTime(2026, 9, 20, 15, 4),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await _revealCreditsRow(tester);
-
-    final grant = find.byKey(const ValueKey('settings_voice_credits_entry_0'));
-    expect(
-      find.descendant(of: grant, matching: find.text('Free credits')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: grant, matching: find.text('+3')),
-      findsOneWidget,
-    );
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('a line under the balance says where the credits come from', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _app(
-        voiceWallet: Future.value(const VoiceWallet(credits: 3, entries: [])),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await _revealCreditsRow(tester);
-
-    expect(
-      find.text(
-        'Voice is free for now: sign in with Apple and a few free credits '
-        'are added, once.',
-      ),
-      findsOneWidget,
-    );
-    // Nothing is for sale, so nothing may offer a purchase.
-    expect(find.textContaining('Buy'), findsNothing);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('each ledger row names what it was and which way it went', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _app(
-        voiceWallet: Future.value(
-          VoiceWallet(
-            credits: 2,
-            entries: [
-              VoiceLedgerEntry(
-                type: VoiceLedgerType.call,
-                credits: -1,
-                at: DateTime(2026, 9, 20, 15, 4),
-              ),
-              // No timestamp: the server stamp had not landed when the
-              // callable read the row.
-              const VoiceLedgerEntry(
-                type: VoiceLedgerType.refund,
-                credits: 1,
-                at: null,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await _revealCreditsRow(tester);
-
-    final call = find.byKey(const ValueKey('settings_voice_credits_entry_0'));
-    expect(
-      find.descendant(of: call, matching: find.text('Voice call')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: call, matching: find.text('\u22121')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: call, matching: find.text('Sep 20, 2026 3:04 PM')),
-      findsOneWidget,
-    );
-
-    final refund = find.byKey(const ValueKey('settings_voice_credits_entry_1'));
-    expect(
-      find.descendant(of: refund, matching: find.text('Returned')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: refund, matching: find.text('+1')),
-      findsOneWidget,
-    );
-    // The row without a timestamp renders its title and nothing beneath it.
-    expect(tester.widget<ListTile>(refund).subtitle, isNull);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('a balance that failed to load says so instead of throwing', (
-    tester,
-  ) async {
-    final wallet = Completer<VoiceWallet>();
-    await tester.pumpWidget(_app(voiceWallet: wallet.future));
-    // Nothing at all while it is in flight — not even a spinner.
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-
-    wallet.completeError(Exception('no network'));
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('settings_voice_credits_failed_tile')),
-      200,
-    );
-
-    expect(find.text("Couldn't load your balance."), findsOneWidget);
-    expect(find.text('Voice credits'), findsNothing);
-    expect(tester.takeException(), isNull);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('an empty balance leaves the delete dialog as it was', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _app(
-        voiceWallet: Future.value(const VoiceWallet(credits: 0, entries: [])),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await _revealDeleteRow(tester);
-
-    await tester.tap(
-      find.byKey(const ValueKey('settings_account_delete_tile')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text(
-        'Your sign-in, host pairings and any voice credits are deleted for '
-        'good. Credits cannot be refunded or moved to another account. The '
-        'hosts stay set up on this device, and would each need pairing again '
-        'for notifications.',
-      ),
-      findsOneWidget,
-    );
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('a balance of one is named in the singular', (tester) async {
-    // One credit is one call, so a balance of 1 is the commonest one there
-    // is to lose — and the plural arm would read "1 credits go with it."
-    await tester.pumpWidget(
-      _app(
-        voiceWallet: Future.value(const VoiceWallet(credits: 1, entries: [])),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await _revealDeleteRow(tester);
-
-    await tester.tap(
-      find.byKey(const ValueKey('settings_account_delete_tile')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('One credit goes with it.'), findsOneWidget);
-
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('a balance worth losing is named in the delete dialog', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _app(
-        voiceWallet: Future.value(const VoiceWallet(credits: 7, entries: [])),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await _revealDeleteRow(tester);
-
-    await tester.tap(
-      find.byKey(const ValueKey('settings_account_delete_tile')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text(
-        'Your sign-in, host pairings and any voice credits are deleted for '
-        'good. Credits cannot be refunded or moved to another account. The '
-        'hosts stay set up on this device, and would each need pairing again '
-        'for notifications.\n\n7 credits go with it.',
-      ),
-      findsOneWidget,
-    );
-
-    await tester.pumpWidget(const SizedBox());
-  });
 }
 
 const _staleEntry = StaleNotifyPlugin(

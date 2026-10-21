@@ -141,7 +141,7 @@ void main() {
     expect(await client.readAgent(demoPaneId), contains('proceed?'));
   });
 
-  test('a voice launch adds an idle agent that takes its brief', () async {
+  test('a launch adds an idle agent', () async {
     final client = DemoBackend().buildClient();
 
     final workspace = await client.createWorkspace(label: 'demo', cwd: '/x');
@@ -154,16 +154,6 @@ void main() {
       (a) => a.paneId == demoLaunchedPaneId,
     );
     expect((launched.agent, launched.status), ('codex', AgentStatus.idle));
-
-    await client.prompt(demoLaunchedPaneId, 'add retries');
-    expect(await client.readAgent(demoLaunchedPaneId), contains('add retries'));
-
-    Future<AgentStatus> status() async => (await client.listAgents())
-        .firstWhere((a) => a.paneId == demoLaunchedPaneId)
-        .status;
-    expect(await status(), AgentStatus.working);
-    expect(await status(), AgentStatus.working);
-    expect(await status(), AgentStatus.idle);
   });
 
   test('reports a supported herdr version', () async {
