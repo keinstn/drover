@@ -190,8 +190,7 @@ which agent is running in the pane.
   only — the pane was just created for this start) whose status is `blocked`:
   if there is one, the start counts as started-but-not-ready (no rollback —
   the launch sheet opens the agent screen, where the pane text and the
-  arrow/Enter keys row let the user answer; voice skips the idle wait and
-  reports `blocked_at_startup` to the model). Anything else — no agent, an
+  arrow/Enter keys row let the user answer). Anything else — no agent, an
   agent that is not `blocked` (a slow agent that merely timed out), or a
   failed listing — rethrows the original `agent_not_ready` and rolls back as
   before.
