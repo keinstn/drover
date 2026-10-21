@@ -4,7 +4,7 @@ titleTemplate: false
 
 # Privacy Policy — Drover
 
-**Effective date:** 2026-09-22
+**Effective date:** 2026-10-22
 **Developer:** Keisuke Nishitani
 **Contact:** kei.sj.nstn@gmail.com
 
@@ -16,19 +16,10 @@ Everything that travels over that connection — your agent transcripts, the
 commands you send, your source code, your file contents — passes between your
 device and your own machine and goes nowhere else.
 
-Two parts of Drover reach outside that path:
-
-- the **developer's backend**, the only service the developer operates,
-  which creates an anonymous Firebase account when the app starts, tells your
-  device that an agent is waiting for you, and keeps the voice assistant's
-  credit and billing records;
-- the **voice assistant**, which sends your microphone audio, conversation
-  transcripts, agent context, and messages or drafts to **Google's Gemini** so
-  that you can talk to your agents. Its entry point is available by default,
-  but Drover asks for explicit consent before it opens the microphone or sends
-  any voice data. Turning the assistant off clears that consent.
-
-What each one sends or stores is listed in full below.
+One part of Drover reaches outside that path: the **developer's backend**, the
+only service the developer operates, which creates an anonymous Firebase
+account when the app starts and tells your device that an agent is waiting for
+you. What it stores is listed in full below.
 
 Drover contains no advertising, tracking, crash-reporting, or app-analytics
 SDK. It does use the Firebase Auth, App Check, Cloud Functions, and Messaging
@@ -49,20 +40,6 @@ developer:
 - Dictated audio (see "Dictation" below)
 - Your SSH private key or its passphrase
 
-"Never reaches the developer" is not the same as "never leaves your device". If
-you switch the **voice assistant** on, some of what is listed above — your
-speech, and part of what your agent said — goes to Google instead, for as long
-as a voice session is running. That is set out in full under "Voice assistant"
-below. It still does not reach the developer, but the developer is not the only
-thing worth knowing about.
-
-Drover creates a Firebase anonymous account automatically when the app starts.
-You may optionally use Sign in with Apple to attach a durable sign-in to that
-account so the one-time free voice credits can be received and preserved across
-reinstalls or devices. Drover does not request your name or email address from
-Apple. The Firebase account then carries Apple's provider-specific identifier;
-it does not receive your Apple ID email address.
-
 ## Data stored on your device only
 
 The following is stored on your device and is never transmitted to the
@@ -74,8 +51,7 @@ developer:
 - **Host connection settings** — hostname, port, username, the path to the
   `herdr` binary, and the host key fingerprint Drover pinned on first connect.
   Also held in the Keychain.
-- **Preferences** — your theme and language choice, and whether you have
-  switched the voice assistant on and agreed to it.
+- **Preferences** — your theme and language choice.
 
 Deleting the app removes all of this.
 
@@ -83,31 +59,24 @@ Deleting the app removes all of this.
 
 A Firebase anonymous account is created when the app starts, whether or not you
 pair a host. Push notifications are **optional** and only start working after
-you deliberately pair a host. Sign in with Apple is also optional for the core
-SSH and notification features; it attaches a durable identity to the existing
-Firebase account so a one-time free voice-credit grant can survive reinstall or
-use on another device.
+you deliberately pair a host.
 
 The backend runs on Google Firebase (Authentication, Cloud Firestore, Cloud
 Functions, Cloud Messaging, and App Check). It stores the following:
 
 | What | Why | How long |
 |---|---|---|
-| A **Firebase account identifier**, created automatically by Firebase Anonymous Authentication; if you use Sign in with Apple, the account is linked to Apple's provider-specific identifier (Drover requests neither name nor email) | To authenticate backend requests, associate devices and hosts, and attach a durable voice-credit wallet | Until you delete your account in Settings |
+| A **Firebase account identifier**, created automatically by Firebase Anonymous Authentication | To authenticate backend requests and associate devices and hosts | Until you delete your data |
 | **Push token** and **platform** for each registered device, plus timestamps | To deliver notifications to that device | Until the device is unregistered |
 | For each paired host: the anonymous account identifier, a **SHA-256 hash** of the host's pairing credential, and timestamps | So the host can prove it is allowed to notify you. The credential itself is never stored | Until you revoke the host |
 | **Pairing codes**, stored only as a SHA-256 hash, with the account identifier and host identifier | To complete a pairing you initiated | **Automatically deleted after 10 minutes** |
 | **Notification de-duplication records** — timestamps only | So a repeated event does not notify you twice | **Automatically deleted after 24 hours** |
 | **Rate-limit counters** — a request count and timestamps | To prevent abuse of the backend | Rolling window |
-| An **aggregate count of “I would pay for this” taps**, with no account or device identifier | To learn whether there is interest in a future paid voice plan; it is not a purchase or waitlist | Indefinitely as an aggregate total |
-| **Voice credit balance** — a whole-number count, and timestamps for when it last changed and for your one-time free-campaign grant | So the backend knows whether you can start a call, and Settings can show you what you have left | Until you delete your data |
-| **Voice credit history** — one entry per credit added or spent (a call, a refund, or the free campaign's one-time grant), with the amount, a timestamp, and — for a call or its refund — an identifier for which call it belongs to, which the app does not show you | So there is a record behind the balance, and Settings can show your recent activity | Until you delete your data |
-| **Voice session record** — the account identifier, the time a call started, and how many short-lived tokens have been minted, under the session ID your device creates for that call | So reconnects within the same five-minute call are billed once while the number of token mints remains bounded | Until you delete your account |
 
-Before Sign in with Apple, the Firebase identifier normally identifies an app
-installation. After you choose Sign in with Apple, that same Firebase account
-is linked to Apple's durable provider identifier. The developer does not
-request your Apple name or email address.
+The anonymous account identifier is not linked to your name or email address,
+nor to an Apple ID unless you signed in with Apple in an earlier version. It
+identifies an installation of the app, not a person. Voice-credit and
+voice-session data stored by earlier versions will be deleted from the backend.
 
 ### What a notification actually contains
 
@@ -141,9 +110,8 @@ under its Firebase terms and retention practices.
 ## Dictation
 
 Drover can transcribe speech so you can dictate a message to an agent. This
-uses Apple's speech recognition and is **a different feature from the voice
-assistant** described in the next section: dictation turns your speech into text
-that you then send to your own machine, and nothing about it involves Google.
+uses Apple's speech recognition: dictation turns your speech into text that you
+then send to your own machine.
 
 **Speech recognition runs entirely on your device.** Drover requests on-device
 recognition, and if your device cannot perform recognition on-device, **Drover
@@ -153,56 +121,6 @@ developer.
 
 The transcribed text becomes a message you choose to send to your own machine
 over SSH.
-
-## Voice assistant
-
-Drover has a voice assistant that lets you talk to your coding agents instead
-of typing to them. Its entry point is **available by default**, but availability
-is not consent: the first time you open it, Drover shows you what this section
-describes and asks you to agree before opening the microphone or sending
-anything to Google. If you decline, no microphone is opened and nothing is
-sent. Turning the assistant off in Settings clears the saved consent, so it
-must be given again if you turn the feature back on.
-
-The assistant is powered by **Google's Gemini Live**, which your device connects
-to directly. The developer's backend issues the short-lived access token that
-opens the session; no audio, no transcript, and no agent context passes through
-it. While a voice session is running — and only then — the following is sent
-to Google:
-
-- **Your microphone audio**, streamed live for as long as the session is open.
-- **Transcripts of both sides** of the conversation, your words and the
-  assistant's, produced by Google from that audio.
-- **The agent context the assistant needs to answer you:** your agents' names,
-  titles, kinds and statuses; the folder name of each agent's project; the text
-  and options of a question an agent is waiting on; and an agent's last reply.
-- **Messages and drafts**, including messages you ask it to send and briefs for
-  agents you ask it to launch, plus the confirmation and tool results needed
-  to carry out those actions. Draft text is sent to Gemini before you confirm
-  whether Drover should send the message or launch the agent.
-
-Two things are worth stating precisely.
-
-**Code is removed from an agent's reply. Paths are not.** Before a reply is
-sent it is shortened, and its code — both fenced blocks and inline snippets — is
-replaced by "(code omitted)". Ordinary prose is sent as written, so a file path
-an agent typed inside a sentence, or inside the wording of a question it is
-asking you, goes to Google with it. Drover does not attempt to find and remove
-paths from prose: that cannot be done reliably, and claiming it here would be
-worse than saying so. When an action fails, the assistant is told a short error
-code rather than the output of the command that failed.
-
-**An agent's reply can be sent without you having said anything.** If an agent
-finishes while a session is open, Drover sends its last reply so the assistant
-can tell you about it, whether or not you have spoken.
-
-A session ends by itself after five minutes, and you can end it sooner at any
-time. Nothing is sent while no session is running, and switching the voice
-assistant off in Settings stops all of it and clears your saved consent.
-
-None of this reaches, is stored by, or is visible to the developer. Google
-processes it in order to provide the service; see Google's privacy
-documentation for how Google handles data sent to Gemini.
 
 ## Camera and photo library
 
@@ -220,13 +138,10 @@ you.
 ## Third parties
 
 - **Google (Firebase)** — processes the notification-backend data listed above
-  on the developer's behalf, and, if you use the voice assistant, receives the
-  microphone audio and agent context listed under "Voice assistant" through the
-  Gemini API. See Google's privacy documentation for how Google handles data
-  processed through Firebase and Gemini.
+  on the developer's behalf. See Google's privacy documentation for how Google
+  handles data processed through Firebase.
 - **Apple** — delivers push notifications through the Apple Push Notification
-  service, provides the App Attest attestation described above, and provides
-  the optional Sign in with Apple account link.
+  service and provides the App Attest attestation described above.
 
 There are no other third parties. Drover contains no advertising, tracking,
 crash-reporting, or app-analytics SDK.
@@ -242,16 +157,9 @@ use the Advertising Identifier and does not ask for tracking permission.
 - **Revoke a host** in Drover to delete that host's record and its pairing
   credential hash from the backend.
 - **Remove notifications for a device** to delete that device's push token.
-- **Switch the voice assistant off** in Settings to stop anything further being
-  sent to Google and clear the saved voice consent.
-- **Delete account** in Settings to invoke the backend deletion path. It deletes
-  the Firebase account and its host pairings, device records, wallet, ledger,
-  and voice-session records; if linked with Apple, Drover also asks Firebase to
-  revoke that sign-in authorization. Drover then creates a fresh anonymous
-  Firebase account so optional backend features can work again.
 - **Delete the app** to remove everything stored on the device, including your
-  SSH key. Deleting the app alone does not guarantee deletion of backend data;
-  use Delete account first or contact kei.sj.nstn@gmail.com.
+  SSH key.
+- To have any remaining backend record deleted, contact kei.sj.nstn@gmail.com.
 
 Pairing codes and de-duplication records delete themselves on the schedule in
 the table above without any action from you.

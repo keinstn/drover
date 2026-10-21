@@ -21,7 +21,7 @@ hero:
 features:
   - title: No server in the path
     icon: Private
-    details: Drover connects directly from your device to your own machine over SSH. The developer runs nothing in between, so nothing on that path reaches them. The optional voice assistant is the one feature that sends data off your device, to Google.
+    details: Drover connects directly from your device to your own machine over SSH. The developer runs nothing in between, so nothing on that path reaches them.
   - title: Read the session as chat
     icon: Readable
     details: The agent's running session is rendered as a readable conversation, not as raw terminal output.
