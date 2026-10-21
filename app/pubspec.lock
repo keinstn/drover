@@ -249,14 +249,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.9.3+6"
-  firebase_ai:
-    dependency: "direct main"
-    description:
-      name: firebase_ai
-      sha256: "2116566d549faf0d1c7108722c1dc6b2d6e86f5b7c83f179f681844378f32040"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.0.0"
   firebase_app_check:
     dependency: "direct main"
     description:
@@ -443,14 +435,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.2.2"
-  flutter_soloud:
-    dependency: "direct main"
-    description:
-      name: flutter_soloud
-      sha256: "1c297e52182c5e8fd447ae8430bf0b598445dc586e72863ceeef0416242b2ae8"
-      url: "https://pub.dev"
-    source: hosted
-    version: "5.2.1"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -461,14 +445,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  glob:
-    dependency: transitive
-    description:
-      name: glob
-      sha256: "218aeb56050c714f62a3182775320dfa04602b55074873e24e31bbd39bda96fb"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.2.0"
   gpt_markdown:
     dependency: "direct main"
     description:
@@ -693,14 +669,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
-  native_toolchain_c:
-    dependency: transitive
-    description:
-      name: native_toolchain_c
-      sha256: "9d233b6f2d9c52e1a2b5fbe70451d2c10ac674d3bb419d0ec8de14989d437c26"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.19.4"
   nm:
     dependency: transitive
     description:
@@ -845,14 +813,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.5.2"
-  process:
-    dependency: transitive
-    description:
-      name: process
-      sha256: "4242ba3508d37e01808bdf71ad1d5bb93a8d671bf2e7450e6b1b353fb0808891"
-      url: "https://pub.dev"
-    source: hosted
-    version: "5.0.6"
   pub_semver:
     dependency: transitive
     description:
@@ -869,54 +829,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.0.3"
-  record:
-    dependency: "direct main"
-    description:
-      name: record
-      sha256: "7c4467dec63435c9206db183f8a4672cf8a62f5e5579e45803ceada8330756e7"
-      url: "https://pub.dev"
-    source: hosted
-    version: "7.1.2"
-  record_android:
-    dependency: transitive
-    description:
-      name: record_android
-      sha256: f5080279259c4ad769590f1c165762eaa4e414178adc2e2fab137103228e07ac
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.2.0"
-  record_ios:
-    dependency: transitive
-    description:
-      name: record_ios
-      sha256: "21d189f49a598af4697dac4cc9e48389ac0a1fb3e916622b5504a58d9b96313e"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.1"
-  record_linux:
-    dependency: transitive
-    description:
-      name: record_linux
-      sha256: b7484fdaf1f6d291543b9cf615e78096662b02df68d7a4728b13f352bde58d27
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.1"
-  record_macos:
-    dependency: transitive
-    description:
-      name: record_macos
-      sha256: ced7495abf3d683e8a7dbe8fc96df8ea5722837a26f922b7cb7c5de11661bb46
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.1"
-  record_platform_interface:
-    dependency: transitive
-    description:
-      name: record_platform_interface
-      sha256: d94b37cadb8fe203e64b0e9893271c0b71b34f2550ee7fb0c6105d650e00c1f5
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.0"
   record_use:
     dependency: transitive
     description:
@@ -925,22 +837,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.1"
-  record_web:
-    dependency: transitive
-    description:
-      name: record_web
-      sha256: "7f6950be87abacb05cf77eb6ca200b60f2c2a6af5d50236b5f4baf53f92e755e"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.3"
-  record_windows:
-    dependency: transitive
-    description:
-      name: record_windows
-      sha256: "8195489a47b5e8246985d6213ff65aae1b14e32a0ca45dc5f680e8d503296e1b"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.3.0"
   shared_preferences:
     dependency: "direct main"
     description:
@@ -1146,22 +1042,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.1"
-  web_socket:
-    dependency: transitive
-    description:
-      name: web_socket
-      sha256: "34d64019aa8e36bf9842ac014bb5d2f5586ca73df5e4d9bf5c936975cae6982c"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.1"
-  web_socket_channel:
-    dependency: transitive
-    description:
-      name: web_socket_channel
-      sha256: d645757fb0f4773d602444000a8131ff5d48c9e47adfe9772652dd1a4f2d45c8
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.0.3"
   win32:
     dependency: transitive
     description:

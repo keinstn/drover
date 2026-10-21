@@ -1,5 +1,4 @@
 import 'package:drover/src/infra/settings_store.dart';
-import 'package:drover/src/voice/voice_consent_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,41 +18,6 @@ void main() {
     expect(settings.locale, isNull);
     expect(settings.notifyOnBlocked, isTrue);
     expect(settings.notifyOnDone, isTrue);
-    expect(settings.voiceAssistantEnabled, isTrue);
-    expect(settings.voiceConsentVersion, 0);
-    expect(settings.voicePaidInterest, isFalse);
-  });
-
-  test('saveVoicePaidInterest()/load() survives a restart', () async {
-    // The only record this device has that it already sent its tap: the
-    // server counts them and keeps no uid, so a lost flag is a second tap
-    // from the same person.
-    SharedPreferences.setMockInitialValues({});
-    await store.saveVoicePaidInterest();
-
-    expect((await store.load()).voicePaidInterest, isTrue);
-  });
-
-  test('a stored voice-assistant opt-out survives the on-by-default', () async {
-    SharedPreferences.setMockInitialValues({});
-    await store.saveVoiceAssistantEnabled(false);
-
-    expect((await store.load()).voiceAssistantEnabled, isFalse);
-  });
-
-  test('saveVoiceConsentVersion()/load() roundtrips', () async {
-    SharedPreferences.setMockInitialValues({});
-    await store.saveVoiceConsentVersion(kVoiceConsentVersion);
-
-    expect((await store.load()).voiceConsentVersion, kVoiceConsentVersion);
-  });
-
-  test('an accept of the old disclosure does not read as consent', () async {
-    // What installs from before the consent was versioned carry. The copy has
-    // changed since, so the only safe reading of it is "not yet accepted".
-    SharedPreferences.setMockInitialValues({'voice_consent_accepted': true});
-
-    expect((await store.load()).voiceConsentVersion, 0);
   });
 
   test('saveNotifyPreferences()/load() roundtrips both switches', () async {

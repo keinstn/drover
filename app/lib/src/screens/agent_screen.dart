@@ -22,7 +22,6 @@ import '../image/image_input.dart';
 import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
 import '../transcript/native_transcript.dart';
-import '../voice/voice_screen.dart';
 import '../widgets/agent_avatar.dart';
 import '../widgets/agent_switcher_bar.dart';
 import '../widgets/error_message_view.dart';
@@ -144,15 +143,12 @@ class AgentScreen extends StatefulWidget {
     this.initialAgents = const [],
     this.initialWorkspaceLabel,
     this.speechInput,
-    this.canDictate = true,
     this.imagePicker,
     this.draftStore,
     this.draftKeyPrefix,
     this.nativeTranscriptHistory,
     this.nativeHistoryResolver,
     this.showComposerFor,
-    this.backToVoice = false,
-    this.onVoiceFocus,
     this.pollInterval = const Duration(seconds: 2),
   });
 
@@ -168,12 +164,6 @@ class AgentScreen extends StatefulWidget {
   final List<AgentInfo> initialAgents;
   final String? initialWorkspaceLabel;
   final SpeechInput? speechInput;
-
-  /// Whether the composer offers dictation at all. Defaults to true; false
-  /// hides the microphone button rather than disabling it. [HerdScreen]
-  /// passes false while a voice call is on the wire — see the comment where
-  /// it does.
-  final bool canDictate;
 
   final ImagePickerPort? imagePicker;
   final AgentDraftStore? draftStore;
@@ -213,26 +203,6 @@ class AgentScreen extends StatefulWidget {
   /// screen otherwise avoids.
   final bool Function(String paneId)? showComposerFor;
 
-  /// Whether the back chevron leads back to a live voice call rather than to
-  /// the herd. Only its ink changes — the route it pops to is the same — so
-  /// the way out reads as part of the call, not as plain chrome.
-  final bool backToVoice;
-
-  /// Reports this screen's agent to a live voice call as the one the user is
-  /// looking at — `focused: true` when the screen opens, false when it goes.
-  /// The model then resolves an unnamed agent ("what is it waiting for?") to
-  /// the screen in front of the user instead of guessing or asking.
-  ///
-  /// Null reports nothing, which is the right answer wherever the report
-  /// would be a lie or a dead end: previews and the demo have no call at all,
-  /// and [HerdScreen] withholds it for an agent on a host the session is not
-  /// scoped to — see the comment where it does.
-  ///
-  /// A callback rather than the session itself, because this screen has no
-  /// business knowing a voice call exists: it reports where the user is, and
-  /// whoever owns the conversation decides what that is worth.
-  final void Function(AgentInfo agent, {required bool focused})? onVoiceFocus;
-
   final Duration pollInterval;
 
   @override
@@ -241,13 +211,6 @@ class AgentScreen extends StatefulWidget {
 
 class _AgentScreenState extends State<AgentScreen> {
   AgentInfo? _agent;
-
-  /// The agent reported to the voice call by [AgentScreen.onVoiceFocus], or
-  /// null when nothing was. Held rather than re-read from [_agent], which the
-  /// poll refreshes: the release has to name the pane the focus named, and a
-  /// release for a pane nobody focused is what the session would silently
-  /// drop.
-  AgentInfo? _voiceFocused;
   // All running agents from the latest `listAgents()` poll (seeded from
   // `widget.initialAgents`), used to derive the current agent (by pane id)
   // and to drive the bottom switcher bar.
@@ -343,19 +306,6 @@ class _AgentScreenState extends State<AgentScreen> {
       );
     }
     _agent = widget.initialAgent;
-    // Reported from here, before the first `listAgents` lands, so a call
-    // already on the wire learns where the user went as they go — not one
-    // SSH round-trip later.
-    //
-    // ponytail: a screen opened without an [AgentScreen.initialAgent] never
-    // reports at all, because there is nothing to name yet. No caller does
-    // that today; report from the first [_load] that resolves the agent if
-    // one ever starts to.
-    final focused = widget.initialAgent;
-    if (focused != null && widget.onVoiceFocus != null) {
-      _voiceFocused = focused;
-      widget.onVoiceFocus!(focused, focused: true);
-    }
     _workspaceLabel = widget.initialWorkspaceLabel;
     _load();
     if (_agent != null && _workspaceLabel == null) _loadWorkspaceLabel();
@@ -366,12 +316,6 @@ class _AgentScreenState extends State<AgentScreen> {
   void dispose() {
     _timer?.cancel();
     _keyRefreshTimer?.cancel();
-    // The screen the user was looking at is going. A bar switch builds the
-    // replacement before this runs, so this release lands *after* the
-    // incoming screen's focus — the session guards on the pane id and drops
-    // the stale one rather than blanking the focus just set.
-    final focused = _voiceFocused;
-    if (focused != null) widget.onVoiceFocus?.call(focused, focused: false);
     if (_dictationStarting || _dictating) {
       unawaited(_speechInput.cancel());
     }
@@ -1065,13 +1009,6 @@ class _AgentScreenState extends State<AgentScreen> {
           initialAgent: target,
           initialAgents: _agents,
           speechInput: widget.speechInput,
-          canDictate: widget.canDictate,
-          // The way out is still the call this screen was opened from: a bar
-          // switch replaces the route, so the pop destination never changed.
-          backToVoice: widget.backToVoice,
-          // And the call is still the same call, so the agent the bar moved
-          // to is the one to report next.
-          onVoiceFocus: widget.onVoiceFocus,
           imagePicker: widget.imagePicker,
           draftStore: widget.draftStore,
           draftKeyPrefix: widget.draftKeyPrefix,
@@ -1147,7 +1084,6 @@ class _AgentScreenState extends State<AgentScreen> {
               displayName: displayName,
               workspaceLabel: workspaceLabel,
               status: agent?.status,
-              backToVoice: widget.backToVoice,
             ),
             if (_workspaceLabelError != null)
               MaterialBanner(
@@ -1287,7 +1223,6 @@ class _AgentScreenState extends State<AgentScreen> {
                 agentRunning: agent?.status == AgentStatus.working,
                 pendingImages: _pendingImages,
                 canAttachImages: _imagesCapability != null,
-                canDictate: widget.canDictate,
                 onRemoveImage: _removePendingImage,
                 onDictation: _toggleDictation,
                 onAttach: _attachImage,
@@ -1325,7 +1260,6 @@ class _AgentHeader extends StatelessWidget {
     required this.displayName,
     required this.workspaceLabel,
     required this.status,
-    required this.backToVoice,
   });
 
   final String agentType;
@@ -1333,7 +1267,6 @@ class _AgentHeader extends StatelessWidget {
   final String displayName;
   final String? workspaceLabel;
   final AgentStatus? status;
-  final bool backToVoice;
 
   @override
   Widget build(BuildContext context) {
@@ -1349,12 +1282,8 @@ class _AgentHeader extends StatelessWidget {
             key: const ValueKey('agent_back_button'),
             icon: const Icon(Icons.arrow_back_ios_new),
             // Chrome, so onSurfaceVariant: `primary` is now the ink itself,
-            // which is too loud for a back chevron. The exception is the way
-            // back to a live call, which wears the one "we are listening"
-            // ink so it reads as part of the call.
-            color: backToVoice
-                ? voiceListeningInk(context)
-                : scheme.onSurfaceVariant,
+            // which is too loud for a back chevron.
+            color: scheme.onSurfaceVariant,
             iconSize: 22,
             visualDensity: VisualDensity.compact,
             style: IconButton.styleFrom(shape: const CircleBorder()),
@@ -2364,7 +2293,6 @@ class _Composer extends StatelessWidget {
     required this.agentRunning,
     required this.pendingImages,
     required this.canAttachImages,
-    required this.canDictate,
     required this.onRemoveImage,
     required this.onDictation,
     required this.onAttach,
@@ -2393,11 +2321,6 @@ class _Composer extends StatelessWidget {
   /// attach-image affordance is hidden entirely when it doesn't, rather than
   /// offering an attach flow that has nowhere to send its upload.
   final bool canAttachImages;
-
-  /// False hides the dictation button entirely, the same way
-  /// [canAttachImages] hides the attach one: an affordance for a microphone
-  /// that must not open is worse than no affordance.
-  final bool canDictate;
 
   final void Function(int index) onRemoveImage;
   final VoidCallback onDictation;
@@ -2567,14 +2490,12 @@ class _Composer extends StatelessWidget {
                   open: keysRowOpen,
                   onPressed: onToggleKeysRow,
                 ),
-                if (canDictate) ...[
-                  const SizedBox(width: 8),
-                  _MicrophoneButton(
-                    starting: dictationStarting,
-                    dictating: dictating,
-                    onPressed: onDictation,
-                  ),
-                ],
+                const SizedBox(width: 8),
+                _MicrophoneButton(
+                  starting: dictationStarting,
+                  dictating: dictating,
+                  onPressed: onDictation,
+                ),
                 const SizedBox(width: 8),
                 _SendButton(
                   controller: controller,
