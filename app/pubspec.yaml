@@ -55,7 +55,7 @@ dependencies:
   connectivity_plus: ^7.3.2
   firebase_ai: ^4.0.0
   record: ^7.1.2
-  flutter_soloud: ^5.1.6
+  flutter_soloud: ^5.2.1
 
 dev_dependencies:
   flutter_test:
