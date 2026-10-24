@@ -16,13 +16,10 @@
 // entrypoint file and no new justfile recipe. If it varies by scenario, list
 // the scenario names in [_scenariosByPreview] too.
 import 'dart:async';
-import 'dart:math';
 
-import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
-import 'package:record/record.dart';
 
 import '../l10n/app_localizations.dart';
 import '../src/app_theme.dart';
@@ -30,7 +27,6 @@ import '../src/demo/demo_herdr.dart';
 import '../src/herdr/command_runner.dart';
 import '../src/herdr/herdr_client.dart';
 import '../src/herdr/herdr_version.dart';
-import '../src/models/agent_info.dart';
 import '../src/models/agent_preset.dart';
 import '../src/infra/ssh_command_runner.dart';
 import '../src/models/host_config.dart';
@@ -42,12 +38,6 @@ import '../src/screens/herd_screen.dart';
 import '../src/screens/host_setup_screen.dart';
 import '../src/screens/launch_agent_sheet.dart';
 import '../src/screens/settings_screen.dart';
-import '../src/voice/voice_audio.dart';
-import '../src/voice/voice_drafts.dart';
-import '../src/voice/voice_screen.dart';
-import '../src/voice/voice_session.dart';
-import '../src/voice/voice_tools.dart';
-import '../src/voice/voice_transport.dart';
 import '../src/widgets/error_message_view.dart';
 
 const _scenario = String.fromEnvironment('SCENARIO', defaultValue: 'idle');
@@ -61,19 +51,6 @@ const _scenariosByPreview = <String, List<String>>{
   'host-setup': ['idle', 'plugin-detected', 'auto-pair-failure'],
   'errors': ['en', 'ja', 'zh'],
   'herd': ['idle', 'herdr-too-old'],
-  'voice': [
-    'live',
-    'speaking',
-    'draft',
-    'ended',
-    'start',
-    'receipt',
-    'error-receipt',
-    'no-credits',
-    'paid-interest',
-    'paid-interest-done',
-    'campaign-over',
-  ],
 };
 
 HerdrClient _client(
@@ -250,47 +227,6 @@ final _previews = <String, PreviewBuilder>{
       existingCwds: const ['/home/dev/proj'],
     ),
   ),
-  // A stubbed voice conversation, no Firebase/mic/network involved. Every
-  // scenario scripts the same two finished transcripts on the transport's
-  // receive() stream, then diverges: 'speaking' leaves an unfinished
-  // assistant transcript pending (the glow should read as speaking), 'draft'
-  // adds a pending message draft, 'ended' closes the stream, and 'start'
-  // leaves the session idle — the screen as it looks before anyone taps
-  // Start. 'receipt' ends the call on a clock wound forward, so the receipt
-  // card shows a real length, and 'error-receipt' kills the same call
-  // mid-sentence — the credit is spent either way, so the error line and
-  // the receipt are both on screen. 'no-credits' and 'campaign-over' refuse
-  // the mint the two ways the server can, which is how their cards get
-  // looked at. 'paid-interest' and 'paid-interest-done' are the no-credits
-  // refusal again for an account that already signed in — the offer to say
-  // you would pay, before and after it has been recorded.
-  'voice': (_, scenario) {
-    final session = _voiceSession(scenario);
-    // The screen only starts a call it can continue for free, so every
-    // scripted scenario needs the tap a user would give it. Post-frame, not
-    // here: start() notifies listeners, and this runs inside a build.
-    if (scenario != 'start') {
-      WidgetsBinding.instance.addPostFrameCallback((_) => session.start());
-    }
-    final paidInterest = _voicePaidInterest(scenario);
-    return VoiceScreen(
-      session: session,
-      credits: _voiceCredits(scenario),
-      // Non-null means "still anonymous", which is what puts the sign-in
-      // action on the no-credits card. Null for the two paid-interest
-      // scenarios, which are the same card for an account that already has
-      // an Apple ID — the one case where the other action shows.
-      onSignIn: paidInterest == null ? () async {} : null,
-      paidInterest: paidInterest,
-      // Records nothing: flipping the notifier is the whole of what the app
-      // shows, and a preview has no backend to record into.
-      onPaidInterest: paidInterest == null
-          ? null
-          : () async => paidInterest.value = true,
-      agents: _voiceBarAgents,
-      onOpenAgent: (_) {},
-    );
-  },
   'settings': (_, _) => const _SettingsPreview(),
   // Notification pairing: SCENARIO=idle (default) shows the manual dialog,
   // as if drover.notify were not linked on the host. SCENARIO=plugin-detected
@@ -389,290 +325,6 @@ final _errorSamples = <(String, Object)>[
     const HerdrVersionUnsupportedException(found: '0.7.0', minimum: '0.8.0'),
   ),
 ];
-
-/// A scripted 0..1 level: bursts with a pause between them, so the glow has a
-/// voice to follow with no mic and no engine. Deterministic, so a screenshot
-/// of a given tick always comes back the same.
-double _scriptedLevel(int tick) {
-  final t = tick % 120; // a 6 s sentence at [_voiceTick]
-  if (t > 84) return 0; // then the pause before the next one
-  return ((sin(t * 0.7) * 0.5 + 0.5) * (sin(t * 0.13) * 0.35 + 0.6)).clamp(
-    0.0,
-    1.0,
-  );
-}
-
-const _voiceTick = Duration(milliseconds: 50);
-
-/// One PCM16 frame whose RMS is exactly [amplitude] — every sample sits at
-/// the same magnitude, which is all [voiceLevelFromPcm16] measures.
-Uint8List _scriptedFrame(double amplitude) {
-  const samples = 480;
-  final frame = Uint8List(samples * 2);
-  final value = (amplitude.clamp(0.0, 1.0) * 32767).round();
-  final data = ByteData.sublistView(frame);
-  for (var i = 0; i < samples; i++) {
-    data.setInt16(i * 2, value, Endian.little);
-  }
-  return frame;
-}
-
-/// [VoiceMic] that grants permission and records nothing real, but streams a
-/// scripted voice so the glow moves in a preview.
-class _StubVoiceMic implements VoiceMic {
-  @override
-  Stream<RecordState> get state => const Stream.empty();
-
-  @override
-  Future<bool> hasPermission() async => true;
-
-  @override
-  Future<Stream<Uint8List>> start() async => Stream.periodic(
-    _voiceTick,
-    // Undo the gain the level takes on the way back out, so the scripted
-    // level is what the glow actually sees.
-    (tick) => _scriptedFrame(_scriptedLevel(tick) / kVoiceLevelGain),
-  );
-
-  @override
-  Future<void> stop() async {}
-
-  @override
-  Future<void> dispose() async {}
-}
-
-/// [VoiceSpeaker] that drops every byte it's handed, but reports a scripted
-/// level so the `speaking` scenario shows the glow following the model — the
-/// mic is gated for echo cancellation while the model talks.
-class _StubVoiceSpeaker implements VoiceSpeaker {
-  @override
-  Stream<double> get level => Stream.periodic(_voiceTick, _scriptedLevel);
-
-  @override
-  Future<void> init() async {}
-
-  @override
-  void play(Uint8List pcm24k) {}
-
-  @override
-  Future<void> interrupt() async {}
-
-  @override
-  Future<void> dispose() async {}
-}
-
-/// [VoiceTransport] whose `receive()` is scripted by [_voiceSession]; sends
-/// are no-ops.
-class _StubVoiceTransport implements VoiceTransport {
-  _StubVoiceTransport(this._server);
-
-  final StreamController<LiveServerResponse> _server;
-  var _closed = false;
-
-  @override
-  Stream<LiveServerResponse> receive() => _server.stream;
-
-  @override
-  Future<void> sendAudio(Uint8List pcm16k) async {}
-
-  @override
-  Future<void> sendText(String text) async {}
-
-  @override
-  Future<void> sendToolResponse(List<FunctionResponse> responses) async {}
-
-  @override
-  Future<void> close() async {
-    if (_closed) return;
-    _closed = true;
-    await _server.close();
-  }
-}
-
-/// The balance behind the chip and the receipt: whatever the scenario's
-/// story needs, since no wallet is read in a preview.
-ValueNotifier<int?> _voiceCredits(String scenario) =>
-    ValueNotifier(switch (scenario) {
-      'receipt' || 'error-receipt' => 11,
-      'no-credits' ||
-      'campaign-over' ||
-      'paid-interest' ||
-      'paid-interest-done' => 0,
-      _ => 12,
-    });
-
-/// Whether the paid-interest offer is on the no-credits card, and whether it
-/// has been tapped. Null for every other scenario, which is what leaves the
-/// sign-in action there instead — the two are the same slot.
-///
-/// Two scenarios rather than one so the recorded state can be screenshotted
-/// without driving a tap first; tapping in 'paid-interest' reaches the same
-/// place, since the notifier is what the card reads.
-ValueNotifier<bool>? _voicePaidInterest(String scenario) => switch (scenario) {
-  'paid-interest' => ValueNotifier(false),
-  'paid-interest-done' => ValueNotifier(true),
-  _ => null,
-};
-
-/// A [VoiceSession] wired to stubs (no Firebase, mic or speaker touched),
-/// scripted per [scenario]: after ~800ms every scenario gets one finished
-/// user transcript and one finished assistant transcript, then diverges —
-/// see the 'voice' entry in [_previews] for what each scenario adds. Every
-/// connect gets a fresh scripted stream, so Restart replays it; the draft
-/// is added on the first connect only, so cards don't multiply.
-VoiceSession _voiceSession(String scenario) {
-  final drafts = VoiceDrafts();
-  var connects = 0;
-  // A clock the 'receipt' scenario winds forward once the call is live, so
-  // the receipt reads as a call somebody actually had rather than as the
-  // second the preview took to script itself. Everything else reads it as a
-  // stopped clock, which is what a preview wants.
-  final base = DateTime(2026, 1, 1, 9);
-  var elapsed = Duration.zero;
-  final session = VoiceSession(
-    now: () => base.add(elapsed),
-    connect: (_, _) async {
-      // The two refusals the server can answer a mint with. Thrown from
-      // connect, which is exactly where the real transport raises them.
-      if (scenario == 'no-credits' ||
-          scenario == 'paid-interest' ||
-          scenario == 'paid-interest-done') {
-        throw const VoiceOutOfCredits();
-      }
-      if (scenario == 'campaign-over') {
-        throw const VoiceOutOfCredits(campaignOver: true);
-      }
-      final server = StreamController<LiveServerResponse>();
-      _scriptVoice(server, scenario, drafts, first: connects++ == 0);
-      return _StubVoiceTransport(server);
-    },
-    mic: _StubVoiceMic(),
-    speaker: _StubVoiceSpeaker(),
-    tools: [
-      VoiceTool(
-        name: 'list_agents',
-        description: '',
-        parameters: const {},
-        run: (_) async => {'agents': []},
-      ),
-    ],
-    drafts: drafts,
-  );
-  if (scenario == 'receipt' || scenario == 'error-receipt') {
-    session.addListener(() {
-      if (session.status == VoiceSessionStatus.live) {
-        elapsed = const Duration(seconds: 298);
-      }
-    });
-  }
-  return session;
-}
-
-void _scriptVoice(
-  StreamController<LiveServerResponse> server,
-  String scenario,
-  VoiceDrafts drafts, {
-  required bool first,
-}) {
-  Future<void>.delayed(const Duration(milliseconds: 800), () {
-    if (server.isClosed) return;
-    server.add(
-      LiveServerResponse(
-        message: LiveServerContent(
-          inputTranscription: const Transcription(
-            text: 'Which agent is waiting for me?',
-            finished: true,
-          ),
-        ),
-      ),
-    );
-    server.add(
-      LiveServerResponse(
-        message: LiveServerContent(
-          outputTranscription: const Transcription(
-            text: 'Claude Code in drover is waiting on a question about tests.',
-            finished: true,
-          ),
-        ),
-      ),
-    );
-    switch (scenario) {
-      case 'speaking':
-        // The glow follows queued audio, not the transcript: a minute
-        // of silence the stub speaker drops keeps it speaking.
-        server.add(
-          LiveServerResponse(
-            message: LiveServerContent(
-              modelTurn: Content('model', [
-                InlineDataPart('audio/pcm;rate=24000', Uint8List(48000 * 60)),
-              ]),
-              outputTranscription: const Transcription(
-                text: 'Let me check on that for you...',
-                finished: false,
-              ),
-            ),
-          ),
-        );
-      case 'draft' when first:
-        drafts.add(
-          const AgentInfo(
-            paneId: 'wB:p1',
-            workspaceId: 'wB',
-            tabId: 'wB:t1',
-            agent: 'claude',
-            status: AgentStatus.blocked,
-            cwd: '/tmp/proj',
-            focused: false,
-            terminalTitle: 'Implement the OAuth callback',
-          ),
-          'Please rerun the failing tests once more.',
-        );
-      case 'ended':
-      case 'receipt':
-        unawaited(server.close());
-      // An error on the stream rather than a close: no resumption handle
-      // was ever offered, so the session fails the call outright — which
-      // is the mid-call death the receipt now has to survive.
-      case 'error-receipt':
-        server.addError(StateError('the connection dropped'));
-    }
-  });
-}
-
-/// The roster behind the voice screen's switcher bar, one agent per status
-/// so every dot colour is on screen. Fixed: the preview has no poll.
-final _voiceBarAgents = ValueNotifier<List<AgentInfo>>(const [
-  AgentInfo(
-    paneId: 'wA:p1',
-    workspaceId: 'wA',
-    tabId: 'wA:t1',
-    agent: 'claude',
-    status: AgentStatus.blocked,
-    cwd: '/tmp/proj-a',
-    focused: false,
-    terminalTitle: 'Implement the OAuth callback',
-  ),
-  AgentInfo(
-    paneId: 'wA:p2',
-    workspaceId: 'wA',
-    tabId: 'wA:t1',
-    agent: 'copilot',
-    status: AgentStatus.working,
-    cwd: '/tmp/proj-a',
-    focused: false,
-    terminalTitle: 'データベース migration をレビュー',
-  ),
-  AgentInfo(
-    paneId: 'wB:p1',
-    workspaceId: 'wB',
-    tabId: 'wB:t1',
-    agent: 'codex',
-    status: AgentStatus.idle,
-    cwd: '/tmp/proj-b',
-    focused: false,
-    terminalTitle: 'Herd の session 表示を設計',
-  ),
-]);
 
 void main() {
   if (kDebugMode) {
@@ -779,13 +431,7 @@ class _SettingsPreviewState extends State<_SettingsPreview> {
       onNotifyOnBlockedChanged: (value) =>
           setState(() => _notifyOnBlocked = value),
       onNotifyOnDoneChanged: (value) => setState(() => _notifyOnDone = value),
-      voiceAssistantEnabled: true,
-      onVoiceAssistantChanged: (_) {},
-      appleSignedIn: false,
-      onSignInWithApple: () async {},
-      onDeleteAccount: () async {},
       onManageHosts: () {},
-      hasHosts: false,
       appVersion: '0.0.0-preview (0)',
       staleNotifyPlugins: _staleNotifyPlugins,
     );

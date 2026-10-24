@@ -5,26 +5,12 @@ import '../app_theme.dart';
 import '../models/agent_info.dart';
 import 'agent_avatar.dart';
 
-/// Which edge the bar is attached to, which decides its border side, its
-/// safe-area handling and the direction its content slides in from.
-enum AgentSwitcherBarAnchor {
-  /// Sits at the bottom of the screen: hairline on top, the home-indicator
-  /// inset folded into its bottom padding, content sliding up from below.
-  bottom,
-
-  /// Sits under a header rather than at the screen edge: hairline below, no
-  /// safe-area inset (the header already cleared it), content sliding down
-  /// from above.
-  top,
-}
-
 /// The 案D switcher bar: a fixed 一覧 (Herd) tab followed by every running
 /// agent, so the user can see each agent's status and switch between them
-/// without leaving the conversation. Visible only when [minAgents]+ agents
-/// are running; below that it slides out and collapses (to just the
-/// home-indicator inset when anchored at the [AgentSwitcherBarAnchor.bottom],
-/// to nothing at the top), and slides back in (translateY + fade, ~240ms
-/// ease-out) when another agent appears.
+/// without leaving the conversation. Visible only when 2+ agents are running;
+/// below that it slides out and collapses to just the home-indicator inset,
+/// and slides back in (translateY + fade, ~240ms ease-out) when another agent
+/// appears.
 class AgentSwitcherBar extends StatefulWidget {
   const AgentSwitcherBar({
     super.key,
@@ -32,26 +18,15 @@ class AgentSwitcherBar extends StatefulWidget {
     required this.currentPaneId,
     required this.onSelect,
     required this.onOpenHerd,
-    this.anchor = AgentSwitcherBarAnchor.bottom,
-    this.minAgents = 2,
   });
 
   final List<AgentInfo> agents;
 
   /// The agent this bar is shown *from*, ringed and accented as "current".
-  /// Null means nothing in the bar is current — no ring, no accent label, and
-  /// every cell tappable — which is what a screen that is not an agent screen
-  /// (the voice assistant) wants.
-  final String? currentPaneId;
+  final String currentPaneId;
 
   final void Function(AgentInfo agent) onSelect;
   final VoidCallback onOpenHerd;
-  final AgentSwitcherBarAnchor anchor;
-
-  /// How many agents it takes for the bar to be worth its space. The agent
-  /// screen wants 2 (with one agent there is nothing to switch to); a screen
-  /// that is not itself one of the agents wants 1.
-  final int minAgents;
 
   @override
   State<AgentSwitcherBar> createState() => _AgentSwitcherBarState();
@@ -62,9 +37,7 @@ class _AgentSwitcherBarState extends State<AgentSwitcherBar>
   late final AnimationController _controller;
   late final CurvedAnimation _curve;
 
-  bool get _visible => widget.agents.length >= widget.minAgents;
-
-  bool get _atBottom => widget.anchor == AgentSwitcherBarAnchor.bottom;
+  bool get _visible => widget.agents.length >= 2;
 
   static String _displayName(AgentInfo agent) =>
       agent.sessionTitle ?? agent.name ?? agent.agent ?? agent.paneId;
@@ -108,9 +81,7 @@ class _AgentSwitcherBarState extends State<AgentSwitcherBar>
 
   @override
   Widget build(BuildContext context) {
-    // Only the bottom anchor owns a safe-area inset; at the top the header
-    // above has already cleared the notch, so there is nothing to fold in.
-    final bottomInset = _atBottom ? MediaQuery.of(context).padding.bottom : 0.0;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
     return AnimatedBuilder(
       animation: _curve,
       builder: (context, _) {
@@ -118,12 +89,12 @@ class _AgentSwitcherBarState extends State<AgentSwitcherBar>
         // Settled hidden: the bar is gone entirely (no children in the tree),
         // leaving only the home-indicator inset so whatever sits above it (the
         // composer, or the transcript when the composer is hidden) keeps its
-        // clearance. At the top anchor that inset is 0, so nothing is left.
+        // clearance.
         if (t == 0 && !_visible) {
           return SizedBox(width: double.infinity, height: bottomInset);
         }
         // The bar body's reserved height animates via the heightFactor while
-        // its content translates in from the anchored edge and fades in; a
+        // its content translates up from below and fades in; a
         // shrinking spacer keeps the total bottom clearance ≈ the inset
         // throughout the transition (the body carries the inset itself once
         // fully in).
@@ -132,17 +103,12 @@ class _AgentSwitcherBarState extends State<AgentSwitcherBar>
           children: [
             ClipRect(
               child: Align(
-                // The revealed slice hugs the anchored edge: from the top
-                // downwards at the bottom anchor, from the bottom upwards at
-                // the top one.
-                alignment: _atBottom
-                    ? Alignment.topCenter
-                    : Alignment.bottomCenter,
+                alignment: Alignment.topCenter,
                 heightFactor: t,
                 child: Opacity(
                   opacity: t,
                   child: FractionalTranslation(
-                    translation: Offset(0, _atBottom ? 1 - t : t - 1),
+                    translation: Offset(0, 1 - t),
                     child: _bar(context, bottomInset),
                   ),
                 ),
@@ -157,12 +123,11 @@ class _AgentSwitcherBarState extends State<AgentSwitcherBar>
 
   Widget _bar(BuildContext context, double bottomInset) {
     final scheme = Theme.of(context).colorScheme;
-    final side = BorderSide(color: scheme.outlineVariant);
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLow,
-        border: _atBottom ? Border(top: side) : Border(bottom: side),
+        border: Border(top: BorderSide(color: scheme.outlineVariant)),
       ),
       padding: EdgeInsets.fromLTRB(14, 9, 14, 9 + bottomInset),
       child: SingleChildScrollView(

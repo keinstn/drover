@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -17,8 +16,6 @@ import 'src/demo/demo_backend.dart';
 import 'src/demo/demo_content.dart';
 import 'src/demo/demo_screen.dart';
 import 'src/firebase/app_check.dart';
-import 'src/firebase/apple_account.dart';
-import 'src/firebase/voice_wallet.dart';
 import 'src/herdr/herdr_client.dart';
 import 'src/herdr/host_platform.dart';
 import 'src/infra/best_effort.dart';
@@ -51,10 +48,6 @@ Future<void> main() async {
   } else {
     WidgetsFlutterBinding.ensureInitialized();
   }
-  // Read inside the bootstrap below and passed down, rather than read from
-  // the widget tree: touching FirebaseAuth there would make the whole app
-  // need Firebase initialized to build.
-  var appleSignedIn = false;
   await runBestEffort(() async {
     await Firebase.initializeApp();
     final appleProvider = appleAppCheckProvider(
@@ -68,11 +61,6 @@ Future<void> main() async {
     if (FirebaseAuth.instance.currentUser == null) {
       await FirebaseAuth.instance.signInAnonymously();
     }
-    appleSignedIn =
-        FirebaseAuth.instance.currentUser?.providerData.any(
-          (provider) => provider.providerId == AppleAuthProvider.PROVIDER_ID,
-        ) ??
-        false;
   }, context: 'firebase bootstrap');
   final store = HostStore();
   var hostsState = const HostsState(hosts: []);
@@ -117,7 +105,6 @@ Future<void> main() async {
       initialActiveHostId: hostsState.activeHostId,
       initialSettings: settings,
       appVersion: appVersion,
-      initialAppleSignedIn: appleSignedIn,
     ),
   );
 }
@@ -137,7 +124,6 @@ class DroverApp extends StatefulWidget {
     this.hostConnectionRegistry,
     this.appVersion,
     this.clock,
-    this.initialAppleSignedIn = false,
   });
 
   final HostStore hostStore;
@@ -171,11 +157,6 @@ class DroverApp extends StatefulWidget {
   /// real clock; production always uses [DateTime.now].
   final DateTime Function()? clock;
 
-  /// Whether an Apple ID was already linked to the Firebase account when
-  /// [main] read it at startup. Passed in rather than read here so the app
-  /// still builds without Firebase (tests do exactly that).
-  final bool initialAppleSignedIn;
-
   @override
   State<DroverApp> createState() => _DroverAppState();
 }
@@ -198,26 +179,6 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
 
   /// null = follow the device locale (see [build] for how that resolves).
   Locale? _locale;
-  bool _voiceAssistantEnabled = false;
-
-  /// Flipped once the Apple link succeeds; never back — there is no
-  /// sign-out, because a balance signed out of is stranded.
-  bool _appleSignedIn = false;
-
-  /// The voice-credit balance, as last read from the server. Owned here
-  /// because this is where the Firebase guard and the wallet call already
-  /// live, and shared: the voice screen's chip and its receipt both read
-  /// this one notifier, so they can never quote different numbers. Null
-  /// means nobody has managed to read it — a build without Firebase behind
-  /// it, the demo, or a fetch that failed — and everything that renders it
-  /// renders nothing instead of a guess.
-  final _voiceCredits = ValueNotifier<int?>(null);
-
-  /// Whether this device has already said its owner would pay to keep using
-  /// voice. Seeded from [AppSettings] in `initState` and persisted on the
-  /// tap: the server counts the taps and keeps no uid, so the device is the
-  /// only thing that can remember having sent one.
-  final _voicePaidInterest = ValueNotifier(false);
 
   /// Per-device push opt-ins, mirrored to the backend on every change.
   bool _notifyOnBlocked = true;
@@ -302,14 +263,6 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     _locale = widget.initialSettings.locale;
     _notifyOnBlocked = widget.initialSettings.notifyOnBlocked;
     _notifyOnDone = widget.initialSettings.notifyOnDone;
-    _voiceAssistantEnabled = widget.initialSettings.voiceAssistantEnabled;
-    _voicePaidInterest.value = widget.initialSettings.voicePaidInterest;
-    _appleSignedIn = widget.initialAppleSignedIn;
-    // Read at launch, but only for someone who has the assistant on: the
-    // voice screen's chip is the first thing that quotes this number, and a
-    // chip that appears a second after the screen does reads as a change to
-    // the balance rather than as it arriving.
-    if (_voiceAssistantEnabled) _refreshVoiceCredits();
     if (_hosts.isNotEmpty) {
       _scheduleNotificationRegistration();
     }
@@ -394,99 +347,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     _notificationRegistration.dispose();
     unawaited(_registry.disposeAll());
     _demo?.dispose();
-    _voiceCredits.dispose();
-    _voicePaidInterest.dispose();
     super.dispose();
-  }
-
-  /// Re-reads the wallet: publishes the balance to [_voiceCredits] and hands
-  /// the whole thing back, which is what the settings screen's activity list
-  /// needs. One call feeds both, so the two can never quote different
-  /// numbers.
-  ///
-  /// Null when there is nothing to read — no Firebase behind this build, or
-  /// the demo, which must not call out to anything. A *failed* read leaves
-  /// the last known balance where it was rather than blanking it: a chip
-  /// that vanishes mid-call reads as the balance changing.
-  Future<VoiceWallet>? _refreshVoiceCredits() {
-    if (_demo != null || Firebase.apps.isEmpty) return null;
-    final wallet = fetchVoiceWallet();
-    unawaited(
-      wallet.then((value) {
-        if (mounted) _voiceCredits.value = value.credits;
-      }, onError: (Object _) {}),
-    );
-    return wallet;
-  }
-
-  /// Adds this device's tap to the count, then flips the card over to its
-  /// thank-you and remembers it.
-  ///
-  /// Persisted only after the call succeeds: a device that failed to send its
-  /// tap must still be able to send it, and the card is what offers that.
-  Future<void> _recordVoicePaidInterest() async {
-    await recordVoicePaidInterest();
-    await widget.settingsStore.saveVoicePaidInterest();
-    if (mounted) _voicePaidInterest.value = true;
-  }
-
-  /// Links the Apple ID. Shared by the settings row and the voice path —
-  /// both are the same act, and two copies of it would drift.
-  ///
-  /// No scopes on either provider: the account needs the stable identifier
-  /// only, and asking for a name or an email would make drover collect
-  /// contact information it has no use for.
-  Future<void> _signInWithApple() async {
-    await linkAppleAccount(
-      link: () => FirebaseAuth.instance.currentUser!.linkWithProvider(
-        AppleAuthProvider(),
-      ),
-      signIn: () =>
-          FirebaseAuth.instance.signInWithProvider(AppleAuthProvider()),
-    );
-    setState(() => _appleSignedIn = true);
-    // Not awaited: every caller either shows its own busy state until
-    // sign-in returns or (`_openVoice`) opens the call right after, and
-    // neither should wait on a wallet round trip just to learn whether a
-    // toast is owed.
-    unawaited(_announceCreditsGranted());
-  }
-
-  /// The free credits are granted on a signed-in account's first wallet
-  /// read, so the balance the app is holding is stale by exactly the thing
-  /// the user just signed in for.
-  ///
-  /// Skipped when [_voiceCredits] has never been read locally: `before`
-  /// would default to 0, and re-linking an Apple ID that already carries a
-  /// balance from a prior install (see `linkAppleAccount`'s
-  /// `credential-already-in-use` branch) would then toast that whole
-  /// existing balance as a fresh grant.
-  Future<void> _announceCreditsGranted() async {
-    final before = _voiceCredits.value;
-    if (before == null) return;
-    try {
-      final wallet = await _refreshVoiceCredits();
-      final granted = creditsGranted(before: before, after: wallet?.credits);
-      if (granted > 0) _showCreditsGranted(granted);
-    } catch (_) {
-      // Ignored: the chip and the ledger will pick up the balance on their
-      // own next read. Losing the one-off toast is the only cost.
-    }
-  }
-
-  /// The one visible sign of the campaign grant: everything else (the chip,
-  /// the ledger row) is a passive number that only speaks up if the user goes
-  /// looking. `_navKey`, not the tapped widget's own context, because sign-in
-  /// runs from three different screens and all of them may have already
-  /// navigated on by the time the wallet read lands.
-  void _showCreditsGranted(int credits) {
-    final overlay = _navKey.currentState?.overlay;
-    final context = _navKey.currentContext;
-    if (overlay == null || context == null) return;
-    showTopToastOnOverlay(
-      overlay,
-      AppLocalizations.of(context)!.voiceCreditsGranted(credits),
-    );
   }
 
   Future<void> _persistHosts() => widget.hostStore.saveHosts(
@@ -950,15 +811,6 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     // host over SSH each time. Skipped inside the demo, which keeps the
     // stored hosts around but must not reach out to them.
     final staleNotifyPlugins = _demo == null ? _checkNotifyPlugins() : null;
-    // Started here for the same reason, and skipped in the demo for the same
-    // one: the demo must not call out to anything. Also skipped when the
-    // bootstrap above never got Firebase up — there is no wallet to read
-    // then, and the screen hides the balance rather than reporting a failure
-    // nobody can act on.
-    // Not final: deleting the account from this very screen leaves the
-    // balance below describing a uid that no longer exists, so that one
-    // callback replaces the future and the route re-reads it.
-    var voiceWallet = _refreshVoiceCredits();
     _navKey.currentState?.push(
       MaterialPageRoute<void>(
         // The StatefulBuilder is load-bearing, not noise: a pushed route
@@ -976,8 +828,6 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
             notifyOnDone: _notifyOnDone,
             appVersion: widget.appVersion,
             staleNotifyPlugins: staleNotifyPlugins,
-            hasHosts: _hosts.isNotEmpty,
-            voiceWallet: voiceWallet,
             onThemeModeChanged: (mode) {
               setState(() => _themeMode = mode);
               rebuildRoute(() {});
@@ -1007,77 +857,6 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
               setState(() => _notifyOnDone = value);
               rebuildRoute(() {});
               _persistNotifyPreferences();
-            },
-            voiceAssistantEnabled: _voiceAssistantEnabled,
-            onVoiceAssistantChanged: (enabled) {
-              setState(() => _voiceAssistantEnabled = enabled);
-              rebuildRoute(() {});
-              unawaited(
-                runBestEffort(() async {
-                  await widget.settingsStore.saveVoiceAssistantEnabled(enabled);
-                  // Off is the revoke: clearing the accepted version makes
-                  // turning it back on ask again before anything is sent.
-                  if (!enabled) {
-                    await widget.settingsStore.saveVoiceConsentVersion(0);
-                  }
-                }, context: 'persist voice assistant'),
-              );
-            },
-            appleSignedIn: _appleSignedIn,
-            onSignInWithApple: () async {
-              await _signInWithApple();
-              rebuildRoute(() {});
-            },
-            onDeleteAccount: () async {
-              await deleteAccount(
-                appleLinked: _appleSignedIn,
-                reauthenticate: () async {
-                  final credential = await FirebaseAuth.instance.currentUser!
-                      .reauthenticateWithProvider(AppleAuthProvider());
-                  return credential.additionalUserInfo?.authorizationCode;
-                },
-                revoke: (code) => FirebaseAuth.instance
-                    .revokeTokenWithAuthorizationCode(code),
-                // No arguments: the function reads the uid from the auth
-                // context, which is the only account it may ever delete.
-                delete: () => FirebaseFunctions.instanceFor(
-                  region: 'us-central1',
-                ).httpsCallable('deleteAccount').call<void>(),
-                // Signed out first, and that is not a formality:
-                // `signInAnonymously` hands back the *existing* anonymous
-                // user when there is one, and the client has no idea its
-                // account was just deleted server side. Without the sign-out
-                // an anonymous account would carry on under the uid it
-                // asked to be rid of, and re-create rows beneath it.
-                startOver: () async {
-                  await FirebaseAuth.instance.signOut();
-                  await FirebaseAuth.instance.signInAnonymously();
-                },
-              );
-              setState(() => _appleSignedIn = false);
-              // The screen stays up, and everything it shows about the
-              // wallet belonged to the account that just went. Re-read it
-              // under the fresh uid — an empty balance and an empty ledger,
-              // which is the truth and also the reassurance.
-              rebuildRoute(() {
-                // The deleted account's balance went with it; the fresh uid
-                // starts at nothing, and the shared notifier has to say so
-                // as well as this screen.
-                _voiceCredits.value = null;
-                // The paid-interest flag deliberately stays: it belongs to
-                // this device, not to the account that just went, and the
-                // count it already added cannot be taken back — nothing on
-                // the server says which tap was this one's. Clearing it here
-                // would only invite the same person to count themselves
-                // twice.
-                voiceWallet = _refreshVoiceCredits();
-              });
-              // The old uid's `users/{uid}/devices` documents went with the
-              // account, so this device has to re-register under the fresh
-              // one. Unawaited, and through the wrapper that reports its own
-              // failure: the delete has already happened, and a push failure
-              // surfacing as a failed delete would be a lie.
-              unawaited(_pushNotifyPreferences());
             },
             onManageHosts: _openHostList,
             // Hidden while the demo is already showing — settings is reached
@@ -1143,7 +922,6 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
               hasConfiguredHost: _hosts.isNotEmpty,
               onExitDemo: _exitDemo,
               onOpenSettings: _openSettings,
-              voiceAssistantEnabled: _voiceAssistantEnabled,
             )
           : _hosts.isEmpty
           ? HostSetupScreen(
@@ -1169,14 +947,6 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
               onOpenHostSwitcher: _openHostSwitcher,
               onOpenSettings: _openSettings,
               networkChanges: _staleTransportSignal.changes,
-              voiceAssistantEnabled: _voiceAssistantEnabled,
-              voiceCredits: _voiceCredits,
-              // Null once an Apple ID is attached: there is nothing left to
-              // offer, and the sheet and the refusal card both key on it.
-              onVoiceSignIn: _appleSignedIn ? null : _signInWithApple,
-              voicePaidInterest: _voicePaidInterest,
-              onVoicePaidInterest: _recordVoicePaidInterest,
-              onVoiceCreditsStale: _refreshVoiceCredits,
             ),
     );
   }
