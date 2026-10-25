@@ -1,3 +1,13 @@
+## [1.1.5] - 2026-10-25
+
+### 🚀 Features
+
+- *(app)* [**breaking**] Remove the voice assistant (#331)
+
+### 💼 Other
+
+- Upgrade flutter to 3.47.7 (#328)
+- Upgrade flutter to 3.47.8 (#334)
 ## [1.1.4] - 2026-10-16
 
 ### 🐛 Bug Fixes
