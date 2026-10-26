@@ -1132,14 +1132,14 @@ class _AgentScreenState extends State<AgentScreen> {
     final showComposer = widget.showComposerFor?.call(widget.paneId) ?? true;
     final conversation = _conversation;
     // The mode reads replies from the native transcript, answers no TUI
-    // prompts, and shares the one microphone with dictation.
+    // prompts, and shares the one microphone with dictation. Its button lives
+    // in the composer, so "composer shown" holds wherever it can be tapped.
     final canToggleConversation =
         conversation != null ||
         (hasNativeHistory &&
             agent?.status != AgentStatus.blocked &&
             !_dictationStarting &&
-            !_dictating &&
-            showComposer);
+            !_dictating);
 
     return Scaffold(
       body: SafeArea(
@@ -1152,12 +1152,6 @@ class _AgentScreenState extends State<AgentScreen> {
               displayName: displayName,
               workspaceLabel: workspaceLabel,
               status: agent?.status,
-              conversationOn: conversation != null,
-              onToggleConversation: canToggleConversation
-                  ? () => conversation == null
-                        ? _startConversation()
-                        : setState(_stopConversation)
-                  : null,
             ),
             if (_workspaceLabelError != null)
               MaterialBanner(
@@ -1298,6 +1292,13 @@ class _AgentScreenState extends State<AgentScreen> {
                 dictating: _dictating,
                 dictationEnabled: conversation == null,
                 agentRunning: agent?.status == AgentStatus.working,
+                conversationOn: conversation != null,
+                offerConversation: hasNativeHistory,
+                onToggleConversation: canToggleConversation
+                    ? () => conversation == null
+                          ? _startConversation()
+                          : setState(_stopConversation)
+                    : null,
                 pendingImages: _pendingImages,
                 canAttachImages: _imagesCapability != null,
                 onRemoveImage: _removePendingImage,
@@ -1337,8 +1338,6 @@ class _AgentHeader extends StatelessWidget {
     required this.displayName,
     required this.workspaceLabel,
     required this.status,
-    required this.conversationOn,
-    required this.onToggleConversation,
   });
 
   final String agentType;
@@ -1346,14 +1345,9 @@ class _AgentHeader extends StatelessWidget {
   final String displayName;
   final String? workspaceLabel;
   final AgentStatus? status;
-  final bool conversationOn;
-
-  /// Null disables the conversation-mode toggle.
-  final VoidCallback? onToggleConversation;
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
@@ -1410,25 +1404,8 @@ class _AgentHeader extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 4),
-          IconButton(
-            key: const ValueKey('agent_conversation_toggle'),
-            tooltip: conversationOn
-                ? l10n.agentStopConversation
-                : l10n.agentStartConversation,
-            icon: const Icon(Icons.record_voice_over),
-            isSelected: conversationOn,
-            color: scheme.onSurfaceVariant,
-            selectedIcon: Icon(Icons.record_voice_over, color: scheme.primary),
-            visualDensity: VisualDensity.compact,
-            style: IconButton.styleFrom(
-              shape: const CircleBorder(),
-              backgroundColor: conversationOn ? scheme.primaryContainer : null,
-            ),
-            onPressed: onToggleConversation,
-          ),
           if (status != null) ...[
-            const SizedBox(width: 4),
+            const SizedBox(width: 8),
             StatusPill(status: status!),
           ],
         ],
@@ -2488,6 +2465,9 @@ class _Composer extends StatelessWidget {
     required this.dictating,
     required this.dictationEnabled,
     required this.agentRunning,
+    required this.conversationOn,
+    required this.offerConversation,
+    required this.onToggleConversation,
     required this.pendingImages,
     required this.canAttachImages,
     required this.onRemoveImage,
@@ -2515,6 +2495,16 @@ class _Composer extends StatelessWidget {
   /// Whether the agent is actively processing. When it is and the input is
   /// empty, the send button becomes a stop button that interrupts with Esc.
   final bool agentRunning;
+
+  /// Conversation mode is on: the send slot becomes its end button.
+  final bool conversationOn;
+
+  /// The agent has a native transcript, which conversation mode reads its
+  /// replies from: an idle, empty send slot offers to start it.
+  final bool offerConversation;
+
+  /// Starts or stops conversation mode. Null disables the start button.
+  final VoidCallback? onToggleConversation;
   final List<PickedImage> pendingImages;
 
   /// Whether the resolved agent has an [ImageAttachmentCapability]. The
@@ -2701,6 +2691,9 @@ class _Composer extends StatelessWidget {
                   controller: controller,
                   busy: sending || dictationStarting || dictating,
                   agentRunning: agentRunning,
+                  conversationOn: conversationOn,
+                  offerConversation: offerConversation,
+                  onToggleConversation: onToggleConversation,
                   hasPendingImages: pendingImages.isNotEmpty,
                   onSend: onSend,
                   onStop: () => onAction(() => client.sendKeys(paneId, 'esc')),
@@ -3109,15 +3102,24 @@ class _MicrophoneButton extends StatelessWidget {
 }
 
 /// The composer's primary action button. It shows a spinner while [busy]
-/// (a send/attach is in flight or dictation is active), a stop button when the
-/// agent is running and there is nothing staged to send — no text and no
-/// pending images (tapping it interrupts with Esc via [onStop]), and otherwise
-/// a send button ([onSend]).
+/// (a send/attach is in flight or dictation is active), a send button
+/// ([onSend]) whenever text or images are staged, and otherwise, in order:
+/// conversation mode's end button while it is on, a stop button while the
+/// agent is running (tapping it interrupts with Esc via [onStop]),
+/// conversation mode's start button when [offerConversation], and send.
+///
+/// Conversation mode shares this slot rather than taking its own, as in the
+/// Claude app: talking replaces typing, so its entry only matters while the
+/// input is empty, and while it is on there is no draft to send and the
+/// agent's reply is read aloud instead of stopped from here.
 class _SendButton extends StatelessWidget {
   const _SendButton({
     required this.controller,
     required this.busy,
     required this.agentRunning,
+    required this.conversationOn,
+    required this.offerConversation,
+    required this.onToggleConversation,
     required this.hasPendingImages,
     required this.onSend,
     required this.onStop,
@@ -3126,6 +3128,9 @@ class _SendButton extends StatelessWidget {
   final TextEditingController controller;
   final bool busy;
   final bool agentRunning;
+  final bool conversationOn;
+  final bool offerConversation;
+  final VoidCallback? onToggleConversation;
   final bool hasPendingImages;
   final VoidCallback onSend;
   final VoidCallback onStop;
@@ -3133,19 +3138,54 @@ class _SendButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    const circle = CircleBorder();
     return SizedBox(
       width: 40,
       height: 40,
       child: ValueListenableBuilder<TextEditingValue>(
         valueListenable: controller,
         builder: (context, value, _) {
-          final showStop =
-              agentRunning && !hasPendingImages && value.text.trim().isEmpty;
+          final staged = hasPendingImages || value.text.trim().isNotEmpty;
+          if (!busy && !staged && (conversationOn || !agentRunning)) {
+            if (conversationOn) {
+              // Inverted from the start button so "on" reads at a glance.
+              return Tooltip(
+                message: l10n.agentStopConversation,
+                child: FilledButton(
+                  key: const ValueKey('agent_conversation_button'),
+                  onPressed: onToggleConversation,
+                  style: FilledButton.styleFrom(
+                    shape: circle,
+                    padding: EdgeInsets.zero,
+                    backgroundColor: scheme.onSurface,
+                    foregroundColor: scheme.surface,
+                  ),
+                  child: const Icon(Icons.graphic_eq, size: 20),
+                ),
+              );
+            }
+            if (offerConversation) {
+              return Tooltip(
+                message: l10n.agentStartConversation,
+                child: FilledButton(
+                  key: const ValueKey('agent_conversation_button'),
+                  onPressed: onToggleConversation,
+                  style: FilledButton.styleFrom(
+                    shape: circle,
+                    padding: EdgeInsets.zero,
+                  ),
+                  child: const Icon(Icons.graphic_eq, size: 20),
+                ),
+              );
+            }
+          }
+          final showStop = agentRunning && !staged;
           final button = FilledButton(
             key: const ValueKey('send_message_button'),
             onPressed: busy ? null : (showStop ? onStop : onSend),
             style: FilledButton.styleFrom(
-              shape: const CircleBorder(),
+              shape: circle,
               padding: EdgeInsets.zero,
             ),
             child: busy

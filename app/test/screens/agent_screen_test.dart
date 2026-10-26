@@ -18,6 +18,7 @@ import 'package:drover/src/screens/structured_prompt_sheet.dart';
 import 'package:drover/src/speech/speech_input.dart';
 import 'package:drover/src/speech/speech_output.dart';
 import 'package:drover/src/transcript/native_transcript.dart';
+import 'package:drover/src/widgets/status_pill.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5139,8 +5140,18 @@ void main() {
     final instruction = lookupAppLocalizations(
       const Locale('en'),
     ).agentConversationStyleInstruction;
-    const toggle = ValueKey('agent_conversation_toggle');
+    final l10n = lookupAppLocalizations(const Locale('en'));
+    const button = ValueKey('agent_conversation_button');
+    const send = ValueKey('send_message_button');
     const strip = ValueKey('agent_conversation_strip');
+
+    /// An idle pane with a native transcript: the state in which the empty
+    /// send slot offers conversation mode.
+    StatusNativeHistoryRunner idleRunner() =>
+        StatusNativeHistoryRunner()..status = 'idle';
+
+    Finder iconIn(ValueKey<String> key, IconData icon) =>
+        find.descendant(of: find.byKey(key), matching: find.byIcon(icon));
 
     Future<void> pumpScreen(
       WidgetTester tester,
@@ -5186,7 +5197,7 @@ void main() {
         })}\n';
 
     Future<void> turnOn(WidgetTester tester) async {
-      await tester.tap(find.byKey(toggle));
+      await tester.tap(find.byKey(button));
       await tester.pumpAndSettle();
     }
 
@@ -5207,8 +5218,9 @@ void main() {
       await pumpScreen(tester, runner);
       expect(find.text('Native question'), findsOneWidget);
 
-      expect(tester.widget<IconButton>(find.byKey(toggle)).onPressed, isNull);
-      await tester.tap(find.byKey(toggle), warnIfMissed: false);
+      expect(iconIn(button, Icons.graphic_eq), findsOneWidget);
+      expect(tester.widget<FilledButton>(find.byKey(button)).onPressed, isNull);
+      await tester.tap(find.byKey(button), warnIfMissed: false);
       await tester.pumpAndSettle();
       expect(find.byKey(strip), findsNothing);
       expect(sentPrompt(runner.commands), isFalse);
@@ -5216,17 +5228,68 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('is disabled without native history and sends nothing', (
+    testWidgets('is not offered without native history: send stays an arrow', (
       tester,
     ) async {
-      final runner = StubCommandRunner(workingResponse);
+      final runner = StubCommandRunner(idleWithModeResponse);
       await pumpScreen(tester, runner);
 
-      expect(tester.widget<IconButton>(find.byKey(toggle)).onPressed, isNull);
-      await tester.tap(find.byKey(toggle), warnIfMissed: false);
+      expect(find.byKey(button), findsNothing);
+      expect(iconIn(send, Icons.arrow_upward), findsOneWidget);
+      expect(find.byIcon(Icons.graphic_eq), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('an empty idle composer offers it; typing swaps in send', (
+      tester,
+    ) async {
+      final runner = idleRunner();
+      await pumpScreen(tester, runner);
+
+      expect(iconIn(button, Icons.graphic_eq), findsOneWidget);
+      expect(find.byTooltip(l10n.agentStartConversation), findsOneWidget);
+      expect(
+        tester.widget<FilledButton>(find.byKey(button)).onPressed,
+        isNotNull,
+      );
+      expect(find.byKey(send), findsNothing);
+
+      await tester.enterText(find.byType(TextField), 'hello');
+      await tester.pump();
+
+      expect(find.byKey(button), findsNothing);
+      expect(iconIn(send, Icons.arrow_upward), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pump();
+      expect(iconIn(button, Icons.graphic_eq), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a working agent keeps the end button, not stop', (
+      tester,
+    ) async {
+      final runner = idleRunner();
+      await pumpScreen(tester, runner);
+      await turnOn(tester);
+
+      runner.status = 'working';
+      await tester.pump(const Duration(hours: 1));
       await tester.pumpAndSettle();
-      expect(find.byKey(strip), findsNothing);
-      expect(sentPrompt(runner.commands), isFalse);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is StatusPill && w.status == AgentStatus.working,
+        ),
+        findsOneWidget,
+        reason: 'the poll saw the agent start working',
+      );
+
+      expect(find.byTooltip(l10n.agentStopConversation), findsOneWidget);
+      expect(iconIn(button, Icons.graphic_eq), findsOneWidget);
+      expect(find.byKey(send), findsNothing);
+      expect(find.byIcon(Icons.stop), findsNothing);
 
       await tester.pumpWidget(const SizedBox());
     });
@@ -5234,7 +5297,7 @@ void main() {
     testWidgets('sends the style instruction and shows the strip', (
       tester,
     ) async {
-      final runner = StatusNativeHistoryRunner();
+      final runner = idleRunner();
       await pumpScreen(tester, runner);
 
       await turnOn(tester);
@@ -5251,7 +5314,7 @@ void main() {
     });
 
     testWidgets('reads the reply prose aloud but not its code', (tester) async {
-      final runner = StatusNativeHistoryRunner();
+      final runner = idleRunner();
       final output = FakeSpeechOutput();
       await pumpScreen(tester, runner, output: output);
       await turnOn(tester);
@@ -5279,7 +5342,7 @@ void main() {
     });
 
     testWidgets('disables dictation while on', (tester) async {
-      final runner = StatusNativeHistoryRunner();
+      final runner = idleRunner();
       await pumpScreen(tester, runner);
       final mic = find.byKey(const ValueKey('dictate_button'));
       expect(tester.widget<OutlinedButton>(mic).onPressed, isNotNull);
@@ -5294,7 +5357,7 @@ void main() {
     testWidgets('turning it off stops speech and hides the strip', (
       tester,
     ) async {
-      final runner = StatusNativeHistoryRunner();
+      final runner = idleRunner();
       final input = FakeSpeechInput();
       final output = FakeSpeechOutput();
       await pumpScreen(tester, runner, input: input, output: output);
@@ -5302,8 +5365,10 @@ void main() {
       await pollReply(tester, runner);
       expect(output.spoken, isNotEmpty);
       expect(output.stopCalls, 0);
+      expect(find.byTooltip(l10n.agentStopConversation), findsOneWidget);
+      expect(iconIn(button, Icons.graphic_eq), findsOneWidget);
 
-      await tester.tap(find.byKey(toggle));
+      await tester.tap(find.byKey(button));
       await tester.pumpAndSettle();
 
       expect(find.byKey(strip), findsNothing);
@@ -5317,6 +5382,7 @@ void main() {
             .onPressed,
         isNotNull,
       );
+      expect(find.byTooltip(l10n.agentStartConversation), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
     });
@@ -5324,7 +5390,7 @@ void main() {
     testWidgets('disposing the screen stops speech and the mic', (
       tester,
     ) async {
-      final runner = StatusNativeHistoryRunner();
+      final runner = idleRunner();
       final input = FakeSpeechInput();
       final output = FakeSpeechOutput();
       await pumpScreen(tester, runner, input: input, output: output);
@@ -5342,7 +5408,7 @@ void main() {
     testWidgets('does not send once listAgents reports blocked', (
       tester,
     ) async {
-      final runner = StatusNativeHistoryRunner();
+      final runner = idleRunner();
       final input = FakeSpeechInput();
       final output = FakeSpeechOutput();
       await pumpScreen(tester, runner, input: input, output: output);
@@ -5379,7 +5445,7 @@ void main() {
     testWidgets('tapping the strip while speaking interrupts and listens', (
       tester,
     ) async {
-      final runner = StatusNativeHistoryRunner();
+      final runner = idleRunner();
       final input = FakeSpeechInput();
       final output = FakeSpeechOutput();
       await pumpScreen(tester, runner, input: input, output: output);
