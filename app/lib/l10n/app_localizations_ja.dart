@@ -262,6 +262,40 @@ class AppLocalizationsJa extends AppLocalizations {
   String get agentDictateMessage => '音声入力';
 
   @override
+  String get agentStartConversation => '会話モードを開始';
+
+  @override
+  String get agentStopConversation => '会話モードを終了';
+
+  @override
+  String get agentConversationStyleInstruction =>
+      'これから音声で会話します。返答は話し言葉で3文以内にしてください。コードは書かず、必要なら『画面を見てください』と伝えてください。最後に質問を1つ返してください。';
+
+  @override
+  String get agentConversationListening => '聞き取り中…';
+
+  @override
+  String get agentConversationSending => '送信中…';
+
+  @override
+  String get agentConversationWaiting => '返答を待っています…';
+
+  @override
+  String get agentConversationSpeaking => '読み上げ中 · タップで割り込んで話す';
+
+  @override
+  String get agentConversationNoSpeech => '聞き取れませんでした · タップして話す';
+
+  @override
+  String get agentConversationBlocked => '画面での回答が必要です · 回答後にタップして再開';
+
+  @override
+  String get agentConversationError => '問題が発生しました · タップして再試行';
+
+  @override
+  String get agentConversationPaused => '一時停止中 · タップして話す';
+
+  @override
   String get agentSendEscape => 'Esc キーを送信';
 
   @override

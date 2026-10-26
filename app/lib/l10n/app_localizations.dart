@@ -574,6 +574,72 @@ abstract class AppLocalizations {
   /// **'Dictate message'**
   String get agentDictateMessage;
 
+  /// No description provided for @agentStartConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Start conversation mode'**
+  String get agentStartConversation;
+
+  /// No description provided for @agentStopConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop conversation mode'**
+  String get agentStopConversation;
+
+  /// No description provided for @agentConversationStyleInstruction.
+  ///
+  /// In en, this message translates to:
+  /// **'We are now talking by voice. Reply in natural spoken language, in at most 3 sentences. Do not write code; if code or a diff is needed, tell me to look at the screen. End with one question back to me.'**
+  String get agentConversationStyleInstruction;
+
+  /// No description provided for @agentConversationListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening…'**
+  String get agentConversationListening;
+
+  /// No description provided for @agentConversationSending.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending…'**
+  String get agentConversationSending;
+
+  /// No description provided for @agentConversationWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the reply…'**
+  String get agentConversationWaiting;
+
+  /// No description provided for @agentConversationSpeaking.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading aloud · tap to interrupt and talk'**
+  String get agentConversationSpeaking;
+
+  /// No description provided for @agentConversationNoSpeech.
+  ///
+  /// In en, this message translates to:
+  /// **'Didn\'t catch that · tap to talk'**
+  String get agentConversationNoSpeech;
+
+  /// No description provided for @agentConversationBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'The agent needs an answer on screen · tap to resume after answering'**
+  String get agentConversationBlocked;
+
+  /// No description provided for @agentConversationError.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong · tap to retry'**
+  String get agentConversationError;
+
+  /// No description provided for @agentConversationPaused.
+  ///
+  /// In en, this message translates to:
+  /// **'Paused · tap to talk'**
+  String get agentConversationPaused;
+
   /// No description provided for @agentSendEscape.
   ///
   /// In en, this message translates to:

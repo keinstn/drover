@@ -20,7 +20,9 @@ import '../herdr/herdr_client.dart';
 import '../herdr/pane_text.dart';
 import '../image/image_input.dart';
 import '../models/agent_info.dart';
+import '../speech/conversation_mode.dart';
 import '../speech/speech_input.dart';
+import '../speech/speech_output.dart';
 import '../transcript/native_transcript.dart';
 import '../widgets/agent_avatar.dart';
 import '../widgets/agent_switcher_bar.dart';
@@ -143,6 +145,7 @@ class AgentScreen extends StatefulWidget {
     this.initialAgents = const [],
     this.initialWorkspaceLabel,
     this.speechInput,
+    this.speechOutput,
     this.imagePicker,
     this.draftStore,
     this.draftKeyPrefix,
@@ -164,6 +167,7 @@ class AgentScreen extends StatefulWidget {
   final List<AgentInfo> initialAgents;
   final String? initialWorkspaceLabel;
   final SpeechInput? speechInput;
+  final SpeechOutput? speechOutput;
 
   final ImagePickerPort? imagePicker;
   final AgentDraftStore? draftStore;
@@ -272,6 +276,11 @@ class _AgentScreenState extends State<AgentScreen> {
   final _scrollController = ScrollController();
   final _messageController = TextEditingController();
   late final SpeechInput _speechInput;
+  late final SpeechOutput _speechOutput;
+  // Non-null only while conversation mode is on: the controller cancels the
+  // app-wide shared [SpeechInput] whenever it stops, so it must not outlive
+  // the mode (or it would cut off a later dictation).
+  ConversationController? _conversation;
   late final ImagePickerPort _imagePicker;
   late final AgentDraftStore _draftStore;
   // The draft-store key for this pane, host-scoped via `widget.draftKeyPrefix`
@@ -285,6 +294,7 @@ class _AgentScreenState extends State<AgentScreen> {
   void initState() {
     super.initState();
     _speechInput = widget.speechInput ?? SpeechInputController();
+    _speechOutput = widget.speechOutput ?? PlatformSpeechOutput();
     _imagePicker = widget.imagePicker ?? SystemImagePicker();
     _draftStore = widget.draftStore ?? AgentDraftStore.shared;
     _draftKey = widget.draftKeyPrefix == null
@@ -319,6 +329,7 @@ class _AgentScreenState extends State<AgentScreen> {
     if (_dictationStarting || _dictating) {
       unawaited(_speechInput.cancel());
     }
+    _stopConversation();
     // Persist the in-progress draft before the controller is torn down so it
     // survives navigating away from and back to this pane.
     _draftStore.write(_draftKey, _messageController.text);
@@ -567,6 +578,10 @@ class _AgentScreenState extends State<AgentScreen> {
         _nativeHistorySessionIdentity = nativeHistorySessionIdentity;
         _nativeHistoryError = nativeHistoryError;
       });
+      _conversation?.onUpdate(
+        _nativeHistory?.entries ?? const [],
+        (_agent ?? agent).status,
+      );
       _restoreScrollAfterLayout(stickToBottom: stickToBottom);
       _syncStructuredPromptSheet();
     } finally {
@@ -922,6 +937,7 @@ class _AgentScreenState extends State<AgentScreen> {
       setState(() => _pendingImages.removeAt(index));
 
   Future<void> _toggleDictation() async {
+    if (_conversation != null) return;
     if (_dictating) {
       try {
         await _speechInput.stop();
@@ -995,6 +1011,46 @@ class _AgentScreenState extends State<AgentScreen> {
     showTopToast(context, message);
   }
 
+  /// Turns conversation mode on: the controller sends the style instruction
+  /// through the same [_send]/[_queued] path as the composer, then loops
+  /// listen → send → read the reply aloud, fed by [_loadNativeHistory].
+  void _startConversation() {
+    final l10n = AppLocalizations.of(context)!;
+    final conversation = ConversationController(
+      input: _speechInput,
+      output: _speechOutput,
+      // The controller only learns the status from transcript polls, which
+      // can trail listAgents by a slow native-history load; never type into
+      // a blocked prompt in that window.
+      send: (text) async {
+        if (_agent?.status == AgentStatus.blocked) return false;
+        return _send(() => _queued(() => _deliverPrompt(text)));
+      },
+      // Voice replies in the language STT hears, including device languages
+      // deviceRecognitionLocaleId leaves to the platform default.
+      localeTag:
+          deviceRecognitionLocaleId()?.replaceAll('_', '-') ??
+          WidgetsBinding.instance.platformDispatcher.locale.toLanguageTag(),
+    );
+    setState(() => _conversation = conversation);
+    // Seed the status first so a start against a blocked agent pauses
+    // instead of sending.
+    conversation.onUpdate(
+      _nativeHistory?.entries ?? const [],
+      _agent?.status ?? AgentStatus.unknown,
+    );
+    conversation.start(l10n.agentConversationStyleInstruction);
+  }
+
+  void _stopConversation() {
+    final conversation = _conversation;
+    if (conversation == null) return;
+    _conversation = null;
+    conversation
+      ..stop()
+      ..dispose();
+  }
+
   /// Replaces this screen with one for [target] (a bottom-bar switch),
   /// forwarding the shared collaborators and the native-history resolver so the
   /// new pane resumes from the caller's per-pane cache when one is provided.
@@ -1009,6 +1065,7 @@ class _AgentScreenState extends State<AgentScreen> {
           initialAgent: target,
           initialAgents: _agents,
           speechInput: widget.speechInput,
+          speechOutput: widget.speechOutput,
           imagePicker: widget.imagePicker,
           draftStore: widget.draftStore,
           draftKeyPrefix: widget.draftKeyPrefix,
@@ -1072,6 +1129,17 @@ class _AgentScreenState extends State<AgentScreen> {
         (liveTerminalText != null && liveTerminalText.trim().isNotEmpty);
     final showInitialLoading =
         !hasTranscriptContent && _firstLoad && _loadError == null;
+    final showComposer = widget.showComposerFor?.call(widget.paneId) ?? true;
+    final conversation = _conversation;
+    // The mode reads replies from the native transcript, answers no TUI
+    // prompts, and shares the one microphone with dictation.
+    final canToggleConversation =
+        conversation != null ||
+        (hasNativeHistory &&
+            agent?.status != AgentStatus.blocked &&
+            !_dictationStarting &&
+            !_dictating &&
+            showComposer);
 
     return Scaffold(
       body: SafeArea(
@@ -1084,6 +1152,12 @@ class _AgentScreenState extends State<AgentScreen> {
               displayName: displayName,
               workspaceLabel: workspaceLabel,
               status: agent?.status,
+              conversationOn: conversation != null,
+              onToggleConversation: canToggleConversation
+                  ? () => conversation == null
+                        ? _startConversation()
+                        : setState(_stopConversation)
+                  : null,
             ),
             if (_workspaceLabelError != null)
               MaterialBanner(
@@ -1213,13 +1287,16 @@ class _AgentScreenState extends State<AgentScreen> {
                 client: widget.client,
                 paneId: widget.paneId,
               ),
-            if (widget.showComposerFor?.call(widget.paneId) ?? true)
+            if (conversation != null)
+              _ConversationStrip(conversation: conversation),
+            if (showComposer)
               _Composer(
                 key: const ValueKey('agent_composer'),
                 controller: _messageController,
                 sending: _sending,
                 dictationStarting: _dictationStarting,
                 dictating: _dictating,
+                dictationEnabled: conversation == null,
                 agentRunning: agent?.status == AgentStatus.working,
                 pendingImages: _pendingImages,
                 canAttachImages: _imagesCapability != null,
@@ -1260,6 +1337,8 @@ class _AgentHeader extends StatelessWidget {
     required this.displayName,
     required this.workspaceLabel,
     required this.status,
+    required this.conversationOn,
+    required this.onToggleConversation,
   });
 
   final String agentType;
@@ -1267,9 +1346,14 @@ class _AgentHeader extends StatelessWidget {
   final String displayName;
   final String? workspaceLabel;
   final AgentStatus? status;
+  final bool conversationOn;
+
+  /// Null disables the conversation-mode toggle.
+  final VoidCallback? onToggleConversation;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
@@ -1326,12 +1410,124 @@ class _AgentHeader extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(width: 4),
+          IconButton(
+            key: const ValueKey('agent_conversation_toggle'),
+            tooltip: conversationOn
+                ? l10n.agentStopConversation
+                : l10n.agentStartConversation,
+            icon: const Icon(Icons.record_voice_over),
+            isSelected: conversationOn,
+            color: scheme.onSurfaceVariant,
+            selectedIcon: Icon(Icons.record_voice_over, color: scheme.primary),
+            visualDensity: VisualDensity.compact,
+            style: IconButton.styleFrom(
+              shape: const CircleBorder(),
+              backgroundColor: conversationOn ? scheme.primaryContainer : null,
+            ),
+            onPressed: onToggleConversation,
+          ),
           if (status != null) ...[
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
             StatusPill(status: status!),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Conversation mode's status line above the composer: the phase (plus the
+/// live words while listening), and the one tap target that interrupts,
+/// resumes or retries the loop. Deliberately static — no spinner — so a
+/// waiting phase never keeps the frame pipeline busy.
+class _ConversationStrip extends StatelessWidget {
+  const _ConversationStrip({required this.conversation});
+
+  final ConversationController conversation;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    return ListenableBuilder(
+      listenable: conversation,
+      builder: (context, _) {
+        final listening = conversation.phase == ConversationPhase.listening;
+        final label = switch (conversation.phase) {
+          ConversationPhase.listening => l10n.agentConversationListening,
+          ConversationPhase.sending => l10n.agentConversationSending,
+          ConversationPhase.waiting ||
+          ConversationPhase.off => l10n.agentConversationWaiting,
+          ConversationPhase.speaking => l10n.agentConversationSpeaking,
+          ConversationPhase.paused => switch (conversation.pauseReason) {
+            ConversationPauseReason.noSpeech => l10n.agentConversationNoSpeech,
+            ConversationPauseReason.blocked => l10n.agentConversationBlocked,
+            ConversationPauseReason.error => l10n.agentConversationError,
+            ConversationPauseReason.tapped ||
+            null => l10n.agentConversationPaused,
+          },
+        };
+        final words = conversation.partialWords.trim();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+          child: Material(
+            color: scheme.surfaceContainer,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(droverRadiusMedium),
+              side: BorderSide(color: scheme.outlineVariant),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              key: const ValueKey('agent_conversation_strip'),
+              onTap: conversation.tap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      listening ? Icons.mic : Icons.record_voice_over,
+                      size: 18,
+                      color: listening
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                          if (listening && words.isNotEmpty)
+                            Text(
+                              words,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: scheme.onSurface,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -2290,6 +2486,7 @@ class _Composer extends StatelessWidget {
     required this.sending,
     required this.dictationStarting,
     required this.dictating,
+    required this.dictationEnabled,
     required this.agentRunning,
     required this.pendingImages,
     required this.canAttachImages,
@@ -2311,6 +2508,9 @@ class _Composer extends StatelessWidget {
   final bool sending;
   final bool dictationStarting;
   final bool dictating;
+
+  /// False while conversation mode owns the microphone.
+  final bool dictationEnabled;
 
   /// Whether the agent is actively processing. When it is and the input is
   /// empty, the send button becomes a stop button that interrupts with Esc.
@@ -2494,7 +2694,7 @@ class _Composer extends StatelessWidget {
                 _MicrophoneButton(
                   starting: dictationStarting,
                   dictating: dictating,
-                  onPressed: onDictation,
+                  onPressed: dictationEnabled ? onDictation : null,
                 ),
                 const SizedBox(width: 8),
                 _SendButton(
@@ -2876,12 +3076,12 @@ class _MicrophoneButton extends StatelessWidget {
 
   final bool starting;
   final bool dictating;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final enabled = !starting;
+    final enabled = !starting && onPressed != null;
     return SizedBox(
       width: 40,
       height: 40,

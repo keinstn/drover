@@ -16,6 +16,7 @@ import 'package:drover/src/screens/agent_draft_store.dart';
 import 'package:drover/src/screens/agent_screen.dart';
 import 'package:drover/src/screens/structured_prompt_sheet.dart';
 import 'package:drover/src/speech/speech_input.dart';
+import 'package:drover/src/speech/speech_output.dart';
 import 'package:drover/src/transcript/native_transcript.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -138,6 +139,7 @@ class FakeSpeechInput implements SpeechInput {
   SpeechInputResultListener? _onResult;
   SpeechInputStatusListener? _onStatus;
   SpeechInputErrorListener? _onError;
+  var startCalls = 0;
   var stopCalls = 0;
   var cancelCalls = 0;
 
@@ -146,7 +148,9 @@ class FakeSpeechInput implements SpeechInput {
     required SpeechInputResultListener onResult,
     required SpeechInputStatusListener onStatus,
     required SpeechInputErrorListener onError,
+    Duration? pauseFor,
   }) async {
+    startCalls++;
     _onResult = onResult;
     _onStatus = onStatus;
     _onError = onError;
@@ -170,6 +174,61 @@ class FakeSpeechInput implements SpeechInput {
   void done() => _onStatus?.call(SpeechInputStatus.done);
 
   void error(String message) => _onError?.call(message);
+}
+
+/// Records what conversation mode reads aloud. Each utterance stays "playing"
+/// until [finish] or [stop], so a test can observe (and interrupt) the
+/// speaking phase.
+class FakeSpeechOutput implements SpeechOutput {
+  final spoken = <String>[];
+  var stopCalls = 0;
+  Completer<void>? _playing;
+
+  @override
+  Future<void> speak(String text, {required String localeTag}) {
+    spoken.add(text);
+    return (_playing = Completer<void>()).future;
+  }
+
+  /// Ends the current utterance naturally.
+  Future<void> finish() async {
+    final playing = _playing;
+    _playing = null;
+    if (playing != null && !playing.isCompleted) playing.complete();
+  }
+
+  @override
+  Future<void> stop() {
+    stopCalls++;
+    return finish();
+  }
+}
+
+/// [NativeHistoryRunner] with a settable herdr agent status.
+class StatusNativeHistoryRunner extends NativeHistoryRunner {
+  String status = 'working';
+
+  /// While set, native-history loads stall at the stat, so a test can hold
+  /// the screen between a listAgents poll and the transcript poll after it.
+  Completer<void>? statGate;
+
+  @override
+  Future<RemoteFileStat> statFile(String path) async {
+    await statGate?.future;
+    return super.statFile(path);
+  }
+
+  @override
+  Future<CommandResult> run(String command) async {
+    final result = await super.run(command);
+    if (!command.contains("'agent' 'list'")) return result;
+    return ok(
+      result.stdout.replaceFirst(
+        '"agent_status":"working"',
+        '"agent_status":"$status"',
+      ),
+    );
+  }
 }
 
 /// A claude pane whose mode line resolves to the widest mode pill label
@@ -5074,6 +5133,278 @@ void main() {
     expect(find.text('ライブターミナル'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
+  });
+
+  group('conversation mode', () {
+    final instruction = lookupAppLocalizations(
+      const Locale('en'),
+    ).agentConversationStyleInstruction;
+    const toggle = ValueKey('agent_conversation_toggle');
+    const strip = ValueKey('agent_conversation_strip');
+
+    Future<void> pumpScreen(
+      WidgetTester tester,
+      CommandRunner runner, {
+      FakeSpeechInput? input,
+      FakeSpeechOutput? output,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: HerdrClient(runner),
+            paneId: 'wB:p1',
+            speechInput: input ?? FakeSpeechInput(),
+            speechOutput: output ?? FakeSpeechOutput(),
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    bool sentPrompt(List<String> commands) =>
+        commands.any((c) => c.contains("'agent' 'prompt'"));
+
+    /// The agent's acknowledgement of [instruction]: two spoken sentences
+    /// plus a code block that must stay on screen only.
+    String replyJsonl() =>
+        '${jsonEncode({
+          'type': 'user',
+          'message': {'role': 'user', 'content': instruction},
+        })}\n'
+        '${jsonEncode({
+          'type': 'assistant',
+          'message': {
+            'role': 'assistant',
+            'content': [
+              {'type': 'text', 'text': 'Sure, let us talk. What should we fix first?\n```dart\nvoid main() {}\n```'},
+            ],
+          },
+        })}\n';
+
+    Future<void> turnOn(WidgetTester tester) async {
+      await tester.tap(find.byKey(toggle));
+      await tester.pumpAndSettle();
+    }
+
+    /// Appends the reply to the session file and fires one poll.
+    Future<void> pollReply(
+      WidgetTester tester,
+      StatusNativeHistoryRunner runner,
+    ) async {
+      runner.contents += replyJsonl();
+      await tester.pump(const Duration(hours: 1));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('is disabled for a blocked agent and sends nothing', (
+      tester,
+    ) async {
+      final runner = StatusNativeHistoryRunner()..status = 'blocked';
+      await pumpScreen(tester, runner);
+      expect(find.text('Native question'), findsOneWidget);
+
+      expect(tester.widget<IconButton>(find.byKey(toggle)).onPressed, isNull);
+      await tester.tap(find.byKey(toggle), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(find.byKey(strip), findsNothing);
+      expect(sentPrompt(runner.commands), isFalse);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('is disabled without native history and sends nothing', (
+      tester,
+    ) async {
+      final runner = StubCommandRunner(workingResponse);
+      await pumpScreen(tester, runner);
+
+      expect(tester.widget<IconButton>(find.byKey(toggle)).onPressed, isNull);
+      await tester.tap(find.byKey(toggle), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(find.byKey(strip), findsNothing);
+      expect(sentPrompt(runner.commands), isFalse);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('sends the style instruction and shows the strip', (
+      tester,
+    ) async {
+      final runner = StatusNativeHistoryRunner();
+      await pumpScreen(tester, runner);
+
+      await turnOn(tester);
+
+      final prompts = runner.commands
+          .where((c) => c.contains("'agent' 'prompt'"))
+          .toList();
+      expect(prompts, hasLength(1));
+      expect(prompts.single, contains(instruction));
+      expect(find.byKey(strip), findsOneWidget);
+      expect(find.text('Waiting for the reply…'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('reads the reply prose aloud but not its code', (tester) async {
+      final runner = StatusNativeHistoryRunner();
+      final output = FakeSpeechOutput();
+      await pumpScreen(tester, runner, output: output);
+      await turnOn(tester);
+      expect(output.spoken, isEmpty);
+
+      await pollReply(tester, runner);
+
+      // Utterances play one at a time; let each finish in turn.
+      expect(output.spoken, ['Sure, let us talk.']);
+      expect(
+        find.text('Reading aloud · tap to interrupt and talk'),
+        findsOneWidget,
+      );
+      await output.finish();
+      await tester.pumpAndSettle();
+      expect(output.spoken, [
+        'Sure, let us talk.',
+        'What should we fix first?',
+      ]);
+      await output.finish();
+      await tester.pumpAndSettle();
+      expect(output.spoken, hasLength(2));
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('disables dictation while on', (tester) async {
+      final runner = StatusNativeHistoryRunner();
+      await pumpScreen(tester, runner);
+      final mic = find.byKey(const ValueKey('dictate_button'));
+      expect(tester.widget<OutlinedButton>(mic).onPressed, isNotNull);
+
+      await turnOn(tester);
+
+      expect(tester.widget<OutlinedButton>(mic).onPressed, isNull);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('turning it off stops speech and hides the strip', (
+      tester,
+    ) async {
+      final runner = StatusNativeHistoryRunner();
+      final input = FakeSpeechInput();
+      final output = FakeSpeechOutput();
+      await pumpScreen(tester, runner, input: input, output: output);
+      await turnOn(tester);
+      await pollReply(tester, runner);
+      expect(output.spoken, isNotEmpty);
+      expect(output.stopCalls, 0);
+
+      await tester.tap(find.byKey(toggle));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(strip), findsNothing);
+      expect(output.stopCalls, greaterThanOrEqualTo(1));
+      expect(input.cancelCalls, greaterThanOrEqualTo(1));
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.byKey(const ValueKey('dictate_button')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('disposing the screen stops speech and the mic', (
+      tester,
+    ) async {
+      final runner = StatusNativeHistoryRunner();
+      final input = FakeSpeechInput();
+      final output = FakeSpeechOutput();
+      await pumpScreen(tester, runner, input: input, output: output);
+      await turnOn(tester);
+      await pollReply(tester, runner);
+      expect(output.stopCalls, 0);
+      expect(input.cancelCalls, 0);
+
+      await tester.pumpWidget(const SizedBox());
+
+      expect(output.stopCalls, greaterThanOrEqualTo(1));
+      expect(input.cancelCalls, greaterThanOrEqualTo(1));
+    });
+
+    testWidgets('does not send once listAgents reports blocked', (
+      tester,
+    ) async {
+      final runner = StatusNativeHistoryRunner();
+      final input = FakeSpeechInput();
+      final output = FakeSpeechOutput();
+      await pumpScreen(tester, runner, input: input, output: output);
+      await turnOn(tester);
+      runner.status = 'idle';
+      await pollReply(tester, runner);
+      await output.finish();
+      await tester.pumpAndSettle();
+      await output.finish();
+      await tester.pumpAndSettle();
+      expect(input.startCalls, 1, reason: 'turn over, listening again');
+
+      // listAgents sees the block, but the transcript poll that would tell
+      // the controller is still loading.
+      runner
+        ..status = 'blocked'
+        ..statGate = Completer<void>();
+      await tester.pump(const Duration(hours: 1));
+      await tester.pump();
+      input.result('yes do it', isFinal: true);
+      await tester.pump();
+
+      expect(
+        runner.commands.where((c) => c.contains("'agent' 'prompt'")),
+        hasLength(1),
+        reason: 'only the style instruction',
+      );
+
+      runner.statGate!.complete();
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('tapping the strip while speaking interrupts and listens', (
+      tester,
+    ) async {
+      final runner = StatusNativeHistoryRunner();
+      final input = FakeSpeechInput();
+      final output = FakeSpeechOutput();
+      await pumpScreen(tester, runner, input: input, output: output);
+      await turnOn(tester);
+      await pollReply(tester, runner);
+      expect(
+        find.text('Reading aloud · tap to interrupt and talk'),
+        findsOneWidget,
+      );
+      expect(output.stopCalls, 0);
+      expect(input.startCalls, 0);
+
+      await tester.tap(find.byKey(strip));
+      await tester.pumpAndSettle();
+
+      expect(output.stopCalls, 1);
+      expect(output.spoken, ['Sure, let us talk.']);
+      expect(input.startCalls, 1);
+      expect(find.text('Listening…'), findsOneWidget);
+      input.result('fix the login bug');
+      await tester.pump();
+      expect(find.text('fix the login bug'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 }
 

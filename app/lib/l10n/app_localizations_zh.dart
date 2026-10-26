@@ -264,6 +264,40 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentDictateMessage => '听写消息';
 
   @override
+  String get agentStartConversation => '开始对话模式';
+
+  @override
+  String get agentStopConversation => '结束对话模式';
+
+  @override
+  String get agentConversationStyleInstruction =>
+      '接下来我们用语音对话。请用自然的口语回答，不超过3句话。不要写代码；如果需要代码或差异，请告诉我“请看屏幕”。最后向我提一个问题。';
+
+  @override
+  String get agentConversationListening => '正在聆听…';
+
+  @override
+  String get agentConversationSending => '正在发送…';
+
+  @override
+  String get agentConversationWaiting => '正在等待回复…';
+
+  @override
+  String get agentConversationSpeaking => '正在朗读 · 点按以打断并说话';
+
+  @override
+  String get agentConversationNoSpeech => '没有听清 · 点按以说话';
+
+  @override
+  String get agentConversationBlocked => '智能体需要你在屏幕上回答 · 回答后点按以继续';
+
+  @override
+  String get agentConversationError => '出现问题 · 点按以重试';
+
+  @override
+  String get agentConversationPaused => '已暂停 · 点按以说话';
+
+  @override
   String get agentSendEscape => '发送 Esc 键';
 
   @override
