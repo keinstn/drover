@@ -273,6 +273,42 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentDictateMessage => 'Dictate message';
 
   @override
+  String get agentStartConversation => 'Start conversation mode';
+
+  @override
+  String get agentStopConversation => 'Stop conversation mode';
+
+  @override
+  String get agentConversationStyleInstruction =>
+      'We are now talking by voice. Reply in natural spoken language, in at most 3 sentences. Do not write code; if code or a diff is needed, tell me to look at the screen. End with one question back to me.';
+
+  @override
+  String get agentConversationListening => 'Listening…';
+
+  @override
+  String get agentConversationSending => 'Sending…';
+
+  @override
+  String get agentConversationWaiting => 'Waiting for the reply…';
+
+  @override
+  String get agentConversationSpeaking =>
+      'Reading aloud · tap to interrupt and talk';
+
+  @override
+  String get agentConversationNoSpeech => 'Didn\'t catch that · tap to talk';
+
+  @override
+  String get agentConversationBlocked =>
+      'The agent needs an answer on screen · tap to resume after answering';
+
+  @override
+  String get agentConversationError => 'Something went wrong · tap to retry';
+
+  @override
+  String get agentConversationPaused => 'Paused · tap to talk';
+
+  @override
   String get agentSendEscape => 'Send Esc key';
 
   @override

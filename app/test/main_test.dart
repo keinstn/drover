@@ -189,6 +189,7 @@ class _NoopSpeechInput implements SpeechInput {
     required SpeechInputResultListener onResult,
     required SpeechInputStatusListener onStatus,
     required SpeechInputErrorListener onError,
+    Duration? pauseFor,
   }) async => const SpeechInputStartResult.failed('unavailable in tests');
 
   @override

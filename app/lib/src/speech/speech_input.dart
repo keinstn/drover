@@ -35,6 +35,10 @@ abstract interface class SpeechInput {
     required SpeechInputResultListener onResult,
     required SpeechInputStatusListener onStatus,
     required SpeechInputErrorListener onError,
+
+    /// How long a silence ends the utterance; null keeps the platform's own
+    /// end-of-speech detection (dictation).
+    Duration? pauseFor,
   });
 
   Future<void> stop();
@@ -55,6 +59,16 @@ class PlatformOnDeviceSpeechSupport implements OnDeviceSpeechSupport {
         false;
   }
 }
+
+/// The recognition locale for the device language, or null for the
+/// platform's own default. Shared with conversation mode so its spoken replies
+/// are voiced in the language the user is heard in.
+String? deviceRecognitionLocaleId() =>
+    switch (ui.PlatformDispatcher.instance.locale.languageCode) {
+      'ja' => 'ja_JP',
+      'zh' => 'zh_CN',
+      _ => null,
+    };
 
 /// Adapts speech_to_text's app-wide singleton to [SpeechInput].
 ///
@@ -83,6 +97,7 @@ class SpeechInputController implements SpeechInput {
     required SpeechInputResultListener onResult,
     required SpeechInputStatusListener onStatus,
     required SpeechInputErrorListener onError,
+    Duration? pauseFor,
   }) async {
     final request = ++_request;
     _listenerCleanup?.cancel();
@@ -134,6 +149,7 @@ class SpeechInputController implements SpeechInput {
           cancelOnError: true,
           onDevice: true,
           localeId: _recognitionLocaleId,
+          pauseFor: pauseFor,
         ),
       );
       if (request != _request) {
@@ -164,14 +180,8 @@ class SpeechInputController implements SpeechInput {
     }
   }
 
-  String? get _recognitionLocaleId {
-    if (recognitionLocaleId != null) return recognitionLocaleId;
-    return switch (ui.PlatformDispatcher.instance.locale.languageCode) {
-      'ja' => 'ja_JP',
-      'zh' => 'zh_CN',
-      _ => null,
-    };
-  }
+  String? get _recognitionLocaleId =>
+      recognitionLocaleId ?? deviceRecognitionLocaleId();
 
   Future<bool> _supportsOnDeviceRecognition() async {
     try {
