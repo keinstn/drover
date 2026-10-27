@@ -197,7 +197,7 @@ void main() {
       await pumpEventQueue();
       expect(output.spoken, ['First.', 'Second.', 'Third.']);
       expect(controller.phase, ConversationPhase.listening);
-      expect(input.lastPauseFor, const Duration(seconds: 2));
+      expect(input.lastPauseFor, const Duration(seconds: 4));
     });
 
     test('speaks nothing until the sent user message appears', () async {
