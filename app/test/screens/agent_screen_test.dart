@@ -5322,21 +5322,15 @@ void main() {
 
       await pollReply(tester, runner);
 
-      // Utterances play one at a time; let each finish in turn.
-      expect(output.spoken, ['Sure, let us talk.']);
+      // The whole reply is one utterance, not one per sentence.
+      expect(output.spoken, ['Sure, let us talk. What should we fix first?']);
       expect(
         find.text('Reading aloud · tap to interrupt and talk'),
         findsOneWidget,
       );
       await output.finish();
       await tester.pumpAndSettle();
-      expect(output.spoken, [
-        'Sure, let us talk.',
-        'What should we fix first?',
-      ]);
-      await output.finish();
-      await tester.pumpAndSettle();
-      expect(output.spoken, hasLength(2));
+      expect(output.spoken, hasLength(1));
 
       await tester.pumpWidget(const SizedBox());
     });
@@ -5462,7 +5456,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(output.stopCalls, 1);
-      expect(output.spoken, ['Sure, let us talk.']);
+      expect(output.spoken, ['Sure, let us talk. What should we fix first?']);
       expect(input.startCalls, 1);
       expect(find.text('Listening…'), findsOneWidget);
       input.result('fix the login bug');
