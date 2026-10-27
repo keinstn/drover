@@ -73,7 +73,7 @@ class ConversationController extends ChangeNotifier {
     required this._output,
     required this._send,
     required this.localeTag,
-    this.pauseFor = const Duration(seconds: 2),
+    this.pauseFor = const Duration(seconds: 4),
   });
 
   final SpeechInput _input;
