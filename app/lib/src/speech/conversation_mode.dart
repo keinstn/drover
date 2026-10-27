@@ -22,8 +22,7 @@ final _spaces = RegExp(r'[ \t　]+');
 
 /// Reduces an assistant's markdown to what is worth hearing. Code blocks and
 /// tables are dropped outright: read aloud they are noise, and the user can
-/// look at the screen for them. Line breaks are kept so [splitSentences] can
-/// treat each list item as its own utterance.
+/// look at the screen for them. Line breaks are kept.
 String speakableText(String markdown) {
   final lines = <String>[];
   var inFence = false;
@@ -48,17 +47,6 @@ String speakableText(String markdown) {
   }
   return lines.join('\n');
 }
-
-final _sentenceEnd = RegExp(r'[。！？!?]+|\.(?=\s)');
-
-/// Splits [text] into utterances so a tap can cut speech off between short
-/// pieces rather than after one long paragraph.
-List<String> splitSentences(String text) => text
-    .replaceAllMapped(_sentenceEnd, (m) => '${m[0]}\n')
-    .split('\n')
-    .map((piece) => piece.trim())
-    .where((piece) => piece.isNotEmpty)
-    .toList();
 
 enum ConversationPhase { off, listening, sending, waiting, speaking, paused }
 
@@ -178,7 +166,9 @@ class ConversationController extends ChangeNotifier {
           .where((m) => m.speaker == TranscriptSpeaker.assistant)
           .toList();
       for (final reply in replies.skip(_queuedReplies)) {
-        _queue.addAll(splitSentences(speakableText(reply.text)));
+        // One utterance per reply: sentence-sized ones reset the intonation.
+        final text = speakableText(reply.text);
+        if (text.isNotEmpty) _queue.add(text);
       }
       if (replies.length > _queuedReplies) _queuedReplies = replies.length;
     }

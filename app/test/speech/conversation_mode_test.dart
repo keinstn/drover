@@ -112,23 +112,6 @@ void main() {
     });
   });
 
-  group('splitSentences', () {
-    test('splits on Japanese and Latin terminators and newlines', () {
-      expect(splitSentences('はい。できました！本当？ Yes. Done!\nNext line'), [
-        'はい。',
-        'できました！',
-        '本当？',
-        'Yes.',
-        'Done!',
-        'Next line',
-      ]);
-    });
-
-    test('does not split decimals and drops empty pieces', () {
-      expect(splitSentences('Pi is 3.14\n\n  \n。'), ['Pi is 3.14', '。']);
-    });
-  });
-
   group('ConversationController', () {
     late FakeInput input;
     late FakeOutput output;
@@ -187,15 +170,13 @@ void main() {
       await pumpEventQueue();
       output.finish();
       await pumpEventQueue();
-      output.finish();
-      await pumpEventQueue();
-      expect(output.spoken, ['First.', 'Second.', 'Third.']);
+      expect(output.spoken, ['First.', 'Second. Third.'], reason: 'one each');
       expect(controller.phase, ConversationPhase.waiting);
       expect(input.startCalls, 0, reason: 'agent still working');
 
       controller.onUpdate(poll(['First.', 'Second. Third.']), AgentStatus.idle);
       await pumpEventQueue();
-      expect(output.spoken, ['First.', 'Second.', 'Third.']);
+      expect(output.spoken, ['First.', 'Second. Third.']);
       expect(controller.phase, ConversationPhase.listening);
       expect(input.lastPauseFor, const Duration(seconds: 4));
     });
@@ -402,9 +383,10 @@ void main() {
       controller.onUpdate([
         user('hello'),
         assistant('One. Two.'),
+        assistant('Three.'),
       ], AgentStatus.working);
       await pumpEventQueue();
-      expect(output.spoken, ['One.']);
+      expect(output.spoken, ['One. Two.']);
       expect(controller.phase, ConversationPhase.paused);
       expect(controller.pauseReason, ConversationPauseReason.error);
 
@@ -412,9 +394,10 @@ void main() {
       controller.onUpdate([
         user('hello'),
         assistant('One. Two.'),
+        assistant('Three.'),
       ], AgentStatus.idle);
       await pumpEventQueue();
-      expect(output.spoken, ['One.'], reason: 'rest of the queue dropped');
+      expect(output.spoken, ['One. Two.'], reason: 'rest of the queue dropped');
       expect(input.startCalls, 0);
     });
 
@@ -423,14 +406,15 @@ void main() {
       controller.onUpdate([
         user('hello'),
         assistant('One. Two.'),
+        assistant('Three.'),
       ], AgentStatus.working);
       await pumpEventQueue();
-      expect(output.spoken, ['One.']);
+      expect(output.spoken, ['One. Two.']);
 
       controller.tap();
       await pumpEventQueue();
       expect(output.stopCalls, greaterThan(0));
-      expect(output.spoken, ['One.'], reason: 'rest of the queue dropped');
+      expect(output.spoken, ['One. Two.'], reason: 'rest of the queue dropped');
       expect(controller.phase, ConversationPhase.listening);
     });
 
