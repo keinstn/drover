@@ -1,17 +1,11 @@
 name: ci-ios-deps
 
-# Xcode Cloud archives with automatic package resolution disabled, so a stale
-# Package.resolved or conflicting SPM pins only fail at release time unless
-# checked here. Only dependency/manifest changes can break SPM resolution;
-# gating on them skips macOS minutes on ordinary code PRs.
+# Xcode Cloud archives with automatic package resolution disabled, so a
+# stale Package.resolved or conflicting SPM pins only fail at release time unless
+# checked here. macOS minutes bill at 10x, so this is manual-only: run it before
+# `just release` or after large iOS dependency bumps (Actions tab -> Run workflow).
 on:
-  pull_request:
-    paths:
-      - "app/pubspec.yaml"
-      - "app/pubspec.lock"
-      - "app/.fvmrc"
-      - "app/ios/**"
-      - ".github/workflows/ci-ios-deps.yml"
+  workflow_dispatch:
 
 jobs:
   # Xcode Cloud resolves iOS packages with automatic resolution disabled, so a
