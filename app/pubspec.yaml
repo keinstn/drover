@@ -46,7 +46,7 @@ dependencies:
   image_picker: ^1.2.4
   firebase_core: ^4.14.0
   firebase_auth: ^6.7.1
-  firebase_messaging: ^16.6.0
+  firebase_messaging: ^16.7.1
   cloud_functions: ^6.5.1
   uuid: ^4.6.0
   firebase_app_check: ^0.4.9
