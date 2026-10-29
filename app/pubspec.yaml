@@ -45,7 +45,7 @@ dependencies:
   speech_to_text: ^7.4.0
   image_picker: ^1.2.4
   firebase_core: ^4.14.0
-  firebase_auth: ^6.6.1
+  firebase_auth: ^6.7.1
   firebase_messaging: ^16.6.0
   cloud_functions: ^6.4.0
   uuid: ^4.6.0
