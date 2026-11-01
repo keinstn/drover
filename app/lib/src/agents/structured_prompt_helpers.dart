@@ -13,14 +13,22 @@ import '../transcript/native_transcript.dart';
 TranscriptToolUse? findLastUnansweredToolUse(
   NativeTranscript history,
   String toolName,
-) {
+) => _lastUnanswered(history, toolName);
+
+/// The most recent [TranscriptToolUse] of any tool in [history] that has no
+/// matching [TranscriptToolResult] yet — i.e. the call an approval prompt is
+/// most likely asking about — or null if every call has been answered.
+TranscriptToolUse? lastUnansweredToolUse(NativeTranscript history) =>
+    _lastUnanswered(history, null);
+
+TranscriptToolUse? _lastUnanswered(NativeTranscript history, String? toolName) {
   final answeredIds = history.entries
       .whereType<TranscriptToolResult>()
       .map((r) => r.toolUseId)
       .toSet();
   for (final entry in history.entries.reversed) {
     if (entry is TranscriptToolUse &&
-        entry.name == toolName &&
+        (toolName == null || entry.name == toolName) &&
         entry.id != null &&
         !answeredIds.contains(entry.id)) {
       return entry;

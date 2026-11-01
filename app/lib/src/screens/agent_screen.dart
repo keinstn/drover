@@ -14,6 +14,7 @@ import '../../l10n/app_localizations.dart';
 import '../agents/agent_capabilities.dart';
 import '../agents/agent_native_history.dart';
 import '../agents/agent_registry.dart';
+import '../agents/structured_prompt_helpers.dart';
 import '../app_theme.dart';
 import '../herdr/ansi_text.dart';
 import '../herdr/herdr_client.dart';
@@ -1277,6 +1278,9 @@ class _AgentScreenState extends State<AgentScreen> {
             if (question != null)
               _PromptCard(
                 question: question,
+                pendingToolUse: nativeHistory == null
+                    ? null
+                    : lastUnansweredToolUse(nativeHistory),
                 onSend: _send,
                 client: widget.client,
                 paneId: widget.paneId,
@@ -2319,12 +2323,17 @@ class _FencedCodeState extends State<_FencedCode> {
 class _PromptCard extends StatelessWidget {
   const _PromptCard({
     required this.question,
+    required this.pendingToolUse,
     required this.onSend,
     required this.client,
     required this.paneId,
   });
 
   final PromptQuestion question;
+
+  /// The tool call the prompt is (most likely) asking to approve, shown above
+  /// the question so the thing being approved isn't scrolled away behind us.
+  final TranscriptToolUse? pendingToolUse;
   final Future<bool> Function(Future<void> Function()) onSend;
   final HerdrClient client;
   final String paneId;
@@ -2332,12 +2341,32 @@ class _PromptCard extends StatelessWidget {
   Widget _optionButton(BuildContext context, PromptOption option) {
     final scheme = Theme.of(context).colorScheme;
     void press() => onSend(() => client.prompt(paneId, '${option.number}'));
-    // The parsed TUI text is shown as-is; only the leading `N. ` numbering is
-    // dropped from the label (the number is still what gets sent).
-    final label = Text(
-      option.label,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+    // The parsed TUI text is shown as-is (wrapping up to 3 lines); the leading
+    // `N. ` numbering becomes a muted hint and is still what gets sent.
+    final colors = DroverColors.of(context);
+    final mono = TextStyle(
+      fontFamily: droverMonoFamily,
+      fontFeatures: droverMonoFeatures,
+      fontSize: 11.5,
+      fontWeight: FontWeight.w600,
+      color: option.selected
+          ? scheme.onPrimary.withValues(alpha: 0.7)
+          : colors.tertiaryText,
+    );
+    final label = Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Text('${option.number}', style: mono),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            option.label,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
     // Full-width rows rather than a wrapped run of pills: the answers are a
     // list to pick from, and a row is easier to hit than a pill on a phone.
@@ -2353,7 +2382,7 @@ class _PromptCard extends StatelessWidget {
           backgroundColor: scheme.primary,
           foregroundColor: scheme.onPrimary,
           minimumSize: const Size.fromHeight(44),
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           alignment: Alignment.centerLeft,
           shape: rowShape,
           textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
@@ -2367,7 +2396,7 @@ class _PromptCard extends StatelessWidget {
         backgroundColor: scheme.surfaceContainerHigh,
         foregroundColor: scheme.onSurface,
         minimumSize: const Size.fromHeight(44),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         alignment: Alignment.centerLeft,
         side: BorderSide(color: scheme.outline),
         shape: rowShape,
@@ -2402,6 +2431,21 @@ class _PromptCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (pendingToolUse case final tool?) ...[
+            Text(
+              '${tool.name} ${toolUseSummary(tool.name, tool.input)}'.trim(),
+              key: const ValueKey('prompt_card_tool_context'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: droverMonoFamily,
+                fontFeatures: droverMonoFeatures,
+                fontSize: 11.5,
+                color: DroverColors.of(context).tertiaryText,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           if (question.question != null) ...[
             Text(
               question.question!,
