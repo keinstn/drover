@@ -15,7 +15,6 @@ import '../transcript/activity_snippet.dart';
 import '../utils/path.dart';
 import '../widgets/agent_avatar.dart';
 import '../widgets/error_message_view.dart';
-import '../widgets/status_pill.dart';
 import '../widgets/text_context_menu.dart';
 import '../widgets/top_toast.dart';
 import 'agent_screen.dart';
@@ -977,7 +976,7 @@ class _HerdScreenState extends State<HerdScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Wrap(
-        spacing: 7,
+        spacing: 14,
         runSpacing: 7,
         children: [
           for (final status in statuses)
@@ -1202,8 +1201,9 @@ class _HerdScreenState extends State<HerdScreen> {
   }
 }
 
-/// A pill in the herd summary row: a status color dot, its localized label,
-/// and the current count for that status.
+/// An entry in the herd summary row: a status color dot, its localized label,
+/// and the current count for that status. Plain text, no pill — the loud
+/// per-status colour now lives on each agent's avatar instead.
 class _StatusChip extends StatelessWidget {
   const _StatusChip({required this.status, required this.count});
 
@@ -1214,42 +1214,24 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = DroverColors.of(context);
     final l10n = AppLocalizations.of(context)!;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: colors.statusPillBg(status),
-        borderRadius: BorderRadius.circular(999),
-        // Same treatment as the tile's StatusPill: the chip's own hue at low
-        // alpha, so the fill and the edge come from one colour.
-        border: Border.all(
-          color: colors.statusDot(status).withValues(alpha: 0.34),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Round, matching StatusPill's: a bullet rather than an LED.
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: colors.statusDot(status),
+            shape: BoxShape.circle,
+          ),
         ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Round, matching StatusPill's: a bullet rather than an LED.
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: colors.statusDot(status),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 5),
-          Text(
-            droverLabelText(
-              context,
-              '${agentStatusLabel(l10n, status)} $count',
-            ),
-            style: droverLabelStyle(
-              context,
-              color: colors.statusPillFg(status),
-            ),
-          ),
-        ],
-      ),
+        const SizedBox(width: 5),
+        Text(
+          droverLabelText(context, '${agentStatusLabel(l10n, status)} $count'),
+          style: droverLabelStyle(context, color: colors.statusPillFg(status)),
+        ),
+      ],
     );
   }
 }
@@ -1281,21 +1263,38 @@ class _AgentTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
         child: Row(
           children: [
-            AgentAvatar(agent: agent.agent),
+            AgentAvatar(agent: agent.agent, status: agent.status),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        elapsed,
+                        style: droverLabelStyle(
+                          context,
+                          fontSize: 9,
+                          color: colors.tertiaryText,
+                        ),
+                      ),
+                    ],
                   ),
                   Text(
                     // Deliberately off the label ramp: `_snippetFor` returns
@@ -1313,23 +1312,6 @@ class _AgentTile extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                StatusPill(status: agent.status),
-                const SizedBox(height: 3),
-                Text(
-                  elapsed,
-                  style: droverLabelStyle(
-                    context,
-                    fontSize: 9,
-                    color: colors.tertiaryText,
-                  ),
-                ),
-              ],
             ),
           ],
         ),
