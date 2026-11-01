@@ -4,6 +4,8 @@ updates:
     directory: "/app"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     # FlutterFire plugins pin an exact firebase-ios-sdk version, so bumping
     # them one at a time leaves conflicting Swift package requirements.
     groups:
@@ -16,13 +18,19 @@ updates:
     directory: "/functions"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "npm"
     directory: "/site"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
