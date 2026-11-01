@@ -7,10 +7,10 @@ import '../app_theme.dart';
 import '../i18n/status_label.dart';
 import '../models/agent_info.dart';
 
-/// A rounded-rect avatar for an agent, filled with the agent type's brand
-/// color and stamped with a single initial (claude→C, codex→X, copilot→P,
-/// pi→π; otherwise the first letter of the type, or `?` when unknown). Gives
-/// each agent a recognizable "face" in lists and the switcher bar.
+/// A rounded-rect avatar for an agent: the agent's mark (the same ones the
+/// herdr desktop app uses) centred on a neutral tile, or a bot glyph for an
+/// unrecognised type. Gives each agent a recognizable "face" in lists and the
+/// switcher bar.
 ///
 /// With a [status], the face also carries the agent's state: a solid ring when
 /// blocked, a comet arc lapping a faint track while working, a thin ring when done, and a
@@ -38,42 +38,42 @@ class AgentAvatar extends StatelessWidget {
   /// The agent's state; null renders the bare face (no ring, full opacity).
   final AgentStatus? status;
 
-  String get _initial {
-    switch (agent?.toLowerCase()) {
-      case 'claude':
-        return 'C';
-      case 'codex':
-        return 'X';
-      case 'copilot':
-        return 'P';
-      // Not the fallback's `P` — that would collide with copilot.
-      case 'pi':
-        return 'π';
-    }
-    final type = agent?.trim();
-    if (type == null || type.isEmpty) return '?';
-    return type[0].toUpperCase();
-  }
+  /// Agents with a bundled mark under `assets/agents/`. Colour marks are drawn
+  /// as-is; monochrome ones are white masks tinted to the theme's ink.
+  static const _colorMarks = {'claude', 'codex'};
+  static const _monoMarks = {'copilot', 'pi'};
 
   @override
   Widget build(BuildContext context) {
     final colors = DroverColors.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final type = agent?.toLowerCase();
+    final markSize = size * 0.6;
+    final mark = _colorMarks.contains(type) || _monoMarks.contains(type)
+        ? Image.asset(
+            'assets/agents/$type.png',
+            width: markSize,
+            height: markSize,
+            fit: BoxFit.contain,
+            color: _monoMarks.contains(type) ? scheme.onSurface : null,
+            colorBlendMode: BlendMode.srcIn,
+            semanticLabel: agent,
+          )
+        : Icon(
+            Icons.smart_toy_outlined,
+            size: markSize,
+            color: scheme.onSurfaceVariant,
+            semanticLabel: agent,
+          );
     final face = Container(
       width: size,
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: colors.brandColor(agent),
+        color: scheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(radius),
       ),
-      child: Text(
-        _initial,
-        style: TextStyle(
-          color: colors.avatarFg,
-          fontWeight: FontWeight.w800,
-          fontSize: size * 0.42,
-        ),
-      ),
+      child: mark,
     );
     final status = this.status;
     if (status == null) return face;
@@ -101,7 +101,7 @@ class AgentAvatar extends StatelessWidget {
     };
     return Semantics(
       label: agentStatusLabel(AppLocalizations.of(context)!, status),
-      // The initial is decorative; the status is what's worth announcing.
+      // The mark is decorative; the status is what's worth announcing.
       excludeSemantics: true,
       child: decorated,
     );

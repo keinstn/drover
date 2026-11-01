@@ -72,10 +72,6 @@ void main() {
       final colors = droverDarkTheme.extension<DroverColors>()!;
       expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFE5695E));
       expect(colors.userBubble, const Color(0xFF33333A));
-      expect(colors.brandColor('claude'), const Color(0xFFD9825F));
-      expect(colors.brandColor('pi'), const Color(0xFFB98AC9));
-      expect(colors.brandColor('omp'), const Color(0xFF55AAB9));
-      expect(colors.brandColor('omp'), isNot(colors.brandFallback));
       // unknown status reuses the idle triple.
       expect(
         colors.statusDot(AgentStatus.unknown),
@@ -91,14 +87,6 @@ void main() {
       final colors = droverLightTheme.extension<DroverColors>()!;
       expect(colors.statusDot(AgentStatus.blocked), const Color(0xFFC73E3E));
       expect(colors.userBubble, const Color(0xFFD8D8DE));
-      // Brand colors are identical across themes.
-      expect(colors.brandColor('codex'), const Color(0xFF6FA287));
-      expect(colors.brandColor('pi'), const Color(0xFFB98AC9));
-      expect(colors.brandColor('pi'), isNot(colors.brandFallback));
-      expect(colors.brandColor('omp'), const Color(0xFF55AAB9));
-      expect(colors.brandColor('omp'), isNot(colors.brandFallback));
-      // Unknown/null agent type falls back to a neutral tone.
-      expect(colors.brandColor(null), const Color(0xFF7E7E83));
     });
 
     test('light neutrals stay near-neutral', () {
@@ -134,11 +122,10 @@ void main() {
         'toolSurface': colors.toolSurface,
         'tertiaryText': colors.tertiaryText,
         // Not grounds, but tokens whose whole job is to signal the absence of
-        // a state or a brand — they have to look as neutral as they mean.
+        // a state — they have to look as neutral as they mean.
         'idleDot': colors.idleDot,
         'idlePillBg': colors.idlePillBg,
         'idlePillFg': colors.idlePillFg,
-        'brandFallback': colors.brandFallback,
       };
 
       neutrals.forEach((name, color) {
@@ -361,16 +348,6 @@ void main() {
         // tappable — see the underline in demo_screen and the weight in
         // structured_prompt_sheet. Selection marks are the legitimate use.
         expect(colors.accentText, isNot(colors.tertiaryText), reason: name);
-
-        // The one thing the accent must still clear: it sits beside five agent
-        // brand colours and must not be mistaken for any of them.
-        for (final agent in ['claude', 'codex', 'copilot', 'pi', 'omp']) {
-          expect(
-            colors.brandColor(agent),
-            isNot(scheme.primary),
-            reason: '$name accent collides with $agent',
-          );
-        }
       }
     });
 
@@ -393,34 +370,62 @@ void main() {
       ),
     );
 
-    testWidgets('renders the mapped initial per agent type', (tester) async {
-      await pump(tester, 'claude');
-      expect(find.text('C'), findsOneWidget);
+    String? assetName(WidgetTester tester) {
+      final image = tester.widget<Image>(
+        find.descendant(
+          of: find.byType(AgentAvatar),
+          matching: find.byType(Image),
+        ),
+      );
+      return (image.image as AssetImage).assetName;
+    }
 
-      await pump(tester, 'codex');
-      expect(find.text('X'), findsOneWidget);
+    testWidgets('renders each known agent\'s mark', (tester) async {
+      final ink = droverDarkTheme.colorScheme.onSurface;
+      for (final (agent, tint) in [
+        ('claude', null),
+        ('codex', null),
+        ('copilot', ink),
+        ('pi', ink),
+      ]) {
+        await pump(tester, agent);
+        expect(assetName(tester), 'assets/agents/$agent.png', reason: agent);
+        final image = tester.widget<Image>(find.byType(Image));
+        // Monochrome marks are white masks tinted to the theme's ink.
+        expect(image.color, tint, reason: agent);
+        if (tint != null) expect(image.colorBlendMode, BlendMode.srcIn);
+        expect(find.byIcon(Icons.smart_toy_outlined), findsNothing);
+      }
 
-      await pump(tester, 'copilot');
-      expect(find.text('P'), findsOneWidget);
-
-      // π, not the fallback's `P` — that would be indistinguishable from
-      // copilot.
-      await pump(tester, 'pi');
-      expect(find.text('π'), findsOneWidget);
-      expect(find.text('P'), findsNothing);
+      // Matching is case-insensitive.
+      await pump(tester, 'Claude');
+      expect(assetName(tester), 'assets/agents/claude.png');
     });
 
-    testWidgets('falls back to first letter and ? for unknown', (tester) async {
-      await pump(tester, 'gemini');
-      expect(find.text('G'), findsOneWidget);
+    testWidgets('falls back to a bot glyph for unknown types', (tester) async {
+      for (final agent in ['gemini', 'omp', null]) {
+        await pump(tester, agent);
+        expect(find.byType(Image), findsNothing, reason: agent);
+        expect(find.byIcon(Icons.smart_toy_outlined), findsOneWidget);
+      }
+    });
 
-      // omp has no case arm on purpose: the fallback's first letter is `O`,
-      // which is already unique among the five known agents.
-      await pump(tester, 'omp');
-      expect(find.text('O'), findsOneWidget);
-
-      await pump(tester, null);
-      expect(find.text('?'), findsOneWidget);
+    testWidgets('sits on the neutral container', (tester) async {
+      await pump(tester, 'claude');
+      final decoration =
+          tester
+                  .widget<Container>(
+                    find.descendant(
+                      of: find.byType(AgentAvatar),
+                      matching: find.byType(Container),
+                    ),
+                  )
+                  .decoration!
+              as BoxDecoration;
+      expect(
+        decoration.color,
+        droverDarkTheme.colorScheme.surfaceContainerHighest,
+      );
     });
 
     testWidgets('rounds its corners at the medium radius', (tester) async {

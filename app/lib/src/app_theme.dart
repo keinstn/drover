@@ -130,7 +130,7 @@ ButtonStyle droverNeutralButtonStyle(ColorScheme scheme) =>
 /// Ink dark theme. The accent carries no hue at all: it is the page's own ink,
 /// inverted into a fill. That is the rule the app icon already follows — drover
 /// is black and white — and it means every colour on screen means something,
-/// either which agent ([DroverColors.brandColor]) or what state
+/// either which agent (its own mark, drawn by `AgentAvatar`) or what state
 /// ([DroverColors.statusDot]). Nothing is coloured for decoration.
 final ThemeData droverDarkTheme = _buildTheme(
   brightness: Brightness.dark,
@@ -330,7 +330,7 @@ const modeAuto = Color(0xFFFFC107);
 const modeBypass = Color(0xFFE5695E);
 
 /// Ink color tokens that don't map onto Material's [ColorScheme]: per-status
-/// pill colors, agent brand colors, and a few bespoke surfaces.
+/// pill colors and a few bespoke surfaces.
 /// Registered on both themes; read via [DroverColors.of].
 @immutable
 class DroverColors extends ThemeExtension<DroverColors> {
@@ -347,13 +347,6 @@ class DroverColors extends ThemeExtension<DroverColors> {
     required this.idleDot,
     required this.idlePillBg,
     required this.idlePillFg,
-    required this.brandClaude,
-    required this.brandCodex,
-    required this.brandCopilot,
-    required this.brandPi,
-    required this.brandOmp,
-    required this.brandFallback,
-    required this.avatarFg,
     required this.userBubble,
     required this.toolSurface,
     required this.tertiaryText,
@@ -374,16 +367,7 @@ class DroverColors extends ThemeExtension<DroverColors> {
   final Color idlePillBg;
   final Color idlePillFg;
 
-  // Agent brand colors (identical across themes) + neutral fallback.
-  final Color brandClaude;
-  final Color brandCodex;
-  final Color brandCopilot;
-  final Color brandPi;
-  final Color brandOmp;
-  final Color brandFallback;
-
   // Bespoke surfaces/text not covered by ColorScheme.
-  final Color avatarFg;
   final Color userBubble;
   final Color toolSurface;
   final Color tertiaryText;
@@ -425,17 +409,6 @@ class DroverColors extends ThemeExtension<DroverColors> {
     AgentStatus.idle || AgentStatus.unknown => idlePillFg,
   };
 
-  /// Brand color for an agent [type] (e.g. `claude`/`codex`/`copilot`/`pi`/
-  /// `omp`); unknown or null types fall back to a neutral tone.
-  Color brandColor(String? type) => switch (type?.toLowerCase()) {
-    'claude' => brandClaude,
-    'codex' => brandCodex,
-    'copilot' => brandCopilot,
-    'pi' => brandPi,
-    'omp' => brandOmp,
-    _ => brandFallback,
-  };
-
   /// Convenience accessor for the registered extension on [context]'s theme.
   static DroverColors of(BuildContext context) =>
       Theme.of(context).extension<DroverColors>()!;
@@ -461,17 +434,6 @@ class DroverColors extends ThemeExtension<DroverColors> {
     idleDot: Color(0xFF7C7C84),
     idlePillBg: Color.fromRGBO(124, 124, 132, 0.12),
     idlePillFg: Color(0xFF908F96),
-    brandClaude: Color(0xFFD9825F),
-    brandCodex: Color(0xFF6FA287),
-    brandCopilot: Color(0xFF8B9DC9),
-    brandPi: Color(0xFFB98AC9),
-    brandOmp: Color(0xFF55AAB9),
-    // Same reasoning as idle: the fallback avatar for an unrecognised agent
-    // type is the absence of a brand color.
-    brandFallback: Color(0xFF908F96),
-    // Sits on `brandColor(type)`, all of which are light enough to need the
-    // page's own near-black rather than white.
-    avatarFg: Color(0xFF17171A),
     // The ink accent has no hue to lend, so the bubble is separated from the
     // grey lozenges around it (tool chips, inline code, both [toolSurface]) by
     // lightness instead: a clear step above them rather than a different tint.
@@ -503,18 +465,6 @@ class DroverColors extends ThemeExtension<DroverColors> {
     idleDot: Color(0xFF8B8B90),
     idlePillBg: Color(0xFFE9E9ED),
     idlePillFg: Color(0xFF76767B),
-    brandClaude: Color(0xFFD9825F),
-    brandCodex: Color(0xFF6FA287),
-    brandCopilot: Color(0xFF8B9DC9),
-    brandPi: Color(0xFFB98AC9),
-    brandOmp: Color(0xFF55AAB9),
-    // Same reasoning: the fallback avatar for an unrecognised agent type is
-    // the absence of a brand color.
-    brandFallback: Color(0xFF7E7E83),
-    // Sits on `brandColor(type)`, and for an unrecognised type that is the
-    // cool grey [brandFallback] rather than an accent — so it is pinned to
-    // white here rather than tracking any one of the brand hues.
-    avatarFg: Color(0xFFFFFFFF),
     // As in dark: no accent hue to borrow, so the bubble is set apart from
     // [toolSurface] and the inline-code lozenges by lightness, sitting a step
     // below them on the descending ladder. 1.22:1 against `toolSurface` —
@@ -543,13 +493,6 @@ class DroverColors extends ThemeExtension<DroverColors> {
     Color? idleDot,
     Color? idlePillBg,
     Color? idlePillFg,
-    Color? brandClaude,
-    Color? brandCodex,
-    Color? brandCopilot,
-    Color? brandPi,
-    Color? brandOmp,
-    Color? brandFallback,
-    Color? avatarFg,
     Color? userBubble,
     Color? toolSurface,
     Color? tertiaryText,
@@ -567,13 +510,6 @@ class DroverColors extends ThemeExtension<DroverColors> {
     idleDot: idleDot ?? this.idleDot,
     idlePillBg: idlePillBg ?? this.idlePillBg,
     idlePillFg: idlePillFg ?? this.idlePillFg,
-    brandClaude: brandClaude ?? this.brandClaude,
-    brandCodex: brandCodex ?? this.brandCodex,
-    brandCopilot: brandCopilot ?? this.brandCopilot,
-    brandPi: brandPi ?? this.brandPi,
-    brandOmp: brandOmp ?? this.brandOmp,
-    brandFallback: brandFallback ?? this.brandFallback,
-    avatarFg: avatarFg ?? this.avatarFg,
     userBubble: userBubble ?? this.userBubble,
     toolSurface: toolSurface ?? this.toolSurface,
     tertiaryText: tertiaryText ?? this.tertiaryText,
@@ -596,13 +532,6 @@ class DroverColors extends ThemeExtension<DroverColors> {
       idleDot: Color.lerp(idleDot, other.idleDot, t)!,
       idlePillBg: Color.lerp(idlePillBg, other.idlePillBg, t)!,
       idlePillFg: Color.lerp(idlePillFg, other.idlePillFg, t)!,
-      brandClaude: Color.lerp(brandClaude, other.brandClaude, t)!,
-      brandCodex: Color.lerp(brandCodex, other.brandCodex, t)!,
-      brandCopilot: Color.lerp(brandCopilot, other.brandCopilot, t)!,
-      brandPi: Color.lerp(brandPi, other.brandPi, t)!,
-      brandOmp: Color.lerp(brandOmp, other.brandOmp, t)!,
-      brandFallback: Color.lerp(brandFallback, other.brandFallback, t)!,
-      avatarFg: Color.lerp(avatarFg, other.avatarFg, t)!,
       userBubble: Color.lerp(userBubble, other.userBubble, t)!,
       toolSurface: Color.lerp(toolSurface, other.toolSurface, t)!,
       tertiaryText: Color.lerp(tertiaryText, other.tertiaryText, t)!,

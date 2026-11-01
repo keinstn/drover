@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:uuid/uuid.dart';
@@ -48,6 +49,12 @@ Future<void> main() async {
   } else {
     WidgetsFlutterBinding.ensureInitialized();
   }
+  // The claude/codex/copilot agent marks come from LobeHub icons (MIT).
+  LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks([
+      'lobe-icons',
+    ], await rootBundle.loadString('assets/agents/LICENSE-LobeHub.txt'));
+  });
   await runBestEffort(() async {
     await Firebase.initializeApp();
     final appleProvider = appleAppCheckProvider(

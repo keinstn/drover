@@ -1210,7 +1210,7 @@ void main() {
     // Untrusted transcript images must never build an Image (which would GET
     // the URL); they render as an inert placeholder showing the URL instead.
     expect(find.byType(GptMarkdown), findsOneWidget);
-    expect(find.byType(Image), findsNothing);
+    expect(_inTranscript(find.byType(Image)), findsNothing);
     expect(
       _inTranscript(find.textContaining('example.invalid')),
       findsOneWidget,
