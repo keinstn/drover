@@ -5458,10 +5458,12 @@ void main() {
       expect(output.stopCalls, 1);
       expect(output.spoken, ['Sure, let us talk. What should we fix first?']);
       expect(input.startCalls, 1);
-      expect(find.text('Listening…'), findsOneWidget);
+      expect(find.text('Listening · tap to pause'), findsOneWidget);
       input.result('fix the login bug');
       await tester.pump();
       expect(find.text('fix the login bug'), findsOneWidget);
+      expect(find.text('Listening · tap to send'), findsOneWidget);
+      expect(find.text('Listening · tap to pause'), findsNothing);
 
       await tester.pumpWidget(const SizedBox());
     });

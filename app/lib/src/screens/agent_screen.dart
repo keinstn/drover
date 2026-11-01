@@ -1431,8 +1431,12 @@ class _ConversationStrip extends StatelessWidget {
       listenable: conversation,
       builder: (context, _) {
         final listening = conversation.phase == ConversationPhase.listening;
+        final words = conversation.partialWords.trim();
         final label = switch (conversation.phase) {
-          ConversationPhase.listening => l10n.agentConversationListening,
+          ConversationPhase.listening =>
+            words.isEmpty
+                ? l10n.agentConversationListeningTapToPause
+                : l10n.agentConversationListeningTapToSend,
           ConversationPhase.sending => l10n.agentConversationSending,
           ConversationPhase.waiting ||
           ConversationPhase.off => l10n.agentConversationWaiting,
@@ -1445,7 +1449,6 @@ class _ConversationStrip extends StatelessWidget {
             null => l10n.agentConversationPaused,
           },
         };
-        final words = conversation.partialWords.trim();
         return Padding(
           padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
           child: Material(
