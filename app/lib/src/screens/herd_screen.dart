@@ -17,6 +17,7 @@ import '../speech/speech_input.dart';
 import '../transcript/activity_snippet.dart';
 import '../utils/path.dart';
 import '../widgets/agent_avatar.dart';
+import '../widgets/agent_status_indicator.dart';
 import '../widgets/error_message_view.dart';
 import '../widgets/text_context_menu.dart';
 import '../widgets/top_toast.dart';
@@ -1410,6 +1411,8 @@ class _AgentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = DroverColors.of(context);
+    final muted =
+        agent.status == AgentStatus.idle || agent.status == AgentStatus.unknown;
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -1417,7 +1420,7 @@ class _AgentTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
         child: Row(
           children: [
-            AgentAvatar(agent: agent.agent, status: agent.status),
+            AgentAvatar(agent: agent.agent),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1425,17 +1428,18 @@ class _AgentTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
                     children: [
                       Expanded(
                         child: Text(
                           displayName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14.5,
                             fontWeight: FontWeight.w700,
+                            color: muted
+                                ? Theme.of(context).colorScheme.onSurfaceVariant
+                                : null,
                           ),
                         ),
                       ),
@@ -1448,6 +1452,8 @@ class _AgentTile extends StatelessWidget {
                           color: colors.tertiaryText,
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      AgentStatusIndicator(status: agent.status),
                     ],
                   ),
                   Text(
@@ -1573,7 +1579,7 @@ class _NeedsYouCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              AgentAvatar(agent: agent.agent, status: agent.status),
+              AgentAvatar(agent: agent.agent),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
