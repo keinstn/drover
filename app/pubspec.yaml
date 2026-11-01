@@ -81,6 +81,11 @@ flutter:
 
   generate: true
 
+  # Agent marks (2.0x/ and 3.0x/ variants are picked up automatically) plus
+  # their license, registered with LicenseRegistry in main.dart.
+  assets:
+    - assets/agents/
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
