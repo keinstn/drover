@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -283,7 +284,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'We are now talking by voice. Reply in natural spoken language, in at most 3 sentences. Do not write code; if code or a diff is needed, tell me to look at the screen. End with one question back to me.';
 
   @override
-  String get agentConversationListening => 'Listening…';
+  String get agentConversationListeningTapToPause => 'Listening · tap to pause';
+
+  @override
+  String get agentConversationListeningTapToSend => 'Listening · tap to send';
 
   @override
   String get agentConversationSending => 'Sending…';

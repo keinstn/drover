@@ -592,11 +592,17 @@ abstract class AppLocalizations {
   /// **'We are now talking by voice. Reply in natural spoken language, in at most 3 sentences. Do not write code; if code or a diff is needed, tell me to look at the screen. End with one question back to me.'**
   String get agentConversationStyleInstruction;
 
-  /// No description provided for @agentConversationListening.
+  /// No description provided for @agentConversationListeningTapToPause.
   ///
   /// In en, this message translates to:
-  /// **'Listening…'**
-  String get agentConversationListening;
+  /// **'Listening · tap to pause'**
+  String get agentConversationListeningTapToPause;
+
+  /// No description provided for @agentConversationListeningTapToSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening · tap to send'**
+  String get agentConversationListeningTapToSend;
 
   /// No description provided for @agentConversationSending.
   ///

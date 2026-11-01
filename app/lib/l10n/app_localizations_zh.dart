@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -274,7 +275,10 @@ class AppLocalizationsZh extends AppLocalizations {
       '接下来我们用语音对话。请用自然的口语回答，不超过3句话。不要写代码；如果需要代码或差异，请告诉我“请看屏幕”。最后向我提一个问题。';
 
   @override
-  String get agentConversationListening => '正在聆听…';
+  String get agentConversationListeningTapToPause => '正在聆听 · 点按暂停';
+
+  @override
+  String get agentConversationListeningTapToSend => '正在聆听 · 点按发送';
 
   @override
   String get agentConversationSending => '正在发送…';

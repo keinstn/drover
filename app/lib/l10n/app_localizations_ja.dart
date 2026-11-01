@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -272,7 +273,10 @@ class AppLocalizationsJa extends AppLocalizations {
       'これから音声で会話します。返答は話し言葉で3文以内にしてください。コードは書かず、必要なら『画面を見てください』と伝えてください。最後に質問を1つ返してください。';
 
   @override
-  String get agentConversationListening => '聞き取り中…';
+  String get agentConversationListeningTapToPause => '聞き取り中 · タップで一時停止';
+
+  @override
+  String get agentConversationListeningTapToSend => '聞き取り中 · タップで送信';
 
   @override
   String get agentConversationSending => '送信中…';
