@@ -832,6 +832,24 @@ abstract class AppLocalizations {
   /// **'Everyone\'s on track.'**
   String get herdGreetingAllClear;
 
+  /// Section label above the blocked agents awaiting an answer on the herd screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs you'**
+  String get herdNeedsYouLabel;
+
+  /// Opens the blocked agent's detail screen from its needs-you card.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get herdNeedsYouOpen;
+
+  /// No description provided for @herdNeedsYouSendFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t send the answer to {name}'**
+  String herdNeedsYouSendFailed(String name);
+
   /// No description provided for @herdElapsedNow.
   ///
   /// In en, this message translates to:

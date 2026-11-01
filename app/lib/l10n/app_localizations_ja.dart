@@ -403,6 +403,17 @@ class AppLocalizationsJa extends AppLocalizations {
   String get herdGreetingAllClear => 'みんな順調です。';
 
   @override
+  String get herdNeedsYouLabel => 'あなたの返答待ち';
+
+  @override
+  String get herdNeedsYouOpen => '開く';
+
+  @override
+  String herdNeedsYouSendFailed(String name) {
+    return '$name に回答を送れませんでした';
+  }
+
+  @override
   String get herdElapsedNow => 'いま';
 
   @override

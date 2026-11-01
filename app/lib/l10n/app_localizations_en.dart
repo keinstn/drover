@@ -423,6 +423,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get herdGreetingAllClear => 'Everyone\'s on track.';
 
   @override
+  String get herdNeedsYouLabel => 'Needs you';
+
+  @override
+  String get herdNeedsYouOpen => 'Open';
+
+  @override
+  String herdNeedsYouSendFailed(String name) {
+    return 'Couldn\'t send the answer to $name';
+  }
+
+  @override
   String get herdElapsedNow => 'now';
 
   @override

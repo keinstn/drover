@@ -411,6 +411,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get herdGreetingAllClear => '大家都在按计划进行。';
 
   @override
+  String get herdNeedsYouLabel => '等你回复';
+
+  @override
+  String get herdNeedsYouOpen => '打开';
+
+  @override
+  String herdNeedsYouSendFailed(String name) {
+    return '未能将回答发送给 $name';
+  }
+
+  @override
   String get herdElapsedNow => '刚刚';
 
   @override

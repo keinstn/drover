@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/app_theme.dart';
+import 'package:drover/src/demo/demo_herdr.dart' show askUserTranscriptJsonl;
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
@@ -149,6 +150,13 @@ const _hostRefEverConnected = HerdHostRef(
 /// a status chip) and assert its geometry.
 final _decoratedContainer = find.byWidgetPredicate(
   (widget) => widget is Container && widget.decoration is BoxDecoration,
+);
+
+/// Text inside a workspace-list agent tile (each sits in a [Dismissible]),
+/// excluding the same agent's card in the "needs you" inbox above.
+Finder _inTile(String text) => find.descendant(
+  of: find.byType(Dismissible),
+  matching: find.textContaining(text),
 );
 
 /// The screen under test wrapped in an app shell. Single-client tests pass
@@ -299,6 +307,95 @@ class NativeHistoryHerdRunner extends CommandRunner {
   Future<void> dispose() async {}
 }
 
+const _inboxPaneText =
+    'Bash command\n'
+    '\n'
+    '  touch spike-test.txt\n'
+    '\n'
+    ' Do you want to proceed?\n'
+    ' \u276f 1. Yes\n'
+    '   2. No, tell it what to do\n'
+    '\n'
+    ' Esc to cancel\n';
+
+/// A one-agent host for the "needs you" inbox tests: [status] and [agentType]
+/// drive the listing, `agent read` is counted, and `agent prompt` is recorded
+/// (or throws while [failPrompt]).
+class _InboxHost {
+  String status = 'blocked';
+  String agentType = 'aider';
+  bool failPrompt = false;
+  int reads = 0;
+  final prompts = <String>[];
+
+  /// The Claude session JSONL served as native history; null means the agent
+  /// reports no `agent_session` (so no history can load).
+  String? transcript;
+
+  /// What `agent read` returns.
+  String paneText = _inboxPaneText;
+
+  /// Native-history file reads (via [_InboxRunner]).
+  int historyReads = 0;
+
+  CommandResult respond(String command) {
+    if (command.startsWith('command find ')) {
+      return ok(
+        '/home/dev/.claude/projects/-tmp-proj-a/$_inboxSessionId.jsonl\n',
+      );
+    }
+    if (command.contains("'agent' 'read'")) {
+      reads++;
+      return ok(paneText);
+    }
+    if (command.contains("'agent' 'prompt'")) {
+      if (failPrompt) throw Exception('boom');
+      prompts.add(command);
+      return ok('{"id":"1","result":{"type":"ok"}}');
+    }
+    if (command.contains("'workspace' 'list'")) {
+      return ok(
+        '{"id":"1","result":{"workspaces":['
+        '{"workspace_id":"wA","label":"Project A"}]}}',
+      );
+    }
+    return ok(
+      '{"id":"1","result":{"agents":['
+      '{"agent":"$agentType","agent_status":"$status","cwd":"/tmp/proj-a",'
+      '"focused":false,"pane_id":"wA:p1","tab_id":"wA:t1",'
+      '"workspace_id":"wA","name":"Agent Inbox"'
+      '${transcript == null ? '' : ',"agent_session":{"source":"claude",'
+                '"agent":"claude","kind":"id","value":"$_inboxSessionId"}'}'
+      '}]}}',
+    );
+  }
+}
+
+const _inboxSessionId = 'cccccccc-0000-4000-8000-000000000003';
+
+/// Serves [_InboxHost.transcript] as the session file's bytes.
+class _InboxRunner extends FakeCommandRunner {
+  _InboxRunner(this.host) : super(host.respond);
+
+  final _InboxHost host;
+
+  List<int> get _bytes => utf8.encode(host.transcript ?? '');
+
+  @override
+  Future<RemoteFileStat> statFile(String path) async =>
+      RemoteFileStat(size: _bytes.length);
+
+  @override
+  Future<List<int>> readFile(String path, {int offset = 0, int? length}) async {
+    host.historyReads++;
+    final bytes = _bytes;
+    final end = length == null
+        ? bytes.length
+        : (offset + length).clamp(0, bytes.length);
+    return bytes.sublist(offset, end);
+  }
+}
+
 void main() {
   testWidgets('shows session titles grouped by workspace, blocked above idle', (
     tester,
@@ -311,7 +408,7 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining('Agent One'), findsOneWidget);
-    expect(find.textContaining('Agent Two'), findsOneWidget);
+    expect(_inTile('Agent Two'), findsOneWidget);
     expect(find.textContaining('Agent Three'), findsOneWidget);
     expect(find.text('Project A'), findsOneWidget);
     expect(find.text('Project B'), findsOneWidget);
@@ -326,7 +423,7 @@ void main() {
     expect(find.text('claude · proj-a'), findsNWidgets(2));
     expect(find.text('claude · proj-b'), findsOneWidget);
 
-    final blockedTop = tester.getTopLeft(find.textContaining('Agent Two')).dy;
+    final blockedTop = tester.getTopLeft(_inTile('Agent Two')).dy;
     final idleTop = tester.getTopLeft(find.textContaining('Agent One')).dy;
     expect(blockedTop, lessThan(idleTop));
 
@@ -660,7 +757,7 @@ void main() {
       (w) => w is AgentAvatar && w.status == AgentStatus.blocked,
     );
     expect(
-      tester.getSemantics(blockedAvatar).label,
+      tester.getSemantics(blockedAvatar.first).label,
       contains('waiting for you'),
     );
 
@@ -1008,6 +1105,10 @@ void main() {
     'renders each host\'s agents under its own section header in the All '
     'view',
     (tester) async {
+      // Tall enough that the needs-you inbox above doesn't push host B's
+      // section out of the lazily built list.
+      tester.view.physicalSize = const Size(2400, 6000);
+      addTearDown(tester.view.reset);
       final runnerA = FakeCommandRunner(_respond);
       final runnerB = FakeCommandRunner(_respondB);
       final clientA = HerdrClient(runnerA);
@@ -1029,7 +1130,7 @@ void main() {
       // Each host's agents and workspace labels render in its section —
       // including the same workspace id ("wA") existing on both hosts.
       expect(find.textContaining('Agent One'), findsOneWidget);
-      expect(find.textContaining('Agent Bee'), findsOneWidget);
+      expect(_inTile('Agent Bee'), findsOneWidget);
       expect(find.text('Project A'), findsOneWidget);
       expect(find.text('Project X'), findsOneWidget);
 
@@ -1065,7 +1166,7 @@ void main() {
       expect(find.byKey(const ValueKey('host_retry_host-a')), findsOneWidget);
 
       // Host B is unaffected, and the global counts reflect it alone.
-      expect(find.textContaining('Agent Bee'), findsOneWidget);
+      expect(_inTile('Agent Bee'), findsOneWidget);
       expect(find.text('WAITING FOR YOU 1'), findsOneWidget);
       expect(find.text('WORKING 0'), findsOneWidget);
 
@@ -1529,6 +1630,210 @@ void main() {
         a,
         equals(const HerdHostRef(hostId: 'h', displayName: 'H', revision: 0)),
       );
+    });
+  });
+
+  group('needs you inbox', () {
+    final yes = find.widgetWithText(FilledButton, 'Yes');
+
+    testWidgets('shows a blocked agent\'s question and options, answers one, '
+        'and drops the card once it is no longer blocked', (tester) async {
+      final host = _InboxHost();
+      final runner = FakeCommandRunner(host.respond);
+      await tester.pumpWidget(_herdApp(client: HerdrClient(runner)));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('NEEDS YOU'), findsOneWidget);
+      expect(find.text('Do you want to proceed?'), findsOneWidget);
+      expect(yes, findsOneWidget);
+      expect(
+        find.widgetWithText(FilledButton, 'No, tell it what to do'),
+        findsOneWidget,
+      );
+      expect(find.text('aider · Project A'), findsOneWidget);
+      expect(find.text('OPEN'), findsNothing);
+      expect(find.text('Open'), findsOneWidget);
+
+      host.status = 'idle';
+      await tester.tap(yes);
+      await tester.pump();
+      await tester.pump();
+
+      expect(host.prompts, ["~/.local/bin/herdr 'agent' 'prompt' 'wA:p1' '1'"]);
+      expect(find.text('NEEDS YOU'), findsNothing);
+      expect(yes, findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('reads the pane once per blocked episode, not every poll', (
+      tester,
+    ) async {
+      final host = _InboxHost();
+      await tester.pumpWidget(
+        _herdApp(
+          client: HerdrClient(FakeCommandRunner(host.respond)),
+          pollInterval: const Duration(seconds: 2),
+        ),
+      );
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(seconds: 2));
+      }
+      expect(host.reads, 1);
+      expect(yes, findsOneWidget);
+
+      // Leaving blocked drops the cache; the next episode reads again.
+      host.status = 'working';
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text('NEEDS YOU'), findsNothing);
+      host.status = 'blocked';
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(host.reads, 2);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('returning from the agent screen refetches a still-blocked '
+        'pane\'s prompt', (tester) async {
+      final host = _InboxHost();
+      await tester.pumpWidget(
+        _herdApp(client: HerdrClient(FakeCommandRunner(host.respond))),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(yes, findsOneWidget);
+
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AgentScreen), findsOneWidget);
+
+      // Answered there; the agent is immediately blocked on the next prompt,
+      // which the suspended herd poll never saw as non-blocked.
+      host.paneText = _inboxPaneText
+          .replaceFirst('Do you want to proceed?', 'Overwrite the file?')
+          .replaceFirst('1. Yes', '1. Overwrite');
+      await tester.tap(find.byKey(const ValueKey('agent_back_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Overwrite the file?'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Overwrite'), findsOneWidget);
+      expect(find.text('Do you want to proceed?'), findsNothing);
+      expect(yes, findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('no section when nothing is blocked', (tester) async {
+      final host = _InboxHost()..status = 'idle';
+      await tester.pumpWidget(
+        _herdApp(client: HerdrClient(FakeCommandRunner(host.respond))),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.textContaining('Agent Inbox'), findsOneWidget);
+      expect(find.text('NEEDS YOU'), findsNothing);
+      expect(host.reads, 0);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('an agent with structured prompts whose history can\'t load '
+        'only offers Open', (tester) async {
+      final host = _InboxHost()..agentType = 'claude';
+      await tester.pumpWidget(
+        _herdApp(client: HerdrClient(FakeCommandRunner(host.respond))),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('NEEDS YOU'), findsOneWidget);
+      expect(find.text('Do you want to proceed?'), findsOneWidget);
+      expect(yes, findsNothing);
+      expect(find.text('Open'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a failed answer toasts and re-enables the options', (
+      tester,
+    ) async {
+      final host = _InboxHost()..failPrompt = true;
+      await tester.pumpWidget(
+        _herdApp(client: HerdrClient(FakeCommandRunner(host.respond))),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(yes);
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.text("Couldn't send the answer to Agent Inbox"),
+        findsOneWidget,
+      );
+      expect(tester.widget<FilledButton>(yes).onPressed, isNotNull);
+      expect(find.text('NEEDS YOU'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 10));
+    });
+  });
+
+  group('needs you inbox with structured prompts', () {
+    final yes = find.widgetWithText(FilledButton, 'Yes');
+    const plainHistory =
+        '{"type":"user","message":{"role":"user","content":"Hello"}}\n';
+
+    testWidgets('a fresh history with nothing pending shows the options, '
+        'loaded once across polls', (tester) async {
+      final host = _InboxHost()
+        ..agentType = 'claude'
+        ..transcript = plainHistory;
+      await tester.pumpWidget(
+        _herdApp(
+          client: HerdrClient(_InboxRunner(host)),
+          pollInterval: const Duration(seconds: 2),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Do you want to proceed?'), findsOneWidget);
+      expect(yes, findsOneWidget);
+      final historyReads = host.historyReads;
+      expect(historyReads, greaterThan(0));
+
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(seconds: 2));
+      }
+      expect(host.historyReads, historyReads);
+      expect(host.reads, 1);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a pending AskUserQuestion only offers Open', (tester) async {
+      final host = _InboxHost()
+        ..agentType = 'claude'
+        ..transcript = askUserTranscriptJsonl;
+      await tester.pumpWidget(
+        _herdApp(client: HerdrClient(_InboxRunner(host))),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(host.historyReads, greaterThan(0));
+      expect(find.text('NEEDS YOU'), findsOneWidget);
+      expect(yes, findsNothing);
+      expect(find.text('Open'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
     });
   });
 
