@@ -335,6 +335,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentThinking => '思考中…';
 
   @override
+  String get agentNowLabel => '当前';
+
+  @override
   String get agentHistoryBeginning => '已到达保留的终端历史记录开头';
 
   @override
