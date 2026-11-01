@@ -133,11 +133,12 @@ class _HostHerd {
   // reported by the herd are dropped in [_HerdScreenState._loadHost].
   final nativeHistory = <String, NativeTranscriptHistory>{};
 
-  // The numbered prompt parsed from each BLOCKED pane, read once per blocked
-  // episode for the "needs you" inbox. A present key with a null value means
-  // "fetched, nothing answerable". Entries drop when the pane leaves blocked,
-  // so the next episode reads afresh. See [_HerdScreenState._fetchPrompt].
-  final blockedPrompts = <String, PromptQuestion?>{};
+  // The numbered prompt parsed from each BLOCKED pane, fetched once per
+  // blocked episode for the "needs you" inbox, and whether it may be answered
+  // inline. A null question means "fetched, nothing answerable". Entries drop
+  // when the pane leaves blocked, so the next episode fetches afresh. See
+  // [_HerdScreenState._fetchPrompt].
+  final blockedPrompts = <String, ({PromptQuestion? question, bool inline})>{};
   final promptFetches = <String>{};
   final answeringPaneIds = <String>{};
 }
@@ -353,10 +354,11 @@ class _HerdScreenState extends State<HerdScreen> {
       bucket.blockedPrompts.removeWhere(
         (paneId, _) => !blocked.contains(paneId),
       );
-      for (final paneId in blocked) {
-        if (!bucket.blockedPrompts.containsKey(paneId) &&
-            !bucket.promptFetches.contains(paneId)) {
-          unawaited(_fetchPrompt(host, bucket, paneId));
+      for (final agent in agents) {
+        if (blocked.contains(agent.paneId) &&
+            !bucket.blockedPrompts.containsKey(agent.paneId) &&
+            !bucket.promptFetches.contains(agent.paneId)) {
+          unawaited(_fetchPrompt(host, bucket, agent));
         }
       }
       if (!bucket.workspaceLabelsFailed &&
@@ -379,21 +381,34 @@ class _HerdScreenState extends State<HerdScreen> {
     }
   }
 
-  /// Reads [paneId]'s pane once and caches its numbered prompt (or null).
-  /// One read per blocked episode, not per poll: the poll must not contend
-  /// for the serialized SSH channel (see [_openAgentScreen]). A failed read
-  /// caches null, so the card degrades to "Open" without a toast.
+  /// Reads [agent]'s pane once and caches its numbered prompt (or null).
+  /// When the agent's adapter has structured prompts (an AskUserQuestion may
+  /// be multi-question/multi-select, so one digit can't answer it), it then
+  /// loads the pane's native history once, through the shared loader
+  /// AgentScreen reuses: inline options only when nothing structured is
+  /// pending. One fetch per blocked episode, not per poll: the poll must not
+  /// contend for the serialized SSH channel (see [_openAgentScreen]). Any
+  /// failure degrades the card to "Open" without a toast.
   Future<void> _fetchPrompt(
     HerdHostRef host,
     _HostHerd bucket,
-    String paneId,
+    AgentInfo agent,
   ) async {
+    final paneId = agent.paneId;
     bucket.promptFetches.add(paneId);
     PromptQuestion? question;
+    var inline = false;
     try {
       question = parsePromptOptions(
         stripAnsi(await widget.clientFor(host).readAgent(paneId)),
       );
+      final structured = resolveAgentAdapter(agent)?.structuredPrompt;
+      if (question != null && structured == null) {
+        inline = true;
+      } else if (question != null && structured != null) {
+        final history = await _nativeHistoryFor(host, paneId).load(agent);
+        inline = history != null && structured.pendingPrompt(history) == null;
+      }
     } catch (_) {
       // Degrade to "Open" only.
     } finally {
@@ -406,7 +421,10 @@ class _HerdScreenState extends State<HerdScreen> {
     )) {
       return;
     }
-    setState(() => bucket.blockedPrompts[paneId] = question);
+    setState(
+      () =>
+          bucket.blockedPrompts[paneId] = (question: question, inline: inline),
+    );
   }
 
   /// Sends option [number] to [paneId] from the needs-you inbox.
@@ -436,17 +454,6 @@ class _HerdScreenState extends State<HerdScreen> {
         setState(() => bucket.answeringPaneIds.remove(agent.paneId));
       }
     }
-  }
-
-  /// Whether [agent]'s numbered prompt can safely be answered with one digit
-  /// from the herd. An adapter with a structured prompt (AskUserQuestion may
-  /// be multi-question/multi-select) only qualifies once its cached native
-  /// history is loaded and shows nothing pending — never loaded from here.
-  bool _canAnswerInline(_HostHerd bucket, AgentInfo agent) {
-    final structured = resolveAgentAdapter(agent)?.structuredPrompt;
-    if (structured == null) return true;
-    final latest = bucket.nativeHistory[agent.paneId]?.latest;
-    return latest != null && structured.pendingPrompt(latest) == null;
   }
 
   Future<void> _loadWorkspaceLabels(HerdHostRef host) async {
@@ -1083,7 +1090,7 @@ class _HerdScreenState extends State<HerdScreen> {
 
   /// The "needs you" inbox: one card per blocked agent across every in-scope
   /// host, answerable inline when its numbered prompt was parsed and
-  /// [_canAnswerInline] allows it. Blocked agents also stay in their
+  /// [_fetchPrompt] found it safe. Blocked agents also stay in their
   /// workspace cards below.
   List<Widget> _needsYouSection(AppLocalizations l10n) {
     final colors = DroverColors.of(context);
@@ -1099,8 +1106,9 @@ class _HerdScreenState extends State<HerdScreen> {
                 subtitle:
                     '${agent.agent ?? 'agent'} · '
                     '${_workspaceLabel(bucket, agent.workspaceId)}',
-                question: bucket.blockedPrompts[agent.paneId],
-                showOptions: _canAnswerInline(bucket, agent),
+                question: bucket.blockedPrompts[agent.paneId]?.question,
+                showOptions:
+                    bucket.blockedPrompts[agent.paneId]?.inline ?? false,
                 answering: bucket.answeringPaneIds.contains(agent.paneId),
                 onAnswer: (n) => _answerPrompt(host, agent, n),
                 onOpen: () => _openAgentScreen(host, agent),

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/app_theme.dart';
+import 'package:drover/src/demo/demo_herdr.dart' show askUserTranscriptJsonl;
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
@@ -327,7 +328,19 @@ class _InboxHost {
   int reads = 0;
   final prompts = <String>[];
 
+  /// The Claude session JSONL served as native history; null means the agent
+  /// reports no `agent_session` (so no history can load).
+  String? transcript;
+
+  /// Native-history file reads (via [_InboxRunner]).
+  int historyReads = 0;
+
   CommandResult respond(String command) {
+    if (command.startsWith('command find ')) {
+      return ok(
+        '/home/dev/.claude/projects/-tmp-proj-a/$_inboxSessionId.jsonl\n',
+      );
+    }
     if (command.contains("'agent' 'read'")) {
       reads++;
       return ok(_inboxPaneText);
@@ -347,8 +360,36 @@ class _InboxHost {
       '{"id":"1","result":{"agents":['
       '{"agent":"$agentType","agent_status":"$status","cwd":"/tmp/proj-a",'
       '"focused":false,"pane_id":"wA:p1","tab_id":"wA:t1",'
-      '"workspace_id":"wA","name":"Agent Inbox"}]}}',
+      '"workspace_id":"wA","name":"Agent Inbox"'
+      '${transcript == null ? '' : ',"agent_session":{"source":"claude",'
+                '"agent":"claude","kind":"id","value":"$_inboxSessionId"}'}'
+      '}]}}',
     );
+  }
+}
+
+const _inboxSessionId = 'cccccccc-0000-4000-8000-000000000003';
+
+/// Serves [_InboxHost.transcript] as the session file's bytes.
+class _InboxRunner extends FakeCommandRunner {
+  _InboxRunner(this.host) : super(host.respond);
+
+  final _InboxHost host;
+
+  List<int> get _bytes => utf8.encode(host.transcript ?? '');
+
+  @override
+  Future<RemoteFileStat> statFile(String path) async =>
+      RemoteFileStat(size: _bytes.length);
+
+  @override
+  Future<List<int>> readFile(String path, {int offset = 0, int? length}) async {
+    host.historyReads++;
+    final bytes = _bytes;
+    final end = length == null
+        ? bytes.length
+        : (offset + length).clamp(0, bytes.length);
+    return bytes.sublist(offset, end);
   }
 }
 
@@ -1666,8 +1707,8 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('an agent with structured prompts and no cached history only '
-        'offers Open', (tester) async {
+    testWidgets('an agent with structured prompts whose history can\'t load '
+        'only offers Open', (tester) async {
       final host = _InboxHost()..agentType = 'claude';
       await tester.pumpWidget(
         _herdApp(client: HerdrClient(FakeCommandRunner(host.respond))),
@@ -1706,6 +1747,60 @@ void main() {
 
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 10));
+    });
+  });
+
+  group('needs you inbox with structured prompts', () {
+    final yes = find.widgetWithText(FilledButton, 'Yes');
+    const plainHistory =
+        '{"type":"user","message":{"role":"user","content":"Hello"}}\n';
+
+    testWidgets('a fresh history with nothing pending shows the options, '
+        'loaded once across polls', (tester) async {
+      final host = _InboxHost()
+        ..agentType = 'claude'
+        ..transcript = plainHistory;
+      await tester.pumpWidget(
+        _herdApp(
+          client: HerdrClient(_InboxRunner(host)),
+          pollInterval: const Duration(seconds: 2),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Do you want to proceed?'), findsOneWidget);
+      expect(yes, findsOneWidget);
+      final historyReads = host.historyReads;
+      expect(historyReads, greaterThan(0));
+
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(seconds: 2));
+      }
+      expect(host.historyReads, historyReads);
+      expect(host.reads, 1);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a pending AskUserQuestion only offers Open', (tester) async {
+      final host = _InboxHost()
+        ..agentType = 'claude'
+        ..transcript = askUserTranscriptJsonl;
+      await tester.pumpWidget(
+        _herdApp(client: HerdrClient(_InboxRunner(host))),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(host.historyReads, greaterThan(0));
+      expect(find.text('NEEDS YOU'), findsOneWidget);
+      expect(yes, findsNothing);
+      expect(find.text('Open'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
     });
   });
 
