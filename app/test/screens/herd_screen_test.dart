@@ -10,7 +10,9 @@ import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/screens/agent_screen.dart';
 import 'package:drover/src/screens/herd_screen.dart';
 import 'package:drover/src/screens/launch_agent_sheet.dart';
+import 'package:drover/src/widgets/agent_avatar.dart';
 import 'package:drover/src/widgets/error_message_view.dart';
+import 'package:drover/src/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -166,6 +168,12 @@ Widget _herdApp({
     locale: locale,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
+    // The working avatar's ring marches forever; reduced motion keeps it
+    // static so pumpAndSettle can settle.
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(disableAnimations: true),
+      child: child!,
+    ),
     home: HerdScreen(
       hosts: hosts,
       clientFor: clientFor ?? (_) => client!,
@@ -596,7 +604,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('status filter chip is a pill', (tester) async {
+  testWidgets('status summary entry is plain text, not a pill', (tester) async {
     final runner = FakeCommandRunner(_respond);
     final client = HerdrClient(runner);
 
@@ -604,34 +612,59 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    final decoration =
-        tester
-                .widget<Container>(
-                  find
-                      .ancestor(
-                        of: find.text('WAITING FOR YOU 1'),
-                        matching: _decoratedContainer,
-                      )
-                      .first,
-                )
-                .decoration!
-            as BoxDecoration;
-    expect(decoration.borderRadius, BorderRadius.circular(999));
-    // Pins identity too, so the assertion fails rather than drifts if
-    // `find.ancestor` ever resolves to some other decorated box.
+    // No decorated ancestor of the entry carries the old pill fill or
+    // border — the label sits directly on the page.
+    final decorations = tester
+        .widgetList<Container>(
+          find.ancestor(
+            of: find.text('WAITING FOR YOU 1'),
+            matching: _decoratedContainer,
+          ),
+        )
+        .map((c) => c.decoration! as BoxDecoration);
+    for (final d in decorations) {
+      expect(
+        d.color,
+        isNot(DroverColors.dark.statusPillBg(AgentStatus.blocked)),
+      );
+      expect(d.border, isNull);
+    }
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('agent tiles carry status on the avatar, not a pill', (
+    tester,
+  ) async {
+    final runner = FakeCommandRunner(_respond);
+    final client = HerdrClient(runner);
+    final semantics = tester.ensureSemantics();
+
+    await tester.pumpWidget(_herdApp(client: client));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Agent Three'), findsOneWidget);
+    expect(find.byType(StatusPill), findsNothing);
+    // Each tile's avatar is handed its agent's status…
+    final statuses = tester
+        .widgetList<AgentAvatar>(find.byType(AgentAvatar))
+        .map((a) => a.status)
+        .toList();
     expect(
-      decoration.color,
-      DroverColors.dark.statusPillBg(AgentStatus.blocked),
+      statuses,
+      containsAll([AgentStatus.blocked, AgentStatus.working, AgentStatus.idle]),
+    );
+    // …and announces it, so the dropped pill's text still reaches a screen
+    // reader.
+    final blockedAvatar = find.byWidgetPredicate(
+      (w) => w is AgentAvatar && w.status == AgentStatus.blocked,
     );
     expect(
-      decoration.border,
-      Border.all(
-        color: DroverColors.dark
-            .statusDot(AgentStatus.blocked)
-            .withValues(alpha: 0.34),
-      ),
+      tester.getSemantics(blockedAvatar).label,
+      contains('waiting for you'),
     );
 
+    semantics.dispose();
     await tester.pumpWidget(const SizedBox());
   });
 
