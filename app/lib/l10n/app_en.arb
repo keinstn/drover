@@ -199,9 +199,6 @@
   "launchNoAgents": "No launchable agents found on the host",
   "launchWorkingDir": "Working directory",
   "launchWorkingDirRequired": "Working directory is required",
-  "launchAgentName": "Agent name",
-  "launchNewWorkspace": "New workspace",
-  "launchExistingWorkspace": "Existing workspace",
   "launchWorkspaceName": "Workspace name",
   "launchWorkspaceNameRequired": "Workspace name is required",
   "launchUseNewWorkspace": "Use new workspace instead",
@@ -214,6 +211,25 @@
     }
   },
   "launchBrowseDir": "Browse",
+  "launchSectionAgent": "Agent",
+  "@launchSectionAgent": { "description": "Section label above the agent picker in the launch sheet" },
+  "launchSectionName": "Name",
+  "@launchSectionName": { "description": "Section label above the agent name field in the launch sheet" },
+  "launchSectionWorkspace": "Workspace",
+  "@launchSectionWorkspace": { "description": "Section label above the new/existing workspace toggle in the launch sheet" },
+  "launchRecent": "Recent",
+  "@launchRecent": { "description": "Muted prefix before the recent working-directory chips" },
+  "launchModeNew": "New",
+  "@launchModeNew": { "description": "Workspace toggle segment: create a new workspace" },
+  "launchModeExisting": "Existing",
+  "@launchModeExisting": { "description": "Workspace toggle segment: use an existing workspace" },
+  "launchAgentButton": "Launch {agent}",
+  "@launchAgentButton": {
+    "description": "Launch button naming the selected agent",
+    "placeholders": {
+      "agent": { "type": "String" }
+    }
+  },
 
   "dirPickerTitle": "Select directory",
   "dirPickerUse": "Use this directory",

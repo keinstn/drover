@@ -3,6 +3,7 @@ import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/screens/launch_agent_sheet.dart';
+import 'package:drover/src/widgets/agent_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -105,6 +106,23 @@ const _blockedClaudeProj =
     '{"pane_id":"wZ:p1","workspace_id":"wZ","tab_id":"wZ:t1",'
     '"agent":"claude","name":"claude-proj","agent_status":"blocked",'
     '"cwd":"/tmp/proj","focused":false}';
+
+/// Detects every preset's bin on the host.
+CommandResult _responseWithAllAgents(String command) {
+  if (command.contains('command -v')) {
+    return ok('claude\ncodex\ncopilot\npi\nomp\n');
+  }
+  return _response(command);
+}
+
+Widget _sheetApp(HerdrClient client, {List<String> existingCwds = const []}) =>
+    MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(
+        body: LaunchAgentSheet(client: client, existingCwds: existingCwds),
+      ),
+    );
 
 CommandResult _responseWithDuplicateWorkspaceLabels(String command) {
   if (command.contains("'workspace' 'list'")) {
@@ -703,5 +721,127 @@ void main() {
       ),
     );
     expect(material.shape, const StadiumBorder());
+  });
+
+  testWidgets('each detected agent renders a tile with its avatar', (
+    tester,
+  ) async {
+    final client = HerdrClient(FakeCommandRunner(_responseWithAllAgents));
+    await tester.pumpWidget(_sheetApp(client));
+    await tester.pumpAndSettle();
+
+    for (final kind in ['claude', 'codex', 'copilot', 'pi', 'omp']) {
+      final tile = find.byKey(ValueKey('preset_$kind'));
+      expect(tile, findsOneWidget);
+      final avatar = tester.widget<AgentAvatar>(
+        find.descendant(of: tile, matching: find.byType(AgentAvatar)),
+      );
+      expect(avatar.agent, kind);
+    }
+    expect(find.text('Codex'), findsOneWidget);
+    for (final label in ['AGENT', 'WORKING DIRECTORY', 'NAME', 'WORKSPACE']) {
+      expect(find.text(label), findsOneWidget);
+    }
+    expect(find.text('New'), findsOneWidget);
+    expect(find.text('Existing'), findsOneWidget);
+  });
+
+  testWidgets('tapping a tile selects it and names it on the launch button', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final client = HerdrClient(FakeCommandRunner(_responseWithAllAgents));
+    await tester.pumpWidget(_sheetApp(client));
+    await tester.pumpAndSettle();
+
+    expect(find.text('LAUNCH CLAUDE CODE'), findsOneWidget);
+    expect(
+      tester.getSemantics(find.byKey(const ValueKey('preset_codex'))),
+      isSemantics(label: 'Codex', isButton: true, isSelected: false),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('preset_codex')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('LAUNCH CODEX'), findsOneWidget);
+    expect(
+      tester.getSemantics(find.byKey(const ValueKey('preset_codex'))),
+      isSemantics(label: 'Codex', isButton: true, isSelected: true),
+    );
+    expect(
+      tester.getSemantics(find.byKey(const ValueKey('preset_claude'))),
+      isSemantics(label: 'Claude Code', isButton: true, isSelected: false),
+    );
+    final size = tester.getSize(find.byKey(const ValueKey('preset_codex')));
+    expect(size.width, greaterThanOrEqualTo(44));
+    expect(size.height, greaterThanOrEqualTo(44));
+    handle.dispose();
+  });
+
+  testWidgets(
+    'on a narrow screen the tiles scroll in one row, cut at the edge',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final client = HerdrClient(FakeCommandRunner(_responseWithAllAgents));
+      await tester.pumpWidget(_sheetApp(client));
+      await tester.pumpAndSettle();
+
+      final kinds = ['claude', 'codex', 'copilot', 'pi', 'omp'];
+      final tops = {
+        for (final k in kinds)
+          tester.getTopLeft(find.byKey(ValueKey('preset_$k'))).dy,
+      };
+      expect(tops, hasLength(1));
+      // The row bleeds to the screen edge: the overflowing tile is cut there,
+      // not at the sheet's 16px content inset.
+      final last = find.byKey(const ValueKey('preset_omp'));
+      final row = tester.getRect(find.byType(ListView));
+      expect(row.left, 0);
+      expect(row.right, 360);
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('preset_claude'))).dx,
+        16,
+      );
+      expect(tester.getTopLeft(last).dx, lessThan(360 - 16));
+      expect(tester.getTopRight(last).dx, greaterThan(360));
+
+      await tester.drag(
+        find.byKey(const ValueKey('preset_pi')),
+        const Offset(-300, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getTopRight(last).dx, lessThanOrEqualTo(360));
+      expect(tester.getTopLeft(last).dy, tops.single);
+    },
+  );
+
+  testWidgets('recent directories sit below the cwd field and fill it', (
+    tester,
+  ) async {
+    final client = HerdrClient(FakeCommandRunner(_response));
+    await tester.pumpWidget(
+      _sheetApp(client, existingCwds: const ['/home/dev/alpha', '/srv/beta']),
+    );
+    await tester.pumpAndSettle();
+
+    final field = find.byKey(const ValueKey('cwd_field'));
+    final alpha = find.byKey(const ValueKey('recent_cwd_/home/dev/alpha'));
+    final beta = find.byKey(const ValueKey('recent_cwd_/srv/beta'));
+    expect(find.text('Recent'), findsOneWidget);
+    expect(
+      tester.getTopLeft(alpha).dy,
+      greaterThan(tester.getBottomLeft(field).dy),
+    );
+    // One row, not a wrap.
+    expect(tester.getTopLeft(beta).dy, tester.getTopLeft(alpha).dy);
+
+    await tester.tap(beta);
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<TextFormField>(field).controller!.text, '/srv/beta');
+    expect(tester.widget<ActionChip>(beta).side, isNotNull);
+    expect(tester.widget<ActionChip>(alpha).side, isNull);
   });
 }

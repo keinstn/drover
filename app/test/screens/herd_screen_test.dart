@@ -1577,6 +1577,9 @@ void main() {
       '/tmp/proj',
     );
     await tester.pump();
+    // The sheet is taller than the 800x600 test surface; scroll to the CTA.
+    await tester.ensureVisible(find.byKey(const ValueKey('launch_button')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('launch_button')));
     // Not pumpAndSettle: the pushed agent screen polls on a timer.
     await tester.pump();

@@ -453,15 +453,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get launchWorkingDirRequired => '必须填写工作目录';
 
   @override
-  String get launchAgentName => '智能体名称';
-
-  @override
-  String get launchNewWorkspace => '新建工作区';
-
-  @override
-  String get launchExistingWorkspace => '现有工作区';
-
-  @override
   String get launchWorkspaceName => '工作区名称';
 
   @override
@@ -483,6 +474,29 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get launchBrowseDir => '浏览';
+
+  @override
+  String get launchSectionAgent => '智能体';
+
+  @override
+  String get launchSectionName => '名称';
+
+  @override
+  String get launchSectionWorkspace => '工作区';
+
+  @override
+  String get launchRecent => '最近';
+
+  @override
+  String get launchModeNew => '新建';
+
+  @override
+  String get launchModeExisting => '现有';
+
+  @override
+  String launchAgentButton(String agent) {
+    return '启动 $agent';
+  }
 
   @override
   String get dirPickerTitle => '选择目录';
