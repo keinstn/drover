@@ -445,15 +445,6 @@ class AppLocalizationsJa extends AppLocalizations {
   String get launchWorkingDirRequired => '作業ディレクトリは必須です';
 
   @override
-  String get launchAgentName => 'エージェント名';
-
-  @override
-  String get launchNewWorkspace => '新規ワークスペース';
-
-  @override
-  String get launchExistingWorkspace => '既存のワークスペース';
-
-  @override
   String get launchWorkspaceName => 'ワークスペース名';
 
   @override
@@ -475,6 +466,29 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get launchBrowseDir => '参照';
+
+  @override
+  String get launchSectionAgent => 'エージェント';
+
+  @override
+  String get launchSectionName => '名前';
+
+  @override
+  String get launchSectionWorkspace => 'ワークスペース';
+
+  @override
+  String get launchRecent => '最近';
+
+  @override
+  String get launchModeNew => '新規';
+
+  @override
+  String get launchModeExisting => '既存';
+
+  @override
+  String launchAgentButton(String agent) {
+    return '$agent を起動';
+  }
 
   @override
   String get dirPickerTitle => 'ディレクトリを選択';

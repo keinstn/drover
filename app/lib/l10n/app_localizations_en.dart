@@ -465,15 +465,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get launchWorkingDirRequired => 'Working directory is required';
 
   @override
-  String get launchAgentName => 'Agent name';
-
-  @override
-  String get launchNewWorkspace => 'New workspace';
-
-  @override
-  String get launchExistingWorkspace => 'Existing workspace';
-
-  @override
   String get launchWorkspaceName => 'Workspace name';
 
   @override
@@ -495,6 +486,29 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get launchBrowseDir => 'Browse';
+
+  @override
+  String get launchSectionAgent => 'Agent';
+
+  @override
+  String get launchSectionName => 'Name';
+
+  @override
+  String get launchSectionWorkspace => 'Workspace';
+
+  @override
+  String get launchRecent => 'Recent';
+
+  @override
+  String get launchModeNew => 'New';
+
+  @override
+  String get launchModeExisting => 'Existing';
+
+  @override
+  String launchAgentButton(String agent) {
+    return 'Launch $agent';
+  }
 
   @override
   String get dirPickerTitle => 'Select directory';

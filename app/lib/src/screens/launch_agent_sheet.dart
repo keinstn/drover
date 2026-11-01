@@ -7,11 +7,15 @@ import '../herdr/herdr_client.dart';
 import '../models/agent_preset.dart';
 import '../models/workspace_info.dart';
 import '../utils/path.dart';
+import '../widgets/agent_avatar.dart';
 import '../widgets/error_message_view.dart';
 import '../widgets/text_context_menu.dart';
 import 'directory_picker_sheet.dart';
 
 enum _WorkspaceMode { newWorkspace, existing }
+
+const _sheetPadding = 16.0;
+const _tileHeight = 76.0;
 
 /// Sheet body for launching a new agent: pick a preset, a cwd, and whether to
 /// place it in a new or existing workspace. Pops the launched agent's pane id,
@@ -214,82 +218,91 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         side: BorderSide(color: scheme.outlineVariant),
       ),
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: SingleChildScrollView(
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: ShapeDecoration(
-                        color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
-                        shape: const StadiumBorder(),
-                      ),
+        // The padding sits inside the scroll view so the agent row can bleed
+        // past it to the sheet's edges without being clipped.
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(_sheetPadding),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: ShapeDecoration(
+                      color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+                      shape: const StadiumBorder(),
                     ),
                   ),
-                  Text(
-                    l10n.commonLaunchAgent,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildPresetSection(),
-                  const SizedBox(height: 16),
-                  _buildCwdSection(),
-                  const SizedBox(height: 16),
-                  _buildNameSection(),
-                  const SizedBox(height: 16),
-                  _buildWorkspaceSection(),
-                  if (_launchError != null) ...[
-                    const SizedBox(height: 12),
-                    ErrorMessageView(_launchError!),
-                  ],
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          key: const ValueKey('launch_cancel_button'),
-                          style: droverNeutralButtonStyle(scheme),
-                          onPressed: _busy
-                              ? null
-                              : () => Navigator.pop(context),
-                          child: Text(l10n.commonCancel),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton(
-                          key: const ValueKey('launch_button'),
-                          onPressed: _canLaunch ? _launch : null,
-                          child: _busy
-                              ? const SizedBox(
-                                  height: 16,
-                                  width: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(
-                                  droverLabelText(context, l10n.launchButton),
-                                  style: droverLabelStyle(
-                                    context,
-                                    fontSize: 11.5,
-                                    weight: FontWeight.w700,
-                                  ),
-                                ),
-                        ),
-                      ),
-                    ],
-                  ),
+                ),
+                Text(
+                  l10n.commonLaunchAgent,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 16),
+                _buildPresetSection(),
+                const SizedBox(height: 16),
+                _buildCwdSection(),
+                const SizedBox(height: 16),
+                _buildNameSection(),
+                const SizedBox(height: 16),
+                _buildWorkspaceSection(),
+                if (_launchError != null) ...[
+                  const SizedBox(height: 12),
+                  ErrorMessageView(_launchError!),
                 ],
-              ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: OutlinedButton(
+                        key: const ValueKey('launch_cancel_button'),
+                        style: droverNeutralButtonStyle(scheme),
+                        onPressed: _busy ? null : () => Navigator.pop(context),
+                        child: Text(l10n.commonCancel),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 3,
+                      child: FilledButton(
+                        key: const ValueKey('launch_button'),
+                        onPressed: _canLaunch ? _launch : null,
+                        child: _busy
+                            ? const SizedBox(
+                                height: 16,
+                                width: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(
+                                droverLabelText(
+                                  context,
+                                  _selectedPreset == null
+                                      ? l10n.launchButton
+                                      : l10n.launchAgentButton(
+                                          _selectedPreset!.label,
+                                        ),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: droverLabelStyle(
+                                  context,
+                                  fontSize: 11.5,
+                                  weight: FontWeight.w700,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -297,9 +310,21 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
     );
   }
 
+  Widget _sectionLabel(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      droverLabelText(context, text),
+      style: droverLabelStyle(
+        context,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        weight: FontWeight.w700,
+      ),
+    ),
+  );
+
   Widget _buildPresetSection() {
     final l10n = AppLocalizations.of(context)!;
-    return FutureBuilder<List<AgentPreset>>(
+    final presets = FutureBuilder<List<AgentPreset>>(
       future: _presetsFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
@@ -326,26 +351,86 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         if (presets.isEmpty) {
           return Text(l10n.launchNoAgents);
         }
-        return Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final preset in presets)
-              ChoiceChip(
-                key: ValueKey('preset_${preset.bin}'),
-                label: Text(preset.label),
-                selected: preset == _selectedPreset,
-                onSelected: (_) {
-                  if (_busy) return;
-                  setState(() {
-                    _selectedPreset = preset;
-                    _syncDefaultName();
-                  });
-                },
+        // One row that scrolls sideways, bled out to the sheet's edges so a
+        // tile that doesn't fit is visibly cut off there. The initial pick is
+        // always the first tile, so it starts in view without scrolling.
+        return LayoutBuilder(
+          builder: (context, constraints) => SizedBox(
+            height: _tileHeight,
+            child: OverflowBox(
+              maxWidth: constraints.maxWidth + 2 * _sheetPadding,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: _sheetPadding),
+                itemCount: presets.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, i) => _presetTile(presets[i]),
               ),
-          ],
+            ),
+          ),
         );
       },
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [_sectionLabel(l10n.launchSectionAgent), presets],
+    );
+  }
+
+  Widget _presetTile(AgentPreset preset) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = preset == _selectedPreset;
+    void select() {
+      if (_busy) return;
+      setState(() {
+        _selectedPreset = preset;
+        _syncDefaultName();
+      });
+    }
+
+    return Semantics(
+      selected: selected,
+      button: true,
+      label: preset.label,
+      onTap: select,
+      excludeSemantics: true,
+      child: Material(
+        key: ValueKey('preset_${preset.bin}'),
+        color: selected ? scheme.surfaceContainerHighest : Colors.transparent,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: selected
+              ? BorderSide(color: scheme.onSurface, width: 2)
+              : BorderSide(color: scheme.outline),
+        ),
+        child: InkWell(
+          onTap: select,
+          child: SizedBox(
+            width: 66,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AgentAvatar(agent: preset.kind, size: 36),
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    preset.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: selected
+                          ? scheme.onSurface
+                          : scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -369,41 +454,18 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
 
   Widget _buildCwdSection() {
     final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    final current = _cwdController.text.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (widget.existingCwds.isNotEmpty) ...[
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final cwd in widget.existingCwds)
-                ActionChip(
-                  // The label ramp, but no uppercasing: a directory segment
-                  // is case-sensitive.
-                  labelStyle: droverLabelStyle(
-                    context,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                  label: Text(lastPathSegment(cwd)),
-                  onPressed: _busy
-                      ? null
-                      : () => setState(() {
-                          _cwdController.text = cwd;
-                          _syncDefaultNames();
-                        }),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-        ],
+        _sectionLabel(l10n.launchWorkingDir),
         TextFormField(
           key: const ValueKey('cwd_field'),
           controller: _cwdController,
           enabled: !_busy,
           contextMenuBuilder: noScanTextContextMenuBuilder,
           decoration: InputDecoration(
-            labelText: l10n.launchWorkingDir,
             border: const OutlineInputBorder(),
             suffixIcon: IconButton(
               key: const ValueKey('cwd_browse_button'),
@@ -417,25 +479,67 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
               : null,
           onChanged: (_) => setState(_syncDefaultNames),
         ),
+        if (widget.existingCwds.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                Text(
+                  l10n.launchRecent,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                for (final cwd in widget.existingCwds) ...[
+                  const SizedBox(width: 8),
+                  ActionChip(
+                    key: ValueKey('recent_cwd_$cwd'),
+                    // The label ramp, but no uppercasing: a directory segment
+                    // is case-sensitive.
+                    labelStyle: droverLabelStyle(
+                      context,
+                      color: scheme.onSurface,
+                    ),
+                    backgroundColor: cwd == current
+                        ? scheme.surfaceContainerHighest
+                        : null,
+                    side: cwd == current
+                        ? BorderSide(color: scheme.onSurface)
+                        : null,
+                    label: Text(lastPathSegment(cwd)),
+                    onPressed: _busy
+                        ? null
+                        : () => setState(() {
+                            _cwdController.text = cwd;
+                            _syncDefaultNames();
+                          }),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
 
   Widget _buildNameSection() {
     final l10n = AppLocalizations.of(context)!;
-    return TextField(
+    final field = TextField(
       key: const ValueKey('agent_name_field'),
       controller: _nameController,
       enabled: !_busy,
       contextMenuBuilder: noScanTextContextMenuBuilder,
-      decoration: InputDecoration(
-        labelText: l10n.launchAgentName,
-        border: const OutlineInputBorder(),
-      ),
+      decoration: const InputDecoration(border: OutlineInputBorder()),
       onChanged: (_) {
         _nameEdited = true;
         setState(() {});
       },
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [_sectionLabel(l10n.launchSectionName), field],
     );
   }
 
@@ -454,6 +558,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _sectionLabel(l10n.launchSectionWorkspace),
         SegmentedButton<_WorkspaceMode>(
           showSelectedIcon: false,
           segments: [
@@ -461,14 +566,14 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
               value: _WorkspaceMode.newWorkspace,
               label: KeyedSubtree(
                 key: const ValueKey('ws_mode_new'),
-                child: Text(l10n.launchNewWorkspace),
+                child: Text(l10n.launchModeNew),
               ),
             ),
             ButtonSegment(
               value: _WorkspaceMode.existing,
               label: KeyedSubtree(
                 key: const ValueKey('ws_mode_existing'),
-                child: Text(l10n.launchExistingWorkspace),
+                child: Text(l10n.launchModeExisting),
               ),
             ),
           ],

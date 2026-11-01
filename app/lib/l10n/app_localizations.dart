@@ -904,24 +904,6 @@ abstract class AppLocalizations {
   /// **'Working directory is required'**
   String get launchWorkingDirRequired;
 
-  /// No description provided for @launchAgentName.
-  ///
-  /// In en, this message translates to:
-  /// **'Agent name'**
-  String get launchAgentName;
-
-  /// No description provided for @launchNewWorkspace.
-  ///
-  /// In en, this message translates to:
-  /// **'New workspace'**
-  String get launchNewWorkspace;
-
-  /// No description provided for @launchExistingWorkspace.
-  ///
-  /// In en, this message translates to:
-  /// **'Existing workspace'**
-  String get launchExistingWorkspace;
-
   /// No description provided for @launchWorkspaceName.
   ///
   /// In en, this message translates to:
@@ -963,6 +945,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Browse'**
   String get launchBrowseDir;
+
+  /// Section label above the agent picker in the launch sheet
+  ///
+  /// In en, this message translates to:
+  /// **'Agent'**
+  String get launchSectionAgent;
+
+  /// Section label above the agent name field in the launch sheet
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get launchSectionName;
+
+  /// Section label above the new/existing workspace toggle in the launch sheet
+  ///
+  /// In en, this message translates to:
+  /// **'Workspace'**
+  String get launchSectionWorkspace;
+
+  /// Muted prefix before the recent working-directory chips
+  ///
+  /// In en, this message translates to:
+  /// **'Recent'**
+  String get launchRecent;
+
+  /// Workspace toggle segment: create a new workspace
+  ///
+  /// In en, this message translates to:
+  /// **'New'**
+  String get launchModeNew;
+
+  /// Workspace toggle segment: use an existing workspace
+  ///
+  /// In en, this message translates to:
+  /// **'Existing'**
+  String get launchModeExisting;
+
+  /// Launch button naming the selected agent
+  ///
+  /// In en, this message translates to:
+  /// **'Launch {agent}'**
+  String launchAgentButton(String agent);
 
   /// No description provided for @dirPickerTitle.
   ///
