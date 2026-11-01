@@ -5550,7 +5550,7 @@ void main() {
       );
       expect(
         tester.getSemantics(strip),
-        containsSemantics(
+        isSemantics(
           label: 'NOW\nEdit /tmp/proj/lib/herd_screen.dart',
           isButton: true,
           hasTapAction: true,
