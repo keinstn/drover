@@ -296,6 +296,16 @@ class NativeHistoryRunner extends StubCommandRunner {
   }
 }
 
+/// A blocked claude pane showing the numbered approval prompt, with native
+/// history served from [contents].
+class _BlockedPromptNativeRunner extends StatusNativeHistoryRunner {
+  @override
+  Future<CommandResult> run(String command) async {
+    if (command.contains("'agent' 'read'")) return ok(blockedPromptText);
+    return super.run(command);
+  }
+}
+
 class BrokenNativeHistoryRunner extends NativeHistoryRunner {
   @override
   Future<RemoteFileStat> statFile(String path) =>
@@ -3657,6 +3667,101 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  group('approval card context', () {
+    String writeJsonl({required bool answered}) =>
+        '{"type":"user","message":{"role":"user","content":"Make a file"}}\n'
+        '${jsonEncode({
+          'type': 'assistant',
+          'message': {
+            'role': 'assistant',
+            'content': [
+              {
+                'type': 'tool_use',
+                'id': 'toolu_write',
+                'name': 'Write',
+                'input': {'file_path': '/tmp/proj/spike.txt', 'content': 'hi'},
+              },
+            ],
+          },
+        })}\n'
+        '${answered ? '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_write"}]}}\n' : ''}';
+
+    Future<void> pumpBlocked(WidgetTester tester, {required bool answered}) {
+      final runner = _BlockedPromptNativeRunner()
+        ..status = 'blocked'
+        ..contents = writeJsonl(answered: answered);
+      return tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverLightTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: HerdrClient(runner),
+            paneId: 'wB:p1',
+            pollInterval: const Duration(hours: 1),
+          ),
+        ),
+      );
+    }
+
+    const context = ValueKey('prompt_card_tool_context');
+
+    testWidgets('shows the pending tool call above the question', (
+      tester,
+    ) async {
+      await pumpBlocked(tester, answered: false);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Do you want to proceed?'), findsOneWidget);
+      expect(find.byKey(context), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(context)).data,
+        'Write ${toolUseSummary('Write', {'file_path': '/tmp/proj/spike.txt', 'content': 'hi'})}',
+      );
+      expect(
+        tester.getTopLeft(find.byKey(context)).dy,
+        lessThan(tester.getTopLeft(find.text('Do you want to proceed?')).dy),
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('shows no context line once the tool call is answered', (
+      tester,
+    ) async {
+      await pumpBlocked(tester, answered: true);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Do you want to proceed?'), findsOneWidget);
+      expect(find.byKey(context), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('option rows wrap and carry a number hint', (tester) async {
+      await pumpBlocked(tester, answered: false);
+      await tester.pumpAndSettle();
+
+      final longLabel = find.descendant(
+        of: find.byType(FilledButton),
+        matching: find.textContaining('always allow access'),
+      );
+      expect(longLabel, findsOneWidget);
+      expect(tester.widget<Text>(longLabel).maxLines, greaterThan(1));
+      for (final n in ['1', '2', '3']) {
+        expect(
+          find.descendant(
+            of: find.byType(FilledButton),
+            matching: find.text(n),
+          ),
+          findsOneWidget,
+        );
+      }
+
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
 
   testWidgets('restores the composer draft after leaving and returning', (
     tester,
