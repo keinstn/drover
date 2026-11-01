@@ -4,6 +4,13 @@ updates:
     directory: "/app"
     schedule:
       interval: "weekly"
+    # FlutterFire plugins pin an exact firebase-ios-sdk version, so bumping
+    # them one at a time leaves conflicting Swift package requirements.
+    groups:
+      firebase:
+        patterns:
+          - "firebase_*"
+          - "cloud_functions*"
 
   - package-ecosystem: "npm"
     directory: "/functions"
