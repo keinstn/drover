@@ -332,6 +332,9 @@ class _InboxHost {
   /// reports no `agent_session` (so no history can load).
   String? transcript;
 
+  /// What `agent read` returns.
+  String paneText = _inboxPaneText;
+
   /// Native-history file reads (via [_InboxRunner]).
   int historyReads = 0;
 
@@ -343,7 +346,7 @@ class _InboxHost {
     }
     if (command.contains("'agent' 'read'")) {
       reads++;
-      return ok(_inboxPaneText);
+      return ok(paneText);
     }
     if (command.contains("'agent' 'prompt'")) {
       if (failPrompt) throw Exception('boom');
@@ -1688,6 +1691,36 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
       await tester.pump();
       expect(host.reads, 2);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('returning from the agent screen refetches a still-blocked '
+        'pane\'s prompt', (tester) async {
+      final host = _InboxHost();
+      await tester.pumpWidget(
+        _herdApp(client: HerdrClient(FakeCommandRunner(host.respond))),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(yes, findsOneWidget);
+
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AgentScreen), findsOneWidget);
+
+      // Answered there; the agent is immediately blocked on the next prompt,
+      // which the suspended herd poll never saw as non-blocked.
+      host.paneText = _inboxPaneText
+          .replaceFirst('Do you want to proceed?', 'Overwrite the file?')
+          .replaceFirst('1. Yes', '1. Overwrite');
+      await tester.tap(find.byKey(const ValueKey('agent_back_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Overwrite the file?'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Overwrite'), findsOneWidget);
+      expect(find.text('Do you want to proceed?'), findsNothing);
+      expect(yes, findsNothing);
 
       await tester.pumpWidget(const SizedBox());
     });

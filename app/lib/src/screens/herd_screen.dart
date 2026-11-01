@@ -757,6 +757,15 @@ class _HerdScreenState extends State<HerdScreen> {
       ),
     );
     if (!mounted) return;
+    // The herd didn't poll while the route was up, so a pane the user
+    // answered there may now be blocked on a different prompt: refetch every
+    // cached one (the switcher bar can hop across agents) rather than offer
+    // digits meant for the old question.
+    setState(() {
+      for (final bucket in _byHost.values) {
+        bucket.blockedPrompts.clear();
+      }
+    });
     _startPolling();
     for (final inScope in _hostsInScope) {
       unawaited(_loadHost(inScope));
