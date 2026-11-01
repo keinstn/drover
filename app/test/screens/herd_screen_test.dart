@@ -11,7 +11,7 @@ import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/screens/agent_screen.dart';
 import 'package:drover/src/screens/herd_screen.dart';
 import 'package:drover/src/screens/launch_agent_sheet.dart';
-import 'package:drover/src/widgets/agent_avatar.dart';
+import 'package:drover/src/widgets/agent_status_indicator.dart';
 import 'package:drover/src/widgets/error_message_view.dart';
 import 'package:drover/src/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
@@ -730,7 +730,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('agent tiles carry status on the avatar, not a pill', (
+  testWidgets('agent tiles carry status as a trailing indicator', (
     tester,
   ) async {
     final runner = FakeCommandRunner(_respond);
@@ -742,24 +742,30 @@ void main() {
 
     expect(find.textContaining('Agent Three'), findsOneWidget);
     expect(find.byType(StatusPill), findsNothing);
-    // Each tile's avatar is handed its agent's status…
-    final statuses = tester
-        .widgetList<AgentAvatar>(find.byType(AgentAvatar))
-        .map((a) => a.status)
-        .toList();
-    expect(
-      statuses,
-      containsAll([AgentStatus.blocked, AgentStatus.working, AgentStatus.idle]),
-    );
-    // …and announces it, so the dropped pill's text still reaches a screen
-    // reader.
-    final blockedAvatar = find.byWidgetPredicate(
-      (w) => w is AgentAvatar && w.status == AgentStatus.blocked,
+
+    // The working agent's tile ends in a working indicator…
+    Finder indicatorIn(String name) => find.descendant(
+      of: find.ancestor(of: find.text(name), matching: find.byType(InkWell)),
+      matching: find.byType(AgentStatusIndicator),
     );
     expect(
-      tester.getSemantics(blockedAvatar.first).label,
+      tester.widget<AgentStatusIndicator>(indicatorIn('Agent Three')).status,
+      AgentStatus.working,
+    );
+    // …announced, so the dropped pill's text still reaches a screen reader.
+    // (The tile merges it into its own announcement.)
+    expect(
+      tester.getSemantics(indicatorIn('Agent Two')).label,
       contains('waiting for you'),
     );
+
+    // An idle agent's title goes muted; a working one keeps the default ink.
+    final scheme = Theme.of(tester.element(find.text('Agent One'))).colorScheme;
+    expect(
+      tester.widget<Text>(find.text('Agent One')).style!.color,
+      scheme.onSurfaceVariant,
+    );
+    expect(tester.widget<Text>(find.text('Agent Three')).style!.color, isNull);
 
     semantics.dispose();
     await tester.pumpWidget(const SizedBox());
