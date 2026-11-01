@@ -173,6 +173,12 @@
   },
   "herdGreetingWaitingSuffix": " waiting for your reply.",
   "herdGreetingAllClear": "Everyone's on track.",
+  "herdNeedsYouLabel": "Needs you",
+  "@herdNeedsYouLabel": {"description": "Section label above the blocked agents awaiting an answer on the herd screen."},
+  "herdNeedsYouOpen": "Open",
+  "@herdNeedsYouOpen": {"description": "Opens the blocked agent's detail screen from its needs-you card."},
+  "herdNeedsYouSendFailed": "Couldn't send the answer to {name}",
+  "@herdNeedsYouSendFailed": {"placeholders": {"name": {"type": "String"}}},
   "herdElapsedNow": "now",
   "herdElapsedMinutes": "{minutes}m ago",
   "@herdElapsedMinutes": {

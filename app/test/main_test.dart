@@ -477,7 +477,15 @@ void main() {
     // Covers the wiring main.dart owns: resolving the effective locale (which
     // may come from the device, not from a stored setting) into the demo's
     // content. `demo_screen_test.dart` covers the rendering in depth.
-    expect(find.text(demoContentJa.scriptedTitle), findsOneWidget);
+    // The blocked demo agent also has a card in the needs-you inbox;
+    // this checks its herd tile.
+    expect(
+      find.descendant(
+        of: find.byType(Dismissible),
+        matching: find.text(demoContentJa.scriptedTitle),
+      ),
+      findsOneWidget,
+    );
     expect(find.text(demoContentEn.scriptedTitle), findsNothing);
 
     await tester.pumpWidget(const SizedBox());

@@ -187,6 +187,10 @@
   },
   "herdGreetingWaitingSuffix": "正在等待你的回复。",
   "herdGreetingAllClear": "大家都在按计划进行。",
+  "herdNeedsYouLabel": "等你回复",
+  "herdNeedsYouOpen": "打开",
+  "herdNeedsYouSendFailed": "未能将回答发送给 {name}",
+  "@herdNeedsYouSendFailed": {"placeholders": {"name": {"type": "String"}}},
   "herdElapsedNow": "刚刚",
   "herdElapsedMinutes": "{minutes} 分钟前",
   "@herdElapsedMinutes": {

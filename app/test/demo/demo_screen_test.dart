@@ -176,7 +176,15 @@ void main() {
         find.byKey(ValueKey('agent-$demoHostId-$demoDocsPaneId')),
         findsOneWidget,
       );
-      expect(find.text(demoContentEn.scriptedTitle), findsOneWidget);
+      // The blocked demo agent also has a card in the needs-you inbox;
+      // this checks its herd tile.
+      expect(
+        find.descendant(
+          of: find.byType(Dismissible),
+          matching: find.text(demoContentEn.scriptedTitle),
+        ),
+        findsOneWidget,
+      );
       expect(find.text(demoContentEn.reviewTitle), findsOneWidget);
       expect(find.text(demoContentEn.docsTitle), findsOneWidget);
 
@@ -321,7 +329,15 @@ void main() {
       await _settle(tester);
 
       // The session title on the herd screen is the user's own words.
-      expect(find.text(demoContentJa.scriptedTitle), findsOneWidget);
+      // The blocked demo agent also has a card in the needs-you inbox;
+      // this checks its herd tile.
+      expect(
+        find.descendant(
+          of: find.byType(Dismissible),
+          matching: find.text(demoContentJa.scriptedTitle),
+        ),
+        findsOneWidget,
+      );
       expect(find.text(demoContentJa.reviewTitle), findsOneWidget);
 
       await _openScriptedAgent(tester);
@@ -368,7 +384,15 @@ void main() {
       await _settle(tester);
 
       // The session title on the herd screen is the user's own words.
-      expect(find.text(demoContentZh.scriptedTitle), findsOneWidget);
+      // The blocked demo agent also has a card in the needs-you inbox;
+      // this checks its herd tile.
+      expect(
+        find.descendant(
+          of: find.byType(Dismissible),
+          matching: find.text(demoContentZh.scriptedTitle),
+        ),
+        findsOneWidget,
+      );
       expect(find.text(demoContentZh.reviewTitle), findsOneWidget);
 
       await _openScriptedAgent(tester);

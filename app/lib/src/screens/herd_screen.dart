@@ -5,9 +5,12 @@ import 'package:flutter/services.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../agents/agent_native_history.dart';
+import '../agents/agent_registry.dart';
 import '../app_theme.dart';
+import '../herdr/ansi_text.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/herdr_version.dart';
+import '../herdr/pane_text.dart';
 import '../i18n/status_label.dart';
 import '../models/agent_info.dart';
 import '../speech/speech_input.dart';
@@ -129,6 +132,14 @@ class _HostHerd {
   // changes (see `NativeTranscriptHistory`); entries for panes no longer
   // reported by the herd are dropped in [_HerdScreenState._loadHost].
   final nativeHistory = <String, NativeTranscriptHistory>{};
+
+  // The numbered prompt parsed from each BLOCKED pane, read once per blocked
+  // episode for the "needs you" inbox. A present key with a null value means
+  // "fetched, nothing answerable". Entries drop when the pane leaves blocked,
+  // so the next episode reads afresh. See [_HerdScreenState._fetchPrompt].
+  final blockedPrompts = <String, PromptQuestion?>{};
+  final promptFetches = <String>{};
+  final answeringPaneIds = <String>{};
 }
 
 /// The main screen: a live list of every agent every stored Herdr host knows
@@ -335,6 +346,19 @@ class _HerdScreenState extends State<HerdScreen> {
       // Also drop the dead pane's last-seen status, so a reused paneId
       // doesn't inherit it.
       bucket.previousStatus.removeWhere((paneId, _) => !panes.contains(paneId));
+      final blocked = {
+        for (final agent in agents)
+          if (agent.status == AgentStatus.blocked) agent.paneId,
+      };
+      bucket.blockedPrompts.removeWhere(
+        (paneId, _) => !blocked.contains(paneId),
+      );
+      for (final paneId in blocked) {
+        if (!bucket.blockedPrompts.containsKey(paneId) &&
+            !bucket.promptFetches.contains(paneId)) {
+          unawaited(_fetchPrompt(host, bucket, paneId));
+        }
+      }
       if (!bucket.workspaceLabelsFailed &&
           agents.any(
             (agent) => !bucket.workspaceLabels.containsKey(agent.workspaceId),
@@ -353,6 +377,76 @@ class _HerdScreenState extends State<HerdScreen> {
     } finally {
       bucket.loading = false;
     }
+  }
+
+  /// Reads [paneId]'s pane once and caches its numbered prompt (or null).
+  /// One read per blocked episode, not per poll: the poll must not contend
+  /// for the serialized SSH channel (see [_openAgentScreen]). A failed read
+  /// caches null, so the card degrades to "Open" without a toast.
+  Future<void> _fetchPrompt(
+    HerdHostRef host,
+    _HostHerd bucket,
+    String paneId,
+  ) async {
+    bucket.promptFetches.add(paneId);
+    PromptQuestion? question;
+    try {
+      question = parsePromptOptions(
+        stripAnsi(await widget.clientFor(host).readAgent(paneId)),
+      );
+    } catch (_) {
+      // Degrade to "Open" only.
+    } finally {
+      bucket.promptFetches.remove(paneId);
+    }
+    if (!mounted || !identical(_byHost[host.hostId], bucket)) return;
+    // The pane may have left blocked while the read was in flight.
+    if (!bucket.agents.any(
+      (a) => a.paneId == paneId && a.status == AgentStatus.blocked,
+    )) {
+      return;
+    }
+    setState(() => bucket.blockedPrompts[paneId] = question);
+  }
+
+  /// Sends option [number] to [paneId] from the needs-you inbox.
+  Future<void> _answerPrompt(
+    HerdHostRef host,
+    AgentInfo agent,
+    int number,
+  ) async {
+    final bucket = _bucketFor(host.hostId);
+    setState(() => bucket.answeringPaneIds.add(agent.paneId));
+    try {
+      await widget.clientFor(host).prompt(agent.paneId, '$number');
+      if (!mounted) return;
+      setState(() => bucket.blockedPrompts.remove(agent.paneId));
+      unawaited(_loadHost(host));
+    } catch (_) {
+      if (mounted) {
+        showTopToast(
+          context,
+          AppLocalizations.of(
+            context,
+          )!.herdNeedsYouSendFailed(_agentDisplayName(agent)),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => bucket.answeringPaneIds.remove(agent.paneId));
+      }
+    }
+  }
+
+  /// Whether [agent]'s numbered prompt can safely be answered with one digit
+  /// from the herd. An adapter with a structured prompt (AskUserQuestion may
+  /// be multi-question/multi-select) only qualifies once its cached native
+  /// history is loaded and shows nothing pending — never loaded from here.
+  bool _canAnswerInline(_HostHerd bucket, AgentInfo agent) {
+    final structured = resolveAgentAdapter(agent)?.structuredPrompt;
+    if (structured == null) return true;
+    final latest = bucket.nativeHistory[agent.paneId]?.latest;
+    return latest != null && structured.pendingPrompt(latest) == null;
   }
 
   Future<void> _loadWorkspaceLabels(HerdHostRef host) async {
@@ -851,6 +945,7 @@ class _HerdScreenState extends State<HerdScreen> {
                     // is never left under it.
                     padding: const EdgeInsets.only(bottom: 72),
                     children: [
+                      ..._needsYouSection(l10n),
                       for (final host in _hostsInScope)
                         ..._hostSection(context, l10n, host, now),
                     ],
@@ -984,6 +1079,48 @@ class _HerdScreenState extends State<HerdScreen> {
         ],
       ),
     );
+  }
+
+  /// The "needs you" inbox: one card per blocked agent across every in-scope
+  /// host, answerable inline when its numbered prompt was parsed and
+  /// [_canAnswerInline] allows it. Blocked agents also stay in their
+  /// workspace cards below.
+  List<Widget> _needsYouSection(AppLocalizations l10n) {
+    final colors = DroverColors.of(context);
+    final cards = <Widget>[
+      for (final host in _hostsInScope)
+        if (_byHost[host.hostId] case final bucket?)
+          for (final agent in bucket.agents)
+            if (agent.status == AgentStatus.blocked)
+              _NeedsYouCard(
+                key: ValueKey('needs_you_${host.hostId}_${agent.paneId}'),
+                agent: agent,
+                displayName: _agentDisplayName(agent),
+                subtitle:
+                    '${agent.agent ?? 'agent'} · '
+                    '${_workspaceLabel(bucket, agent.workspaceId)}',
+                question: bucket.blockedPrompts[agent.paneId],
+                showOptions: _canAnswerInline(bucket, agent),
+                answering: bucket.answeringPaneIds.contains(agent.paneId),
+                onAnswer: (n) => _answerPrompt(host, agent, n),
+                onOpen: () => _openAgentScreen(host, agent),
+              ),
+    ];
+    if (cards.isEmpty) return const [];
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+        child: Text(
+          droverLabelText(context, l10n.herdNeedsYouLabel),
+          style: droverLabelStyle(
+            context,
+            color: colors.statusPillFg(AgentStatus.blocked),
+            weight: FontWeight.w700,
+          ),
+        ),
+      ),
+      ...cards,
+    ];
   }
 
   /// One host's slice of the list: an optional section header (only when
@@ -1315,6 +1452,160 @@ class _AgentTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// One blocked agent in the "needs you" inbox: who it is, the parsed
+/// question, its numbered options (when [showOptions]), and an "Open" action.
+class _NeedsYouCard extends StatelessWidget {
+  const _NeedsYouCard({
+    super.key,
+    required this.agent,
+    required this.displayName,
+    required this.subtitle,
+    required this.question,
+    required this.showOptions,
+    required this.answering,
+    required this.onAnswer,
+    required this.onOpen,
+  });
+
+  final AgentInfo agent;
+  final String displayName;
+  final String subtitle;
+  final PromptQuestion? question;
+  final bool showOptions;
+  final bool answering;
+  final void Function(int number) onAnswer;
+  final VoidCallback onOpen;
+
+  /// Same row look as AgentScreen's `_PromptCard` option buttons.
+  Widget _option(BuildContext context, PromptOption option) {
+    final scheme = Theme.of(context).colorScheme;
+    final colors = DroverColors.of(context);
+    final mono = TextStyle(
+      fontFamily: droverMonoFamily,
+      fontFeatures: droverMonoFeatures,
+      fontSize: 11.5,
+      fontWeight: FontWeight.w600,
+      color: option.selected
+          ? scheme.onPrimary.withValues(alpha: 0.7)
+          : colors.tertiaryText,
+    );
+    final style = FilledButton.styleFrom(
+      backgroundColor: option.selected
+          ? scheme.primary
+          : scheme.surfaceContainerHigh,
+      foregroundColor: option.selected ? scheme.onPrimary : scheme.onSurface,
+      minimumSize: const Size.fromHeight(44),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      alignment: Alignment.centerLeft,
+      side: option.selected ? null : BorderSide(color: scheme.outline),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(droverRadiusMedium)),
+      ),
+      textStyle: TextStyle(
+        fontSize: 13,
+        fontWeight: option.selected ? FontWeight.w800 : FontWeight.w700,
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: FilledButton(
+        onPressed: answering ? null : () => onAnswer(option.number),
+        style: style,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text('${option.number}', style: mono),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                option.label,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = DroverColors.of(context);
+    final l10n = AppLocalizations.of(context)!;
+    final question = this.question;
+    final questionText = question?.question;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+      decoration: BoxDecoration(
+        color: colors.statusPillBg(AgentStatus.blocked),
+        borderRadius: BorderRadius.circular(droverRadiusLarge),
+        border: Border.all(
+          color: colors.statusDot(AgentStatus.blocked).withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              AgentAvatar(agent: agent.agent, status: agent.status),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (questionText != null && questionText.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(
+                questionText,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          if (showOptions && question != null)
+            for (final option in question.options) _option(context, option),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: onOpen,
+              child: Text(l10n.herdNeedsYouOpen),
+            ),
+          ),
+        ],
       ),
     );
   }
