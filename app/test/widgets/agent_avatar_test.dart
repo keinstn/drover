@@ -89,4 +89,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(_ring, findsOneWidget);
   });
+
+  testWidgets('working ring is a comet on a faint track', (tester) async {
+    await tester.pumpWidget(_app(AgentStatus.working, disableAnimations: true));
+    final dot = DroverColors.of(
+      tester.element(find.byType(AgentAvatar)),
+    ).statusDot(AgentStatus.working);
+    expect(
+      tester.renderObject(_ring),
+      paints
+        ..rrect() // the face
+        ..rrect(color: dot.withValues(alpha: 0.18), strokeWidth: 2)
+        // At phase 0 the tail wraps past the path start: two segments.
+        ..path(color: dot.withValues(alpha: 0.35))
+        ..path(color: dot.withValues(alpha: 0.35))
+        ..path(color: dot.withValues(alpha: 1)),
+    );
+  });
 }
