@@ -677,9 +677,18 @@ Future<void> _pumpAssistant(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
 }
 
+/// Narrows [finder] to the transcript, excluding the Now strip above it (which
+/// repeats the latest entry while the agent works).
+Finder _inTranscript(Finder finder) => find.descendant(
+  of: find.byKey(const ValueKey('transcript_scroll')),
+  matching: finder,
+);
+
 /// The [RichText] whose flattened text contains [needle], or null.
 RichText? _richTextContaining(WidgetTester tester, String needle) {
-  for (final rich in tester.widgetList<RichText>(find.byType(RichText))) {
+  for (final rich in tester.widgetList<RichText>(
+    _inTranscript(find.byType(RichText)),
+  )) {
     if (rich.text.toPlainText().contains(needle)) return rich;
   }
   return null;
@@ -934,7 +943,7 @@ void main() {
     expect(find.text('Native question'), findsOneWidget);
     // The assistant reply is Markdown-rendered (a RichText, not a Text widget).
     expect(
-      find.textContaining('Native reply', findRichText: true),
+      _inTranscript(find.textContaining('Native reply', findRichText: true)),
       findsOneWidget,
     );
     expect(find.text('LIVE TERMINAL'), findsOneWidget);
@@ -1148,7 +1157,10 @@ void main() {
   testWidgets('does not add a divider after an h1 heading', (tester) async {
     await _pumpAssistant(tester, '# Title');
 
-    expect(find.textContaining('Title', findRichText: true), findsOneWidget);
+    expect(
+      _inTranscript(find.textContaining('Title', findRichText: true)),
+      findsOneWidget,
+    );
     // gpt_markdown draws the auto h1 divider as a CustomDivider; disabled here.
     expect(find.byType(CustomDivider), findsNothing);
 
@@ -1189,7 +1201,10 @@ void main() {
     // the URL); they render as an inert placeholder showing the URL instead.
     expect(find.byType(GptMarkdown), findsOneWidget);
     expect(find.byType(Image), findsNothing);
-    expect(find.textContaining('example.invalid'), findsOneWidget);
+    expect(
+      _inTranscript(find.textContaining('example.invalid')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox());
@@ -1422,7 +1437,7 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
 
-    expect(find.text('a new turn'), findsOneWidget);
+    expect(_inTranscript(find.text('a new turn')), findsOneWidget);
     expect(find.textContaining('"command"'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
@@ -1464,7 +1479,7 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
 
-    expect(find.text('Pi follow-up'), findsOneWidget);
+    expect(_inTranscript(find.text('Pi follow-up')), findsOneWidget);
     expect(find.text('Pi native question'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
@@ -1963,7 +1978,7 @@ void main() {
 
     expect(find.text('Native question'), findsOneWidget);
     expect(
-      find.textContaining('Native reply', findRichText: true),
+      _inTranscript(find.textContaining('Native reply', findRichText: true)),
       findsOneWidget,
     );
     expect(find.text('working…'), findsOneWidget);
@@ -3205,7 +3220,10 @@ void main() {
 
       // The lazy list starts at the live bottom, so only the recent tail is
       // built until the pull gesture moves it toward the older edge.
-      expect(find.textContaining('Recent turn 5'), findsOneWidget);
+      expect(
+        _inTranscript(find.textContaining('Recent turn 5')),
+        findsOneWidget,
+      );
       expect(find.textContaining('Older-1 turn 0'), findsNothing);
 
       Future<void> pullToLoadMore() async {
@@ -5464,6 +5482,125 @@ void main() {
       expect(find.text('fix the login bug'), findsOneWidget);
       expect(find.text('Listening · tap to send'), findsOneWidget);
       expect(find.text('Listening · tap to pause'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  group('now strip', () {
+    CommandResult Function(String) statusResponse(String status) =>
+        (command) => command.contains("'agent' 'list'")
+        ? ok(
+            '{"id":"1","result":{"agents":[{"agent":"claude",'
+            '"agent_status":"$status","cwd":"/tmp/proj","focused":false,'
+            '"pane_id":"wB:p1","tab_id":"wB:t1","workspace_id":"wB",'
+            '"name":"Agent Three"}]}}',
+          )
+        : workingResponse(command);
+
+    Future<void> pumpScreen(
+      WidgetTester tester,
+      String status,
+      List<TranscriptEntry> entries,
+    ) async {
+      final runner = StubCommandRunner(statusResponse(status));
+      final history = NativeTranscriptHistory(
+        runner,
+        resolveAdapter: (agent) => _FixedNativeHistoryAdapter(
+          _PagedNativeAdapter(NativeTranscript(entries)),
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+          home: AgentScreen(
+            client: HerdrClient(runner),
+            paneId: 'wB:p1',
+            pollInterval: const Duration(seconds: 1),
+            nativeTranscriptHistory: history,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    final edit = TranscriptToolUse(
+      name: 'Edit',
+      input: {'file_path': '/tmp/proj/lib/herd_screen.dart'},
+    );
+
+    testWidgets('shows the current activity while working', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pumpScreen(tester, 'working', [edit]);
+
+      final strip = find.byKey(const ValueKey('agent_now_strip'));
+      expect(strip, findsOneWidget);
+      expect(
+        find.descendant(of: strip, matching: find.text('NOW')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: strip,
+          matching: find.text('Edit /tmp/proj/lib/herd_screen.dart'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester.getSemantics(strip),
+        containsSemantics(
+          label: 'NOW\nEdit /tmp/proj/lib/herd_screen.dart',
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    for (final status in ['idle', 'blocked', 'done']) {
+      testWidgets('is absent while $status', (tester) async {
+        await pumpScreen(tester, status, [edit]);
+        expect(find.byKey(const ValueKey('agent_now_strip')), findsNothing);
+        await tester.pumpWidget(const SizedBox());
+      });
+    }
+
+    testWidgets('is absent without native history', (tester) async {
+      await pumpScreen(tester, 'working', []);
+      expect(find.byKey(const ValueKey('agent_now_strip')), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('tapping it scrolls the transcript to the newest content', (
+      tester,
+    ) async {
+      await pumpScreen(tester, 'working', [
+        for (var i = 0; i < 40; i++)
+          TranscriptMessage(
+            speaker: TranscriptSpeaker.assistant,
+            text: 'Message $i',
+          ),
+        edit,
+      ]);
+
+      final position = tester
+          .widget<CustomScrollView>(
+            find.byKey(const ValueKey('transcript_scroll')),
+          )
+          .controller!
+          .position;
+      position.jumpTo(0);
+      await tester.pump();
+      expect(position.maxScrollExtent, greaterThan(0));
+      expect(position.pixels, 0);
+
+      await tester.tap(find.byKey(const ValueKey('agent_now_strip')));
+      await tester.pumpAndSettle();
+      expect(position.pixels, position.maxScrollExtent);
 
       await tester.pumpWidget(const SizedBox());
     });

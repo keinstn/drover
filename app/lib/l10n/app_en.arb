@@ -123,6 +123,7 @@
   "agentNativeHistory": "Conversation history",
   "agentLiveTerminal": "Live terminal",
   "agentThinking": "Thinking…",
+  "agentNowLabel": "Now",
   "agentHistoryBeginning": "Beginning of retained terminal history reached",
 
   "agentAskUserSend": "Send",

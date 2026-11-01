@@ -712,6 +712,12 @@ abstract class AppLocalizations {
   /// **'Thinking…'**
   String get agentThinking;
 
+  /// No description provided for @agentNowLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Now'**
+  String get agentNowLabel;
+
   /// No description provided for @agentHistoryBeginning.
   ///
   /// In en, this message translates to:

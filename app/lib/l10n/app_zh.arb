@@ -126,6 +126,7 @@
   "agentNativeHistory": "对话历史",
   "agentLiveTerminal": "实时终端",
   "agentThinking": "思考中…",
+  "agentNowLabel": "当前",
   "agentHistoryBeginning": "已到达保留的终端历史记录开头",
   "agentAskUserSend": "发送",
   "agentAskUserClose": "关闭",

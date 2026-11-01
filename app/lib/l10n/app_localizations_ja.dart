@@ -333,6 +333,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get agentThinking => '思考中…';
 
   @override
+  String get agentNowLabel => 'いま';
+
+  @override
   String get agentHistoryBeginning => '保持されているターミナル履歴の先頭に到達しました';
 
   @override

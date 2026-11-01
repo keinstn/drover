@@ -23,6 +23,7 @@ import '../models/agent_info.dart';
 import '../speech/conversation_mode.dart';
 import '../speech/speech_input.dart';
 import '../speech/speech_output.dart';
+import '../transcript/activity_snippet.dart';
 import '../transcript/native_transcript.dart';
 import '../widgets/agent_avatar.dart';
 import '../widgets/agent_switcher_bar.dart';
@@ -1107,6 +1108,9 @@ class _AgentScreenState extends State<AgentScreen> {
     // A tool_use- or thinking-only history still counts, so key off entries.
     final hasNativeHistory =
         nativeHistory != null && nativeHistory.entries.isNotEmpty;
+    final nowSnippet = agent?.status == AgentStatus.working
+        ? activitySnippet(nativeHistory, l10n)
+        : null;
     final paneText = stripTuiChrome(_text);
     final keysRowOpen = _draftStore.keysRowOpen;
     // Once the user drives a TUI overlay from here (a `/model` picker, say)
@@ -1153,6 +1157,14 @@ class _AgentScreenState extends State<AgentScreen> {
               workspaceLabel: workspaceLabel,
               status: agent?.status,
             ),
+            if (nowSnippet != null)
+              _NowStrip(
+                snippet: nowSnippet,
+                onTap: () {
+                  _restoreScrollAfterLayout(stickToBottom: true);
+                  WidgetsBinding.instance.ensureVisualUpdate();
+                },
+              ),
             if (_workspaceLabelError != null)
               MaterialBanner(
                 content: ErrorMessageView(_workspaceLabelError!),
@@ -1409,6 +1421,114 @@ class _AgentHeader extends StatelessWidget {
             StatusPill(status: status!),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// "What is it doing right now", pinned under the header while the agent
+/// works, so it stays readable however far up the transcript is scrolled.
+/// Tapping it jumps to the newest content. The dot pulses once each time the
+/// activity changes instead of looping, so the frame pipeline goes idle
+/// between updates (and `pumpAndSettle` settles).
+class _NowStrip extends StatelessWidget {
+  const _NowStrip({required this.snippet, required this.onTap});
+
+  final String snippet;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    final colors = DroverColors.of(context);
+    return Semantics(
+      button: true,
+      child: Material(
+        color: colors.statusPillBg(AgentStatus.working),
+        child: InkWell(
+          key: const ValueKey('agent_now_strip'),
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 36),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+            ),
+            child: Row(
+              children: [
+                _NowDot(snippet: snippet),
+                const SizedBox(width: 8),
+                Text(
+                  droverLabelText(context, l10n.agentNowLabel),
+                  style: droverLabelStyle(
+                    context,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    snippet,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.5, color: scheme.onSurface),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The working dot on [_NowStrip]. It fades back in once whenever [snippet]
+/// changes (not on first build, and not with animations disabled), so the
+/// pulse marks new activity without keeping a ticker running.
+class _NowDot extends StatefulWidget {
+  const _NowDot({required this.snippet});
+
+  final String snippet;
+
+  @override
+  State<_NowDot> createState() => _NowDotState();
+}
+
+class _NowDotState extends State<_NowDot> with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 600),
+    value: 1,
+  );
+
+  @override
+  void didUpdateWidget(_NowDot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.snippet != widget.snippet &&
+        !MediaQuery.disableAnimationsOf(context)) {
+      _controller.forward(from: 0.25);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _controller,
+      child: Container(
+        width: 7,
+        height: 7,
+        decoration: BoxDecoration(
+          color: DroverColors.of(context).statusDot(AgentStatus.working),
+          shape: BoxShape.circle,
+        ),
       ),
     );
   }

@@ -107,6 +107,7 @@
   "agentNativeHistory": "会話履歴",
   "agentLiveTerminal": "ライブターミナル",
   "agentThinking": "思考中…",
+  "agentNowLabel": "いま",
   "agentHistoryBeginning": "保持されているターミナル履歴の先頭に到達しました",
 
   "agentAskUserSend": "送信",
