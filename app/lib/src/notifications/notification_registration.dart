@@ -63,10 +63,15 @@ class FirebasePushMessaging implements PushMessaging {
   @override
   Future<String?> getApnsToken() => _messaging.getAPNSToken();
 
+  // The backend sends to FCM registration tokens. The suggested
+  // register()/onRegistered replacement yields a Firebase Installation ID
+  // instead, which needs a matching functions/ change before switching.
   @override
+  // ignore: deprecated_member_use
   Future<String?> getFcmToken() => _messaging.getToken();
 
   @override
+  // ignore: deprecated_member_use
   Stream<String> get onTokenRefresh => _messaging.onTokenRefresh;
 }
 
