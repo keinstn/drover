@@ -289,7 +289,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                                     _selectedPreset == null
                                         ? l10n.launchButton
                                         : l10n.launchAgentButton(
-                                            _selectedPreset!.shortLabel,
+                                            _selectedPreset!.label,
                                           ),
                                   ),
                                   maxLines: 1,

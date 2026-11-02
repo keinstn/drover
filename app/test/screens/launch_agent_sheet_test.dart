@@ -187,7 +187,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Claude Code'), findsOneWidget);
+    expect(find.text('Claude'), findsOneWidget);
     expect(find.byKey(const ValueKey('preset_claude')), findsOneWidget);
     expect(find.text('pi'), findsNothing);
     expect(find.text('oh-my-pi'), findsNothing);
@@ -777,7 +777,7 @@ void main() {
     );
     expect(
       tester.getSemantics(find.byKey(const ValueKey('preset_claude'))),
-      isSemantics(label: 'Claude Code', isButton: true, isSelected: false),
+      isSemantics(label: 'Claude', isButton: true, isSelected: false),
     );
     final size = tester.getSize(find.byKey(const ValueKey('preset_codex')));
     expect(size.width, greaterThanOrEqualTo(44));
