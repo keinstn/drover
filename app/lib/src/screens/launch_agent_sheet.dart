@@ -281,21 +281,23 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : Text(
-                                droverLabelText(
-                                  context,
-                                  _selectedPreset == null
-                                      ? l10n.launchButton
-                                      : l10n.launchAgentButton(
-                                          _selectedPreset!.label,
-                                        ),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: droverLabelStyle(
-                                  context,
-                                  fontSize: 11.5,
-                                  weight: FontWeight.w700,
+                            : FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  droverLabelText(
+                                    context,
+                                    _selectedPreset == null
+                                        ? l10n.launchButton
+                                        : l10n.launchAgentButton(
+                                            _selectedPreset!.shortLabel,
+                                          ),
+                                  ),
+                                  maxLines: 1,
+                                  style: droverLabelStyle(
+                                    context,
+                                    fontSize: 11.5,
+                                    weight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                       ),

@@ -754,7 +754,7 @@ void main() {
     await tester.pumpWidget(_sheetApp(client));
     await tester.pumpAndSettle();
 
-    expect(find.text('LAUNCH CLAUDE CODE'), findsOneWidget);
+    expect(find.text('LAUNCH CLAUDE'), findsOneWidget);
     expect(
       tester.getSemantics(find.byKey(const ValueKey('preset_codex'))),
       isSemantics(label: 'Codex', isButton: true, isSelected: false),
@@ -764,6 +764,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('LAUNCH CODEX'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('preset_copilot')));
+    await tester.pumpAndSettle();
+    expect(find.text('LAUNCH COPILOT'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('preset_codex')));
+    await tester.pumpAndSettle();
     expect(
       tester.getSemantics(find.byKey(const ValueKey('preset_codex'))),
       isSemantics(label: 'Codex', isButton: true, isSelected: true),

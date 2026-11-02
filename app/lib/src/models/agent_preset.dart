@@ -8,16 +8,30 @@ class AgentPreset {
     required this.label,
     required this.bin,
     required this.kind,
-  });
+    String? shortLabel,
+  }) : shortLabel = shortLabel ?? label;
   final String label;
+
+  /// Fits the launch button, where [label] would be cut off.
+  final String shortLabel;
   final String bin;
   final String kind;
 }
 
 const kAgentPresets = <AgentPreset>[
-  AgentPreset(label: 'Claude Code', bin: 'claude', kind: 'claude'),
+  AgentPreset(
+    label: 'Claude Code',
+    shortLabel: 'Claude',
+    bin: 'claude',
+    kind: 'claude',
+  ),
   AgentPreset(label: 'Codex', bin: 'codex', kind: 'codex'),
-  AgentPreset(label: 'Copilot CLI', bin: 'copilot', kind: 'copilot'),
+  AgentPreset(
+    label: 'Copilot CLI',
+    shortLabel: 'Copilot',
+    bin: 'copilot',
+    kind: 'copilot',
+  ),
   AgentPreset(label: 'pi', bin: 'pi', kind: 'pi'),
   AgentPreset(label: 'omp', bin: 'omp', kind: 'omp'),
 ];
