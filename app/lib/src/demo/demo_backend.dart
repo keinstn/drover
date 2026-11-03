@@ -174,6 +174,9 @@ class DemoBackend extends ChangeNotifier {
   /// The kind of the agent started by a launch, if any.
   String? _launchedKind;
 
+  /// True once the reviewer has sent a prompt to the launched pane.
+  bool _launchedPrompted = false;
+
   /// True once the scripted session has landed its second (follow-up) reply.
   bool get isComplete => _phase == _Phase.idle2;
 
@@ -280,6 +283,8 @@ class DemoBackend extends ChangeNotifier {
     if (command.startsWith('command find ')) {
       return ok('$demoTranscriptPath\n');
     }
+    // HerdrClient.detectAgents: the demo host has claude and codex installed.
+    if (command.contains('command -v')) return ok('claude\ncodex\n');
     if (command.contains("'workspace' 'list'")) {
       return ok(
         '{"id":"1","result":{"workspaces":['
@@ -302,7 +307,7 @@ class DemoBackend extends ChangeNotifier {
       return ok(_docsLiveText);
     }
     if (command.contains("'agent' 'read' '$demoLaunchedPaneId'")) {
-      return ok('');
+      return ok(_launchedPrompted ? _launchedReply : '');
     }
     if (command.contains("'workspace' 'create'")) {
       return ok(
@@ -313,6 +318,11 @@ class DemoBackend extends ChangeNotifier {
     }
     if (command.contains("'agent' 'start'")) {
       _launchedKind = _startedKind(command) ?? 'claude';
+      notifyListeners();
+      return ok('{"id":"1","result":{}}');
+    }
+    if (command.contains("'agent' 'prompt' '$demoLaunchedPaneId' '")) {
+      _launchedPrompted = true;
       notifyListeners();
       return ok('{"id":"1","result":{}}');
     }
@@ -368,6 +378,11 @@ class DemoBackend extends ChangeNotifier {
     }
   }
 }
+
+/// Stub pane text for the launched agent once it has been prompted.
+const _launchedReply =
+    'Demo: this agent was launched on-device. '
+    'On a real host it would now run your task.';
 
 /// The fixed prefix of an `agent prompt` command line aimed at the scripted
 /// pane. Doubles as the pane gate in [DemoBackend._respond]: a prompt sent to
