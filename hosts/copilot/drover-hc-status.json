@@ -1,0 +1,47 @@
+{
+ "version": 1,
+ "hooks": {
+  "userPromptSubmitted": [
+   {
+    "type": "command",
+    "timeoutSec": 5,
+    "bash": "cat >/dev/null; [ -n \"$HC_TERMINAL_ID\" ] || exit 0; [ \"$(ps -o pgid= -p $PPID | tr -d \" \")\" = \"$(ps -o tpgid= -p $PPID | tr -d \" \")\" ] || exit 0; printf '\\033]7501;state=working:app=copilot\\033\\\\' >/dev/tty 2>/dev/null; exit 0"
+   }
+  ],
+  "notification": [
+   {
+    "type": "command",
+    "timeoutSec": 5,
+    "bash": "in=$(cat); [ -n \"$HC_TERMINAL_ID\" ] || exit 0; [ \"$(ps -o pgid= -p $PPID | tr -d \" \")\" = \"$(ps -o tpgid= -p $PPID | tr -d \" \")\" ] || exit 0; case \"$in\" in *permission_prompt*) k=permission;; *elicitation_dialog*) k=question;; *) exit 0;; esac; printf '\\033]7501;state=blocked:kind=%s:app=copilot\\033\\\\' \"$k\" >/dev/tty 2>/dev/null; exit 0"
+   }
+  ],
+  "postToolUse": [
+   {
+    "type": "command",
+    "timeoutSec": 5,
+    "bash": "cat >/dev/null; [ -n \"$HC_TERMINAL_ID\" ] || exit 0; [ \"$(ps -o pgid= -p $PPID | tr -d \" \")\" = \"$(ps -o tpgid= -p $PPID | tr -d \" \")\" ] || exit 0; printf '\\033]7501;state=working:app=copilot\\033\\\\' >/dev/tty 2>/dev/null; exit 0"
+   }
+  ],
+  "postToolUseFailure": [
+   {
+    "type": "command",
+    "timeoutSec": 5,
+    "bash": "cat >/dev/null; [ -n \"$HC_TERMINAL_ID\" ] || exit 0; [ \"$(ps -o pgid= -p $PPID | tr -d \" \")\" = \"$(ps -o tpgid= -p $PPID | tr -d \" \")\" ] || exit 0; printf '\\033]7501;state=working:app=copilot\\033\\\\' >/dev/tty 2>/dev/null; exit 0"
+   }
+  ],
+  "agentStop": [
+   {
+    "type": "command",
+    "timeoutSec": 5,
+    "bash": "cat >/dev/null; [ -n \"$HC_TERMINAL_ID\" ] || exit 0; [ \"$(ps -o pgid= -p $PPID | tr -d \" \")\" = \"$(ps -o tpgid= -p $PPID | tr -d \" \")\" ] || exit 0; printf '\\033]7501;state=done:app=copilot\\033\\\\' >/dev/tty 2>/dev/null; exit 0"
+   }
+  ],
+  "sessionEnd": [
+   {
+    "type": "command",
+    "timeoutSec": 5,
+    "bash": "cat >/dev/null; [ -n \"$HC_TERMINAL_ID\" ] || exit 0; [ \"$(ps -o pgid= -p $PPID | tr -d \" \")\" = \"$(ps -o tpgid= -p $PPID | tr -d \" \")\" ] || exit 0; printf '\\033]7501;state=clear:app=copilot\\033\\\\' >/dev/tty 2>/dev/null; exit 0"
+   }
+  ]
+ }
+}

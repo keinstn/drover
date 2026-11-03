@@ -78,23 +78,42 @@ and titles, and `read`/`run` print text when piped.
   reports status over OSC 7501; plain shells report none. Claude Code does
   this natively (`status.app = "claude-code"`).
 - Which agent CLIs report status (checked 2026-11-03, hc 0.1.17, each
-  launched once in a throwaway terminal):
+  launched in a throwaway terminal):
 
   | agent | reports? | `status.app` | notes |
   |---|---|---|---|
   | Claude Code | yes | `claude-code` (drover maps it to `claude`) | |
   | pi 1.3.0 | yes | `pi` | idle / blocked (`kind: question`, e.g. its MCP trust prompt) / done, `turn` advances; opt out with `PI_PROGRAM_STATUS=0` |
-  | codex 0.166.0 | no | — | binary has no OSC 7501 support |
-  | copilot 1.0.80 | no | — | answered a prompt, never reported |
-  | omp | no | — | package has no OSC 7501 support |
+  | codex 0.166.0 | yes (since 0.163) | `codex` | idle / working / blocked / error, `clear` on exit. Reports nothing while its startup "Hooks need review" panel is up — trust the hooks once (`/hooks`) |
+  | omp 18.16.0 | yes | `omp` | idle at launch, `turn` advances; setting `terminal.programStatus` (default on). 18.1.11 did not report — upgrade |
+  | copilot 1.0.105 | only with drover's hook | `copilot` | install [`hosts/copilot/drover-hc-status.json`](../hosts/copilot/drover-hc-status.json), see below |
 
   Herdr 2 has no counterpart to herdr 1's `herdr integration install`, by
-  design (herdr-core only reads OSC 7501; herdr-app's `programs.json` is
-  display metadata only). So codex/copilot/omp show up only when drover
-  launched them (`drover.launched=1`), with status unknown; ones started from
-  the Herdr app are invisible to drover. The only route to status for them
-  would be an agent-side hook (Codex/Copilot hooks) writing OSC 7501 to its
-  own terminal — not built.
+  design (herdr-core only reads OSC 7501, by any write to the terminal's
+  pty; there is no status RPC). An agent that doesn't report shows up in
+  drover only when drover launched it (`drover.launched=1`), with status
+  unknown; one started from the Herdr app is invisible to drover.
+- Copilot status hook: `hosts/copilot/drover-hc-status.json`, a user hook
+  file for `~/.copilot/hooks/` (no trust prompt). Install on the host:
+
+  ```sh
+  mkdir -p ~/.copilot/hooks && curl -fsSL https://raw.githubusercontent.com/keinstn/drover/main/hosts/copilot/drover-hc-status.json -o ~/.copilot/hooks/drover-hc-status.json
+  ```
+
+  Remove the file to uninstall. Each hook exits unless `HC_TERMINAL_ID` is
+  set (an hc terminal) and copilot is the tty's foreground process group,
+  prints nothing on stdout (copilot parses it), and writes OSC 7501 to
+  `/dev/tty`: `userPromptSubmitted`/`postToolUse(Failure)` → working,
+  `notification` `permission_prompt`/`elicitation_dialog` → blocked
+  (permission/question), `agentStop` → done, `sessionEnd` → clear. Verified
+  live: working → blocked → working → done → clear, `turn` advancing so the
+  `herdr.seen` rule shows the done. Deliberately unused: `sessionStart`
+  (fires with the first prompt, racing it, and its idle overwrote working)
+  and `permissionRequest` (fires for auto-approved tools too). Limits:
+  nothing before the first prompt; a `copilot -p` run by a foreground
+  script inside another agent's terminal can relabel that terminal as
+  copilot until the agent reports again. It doesn't touch herdr 1's copilot
+  hook (that one exits without `HERDR_ENV` and only reports the session).
 - Words: `idle`, `working`, `done`, `blocked` (+ `kind`: permission /
   question / auth), `error`. `done` sticks until the program reports again,
   so drover applies the shared `herdr.seen=<turn>` label rule from
@@ -181,10 +200,11 @@ writing the app's private document.
     moment could move the dialog's focus before the paste lands.
   - It runs under SshCommandRunner's 15 s exec timeout; a send that takes
     longer reports failure even though the paste still lands.
-  - hc only waits for "started working" (`HC_STARTED_MS`, 5 s) on a terminal
-    that has reported OSC 7501; Codex never reports, so hc neither refuses it
-    as `blocked` nor waits — the send returns right after the Enter, and the
-    advance/close check keeps herdr 1's budget.
+  - Codex reports OSC 7501 (blocked while the dialog is up), so the paste
+    must be forced (it is), and hc then waits for "started working"
+    (`HC_STARTED_MS`, up to 5 s) after the Enter. On a non-last question
+    Codex stays blocked, so that send takes the full 5 s; with the 3 s quiet
+    wait it still fits the 15 s exec timeout, with less margin.
 - `HcClient.prompt` forces only digit-only text (dialog option answers);
   other text to a blocked agent is refused with `blocked`.
 - Agents drover launches carry `drover.launched=1`, so they stay listed
