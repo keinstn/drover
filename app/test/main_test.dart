@@ -713,7 +713,7 @@ void main() {
         user: 'alice',
         privateKeyPem: 'pem',
         hostId: 'host-1',
-        backend: HerdrBackend.hc,
+        backendMode: HostBackendMode.hc,
       );
       final fakeRunner = _FakeCommandRunner(
         (_) => CommandResult(

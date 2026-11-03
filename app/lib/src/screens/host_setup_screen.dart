@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
 import '../herdr/herdr_backend.dart';
-import '../infra/host_connections.dart';
 import '../infra/shell_command.dart';
 import '../models/host_config.dart';
 import '../models/plugin_info.dart';
@@ -20,7 +19,6 @@ class HostSetupScreen extends StatefulWidget {
     this.initial,
     required this.onSubmit,
     this.onTest,
-    this.onProbeHcOnly,
     this.onCreatePairingCode,
     this.onDetectPlugin,
     this.onAutoPair,
@@ -31,10 +29,6 @@ class HostSetupScreen extends StatefulWidget {
   final Future<void> Function(HostConfig) onSubmit;
   final Future<String> Function(HostConfig)? onTest;
 
-  /// Reports whether the host has Herdr 2's `hc` but no herdr 1. Asked before
-  /// a connection test of a NEW host still set to herdr 1, so a Herdr 2 user
-  /// who left the default is switched over instead of failing the test.
-  final Future<bool> Function(HostConfig)? onProbeHcOnly;
   final Future<PairingCode> Function(HostConfig)? onCreatePairingCode;
 
   /// Enters the scripted demo session. Non-null only on the first-run
@@ -66,9 +60,9 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
   late final TextEditingController _keyController;
   late final TextEditingController _passphraseController;
   late final TextEditingController _herdrBinController;
+  late final TextEditingController _hcBinController;
   late String? _hostId;
-  late HerdrBackend _backend;
-  bool _hcDetected = false;
+  late HostBackendMode _mode;
 
   bool _busy = false;
   String? _statusMessage;
@@ -86,9 +80,12 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     _passphraseController = TextEditingController(
       text: initial?.passphrase ?? '',
     );
-    _backend = initial?.backend ?? HerdrBackend.herdr;
+    _mode = initial?.backendMode ?? HostBackendMode.auto;
     _herdrBinController = TextEditingController(
-      text: initial?.herdrBin ?? defaultBinFor(_backend),
+      text: initial?.herdrBin ?? kDefaultHerdrBin,
+    );
+    _hcBinController = TextEditingController(
+      text: initial?.hcBin ?? kDefaultHcBin,
     );
     _hostId = initial?.hostId;
   }
@@ -102,6 +99,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     _keyController.dispose();
     _passphraseController.dispose();
     _herdrBinController.dispose();
+    _hcBinController.dispose();
     super.dispose();
   }
 
@@ -118,16 +116,6 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     return _hostController.text.trim() == initial.host && port == initial.port;
   }
 
-  /// Switches the backend and resets the bin field to its default: a path
-  /// for one CLI is never right for the other.
-  void _selectBackend(HerdrBackend backend) {
-    _herdrBinController.text = defaultBinFor(backend);
-    setState(() {
-      _backend = backend;
-      _hcDetected = false;
-    });
-  }
-
   HostConfig? _buildConfig() {
     if (!(_formKey.currentState?.validate() ?? false)) return null;
     final passphrase = _passphraseController.text;
@@ -140,10 +128,13 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
       privateKeyPem: _keyController.text,
       passphrase: passphrase.isEmpty ? null : passphrase,
       herdrBin: _herdrBinController.text.trim().isEmpty
-          ? defaultBinFor(_backend)
+          ? kDefaultHerdrBin
           : _herdrBinController.text.trim(),
+      hcBin: _hcBinController.text.trim().isEmpty
+          ? kDefaultHcBin
+          : _hcBinController.text.trim(),
       hostId: _hostId,
-      backend: _backend,
+      backendMode: _mode,
     );
   }
 
@@ -323,15 +314,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
       _statusError = null;
     });
     try {
-      String result;
-      try {
-        result = await onTest(config);
-      } catch (e) {
-        if (!isHerdrBinaryMissing(e)) rethrow;
-        final hcConfig = await _switchIfHcOnly(config);
-        if (hcConfig == null) rethrow;
-        result = await onTest(hcConfig);
-      }
+      final result = await onTest(config);
       if (!mounted) return;
       setState(() {
         _statusMessage = result;
@@ -346,26 +329,6 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-  }
-
-  /// After a test of a NEW herdr 1 host on the default path failed because
-  /// `herdr` wasn't found: if the host has only Herdr 2's `hc`, switches the
-  /// form to Herdr 2 and returns the config to re-test with; otherwise null
-  /// (the original failure stands). A custom herdr path means the user chose
-  /// herdr 1.
-  Future<HostConfig?> _switchIfHcOnly(HostConfig config) async {
-    final onProbeHcOnly = widget.onProbeHcOnly;
-    if (onProbeHcOnly == null ||
-        widget.initial != null ||
-        config.backend != HerdrBackend.herdr ||
-        config.herdrBin != kDefaultHerdrBin) {
-      return null;
-    }
-    final hcOnly = await onProbeHcOnly(config).catchError((_) => false);
-    if (!hcOnly || !mounted) return null;
-    _selectBackend(HerdrBackend.hc);
-    setState(() => _hcDetected = true);
-    return _buildConfig();
   }
 
   Future<void> _handleSave() async {
@@ -508,35 +471,37 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
               children: [
                 Text(l10n.hostSetupBackendLabel),
                 const SizedBox(height: 8),
-                SegmentedButton<HerdrBackend>(
+                SegmentedButton<HostBackendMode>(
                   showSelectedIcon: false,
                   segments: [
                     ButtonSegment(
-                      value: HerdrBackend.herdr,
+                      value: HostBackendMode.auto,
+                      label: Text(l10n.hostSetupBackendAuto),
+                    ),
+                    ButtonSegment(
+                      value: HostBackendMode.herdr,
                       label: Text(l10n.hostSetupBackendHerdr1),
                     ),
                     ButtonSegment(
-                      value: HerdrBackend.hc,
+                      value: HostBackendMode.hc,
                       label: Text(l10n.hostSetupBackendHerdr2),
                     ),
                   ],
-                  selected: {_backend},
+                  selected: {_mode},
                   onSelectionChanged: _busy
                       ? null
-                      : (values) => _selectBackend(values.first),
+                      : (values) => setState(() => _mode = values.first),
                 ),
-                if (_backend == HerdrBackend.hc) ...[
+                if (_mode == HostBackendMode.auto) ...[
                   const SizedBox(height: 8),
-                  if (_hcDetected) ...[
-                    Text(
-                      l10n.hostSetupHcDetected,
-                      key: const ValueKey('host_setup_hc_detected'),
-                      style: TextStyle(
-                        color: DroverColors.of(context).donePillFg,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
+                  Text(
+                    l10n.hostSetupBackendAutoNote,
+                    key: const ValueKey('host_setup_auto_note'),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
+                  ),
+                ],
+                if (_mode != HostBackendMode.herdr) ...[
+                  const SizedBox(height: 8),
                   Text(
                     l10n.hostSetupHerdr2Note,
                     key: const ValueKey('host_setup_herdr2_note'),
@@ -550,23 +515,33 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
               title: Text(l10n.hostSetupAdvanced),
               tilePadding: EdgeInsets.zero,
               children: [
-                TextFormField(
-                  controller: _herdrBinController,
-                  decoration: InputDecoration(
-                    labelText: _backend == HerdrBackend.hc
-                        ? l10n.hostSetupHcBinLabel
-                        : l10n.hostSetupHerdrBinLabel,
+                if (_mode != HostBackendMode.hc)
+                  TextFormField(
+                    key: const ValueKey('host_setup_herdr_bin'),
+                    controller: _herdrBinController,
+                    decoration: InputDecoration(
+                      labelText: l10n.hostSetupHerdrBinLabel,
+                    ),
+                    contextMenuBuilder: noScanTextContextMenuBuilder,
                   ),
-                  contextMenuBuilder: noScanTextContextMenuBuilder,
-                ),
+                if (_mode != HostBackendMode.herdr)
+                  TextFormField(
+                    key: const ValueKey('host_setup_hc_bin'),
+                    controller: _hcBinController,
+                    decoration: InputDecoration(
+                      labelText: l10n.hostSetupHcBinLabel,
+                    ),
+                    contextMenuBuilder: noScanTextContextMenuBuilder,
+                  ),
               ],
             ),
             const SizedBox(height: 20),
             // Herdr 2 has no plugins, so there is nothing to pair.
-            // Pairing acts on the saved host, so both must be herdr 1.
+            // Pairing acts on the saved host, so neither may be hc-only.
             if (widget.onCreatePairingCode != null &&
-                widget.initial?.backend == HerdrBackend.herdr &&
-                _backend == HerdrBackend.herdr) ...[
+                widget.initial != null &&
+                widget.initial!.backendMode != HostBackendMode.hc &&
+                _mode != HostBackendMode.hc) ...[
               OutlinedButton(
                 style: droverNeutralButtonStyle(scheme),
                 onPressed: _busy ? null : _createPairingCode,

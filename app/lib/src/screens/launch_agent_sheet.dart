@@ -17,6 +17,9 @@ import 'directory_picker_sheet.dart';
 enum _WorkspaceMode { newWorkspace, existing }
 
 const _sheetPadding = 16.0;
+
+/// The backend last launched on per client, for this app session.
+final _lastBackend = Expando<HerdrBackend>();
 const _tileHeight = 76.0;
 
 /// Sheet body for launching a new agent: pick a preset, a cwd, and whether to
@@ -27,10 +30,22 @@ class LaunchAgentSheet extends StatefulWidget {
     super.key,
     required this.client,
     required this.existingCwds,
+    this.backends,
+    this.herdrTooOld,
   });
 
   final HerdrClient client;
   final List<String> existingCwds;
+
+  /// What [client] reaches ([HerdrClient.availableBackends], already awaited
+  /// by the caller); the switch shows when it's both. Null means
+  /// [HerdrClient.backend] alone.
+  final List<HerdrBackend>? backends;
+
+  /// Checked before a herdr 1 launch when the sheet offers both backends;
+  /// true blocks it (the caller shows why). With one backend the caller
+  /// gates before opening the sheet instead.
+  final Future<bool> Function()? herdrTooOld;
 
   @override
   State<LaunchAgentSheet> createState() => _LaunchAgentSheetState();
@@ -52,18 +67,43 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   bool _busy = false;
   Object? _launchError;
 
+  late final List<HerdrBackend> _backends =
+      widget.backends ?? [widget.client.backend];
+
+  /// The remembered choice when still offered, else the first.
+  late HerdrBackend _backend = switch (_lastBackend[widget.client]) {
+    final last? when _backends.contains(last) => last,
+    _ => _backends.firstOrNull ?? widget.client.backend,
+  };
+
+  /// The single-backend client the launch runs against.
+  HerdrClient get _part => widget.client.clientFor(_backend);
+
   /// Herdr 2 can only launch into a space that already exists in the app:
   /// no new-workspace mode, no split, no `agent start`.
-  bool get _isHc => widget.client.backend == HerdrBackend.hc;
+  bool get _isHc => _backend == HerdrBackend.hc;
 
   @override
   void initState() {
     super.initState();
     _detectAgents();
-    if (_isHc) {
-      _mode = _WorkspaceMode.existing;
-      _loadWorkspaces();
-    }
+    _applyBackend();
+  }
+
+  void _applyBackend() {
+    _selectedWorkspaceId = null;
+    _workspacesFuture = null;
+    _mode = _isHc ? _WorkspaceMode.existing : _WorkspaceMode.newWorkspace;
+    if (_isHc) _loadWorkspaces();
+  }
+
+  void _selectBackend(HerdrBackend backend) {
+    _lastBackend[widget.client] = backend;
+    setState(() {
+      _backend = backend;
+      _launchError = null;
+      _applyBackend();
+    });
   }
 
   @override
@@ -116,10 +156,11 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   }
 
   void _loadWorkspaces() {
-    final future = widget.client.listWorkspaces();
+    final future = _part.listWorkspaces();
     _workspacesFuture = future;
     future.then((workspaces) {
-      if (!mounted) return;
+      // A stale list from before a backend switch.
+      if (!mounted || !identical(future, _workspacesFuture)) return;
       if (_selectedWorkspaceId != null &&
           !workspaces.any((w) => w.workspaceId == _selectedWorkspaceId)) {
         setState(() => _selectedWorkspaceId = null);
@@ -149,17 +190,22 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
     if (_mode == _WorkspaceMode.existing && _selectedWorkspaceId == null) {
       return;
     }
-
+    // Busy before any await: no second Launch tap, no backend switch.
     setState(() {
       _busy = true;
       _launchError = null;
     });
+    if (!_isHc && await widget.herdrTooOld?.call() == true) {
+      if (mounted) setState(() => _busy = false);
+      return;
+    }
+    if (!mounted) return;
     try {
       final name = _nameController.text.trim().isEmpty
           ? preset.bin
           : _nameController.text.trim();
       if (_isHc) {
-        final paneId = await (widget.client as HcClient).runAgent(
+        final paneId = await (_part as HcClient).runAgent(
           argv: [preset.bin],
           cwd: cwd,
           spaceId: _selectedWorkspaceId!,
@@ -170,7 +216,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         return;
       }
       final workspace = _mode == _WorkspaceMode.newWorkspace
-          ? await widget.client.createWorkspace(
+          ? await _part.createWorkspace(
               label: _workspaceNameController.text.trim(),
               cwd: cwd,
             )
@@ -181,10 +227,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
       try {
         paneId =
             workspace?.paneId ??
-            (splitPaneId = await widget.client.splitPane(
-              workspaceId: wsId,
-              cwd: cwd,
-            ));
+            (splitPaneId = await _part.splitPane(workspaceId: wsId, cwd: cwd));
         // Slugs a hand-typed illegal name and walks past one a live agent
         // already holds. It stays inside this try so a taken name is not
         // mistaken for a failed start and does not roll the pane back.
@@ -192,20 +235,17 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         // the agent screen it pops to is where the user answers that prompt.
         await startAgentWithFreeName(
           base: name,
-          start: (name) => widget.client.startAgent(
-            name: name,
-            kind: preset.kind,
-            paneId: paneId,
-          ),
+          start: (name) =>
+              _part.startAgent(name: name, kind: preset.kind, paneId: paneId),
         );
       } catch (e) {
         if (_mode == _WorkspaceMode.newWorkspace) {
           try {
-            await widget.client.closeWorkspace(wsId);
+            await _part.closeWorkspace(wsId);
           } catch (_) {}
         } else if (splitPaneId != null) {
           try {
-            await widget.client.closeAgent(splitPaneId);
+            await _part.closeAgent(splitPaneId);
           } catch (_) {}
         }
         rethrow;
@@ -265,6 +305,27 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 16),
+                if (_backends.length > 1) ...[
+                  SegmentedButton<HerdrBackend>(
+                    key: const ValueKey('launch_backend_switch'),
+                    showSelectedIcon: false,
+                    segments: [
+                      ButtonSegment(
+                        value: HerdrBackend.herdr,
+                        label: Text(l10n.herdHerdr1Tag),
+                      ),
+                      ButtonSegment(
+                        value: HerdrBackend.hc,
+                        label: Text(l10n.herdHerdr2Tag),
+                      ),
+                    ],
+                    selected: {_backend},
+                    onSelectionChanged: _busy
+                        ? null
+                        : (values) => _selectBackend(values.first),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 _buildPresetSection(),
                 const SizedBox(height: 16),
                 _buildCwdSection(),
@@ -719,11 +780,11 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
     final label = workspace.label.trim();
     if (label.isEmpty) {
       return _isHc
-          ? l10n.launchUnnamedSpace(workspace.workspaceId)
+          ? l10n.launchUnnamedSpace(displayId(workspace.workspaceId))
           : l10n.launchUnnamedWorkspace(workspace.workspaceId);
     }
     if (labelCounts[label]! > 1) {
-      return '$label (${workspace.workspaceId})';
+      return '$label (${displayId(workspace.workspaceId)})';
     }
     return label;
   }

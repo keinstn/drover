@@ -4,6 +4,7 @@ import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/hc_client.dart';
 import 'package:drover/src/herdr/herdr_backend.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
+import 'package:drover/src/herdr/host_platform.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -178,9 +179,9 @@ void main() {
       final agent = (await list([
         terminal(labels: {'herdr.space': 's1', 'herdr.tab': 'tb'}),
       ])).single;
-      expect(agent.paneId, 't3');
-      expect(agent.workspaceId, 's1');
-      expect(agent.tabId, 'tb');
+      expect(agent.paneId, 'hc:t3');
+      expect(agent.workspaceId, 'hc:s1');
+      expect(agent.tabId, 'hc:tb');
       expect(agent.agent, 'claude');
       expect(agent.name, 'drover-probe');
       expect(agent.cwd, '/Users/x/proj/sub');
@@ -222,7 +223,7 @@ void main() {
         terminal(address: 't2', state: 'finished'),
         terminal(address: 't3'),
       ]);
-      expect(agents.map((a) => a.paneId), ['t3']);
+      expect(agents.map((a) => a.paneId), ['hc:t3']);
     });
 
     test('maps status words and the herdr.seen rule', () async {
@@ -261,8 +262,8 @@ void main() {
       final client = clientFor(runner);
       await client.listAgents();
       expect((await client.listWorkspaces()).map((w) => w.workspaceId), [
-        's1',
-        's2',
+        'hc:s1',
+        'hc:s2',
       ]);
       expect(runner.stdins, hasLength(1));
       // Handed out once: the next call fetches fresh.
@@ -278,8 +279,8 @@ void main() {
       expect(runner.requests.single.method, 'doc.get');
       expect(runner.requests.single.params, {'name': 'herdr-app'});
       expect(ws.map((w) => (w.workspaceId, w.label)), [
-        ('s1', 'Work'),
-        ('s2', 'proj'),
+        ('hc:s1', 'Work'),
+        ('hc:s2', 'proj'),
       ]);
     });
 
@@ -295,7 +296,7 @@ void main() {
       final agent = await clientFor(runner).getAgent('t9');
       expect(runner.requests.single.method, 'terminal.get');
       expect(runner.requests.single.params, {'terminal': 't9'});
-      expect(agent.paneId, 't9');
+      expect(agent.paneId, 'hc:t9');
     });
 
     test('throws not_agent for a plain shell', () async {
@@ -495,9 +496,9 @@ void main() {
       final client = clientFor(runner);
       await client.listAgents();
       runner.requests.clear();
-      await client.markSeen('t1');
+      await client.markSeen('hc:t1');
       await client.markSeen('t1'); // cache raised: no second write
-      await client.markSeen('t2'); // already seen
+      await client.markSeen('hc:t2'); // already seen
       expect(runner.requests.map((r) => r.method), ['terminal.label']);
       expect(runner.requests.single.params['labels'], {'herdr.seen': '2'});
     });
@@ -509,10 +510,10 @@ void main() {
       final address = await clientFor(runner).runAgent(
         argv: ['claude', '--resume', 'a b'],
         cwd: '/p',
-        spaceId: 's1',
+        spaceId: 'hc:s1',
         name: '  My Agent!! ${'x' * 40}',
       );
-      expect(address, 't4');
+      expect(address, 'hc:t4');
       final params = runner.requests.single.params;
       expect(runner.requests.single.method, 'terminal.run');
       final argv = (params['argv'] as List).cast<String>();
@@ -550,7 +551,7 @@ void main() {
       final address = await clientFor(
         runner,
       ).runAgent(argv: ['claude'], cwd: '/p', spaceId: 's1', name: 'a');
-      expect(address, 't5');
+      expect(address, 'hc:t5');
       expect(runner.requests, hasLength(2));
       expect(runner.requests.last.params.containsKey('name'), isFalse);
     });
@@ -579,7 +580,7 @@ void main() {
       final client = clientFor(runner);
       await client.runAgent(argv: ['/opt/bin/aider'], cwd: '/p', spaceId: 's1');
       final agent = (await client.listAgents()).single;
-      expect(agent.paneId, 't4');
+      expect(agent.paneId, 'hc:t4');
       expect(agent.status, AgentStatus.unknown);
       expect(agent.agent, 'aider'); // argv basename, through the wrapper
       expect((await client.getAgent('t4')).agent, 'aider');
@@ -630,7 +631,7 @@ void main() {
       await client.listAgents();
       docFails = true;
       final agents = await client.listAgents();
-      expect(agents.single.workspaceId, 's1');
+      expect(agents.single.workspaceId, 'hc:s1');
       // The first poll's list is not served stale: listWorkspaces fetches.
       await expectLater(client.listWorkspaces(), throwsKind('not_found'));
       expect(runner.stdins, hasLength(3));
@@ -694,6 +695,85 @@ void main() {
 
     test('findPlugin finds nothing', () async {
       expect(await client.findPlugin('drover-notify'), isNull);
+    });
+  });
+
+  group('ids', () {
+    test('a prefixed id reaches hc without its prefix', () async {
+      final runner = FakeHcRunner(
+        (r) => r.method == 'terminal.read' ? {'text': 'x'} : terminal(),
+      );
+      final client = clientFor(runner);
+      await client.readAgent('hc:t3');
+      await client.getAgent('hc:t3');
+      await client.prompt('hc:t3', 'hi');
+      await client.sendKeys('hc:t3', 'esc');
+      await client.sendPaneText('hc:t3', 'a');
+      await client.closeAgent('hc:t3');
+      expect(runner.requests.map((r) => r.params['terminal']).toSet(), {'t3'});
+    });
+
+    test('no space or tab stays empty, not prefixed', () async {
+      final runner = FakeHcRunner(
+        (r) => r.method == 'terminal.list'
+            ? {
+                'terminals': [terminal()],
+              }
+            : herdrAppDoc,
+      );
+      final agent = (await clientFor(runner).listAgents()).single;
+      expect(agent.workspaceId, '');
+      expect(agent.tabId, '');
+      expect(backendOfId(agent.paneId), HerdrBackend.hc);
+    });
+  });
+
+  group('core gate', () {
+    HcClient gated(FakeHcRunner runner, {bool windows = false}) => HcClient(
+      runner,
+      requireRunningCore: true,
+      platform: () =>
+          windows ? const WindowsHostPlatform() : const UnixHostPlatform(),
+    );
+
+    test('checks for a core in the same exec, before connecting', () async {
+      final runner = FakeHcRunner((_) => {'text': ''});
+      await gated(runner).readAgent('t3');
+      expect(
+        runner.commands.single,
+        'sh -c \'pgrep -x -U "\$(id -u)" herdr-core >/dev/null 2>&1 || '
+        '{ echo drover-hc-not-running >&2; exit 3; }; '
+        'exec ~/.local/bin/hc connect\'',
+      );
+    });
+
+    test('without the flag, connects directly', () async {
+      final runner = FakeHcRunner((_) => {'text': ''});
+      await clientFor(runner).readAgent('t3');
+      expect(runner.commands.single, "~/.local/bin/hc 'connect'");
+    });
+
+    test('the marker means no core is running', () async {
+      final runner = FakeHcRunner.raw(
+        (_) => const CommandResult(
+          exitCode: 3,
+          stdout: '',
+          stderr: 'drover-hc-not-running\n',
+        ),
+      );
+      await expectLater(
+        gated(runner).listAgents(),
+        throwsKind(HcClient.kHcNotRunning),
+      );
+    });
+
+    test('a Windows host never runs hc under the gate', () async {
+      final runner = FakeHcRunner((_) => {'text': ''});
+      await expectLater(
+        gated(runner, windows: true).listAgents(),
+        throwsKind(HcClient.kHcUnsupportedHost),
+      );
+      expect(runner.commands, isEmpty);
     });
   });
 }

@@ -561,8 +561,9 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
   /// in flight.
   List<Future<StaleNotifyPlugin?>> _checkNotifyPlugins() {
     return _hosts.where((host) => host.hostId != null).map((config) async {
-      // Herdr 2 has no plugins, so there is nothing to probe on an hc host.
-      if (config.backend == HerdrBackend.hc) return null;
+      // Herdr 2 has no plugins, so there is nothing to probe on an hc-only
+      // host. In auto mode the client routes findPlugin to herdr 1.
+      if (config.backendMode == HostBackendMode.hc) return null;
       try {
         final cached = _registry.get(config.hostId!);
         final plugin =
@@ -714,15 +715,6 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     );
   }
 
-  Future<bool> _probeHcOnly(HostConfig c) async {
-    final runner = SshCommandRunner(c);
-    try {
-      return await hostHasOnlyHc(runner);
-    } finally {
-      await runner.dispose();
-    }
-  }
-
   Future<String> _testConnection(HostConfig c) async {
     final runner = SshCommandRunner(c);
     try {
@@ -786,11 +778,8 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
   void _openAddHost() {
     _navKey.currentState?.push(
       MaterialPageRoute<void>(
-        builder: (_) => HostSetupScreen(
-          onSubmit: _applyConfig,
-          onTest: _testConnection,
-          onProbeHcOnly: _probeHcOnly,
-        ),
+        builder: (_) =>
+            HostSetupScreen(onSubmit: _applyConfig, onTest: _testConnection),
       ),
     );
   }
@@ -932,7 +921,6 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
           ? HostSetupScreen(
               onSubmit: _applyConfig,
               onTest: _testConnection,
-              onProbeHcOnly: _probeHcOnly,
               onEnterDemo: _enterDemo,
             )
           : HerdScreen(

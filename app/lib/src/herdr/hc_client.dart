@@ -14,13 +14,46 @@ export 'herdr_backend.dart' show kDefaultHcBin;
 /// Drives Herdr 2's herdr-core through `hc connect` (JSON-RPC over stdin),
 /// presenting it through the same API as [HerdrClient]. [version] is
 /// inherited: `hc --version` runs through the same path as herdr's.
+///
+/// Every id it hands out carries [kHcIdPrefix] (`hc:t16`, `hc:sp…`); ids it
+/// takes may carry it or not.
 class HcClient extends HerdrClient {
   HcClient(
     super.runner, {
     super.herdrBin = kDefaultHcBin,
     super.sleep,
     super.platform,
+    this.requireRunningCore = false,
   });
+
+  /// When set, every `hc connect` first checks that a herdr-core runs and
+  /// fails with code [kHcNotRunning] if not, instead of letting `hc connect`
+  /// autostart one. The check runs in the same exec as the connect, so the
+  /// window between them is tiny but real: a core that exits in between gets
+  /// autostarted. Windows hosts always fail it (Herdr 2 on Windows is
+  /// deferred).
+  // ponytail: the gate needs a procps-style `pgrep -x -U`. Without pgrep, or
+  // with one that rejects `-U` (BusyBox builds), Auto mode reads hc as not
+  // running; explicit Herdr 2 mode skips the gate and is the workaround. No
+  // `pgrep -x herdr-core` fallback: it would match another user's core, and
+  // then `hc connect` autostarts ours — what the gate exists to prevent.
+  final bool requireRunningCore;
+
+  /// [HerdrException.code] for "no herdr-core runs" under
+  /// [requireRunningCore].
+  static const kHcNotRunning = 'hc_not_running';
+
+  /// [HerdrException.code] when a gated client is on a non-Unix host:
+  /// Herdr 2 on Windows is unsupported, so the part is simply absent.
+  static const kHcUnsupportedHost = 'hc_unsupported_host';
+
+  /// What the core gate prints on stderr when no core runs.
+  static const notRunningMarker = 'drover-hc-not-running';
+
+  static String _raw(String id) =>
+      id.startsWith(kHcIdPrefix) ? id.substring(kHcIdPrefix.length) : id;
+
+  static String _id(String raw) => '$kHcIdPrefix$raw';
 
   @override
   HerdrBackend get backend => HerdrBackend.hc;
@@ -31,9 +64,19 @@ class HcClient extends HerdrClient {
   /// batch can tolerate one failure; [_ok] throws it.
   Future<List<Object?>> _rpc(List<(String, Map<String, Object?>)> calls) async {
     final platform = await hostPlatform;
-    final command = platform.herdrCommand(platform.resolveHerdrBin(herdrBin), [
-      'connect',
-    ]);
+    final bin = platform.resolveHerdrBin(herdrBin);
+    if (requireRunningCore && platform is! UnixHostPlatform) {
+      throw const HerdrException(
+        kHcUnsupportedHost,
+        'Herdr 2 needs a Unix host',
+      );
+    }
+    // fish is a common login shell, so the gate script avoids `'` and `\`;
+    // [bin] stays unquoted so sh expands a `~`.
+    final command = requireRunningCore
+        ? 'sh -c ${shQuote('pgrep -x -U "\$(id -u)" herdr-core >/dev/null 2>&1 '
+          '|| { echo $notRunningMarker >&2; exit 3; }; exec $bin connect')}'
+        : platform.herdrCommand(bin, ['connect']);
     final stdin = [
       for (final (i, (method, params)) in calls.indexed)
         '${jsonEncode({'jsonrpc': '2.0', 'id': i + 1, 'method': method, 'params': params})}\n',
@@ -46,6 +89,9 @@ class HcClient extends HerdrClient {
       throw HerdrException('transport', e.toString(), cause: e);
     }
     final methods = calls.map((c) => c.$1).join(', ');
+    if (requireRunningCore && result.stderr.contains(notRunningMarker)) {
+      throw const HerdrException(kHcNotRunning, 'no herdr-core is running');
+    }
     if (result.exitCode != 0) {
       throw HerdrException(
         'transport',
@@ -134,6 +180,7 @@ class HcClient extends HerdrClient {
 
   @override
   Future<AgentInfo> getAgent(String target) async {
+    target = _raw(target);
     _pendingText.remove(target);
     final record = await _call('terminal.get', {'terminal': target});
     if (!_isAgent(record)) {
@@ -175,7 +222,7 @@ class HcClient extends HerdrClient {
     return [
       for (final s in spaces.cast<Map<String, dynamic>>())
         WorkspaceInfo(
-          workspaceId: s['id'] as String,
+          workspaceId: _id(s['id'] as String),
           label: switch (s['name']) {
             final String name when name.isNotEmpty => name,
             _ => _basename(s['folder'] as String? ?? ''),
@@ -205,10 +252,12 @@ class HcClient extends HerdrClient {
     final foreground = t['foreground'] as Map<String, dynamic>?;
     final app = status['app'] as String? ?? '';
     final title = t['title'] as String? ?? '';
+    String? prefixed(Object? id) =>
+        id is String && id.isNotEmpty ? _id(id) : null;
     return AgentInfo(
-      paneId: t['address'] as String,
-      workspaceId: labels['herdr.space'] as String? ?? '',
-      tabId: labels['herdr.tab'] as String? ?? '',
+      paneId: _id(t['address'] as String),
+      workspaceId: prefixed(labels['herdr.space']) ?? '',
+      tabId: prefixed(labels['herdr.tab']) ?? '',
       agent: switch (app) {
         'claude-code' => 'claude',
         '' => foreground?['name'] as String? ?? _programOf(t['argv']),
@@ -239,6 +288,7 @@ class HcClient extends HerdrClient {
 
   @override
   Future<String> readAgent(String target, {int lines = 120}) async {
+    target = _raw(target);
     _pendingText.remove(target);
     final result = await _call('terminal.read', {
       'terminal': target,
@@ -253,6 +303,7 @@ class HcClient extends HerdrClient {
   // can't land in a dialog. Upgrade: an explicit answer-dialog call.
   @override
   Future<void> prompt(String paneId, String text) async {
+    paneId = _raw(paneId);
     _pendingText.remove(paneId);
     await _send(paneId, text, force: RegExp(r'^\d+$').hasMatch(text));
   }
@@ -268,6 +319,7 @@ class HcClient extends HerdrClient {
   /// already hc key names.
   @override
   Future<void> sendKeys(String paneId, String key) async {
+    paneId = _raw(paneId);
     final pending = _pendingText.remove(paneId);
     if (pending != null && key == 'enter') {
       return _send(paneId, pending, force: true);
@@ -293,6 +345,7 @@ class HcClient extends HerdrClient {
   // framed `attach` stream.
   @override
   Future<void> sendPaneText(String paneId, String text) async {
+    paneId = _raw(paneId);
     _pendingText.remove(paneId);
     if (text == '\x1b[Z') return _keys(paneId, ['shift+tab']);
     // Focus in/out reports: nothing to forward on hc.
@@ -317,6 +370,7 @@ class HcClient extends HerdrClient {
 
   @override
   Future<void> closeAgent(String paneId) async {
+    paneId = _raw(paneId);
     _pendingText.remove(paneId);
     _seen.remove(paneId);
     await _call('terminal.kill', {'terminal': paneId});
@@ -327,6 +381,7 @@ class HcClient extends HerdrClient {
   /// from the last poll, fetching only for an address it hasn't seen.
   @override
   Future<void> markSeen(String paneId) async {
+    paneId = _raw(paneId);
     _pendingText.remove(paneId);
     final cached = _seen[paneId];
     final (turn, seen) = cached ?? await _fetchSeen(paneId);
@@ -360,7 +415,7 @@ class HcClient extends HerdrClient {
   ];
 
   /// Starts [argv] in [cwd] as a new terminal in Herdr space [spaceId] and
-  /// returns its address. [name] is sanitized to hc's `[a-z0-9_-]{1,32}`,
+  /// returns its (prefixed) address. [name] is sanitized to hc's `[a-z0-9_-]{1,32}`,
   /// and dropped on a collision rather than failing the launch.
   Future<String> runAgent({
     required List<String> argv,
@@ -374,7 +429,7 @@ class HcClient extends HerdrClient {
         'argv': [if (platform is UnixHostPlatform) ..._loginShell, ...argv],
         'cwd': cwd,
         'labels': {
-          'herdr.space': spaceId,
+          'herdr.space': _raw(spaceId),
           'herdr.seen': '0',
           _launchedLabel: '1',
         },
@@ -384,7 +439,7 @@ class HcClient extends HerdrClient {
       if (address is! String) {
         throw const HerdrException('transport', 'missing address field');
       }
-      return address;
+      return _id(address);
     }
 
     if (name == null || name.trim().isEmpty) return run(null);

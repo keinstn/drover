@@ -187,6 +187,10 @@ class AppLocalizationsZh extends AppLocalizations {
       '已连接到主机，但 herdr 未在其上运行。请在主机上启动 herdr，然后重试。';
 
   @override
+  String get errorHcNotRunning =>
+      '已连接到主机，但 Herdr 应用未在其上运行。请在主机上打开 Herdr 应用，然后重试。';
+
+  @override
   String herdrVersionTooOld(String found, String minimum) {
     return '此主机上的 herdr $found 低于支持的最低版本 $minimum。请更新主机上的 herdr 才能启动智能体。';
   }
@@ -580,23 +584,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get hostSetupBackendLabel => 'Herdr 版本';
 
   @override
-  String get hostSetupBackendHerdr1 => 'Herdr 1（TUI）';
+  String get hostSetupBackendAuto => '自动';
 
   @override
-  String get hostSetupBackendHerdr2 => 'Herdr 2（应用）';
+  String get hostSetupBackendAutoNote => '显示两者的智能体；仅在 Herdr 应用运行时使用 Herdr 2。';
+
+  @override
+  String get hostSetupBackendHerdr1 => 'Herdr 1';
+
+  @override
+  String get hostSetupBackendHerdr2 => 'Herdr 2';
 
   @override
   String get hostSetupHerdr2Note =>
       'Herdr 2 在 Herdr 应用的空间中运行智能体。请先在 Herdr 应用中创建空间——drover 会将智能体启动到现有空间中。智能体需要自行报告状态（Claude Code 已支持）。Herdr 2 没有插件，因此无法使用 drover 的通知插件。';
 
   @override
-  String get hostSetupHcDetected => '此主机上有 Herdr 2（hc）但没有 herdr，已切换到 Herdr 2。';
-
-  @override
   String get hostSetupHcBinLabel => 'hc 二进制文件路径';
 
   @override
   String get herdNotInSpace => '不在空间中';
+
+  @override
+  String get herdHerdr1Tag => 'Herdr 1';
 
   @override
   String get herdHerdr2Tag => 'Herdr 2';

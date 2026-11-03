@@ -1,3 +1,4 @@
+import 'package:drover/src/herdr/hc_client.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/infra/app_error.dart';
 import 'package:drover/src/infra/ssh_command_runner.dart';
@@ -70,6 +71,11 @@ void main() {
         cause: Exception('socket'),
       );
       expect(classifyError(error), AppErrorKind.herdrServerUnreachable);
+    });
+
+    test('hc_not_running classifies as hcNotRunning', () {
+      const error = HerdrException(HcClient.kHcNotRunning, 'no core');
+      expect(classifyError(error), AppErrorKind.hcNotRunning);
     });
 
     test('a plain exception classifies as unknown', () {

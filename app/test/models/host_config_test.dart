@@ -37,38 +37,74 @@ void main() {
       expect(restored.hostKeyFingerprint, isNull);
     });
 
-    test('round-trips the hc backend', () {
+    test('round-trips backendMode and hcBin', () {
       final config = HostConfig(
         host: 'example.com',
         user: 'alice',
         privateKeyPem: 'pem',
-        backend: HerdrBackend.hc,
-        herdrBin: kDefaultHcBin,
+        backendMode: HostBackendMode.hc,
+        hcBin: '/opt/hc',
       );
       final json = config.toJson();
-      expect(json['backend'], 'hc');
+      expect(json['backendMode'], 'hc');
+      expect(json.containsKey('backend'), isFalse);
       final restored = HostConfig.fromJson(json);
-      expect(restored.backend, HerdrBackend.hc);
-      expect(restored.herdrBin, kDefaultHcBin);
-      // The id/fingerprint helpers must not drop the backend.
-      expect(restored.withHostId('h').backend, HerdrBackend.hc);
-      expect(restored.withHostKeyFingerprint('f').backend, HerdrBackend.hc);
+      expect(restored.backendMode, HostBackendMode.hc);
+      expect(restored.hcBin, '/opt/hc');
+      expect(restored.herdrBin, kDefaultHerdrBin);
+      // The id/fingerprint helpers must not drop either field.
+      for (final c in [
+        restored.withHostId('h'),
+        restored.withHostKeyFingerprint('f'),
+      ]) {
+        expect(c.backendMode, HostBackendMode.hc);
+        expect(c.hcBin, '/opt/hc');
+      }
     });
 
-    test('a map missing backend reads as herdr with the herdr bin', () {
-      final restored = HostConfig.fromJson({
-        'host': 'example.com',
-        'user': 'alice',
-        'privateKeyPem': 'pem',
-      });
-      expect(restored.backend, HerdrBackend.herdr);
+    Map<String, dynamic> legacy(Map<String, dynamic> extra) => {
+      'host': 'example.com',
+      'user': 'alice',
+      'privateKeyPem': 'pem',
+      ...extra,
+    };
+
+    test('a legacy hc host becomes mode hc, its bin moving to hcBin', () {
+      final restored = HostConfig.fromJson(
+        legacy({'backend': 'hc', 'herdrBin': '/opt/hc'}),
+      );
+      expect(restored.backendMode, HostBackendMode.hc);
+      expect(restored.hcBin, '/opt/hc');
       expect(restored.herdrBin, kDefaultHerdrBin);
     });
 
-    test('a backend change is a different connection', () {
-      final config = sample();
-      final hc = HostConfig.fromJson({...config.toJson(), 'backend': 'hc'});
-      expect(config.sameConnection(hc), isFalse);
+    test('a legacy hc host without a bin gets the default hcBin', () {
+      final restored = HostConfig.fromJson(legacy({'backend': 'hc'}));
+      expect(restored.backendMode, HostBackendMode.hc);
+      expect(restored.hcBin, kDefaultHcBin);
+    });
+
+    test('a legacy herdr host, or none, becomes auto keeping herdrBin', () {
+      for (final extra in [
+        {'backend': 'herdr', 'herdrBin': '/opt/herdr'},
+        {'herdrBin': '/opt/herdr'},
+      ]) {
+        final restored = HostConfig.fromJson(legacy(extra));
+        expect(restored.backendMode, HostBackendMode.auto);
+        expect(restored.herdrBin, '/opt/herdr');
+        expect(restored.hcBin, kDefaultHcBin);
+      }
+      final bare = HostConfig.fromJson(legacy({}));
+      expect(bare.backendMode, HostBackendMode.auto);
+      expect(bare.herdrBin, kDefaultHerdrBin);
+    });
+
+    test('backendMode wins over a stale legacy backend key', () {
+      final restored = HostConfig.fromJson(
+        legacy({'backendMode': 'herdr', 'backend': 'hc', 'herdrBin': '/x'}),
+      );
+      expect(restored.backendMode, HostBackendMode.herdr);
+      expect(restored.herdrBin, '/x');
     });
   });
 
@@ -96,6 +132,8 @@ void main() {
       String? privateKeyPem,
       String? passphrase,
       String? herdrBin,
+      String? hcBin,
+      HostBackendMode? backendMode,
       String? hostId,
       String? hostKeyFingerprint,
     }) {
@@ -108,6 +146,8 @@ void main() {
         privateKeyPem: privateKeyPem ?? base.privateKeyPem,
         passphrase: passphrase ?? base.passphrase,
         herdrBin: herdrBin ?? base.herdrBin,
+        hcBin: hcBin ?? base.hcBin,
+        backendMode: backendMode ?? base.backendMode,
         hostId: hostId ?? base.hostId,
         hostKeyFingerprint: hostKeyFingerprint,
       );
@@ -130,6 +170,8 @@ void main() {
         variant(privateKeyPem: '-----BEGIN OTHER KEY-----'),
         variant(passphrase: 'different'),
         variant(herdrBin: '/opt/herdr'),
+        variant(hcBin: '/opt/hc'),
+        variant(backendMode: HostBackendMode.hc),
       ];
       for (final other in changed) {
         expect(sample().sameConnection(other), isFalse);
