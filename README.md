@@ -44,6 +44,7 @@ drover/
 │   ├── lib/   # app source
 │   └── tool/  # tool/spike.dart — SSH/herdr CLI probe used during bring-up
 ├── functions/ # Firebase Functions notification backend
+├── hosts/     # files to install on agent hosts (copilot/: Herdr 2 status hook)
 └── docs/      # herdr-notes.md / hc-notes.md (herdr 1 and Herdr 2 CLI behaviours & gotchas) + agents/ (per-agent CLI notes)
 ```
 
@@ -71,7 +72,14 @@ Herdr 2 (the Herdr desktop app) needs no setup: with the host's default
 Herdr 2 only while the Herdr app is running (pick **Herdr 1** or **Herdr 2**
 in the host settings to talk to just one). Herdr 2 has no integrations to
 install, agents launch into an existing Herdr space, and agent status comes
-from the agent itself — see [`docs/hc-notes.md`](docs/hc-notes.md).
+from the agent itself — see [`docs/hc-notes.md`](docs/hc-notes.md). Claude
+Code, Codex, pi and omp report it natively; for Copilot, install drover's
+hook file on the host:
+
+```sh
+mkdir -p ~/.copilot/hooks && curl -fsSL https://raw.githubusercontent.com/keinstn/drover/main/hosts/copilot/drover-hc-status.json -o ~/.copilot/hooks/drover-hc-status.json
+```
+
 Full setup and command reference live in [`CLAUDE.md`](CLAUDE.md).
 
 A `justfile` wraps the common recipes (`just` to list them):
