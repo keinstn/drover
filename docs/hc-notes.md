@@ -103,6 +103,49 @@ and titles, and `read`/`run` print text when piped.
 - Addresses with a `/` (`vps/t7`) are another machine's terminals mirrored
   into this core; drover skips them (it connects to that host directly).
 
+## Claude native history
+
+- hc has no integrations, so no `agent_session`. For a `claude-code`
+  terminal, `HcClient` reads Claude Code's own `~/.claude/sessions/<pid>.json`
+  (`pid`, `sessionId`, `cwd`, …; rewritten in place) for the terminal's
+  `foreground.pid`, and sets `agentSession` (`claude`/`id`/`<sessionId>`)
+  when the file's `pid` matches and `sessionId` is a UUID. The native-history
+  code is the herdr 1 path, unchanged (`find ~/.claude/projects` + SFTP).
+- `CLAUDE_CONFIG_DIR` is ignored: session files are read from
+  `~/.claude/sessions` only, so a host that relocates Claude's config gets
+  the pane-text fallback.
+- The cache is per terminal address, remembering (pid, sessionId). A
+  different pid in the same terminal (a new process, or a reused pid) drops
+  the id at once; out-of-order concurrent polls are sequenced, so an older
+  batch never overwrites a newer one.
+- `foreground` is the tty's foreground process group (its leader's pid),
+  verified live 2026-11-03: an exec'd claude (drover's launch, or `fish -l`
+  then `claude`) stays the foreground while it runs a tool, `pid`/`name`
+  unchanged. A non-exec wrapper (`fish -lc claude`) reports the *shell* as
+  foreground for the whole run, so `<fish pid>.json` misses and that
+  terminal gets the pane-text fallback.
+- The `file.read`s ride in the poll's `terminal.list` + `doc.get` batch, one
+  per claude pid seen on the *previous* poll, so a new agent gets its
+  history one poll late and the poll costs no extra round trip. Re-read
+  every poll (a resumed process records the resumed id). A failed read
+  (`not_found`, bad JSON, no reply) keeps the last good id and never fails
+  the poll. Unix hosts only.
+- Unverified: whether `/clear` or an in-session `/resume` rewrites
+  `sessionId` under the same pid. Re-reading every poll picks it up if so.
+- A session without messages has no `.jsonl` yet (Claude writes it
+  lazily); that reads as "no transcript", i.e. the pane-text fallback.
+
+### Gotchas
+
+- `file.read` needs an absolute path: `~` is not expanded and a relative
+  path resolves against the core's cwd (`/`). `HcClient` learns `$HOME`
+  over SSH (`sh -c 'command printf "drover-home=%s\n" "$HOME"'`, the tag
+  skipping shell-init noise) and keeps only a good absolute value; a failed
+  probe retries on the next poll. The result is
+  `{text, first, last, lines}`, `text` with line ends kept.
+- Don't batch `machine.exec`: `hc connect` exits at stdin EOF before its
+  async reply arrives, so the reply is lost. `file.read` replies do arrive.
+
 ## Spaces
 
 Spaces/tabs belong to the desktop app, stored in core document `herdr-app`
