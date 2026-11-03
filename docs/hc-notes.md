@@ -77,6 +77,24 @@ and titles, and `read`/`run` print text when piped.
 - core has no agent registry. An "agent" is a live terminal whose program
   reports status over OSC 7501; plain shells report none. Claude Code does
   this natively (`status.app = "claude-code"`).
+- Which agent CLIs report status (checked 2026-11-03, hc 0.1.17, each
+  launched once in a throwaway terminal):
+
+  | agent | reports? | `status.app` | notes |
+  |---|---|---|---|
+  | Claude Code | yes | `claude-code` (drover maps it to `claude`) | |
+  | pi 1.3.0 | yes | `pi` | idle / blocked (`kind: question`, e.g. its MCP trust prompt) / done, `turn` advances; opt out with `PI_PROGRAM_STATUS=0` |
+  | codex 0.166.0 | no | — | binary has no OSC 7501 support |
+  | copilot 1.0.80 | no | — | answered a prompt, never reported |
+  | omp | no | — | package has no OSC 7501 support |
+
+  Herdr 2 has no counterpart to herdr 1's `herdr integration install`, by
+  design (herdr-core only reads OSC 7501; herdr-app's `programs.json` is
+  display metadata only). So codex/copilot/omp show up only when drover
+  launched them (`drover.launched=1`), with status unknown; ones started from
+  the Herdr app are invisible to drover. The only route to status for them
+  would be an agent-side hook (Codex/Copilot hooks) writing OSC 7501 to its
+  own terminal — not built.
 - Words: `idle`, `working`, `done`, `blocked` (+ `kind`: permission /
   question / auth), `error`. `done` sticks until the program reports again,
   so drover applies the shared `herdr.seen=<turn>` label rule from
