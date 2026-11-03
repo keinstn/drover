@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../models/agent_info.dart';
 import '../models/plugin_info.dart';
 import '../models/workspace_info.dart';
+import '../transcript/native_transcript.dart';
 import 'command_runner.dart';
 import 'agent_name.dart';
 import 'herdr_backend.dart';
@@ -122,7 +123,7 @@ class HcClient extends HerdrClient {
     String stdout,
   ) {
     if (reply == null) {
-      throw HerdrException(
+      return HerdrException(
         'transport',
         'no reply to hc $method: stdout=${jsonEncode(stdout)}',
       );
@@ -157,7 +158,22 @@ class HcClient extends HerdrClient {
 
   @override
   Future<List<AgentInfo>> listAgents() async {
-    final [list, doc] = await _rpc([('terminal.list', {}), _herdrAppDoc]);
+    final seq = ++_pollSeq;
+    final asked = [
+      for (final MapEntry(:key, :value) in _claudeSessions.entries)
+        (key, value.pid),
+    ];
+    final home = asked.isEmpty ? null : _home ??= await _fetchHome();
+    final [list, doc, ...reads] = await _rpc([
+      ('terminal.list', {}),
+      _herdrAppDoc,
+      if (home != null)
+        for (final (_, pid) in asked)
+          // ponytail: CLAUDE_CONFIG_DIR is ignored, so a host that relocates
+          // Claude's config gets no session (pane-text history). Upgrade:
+          // probe `${CLAUDE_CONFIG_DIR:-$HOME/.claude}` with $HOME.
+          ('file.read', {'path': '$home/.claude/sessions/$pid.json'}),
+    ]);
     final terminals = switch (_ok(list)) {
       final Map<String, dynamic> m => m['terminals'],
       _ => null,
@@ -169,13 +185,103 @@ class HcClient extends HerdrClient {
     // labels); it only drops the cache, so nothing stale is served.
     _lastWorkspaces = doc is HerdrException ? null : _workspacesFrom(doc);
     _seen.clear();
-    return [
+    final agents = [
       for (final t in terminals.cast<Map<String, dynamic>>())
         if (t['state'] == 'live' &&
             !(t['address'] as String).contains('/') &&
             _isAgent(t))
-          _agentFrom(t),
+          t,
     ];
+    // Concurrent polls can finish out of order; only the newest one to
+    // finish so far updates the sessions.
+    if (seq > _appliedSeq && (await hostPlatform) is UnixHostPlatform) {
+      _appliedSeq = seq;
+      for (final (i, read) in reads.indexed) {
+        final (address, pid) = asked[i];
+        final id = _sessionIdFrom(read, pid);
+        if (id != null) _claudeSessions[address] = (pid: pid, id: id);
+      }
+      final live = {
+        for (final t in agents) t['address'] as String: ?_claudePidOf(t),
+      };
+      _claudeSessions.removeWhere((address, _) => !live.containsKey(address));
+      for (final MapEntry(key: address, value: pid) in live.entries) {
+        // A new claude process (or a reused pid's) starts with no id.
+        if (_claudeSessions[address]?.pid != pid) {
+          _claudeSessions[address] = (pid: pid, id: null);
+        }
+      }
+    }
+    return [for (final t in agents) _agentFrom(t)];
+  }
+
+  /// Claude Code's session per `claude-code` terminal address: its
+  /// foreground pid and the id from `~/.claude/sessions/<pid>.json` (null
+  /// until a read checks out). The next [listAgents] reads these pids,
+  /// batched with `terminal.list`, so a new agent gets its session one poll
+  /// late. Every poll re-reads, since the id can change under the same pid
+  /// (resume); a failed read keeps the last good id, and a new pid in the
+  /// terminal drops it. hc's foreground is the tty's process group, which
+  /// stays claude while it runs a tool (verified live). Unix hosts only.
+  final _claudeSessions = <String, ({int pid, String? id})>{};
+
+  /// [listAgents] calls started / the newest one whose sessions were applied.
+  var _pollSeq = 0;
+  var _appliedSeq = 0;
+
+  /// `$HOME`, learned on the first poll with a claude terminal: hc's
+  /// `file.read` doesn't expand `~` and resolves a relative path against the
+  /// core's cwd (`/`). Only a good value is kept; a failure retries next poll.
+  String? _home;
+
+  static const _homeTag = 'drover-home=';
+
+  Future<String?> _fetchHome() async {
+    try {
+      // Tagged, so lines shell init prints around it are ignored.
+      final result = await runner.run(
+        'sh -c ${shQuote('command printf "$_homeTag%s\\n" "\$HOME"')}',
+      );
+      if (result.exitCode != 0) return null;
+      final home = const LineSplitter()
+          .convert(result.stdout)
+          .where((l) => l.startsWith(_homeTag))
+          .map((l) => l.substring(_homeTag.length))
+          .lastOrNull;
+      return home != null && home.startsWith('/') ? home : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The session id for [t], if its claude pid is still the one read.
+  String? _sessionOf(Map<String, dynamic> t) {
+    final s = _claudeSessions[t['address']];
+    return s != null && s.pid == _claudePidOf(t) ? s.id : null;
+  }
+
+  static int? _claudePidOf(Map<String, dynamic> t) {
+    final status = t['status'];
+    final foreground = t['foreground'];
+    return status is Map && status['app'] == 'claude-code' && foreground is Map
+        ? foreground['pid'] as int?
+        : null;
+  }
+
+  /// The session id in a `file.read` of [pid]'s session file, if the file is
+  /// that process's and the id is a UUID; null for anything else, including
+  /// an error reply.
+  static String? _sessionIdFrom(Object? read, int pid) {
+    final text = read is Map<String, dynamic> ? read['text'] : null;
+    if (text is! String) return null;
+    try {
+      final json = jsonDecode(text);
+      if (json is! Map<String, dynamic> || json['pid'] != pid) return null;
+      final id = json['sessionId'];
+      return id is String && isNativeTranscriptSessionId(id) ? id : null;
+    } on FormatException {
+      return null;
+    }
   }
 
   @override
@@ -252,6 +358,7 @@ class HcClient extends HerdrClient {
     final foreground = t['foreground'] as Map<String, dynamic>?;
     final app = status['app'] as String? ?? '';
     final title = t['title'] as String? ?? '';
+    final session = _sessionOf(t);
     String? prefixed(Object? id) =>
         id is String && id.isNotEmpty ? _id(id) : null;
     return AgentInfo(
@@ -269,6 +376,14 @@ class HcClient extends HerdrClient {
       foregroundCwd: foreground?['cwd'] as String?,
       focused: false,
       terminalTitle: title.isEmpty ? null : title,
+      agentSession: session == null
+          ? null
+          : AgentSession(
+              source: 'claude',
+              agent: 'claude',
+              kind: 'id',
+              value: session,
+            ),
     );
   }
 

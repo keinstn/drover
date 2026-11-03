@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:drover/src/herdr/command_runner.dart';
@@ -25,12 +26,23 @@ class FakeHcRunner extends CommandRunner {
   final commands = <String>[];
   final stdins = <String>[];
 
+  /// Answers the `$HOME` probe; defaults to `/Users/x` behind shell noise.
+  CommandResult Function() home = () => const CommandResult(
+    exitCode: 0,
+    stdout: 'motd line\ndrover-home=/Users/x',
+    stderr: '',
+  );
+
+  /// When set, each `hc connect` waits for the next completer, in order.
+  final gates = <Completer<void>>[];
+
   /// Every request across every call, in order.
   final requests = <Request>[];
 
   @override
   Future<CommandResult> run(String command) async {
     commands.add(command);
+    if (command.contains(r'$HOME')) return home();
     return const CommandResult(exitCode: 0, stdout: 'hc 0.1.17\n', stderr: '');
   }
 
@@ -38,6 +50,7 @@ class FakeHcRunner extends CommandRunner {
   Future<CommandResult> runWithStdin(String command, String stdin) async {
     commands.add(command);
     stdins.add(stdin);
+    if (gates.isNotEmpty) await gates.removeAt(0).future;
     if (_raw != null) return _raw!(stdin);
     final replies = <String>[];
     for (final line in const LineSplitter().convert(stdin)) {
@@ -269,6 +282,307 @@ void main() {
       // Handed out once: the next call fetches fresh.
       await client.listWorkspaces();
       expect(runner.stdins, hasLength(2));
+    });
+  });
+
+  group('claude sessions', () {
+    const id1 = 'e0882b83-cbee-43f3-afa6-fc2001c18c3f';
+    const id2 = 'ee6a2cc2-1111-4222-8333-444455556666';
+    const path = '/Users/x/.claude/sessions/8266.json';
+
+    /// A fake whose `file.read` answers with [file] (a result or RpcError).
+    FakeHcRunner fake(
+      Object? Function() file, {
+      List<Map<String, dynamic>>? terminals,
+    }) => FakeHcRunner((r) {
+      switch (r.method) {
+        case 'terminal.list':
+          return {
+            'terminals': terminals ?? [terminal()],
+          };
+        case 'file.read':
+          final f = file();
+          if (f is RpcError) throw f;
+          return f;
+        default:
+          return herdrAppDoc;
+      }
+    });
+
+    Map<String, dynamic> session(String id, {int pid = 8266}) => {
+      'text': '${jsonEncode({'pid': pid, 'sessionId': id, 'cwd': '/x'})}\n',
+      'first': 1,
+      'last': 1,
+      'lines': 1,
+    };
+
+    List<String> reads(FakeHcRunner runner) => [
+      for (final r in runner.requests)
+        if (r.method == 'file.read') r.params['path'] as String,
+    ];
+
+    test('the second poll batches file.read and sets agentSession', () async {
+      final runner = fake(() => session(id1));
+      final client = clientFor(runner);
+      final first = (await client.listAgents()).single;
+      expect(first.agentSession, isNull);
+      expect(reads(runner), isEmpty);
+
+      final second = (await client.listAgents()).single;
+      expect(runner.stdins, hasLength(2)); // still one hc connect per poll
+      expect(runner.requests.skip(2).map((r) => r.method), [
+        'terminal.list',
+        'doc.get',
+        'file.read',
+      ]);
+      expect(reads(runner), [path]);
+      expect(second.paneId, 'hc:t3');
+      final s = second.agentSession!;
+      expect(
+        (s.source, s.agent, s.kind, s.value),
+        ('claude', 'claude', 'id', id1),
+      );
+    });
+
+    for (final (name, Object? Function() file) in [
+      ('a missing file', () => RpcError('not_found', 'no file')),
+      ('bad JSON', () => {'text': '{"pid":', 'first': 1, 'last': 1}),
+      ('a pid mismatch', () => session(id1, pid: 9999)),
+      ('a non-UUID', () => session('not-a-uuid')),
+    ]) {
+      test('$name gives no session and the poll still succeeds', () async {
+        final client = clientFor(fake(file));
+        await client.listAgents();
+        final agents = await client.listAgents();
+        expect(agents.single.agentSession, isNull);
+      });
+    }
+
+    test('a changed sessionId updates; a failed read keeps it', () async {
+      Object? file = session(id1);
+      final client = clientFor(fake(() => file));
+      await client.listAgents();
+      expect((await client.listAgents()).single.agentSession!.value, id1);
+      file = session(id2);
+      expect((await client.listAgents()).single.agentSession!.value, id2);
+      file = RpcError('not_found', 'no file');
+      expect((await client.listAgents()).single.agentSession!.value, id2);
+    });
+
+    test('getAgent carries the session from the last poll', () async {
+      final runner = FakeHcRunner(
+        (r) => switch (r.method) {
+          'terminal.list' => {
+            'terminals': [terminal()],
+          },
+          'terminal.get' => terminal(),
+          'file.read' => session(id1),
+          _ => herdrAppDoc,
+        },
+      );
+      final client = clientFor(runner);
+      await client.listAgents();
+      await client.listAgents();
+      expect((await client.getAgent('hc:t3')).agentSession!.value, id1);
+    });
+
+    test('a gone pid is dropped from the cache', () async {
+      var terminals = [terminal()];
+      final runner = FakeHcRunner(
+        (r) => switch (r.method) {
+          'terminal.list' => {'terminals': terminals},
+          'file.read' => session(id1),
+          _ => herdrAppDoc,
+        },
+      );
+      final client = clientFor(runner);
+      await client.listAgents();
+      expect((await client.listAgents()).single.agentSession, isNotNull);
+      terminals = [];
+      await client.listAgents();
+      terminals = [terminal()];
+      expect((await client.listAgents()).single.agentSession, isNull);
+      expect(reads(runner), [path, path]); // polls 2 and 3, not 4
+    });
+
+    test('a file.read without a reply does not fail the poll', () async {
+      final client = clientFor(
+        FakeHcRunner.raw((stdin) {
+          final ids = [
+            for (final line in const LineSplitter().convert(stdin))
+              (jsonDecode(line) as Map)['id'],
+          ];
+          return CommandResult(
+            exitCode: 0,
+            stdout:
+                '${jsonEncode({
+                  'id': ids[0],
+                  'result': {
+                    'terminals': [terminal()],
+                  },
+                })}\n'
+                '${jsonEncode({'id': ids[1], 'result': herdrAppDoc})}\n',
+            stderr: '',
+          );
+        }),
+      );
+      await client.listAgents();
+      expect((await client.listAgents()).single.agentSession, isNull);
+    });
+
+    test('the HOME probe runs tagged under sh -c', () async {
+      final runner = fake(() => session(id1));
+      final client = clientFor(runner);
+      await client.listAgents();
+      await client.listAgents();
+      expect(runner.commands.where((c) => c.contains(r'$HOME')), [
+        r'''sh -c 'command printf "drover-home=%s\n" "$HOME"' '''.trim(),
+      ]);
+    });
+
+    for (final (name, CommandResult Function() home) in [
+      (
+        'a non-zero exit',
+        () => const CommandResult(exitCode: 1, stdout: '', stderr: 'x'),
+      ),
+      ('a throw', () => throw Exception('ssh down')),
+      (
+        'a relative value',
+        () => const CommandResult(
+          exitCode: 0,
+          stdout: 'drover-home=Users/x',
+          stderr: '',
+        ),
+      ),
+      (
+        'an untagged multi-line value',
+        () => const CommandResult(
+          exitCode: 0,
+          stdout: 'motd\n/Users/x',
+          stderr: '',
+        ),
+      ),
+    ]) {
+      test('$name from the HOME probe is retried next poll', () async {
+        final runner = fake(() => session(id1))..home = home;
+        final client = clientFor(runner);
+        await client.listAgents();
+        expect((await client.listAgents()).single.agentSession, isNull);
+        expect(reads(runner), isEmpty);
+
+        runner.home = () => const CommandResult(
+          exitCode: 0,
+          stdout: 'drover-home=/Users/x\n',
+          stderr: '',
+        );
+        await client.listAgents();
+        expect((await client.listAgents()).single.agentSession!.value, id1);
+        expect(reads(runner), [path, path]);
+        // One failed probe, then one good one, kept for poll 4.
+        expect(
+          runner.commands.where((c) => c.contains(r'$HOME')),
+          hasLength(2),
+        );
+      });
+    }
+
+    test('an older poll finishing last does not overwrite a newer', () async {
+      Object? file = session(id1);
+      final runner = fake(() => file);
+      final client = clientFor(runner);
+      await client.listAgents();
+      final older = Completer<void>(), newer = Completer<void>();
+      runner.gates.addAll([older, newer]);
+      final a = client.listAgents();
+      final b = client.listAgents();
+      await pumpEventQueue();
+      file = session(id2);
+      newer.complete();
+      expect((await b).single.agentSession!.value, id2);
+      file = session(id1);
+      older.complete();
+      await a;
+      file = RpcError('not_found', 'no file'); // keeps the last good id
+      expect((await client.listAgents()).single.agentSession!.value, id2);
+    });
+
+    test('a new pid in the same terminal drops the old id', () async {
+      var pid = 8266;
+      final runner = FakeHcRunner(
+        (r) => switch (r.method) {
+          'terminal.list' => {
+            'terminals': [
+              terminal(foreground: {'name': 'claude', 'pid': pid, 'cwd': '/x'}),
+            ],
+          },
+          'file.read' => session(
+            r.params['path'] == path ? id1 : id2,
+            pid: int.parse(
+              RegExp(
+                r'(\d+)\.json',
+              ).firstMatch(r.params['path'] as String)![1]!,
+            ),
+          ),
+          _ => herdrAppDoc,
+        },
+      );
+      final client = clientFor(runner);
+      await client.listAgents();
+      expect((await client.listAgents()).single.agentSession!.value, id1);
+      pid = 9000;
+      // This poll still reads 8266.json; its id must not reach pid 9000.
+      expect((await client.listAgents()).single.agentSession, isNull);
+      expect((await client.listAgents()).single.agentSession!.value, id2);
+      expect(reads(runner), [
+        path,
+        path,
+        '/Users/x/.claude/sessions/9000.json',
+      ]);
+    });
+
+    test('a wrapper shell in the foreground gives no session', () async {
+      // Verified live: hc's foreground is the tty's process group leader.
+      // `fish -lc claude` (no exec) reports fish, so the read misses; an
+      // exec'd claude (drover's launch) stays the foreground during a tool
+      // run, so its id holds across working polls.
+      final runner = fake(
+        () => RpcError('not_found', 'no file'),
+        terminals: [
+          terminal(
+            status: {'app': 'claude-code', 'state': 'working'},
+            foreground: {'name': 'fish', 'pid': 46744, 'cwd': '/x'},
+          ),
+        ],
+      );
+      final client = clientFor(runner);
+      await client.listAgents();
+      expect((await client.listAgents()).single.agentSession, isNull);
+      expect(reads(runner), ['/Users/x/.claude/sessions/46744.json']);
+    });
+
+    test('a non-claude terminal sends no file.read', () async {
+      final runner = fake(
+        () => session(id1),
+        terminals: [
+          terminal(status: {'app': 'codex', 'state': 'idle'}),
+        ],
+      );
+      final client = clientFor(runner);
+      await client.listAgents();
+      await client.listAgents();
+      expect(reads(runner), isEmpty);
+    });
+
+    test('a Windows host sends no file.read', () async {
+      final runner = fake(() => session(id1));
+      final client = HcClient(
+        runner,
+        platform: () => const WindowsHostPlatform(),
+      );
+      await client.listAgents();
+      final agents = await client.listAgents();
+      expect(reads(runner), isEmpty);
+      expect(agents.single.agentSession, isNull);
     });
   });
 
@@ -667,6 +981,30 @@ void main() {
       // The first poll's list is not served stale: listWorkspaces fetches.
       await expectLater(client.listWorkspaces(), throwsKind('not_found'));
       expect(runner.stdins, hasLength(3));
+    });
+
+    test('a missing doc.get reply still returns agents', () async {
+      var calls = 0;
+      final runner = FakeHcRunner.raw((stdin) {
+        final id =
+            (jsonDecode(const LineSplitter().convert(stdin).first)
+                as Map)['id'];
+        final result = calls++ == 0
+            ? {
+                'terminals': [terminal()],
+              }
+            : herdrAppDoc; // listWorkspaces' own doc.get
+        return CommandResult(
+          exitCode: 0,
+          stdout: '${jsonEncode({'id': id, 'result': result})}\n',
+          stderr: '',
+        );
+      });
+      final client = clientFor(runner);
+      expect((await client.listAgents()).single.paneId, 'hc:t3');
+      // No cached doc, so listWorkspaces fetches it, as after a doc error.
+      expect(await client.listWorkspaces(), hasLength(2));
+      expect(runner.stdins, hasLength(2));
     });
 
     test('a terminal.list error fails listAgents', () async {
