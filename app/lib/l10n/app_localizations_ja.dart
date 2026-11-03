@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -568,4 +567,44 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get settingsVersionCopied => 'バージョンをコピーしました';
+
+  @override
+  String get hostSetupBackendLabel => 'Herdr のバージョン';
+
+  @override
+  String get hostSetupBackendHerdr1 => 'Herdr 1 (TUI)';
+
+  @override
+  String get hostSetupBackendHerdr2 => 'Herdr 2 (アプリ)';
+
+  @override
+  String get hostSetupHerdr2Note =>
+      'Herdr 2 ではエージェントは Herdr アプリのスペース内で動きます。先に Herdr アプリでスペースを作成してください。drover は既存のスペースにエージェントを起動します。エージェントは自分でステータスを報告する必要があります（Claude Code は対応済み）。Herdr 2 には plugin がないため、drover の通知 plugin は使えません。';
+
+  @override
+  String get hostSetupHcDetected =>
+      'この host には herdr がなく Herdr 2 (hc) があるため、Herdr 2 に切り替えました。';
+
+  @override
+  String get hostSetupHcBinLabel => 'hc バイナリのパス';
+
+  @override
+  String get herdNotInSpace => 'スペース外';
+
+  @override
+  String get herdHerdr2Tag => 'Herdr 2';
+
+  @override
+  String get launchSectionSpace => 'スペース';
+
+  @override
+  String get launchSelectSpace => 'スペースを選択';
+
+  @override
+  String get launchNoSpaces => 'スペースがありません。先に Herdr アプリでスペースを作成してから起動してください。';
+
+  @override
+  String launchUnnamedSpace(String id) {
+    return '名前なしスペース ($id)';
+  }
 }

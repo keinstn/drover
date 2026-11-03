@@ -18,8 +18,10 @@ terminal can't offer.
 
 ## How it works
 
-Drover connects to a Herdr host over SSH and drives the `herdr` CLI. There is no
-server to run — your phone talks directly to the machine your agents live on.
+Drover connects to a Herdr host over SSH and drives the `herdr` CLI — or, for
+Herdr 2 (the Herdr desktop app), herdr-core's `hc` CLI; pick one per host. There
+is no server to run — your phone talks directly to the machine your agents live
+on.
 
 ![A phone in front of the Mac it drives: an agent is launched from the phone,
 starts in a pane on the host, and answers back on the
@@ -42,7 +44,7 @@ drover/
 │   ├── lib/   # app source
 │   └── tool/  # tool/spike.dart — SSH/herdr CLI probe used during bring-up
 ├── functions/ # Firebase Functions notification backend
-└── docs/      # herdr-notes.md (herdr CLI behaviours & gotchas) + agents/ (per-agent CLI notes)
+└── docs/      # herdr-notes.md / hc-notes.md (herdr 1 and Herdr 2 CLI behaviours & gotchas) + agents/ (per-agent CLI notes)
 ```
 
 The Herdr notification plugin (`drover.notify`) that used to live under
@@ -64,6 +66,10 @@ you want native transcript history for — for example,
 Without an integration, drover falls back to pane-text history (bounded by
 herdr's retained pane buffer); the integration must be installed before
 starting the session (it only takes effect from the next `SessionStart`).
+For a Herdr 2 host (the Herdr desktop app), choose **Herdr 2** in the host
+settings instead: there are no integrations to install, agents launch into an
+existing Herdr space, and agent status comes from the agent itself — see
+[`docs/hc-notes.md`](docs/hc-notes.md).
 Full setup and command reference live in [`CLAUDE.md`](CLAUDE.md).
 
 A `justfile` wraps the common recipes (`just` to list them):

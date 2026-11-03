@@ -268,5 +268,22 @@
   "settingsDemo": "Try the demo",
   "settingsDemoSubtitle": "A scripted session — no host required",
   "settingsVersion": "Version",
-  "settingsVersionCopied": "Version copied"
+  "settingsVersionCopied": "Version copied",
+  "hostSetupBackendLabel": "Herdr version",
+  "hostSetupBackendHerdr1": "Herdr 1 (TUI)",
+  "hostSetupBackendHerdr2": "Herdr 2 (app)",
+  "hostSetupHerdr2Note": "Herdr 2 runs agents inside the Herdr app's spaces. Create a space in the Herdr app first — drover launches agents into an existing space. Agents must report their own status (Claude Code does). Herdr 2 has no plugins, so drover's notification plugin isn't available.",
+  "hostSetupHcDetected": "This host has Herdr 2 (hc) but not herdr, so drover switched to Herdr 2.",
+  "hostSetupHcBinLabel": "hc binary path",
+  "herdNotInSpace": "Not in a space",
+  "herdHerdr2Tag": "Herdr 2",
+  "launchSectionSpace": "Space",
+  "launchSelectSpace": "Select space",
+  "launchNoSpaces": "No spaces yet. Create a space in the Herdr app first, then launch here.",
+  "launchUnnamedSpace": "Unnamed space ({id})",
+  "@launchUnnamedSpace": {
+    "placeholders": {
+      "id": { "type": "String" }
+    }
+  }
 }

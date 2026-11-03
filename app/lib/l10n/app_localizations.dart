@@ -1137,6 +1137,78 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Version copied'**
   String get settingsVersionCopied;
+
+  /// No description provided for @hostSetupBackendLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Herdr version'**
+  String get hostSetupBackendLabel;
+
+  /// No description provided for @hostSetupBackendHerdr1.
+  ///
+  /// In en, this message translates to:
+  /// **'Herdr 1 (TUI)'**
+  String get hostSetupBackendHerdr1;
+
+  /// No description provided for @hostSetupBackendHerdr2.
+  ///
+  /// In en, this message translates to:
+  /// **'Herdr 2 (app)'**
+  String get hostSetupBackendHerdr2;
+
+  /// No description provided for @hostSetupHerdr2Note.
+  ///
+  /// In en, this message translates to:
+  /// **'Herdr 2 runs agents inside the Herdr app\'s spaces. Create a space in the Herdr app first — drover launches agents into an existing space. Agents must report their own status (Claude Code does). Herdr 2 has no plugins, so drover\'s notification plugin isn\'t available.'**
+  String get hostSetupHerdr2Note;
+
+  /// No description provided for @hostSetupHcDetected.
+  ///
+  /// In en, this message translates to:
+  /// **'This host has Herdr 2 (hc) but not herdr, so drover switched to Herdr 2.'**
+  String get hostSetupHcDetected;
+
+  /// No description provided for @hostSetupHcBinLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'hc binary path'**
+  String get hostSetupHcBinLabel;
+
+  /// No description provided for @herdNotInSpace.
+  ///
+  /// In en, this message translates to:
+  /// **'Not in a space'**
+  String get herdNotInSpace;
+
+  /// No description provided for @herdHerdr2Tag.
+  ///
+  /// In en, this message translates to:
+  /// **'Herdr 2'**
+  String get herdHerdr2Tag;
+
+  /// No description provided for @launchSectionSpace.
+  ///
+  /// In en, this message translates to:
+  /// **'Space'**
+  String get launchSectionSpace;
+
+  /// No description provided for @launchSelectSpace.
+  ///
+  /// In en, this message translates to:
+  /// **'Select space'**
+  String get launchSelectSpace;
+
+  /// No description provided for @launchNoSpaces.
+  ///
+  /// In en, this message translates to:
+  /// **'No spaces yet. Create a space in the Herdr app first, then launch here.'**
+  String get launchNoSpaces;
+
+  /// No description provided for @launchUnnamedSpace.
+  ///
+  /// In en, this message translates to:
+  /// **'Unnamed space ({id})'**
+  String launchUnnamedSpace(String id);
 }
 
 class _AppLocalizationsDelegate

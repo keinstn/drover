@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -576,4 +575,43 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsVersionCopied => '已复制版本';
+
+  @override
+  String get hostSetupBackendLabel => 'Herdr 版本';
+
+  @override
+  String get hostSetupBackendHerdr1 => 'Herdr 1（TUI）';
+
+  @override
+  String get hostSetupBackendHerdr2 => 'Herdr 2（应用）';
+
+  @override
+  String get hostSetupHerdr2Note =>
+      'Herdr 2 在 Herdr 应用的空间中运行智能体。请先在 Herdr 应用中创建空间——drover 会将智能体启动到现有空间中。智能体需要自行报告状态（Claude Code 已支持）。Herdr 2 没有插件，因此无法使用 drover 的通知插件。';
+
+  @override
+  String get hostSetupHcDetected => '此主机上有 Herdr 2（hc）但没有 herdr，已切换到 Herdr 2。';
+
+  @override
+  String get hostSetupHcBinLabel => 'hc 二进制文件路径';
+
+  @override
+  String get herdNotInSpace => '不在空间中';
+
+  @override
+  String get herdHerdr2Tag => 'Herdr 2';
+
+  @override
+  String get launchSectionSpace => '空间';
+
+  @override
+  String get launchSelectSpace => '选择空间';
+
+  @override
+  String get launchNoSpaces => '还没有空间。请先在 Herdr 应用中创建空间，然后再在此启动。';
+
+  @override
+  String launchUnnamedSpace(String id) {
+    return '未命名空间（$id）';
+  }
 }

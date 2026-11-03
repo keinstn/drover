@@ -664,6 +664,16 @@ String _assistantJsonl(String text) =>
 /// carrying [text], then settles and lets the off-isolate code highlighter
 /// deliver its result. Fenced code is highlighted via [compute], which only
 /// runs under [WidgetTester.runAsync]; blocks render plain until it lands.
+/// Records [markSeen] calls (herdr 1's is a no-op; hc's writes a label).
+class _SeenRecordingClient extends HerdrClient {
+  _SeenRecordingClient(super.runner);
+
+  final seen = <String>[];
+
+  @override
+  Future<void> markSeen(String paneId) async => seen.add(paneId);
+}
+
 Future<void> _pumpAssistant(WidgetTester tester, String text) async {
   final client = HerdrClient(
     NativeHistoryRunner()..contents = _assistantJsonl(text),
@@ -5709,6 +5719,42 @@ void main() {
 
       await tester.pumpWidget(const SizedBox());
     });
+  });
+
+  testWidgets('marks the pane seen after each refresh only while resumed', (
+    tester,
+  ) async {
+    final client = _SeenRecordingClient(StubCommandRunner(workingResponse));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme,
+        home: AgentScreen(
+          client: client,
+          paneId: 'wB:p1',
+          pollInterval: const Duration(seconds: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(client.seen, contains('wB:p1'));
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    client.seen.clear();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    expect(client.seen, isEmpty);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpWidget(const SizedBox());
   });
 }
 

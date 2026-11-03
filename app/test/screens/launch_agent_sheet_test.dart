@@ -1,6 +1,9 @@
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/herdr/command_runner.dart';
+import 'package:drover/src/herdr/hc_client.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
+import 'package:drover/src/models/agent_preset.dart';
+import 'package:drover/src/models/workspace_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
 import 'package:drover/src/screens/launch_agent_sheet.dart';
 import 'package:drover/src/widgets/agent_avatar.dart';
@@ -133,6 +136,33 @@ CommandResult _responseWithDuplicateWorkspaceLabels(String command) {
     );
   }
   return _response(command);
+}
+
+/// A Herdr 2 client with canned spaces that records [runAgent] calls.
+class _FakeHcClient extends HcClient {
+  _FakeHcClient(this.spaces) : super(FakeCommandRunner(_response));
+
+  final List<WorkspaceInfo> spaces;
+  final runs = <Map<String, Object?>>[];
+
+  @override
+  Future<List<AgentPreset>> detectAgents(List<AgentPreset> presets) async => [
+    presets.first,
+  ];
+
+  @override
+  Future<List<WorkspaceInfo>> listWorkspaces() async => spaces;
+
+  @override
+  Future<String> runAgent({
+    required List<String> argv,
+    required String cwd,
+    required String spaceId,
+    String? name,
+  }) async {
+    runs.add({'argv': argv, 'cwd': cwd, 'spaceId': spaceId, 'name': name});
+    return 'term-9';
+  }
 }
 
 /// Pushes [LaunchAgentSheet] as a route and captures its pop value.
@@ -850,5 +880,81 @@ void main() {
     expect(tester.widget<TextFormField>(field).controller!.text, '/srv/beta');
     expect(tester.widget<ActionChip>(beta).side, isNotNull);
     expect(tester.widget<ActionChip>(alpha).side, isNull);
+  });
+
+  group('Herdr 2 host', () {
+    testWidgets('lists spaces without a new-workspace option and launches '
+        'through runAgent', (tester) async {
+      final client = _FakeHcClient(const [
+        WorkspaceInfo(workspaceId: 's1', label: 'Space One'),
+        WorkspaceInfo(workspaceId: 's2', label: 'Space Two'),
+      ]);
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: _Harness(client: client),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('SPACE'), findsOneWidget);
+      expect(find.text('WORKSPACE'), findsNothing);
+      expect(find.byKey(const ValueKey('ws_mode_new')), findsNothing);
+      expect(find.byKey(const ValueKey('ws_mode_existing')), findsNothing);
+      expect(find.byKey(const ValueKey('workspace_name_field')), findsNothing);
+      expect(find.text('Select space'), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('cwd_field')),
+        '/tmp/proj',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('ws_dropdown')));
+      await tester.pumpAndSettle();
+      expect(find.text('Space Two'), findsWidgets);
+      await tester.tap(find.text('Space Two').last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('launch_button')));
+      await tester.pumpAndSettle();
+
+      expect(client.runs, [
+        {
+          'argv': ['claude'],
+          'cwd': '/tmp/proj',
+          'spaceId': 's2',
+          'name': 'claude-proj',
+        },
+      ]);
+      final state = tester.state<_HarnessState>(find.byType(_Harness));
+      expect(state.poppedValue, 'term-9');
+    });
+
+    testWidgets('with no spaces shows the create-a-space empty state', (
+      tester,
+    ) async {
+      final client = _FakeHcClient(const []);
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: LaunchAgentSheet(client: client, existingCwds: const []),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'No spaces yet. Create a space in the Herdr app first, then '
+          'launch here.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('ws_mode_new')), findsNothing);
+    });
   });
 }

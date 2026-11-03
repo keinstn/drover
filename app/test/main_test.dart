@@ -5,6 +5,7 @@ import 'package:drover/src/demo/demo_backend.dart';
 import 'package:drover/src/demo/demo_content_en.dart';
 import 'package:drover/src/demo/demo_content_ja.dart';
 import 'package:drover/src/herdr/command_runner.dart';
+import 'package:drover/src/herdr/herdr_backend.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/infra/host_connections.dart';
 import 'package:drover/src/infra/host_store.dart';
@@ -692,6 +693,68 @@ void main() {
       expect(
         fakeRunner.commands.any((c) => c.contains("'plugin' 'list'")),
         isTrue,
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'Settings shows no notification-plugin row for a Herdr 2 host and never '
+    'probes it for plugins',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final config = HostConfig(
+        host: 'example.com',
+        user: 'alice',
+        privateKeyPem: 'pem',
+        hostId: 'host-1',
+        backend: HerdrBackend.hc,
+      );
+      final fakeRunner = _FakeCommandRunner(
+        (_) => CommandResult(
+          exitCode: 0,
+          stdout:
+              '{"id":"1","result":{"plugins":['
+              '{"enabled":true,"plugin_id":"drover.notify",'
+              '"plugin_root":"/checkout/drover-notify","version":"0.1.0",'
+              '"source":{"kind":"github"}}]}}',
+          stderr: '',
+        ),
+      );
+      final connection = HostConnection(
+        // Never connects: only its `client` (backed by `fakeRunner` above,
+        // not this runner) is reached by the fast path under test.
+        config: config,
+        runner: SshCommandRunner(config),
+        client: HerdrClient(fakeRunner),
+      );
+
+      await tester.pumpWidget(
+        _app(
+          hostStore: _SpyHostStore(),
+          initialHosts: [config],
+          hostConnectionRegistry: _CachedConnectionRegistry(connection),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.settings));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('settings_notify_plugin_update_tile_0')),
+        findsNothing,
+      );
+      // Herdr 2 has no plugins: the host is never asked for them.
+      expect(
+        fakeRunner.commands.any((c) => c.contains("'plugin' 'list'")),
+        isFalse,
       );
 
       await tester.pumpWidget(const SizedBox());

@@ -8,6 +8,7 @@ import '../models/plugin_info.dart';
 import '../models/remote_dir_entry.dart';
 import '../models/workspace_info.dart';
 import 'command_runner.dart';
+import 'herdr_backend.dart';
 import 'host_platform.dart';
 
 class HerdrException implements Exception {
@@ -77,6 +78,14 @@ class HerdrClient {
   /// [_platformFactory] from scratch, so an ordinary poll recovers on its
   /// own once the host is reachable again.
   Future<HostPlatform>? _platformFuture;
+
+  /// Which herdr generation this client drives. [HcClient] overrides it.
+  HerdrBackend get backend => HerdrBackend.herdr;
+
+  /// Records that the person is looking at [paneId] now. herdr 1 tracks this
+  /// itself, so it is a no-op here; Herdr 2 writes the shared `herdr.seen`
+  /// label so a finished agent stops showing as done.
+  Future<void> markSeen(String paneId) async {}
 
   /// Transport exposed for native, non-herdr data sources such as transcript
   /// files. Herdr commands themselves remain encapsulated by this client.

@@ -5,9 +5,11 @@ import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/demo/demo_herdr.dart' show askUserTranscriptJsonl;
+import 'package:drover/src/herdr/hc_client.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
+import 'package:drover/src/models/workspace_info.dart';
 import 'package:drover/src/screens/agent_screen.dart';
 import 'package:drover/src/screens/herd_screen.dart';
 import 'package:drover/src/screens/launch_agent_sheet.dart';
@@ -121,6 +123,49 @@ CommandResult _respondB(String command) {
     );
   }
   return ok(_hostBListEnvelope);
+}
+
+/// A Herdr 2 client: one agent in a space, one outside any space ('').
+class _FakeHcClient extends HcClient {
+  _FakeHcClient() : super(FakeCommandRunner((_) => ok('')));
+
+  var listWorkspacesCalls = 0;
+
+  @override
+  Future<String> version() async => 'hc 0.1.17';
+
+  @override
+  Future<List<AgentInfo>> listAgents() async => const [
+    AgentInfo(
+      paneId: 't1',
+      workspaceId: 's1',
+      tabId: 't1',
+      agent: 'claude',
+      name: 'Spaced',
+      status: AgentStatus.idle,
+      cwd: '/tmp/a',
+      focused: false,
+    ),
+    AgentInfo(
+      paneId: 't2',
+      workspaceId: '',
+      tabId: 't2',
+      agent: 'claude',
+      name: 'Loose',
+      status: AgentStatus.idle,
+      cwd: '/tmp/b',
+      focused: false,
+    ),
+  ];
+
+  @override
+  Future<List<WorkspaceInfo>> listWorkspaces() async {
+    listWorkspacesCalls++;
+    return const [WorkspaceInfo(workspaceId: 's1', label: 'Space One')];
+  }
+
+  @override
+  Future<String> readAgent(String target, {int lines = 120}) async => '';
 }
 
 const _hostRef = HerdHostRef(
@@ -1865,6 +1910,67 @@ void main() {
         herdPollBackoff(100, const Duration(milliseconds: 10)),
         const Duration(milliseconds: 320),
       );
+    });
+  });
+
+  group('Herdr 2 host', () {
+    testWidgets('labels the unspaced group, hides renames, skips the version '
+        'gate', (tester) async {
+      final client = _FakeHcClient();
+
+      await tester.pumpWidget(
+        _herdApp(client: client, pollInterval: const Duration(seconds: 2)),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Space One'), findsOneWidget);
+      expect(find.text('Not in a space'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('herdr_version_warning_host-1')),
+        findsNothing,
+      );
+
+      // The unspaced agent's '' id is never in the labels map; it must not
+      // re-list spaces on every poll.
+      final callsBefore = client.listWorkspacesCalls;
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 3));
+      expect(client.listWorkspacesCalls, callsBefore);
+
+      // The launch FAB opens the sheet instead of a too-old toast.
+      await tester.tap(find.byKey(const ValueKey('launch_agent_fab')));
+      await tester.pumpAndSettle();
+      expect(find.byType(LaunchAgentSheet), findsOneWidget);
+      Navigator.of(tester.element(find.byType(LaunchAgentSheet))).pop();
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('Space One'));
+      await tester.pumpAndSettle();
+      expect(find.text('Rename workspace'), findsNothing);
+      await tester.longPress(find.byKey(const ValueKey('agent-host-1-t2')));
+      await tester.pumpAndSettle();
+      expect(find.text('Rename agent'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('tags hc hosts in the multi-host header', (tester) async {
+      final herdr = HerdrClient(FakeCommandRunner(_respond));
+      final hc = _FakeHcClient();
+      await tester.pumpWidget(
+        _herdApp(
+          hosts: const [_hostRefA, _hostRefB],
+          clientFor: (host) => host.hostId == 'host-b' ? hc : herdr,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('herdr2_tag_host-b')), findsOneWidget);
+      expect(find.byKey(const ValueKey('herdr2_tag_host-a')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
     });
   });
 }

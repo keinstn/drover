@@ -11,6 +11,7 @@ import 'package:re_highlight/re_highlight.dart';
 import 'package:re_highlight/styles/github-dark-dimmed.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../infra/best_effort.dart';
 import '../agents/agent_capabilities.dart';
 import '../agents/agent_native_history.dart';
 import '../agents/agent_registry.dart';
@@ -495,6 +496,17 @@ class _AgentScreenState extends State<AgentScreen> {
         anchorFromBottom: anchorFromBottom,
       );
       if (agent != null) unawaited(_loadNativeHistory(agent));
+      // Herdr 2 shares a "seen" mark with the desktop app; only claim it while
+      // the user can actually see this pane. No-op on herdr 1.
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
+          ModalRoute.of(context)?.isCurrent == true) {
+        unawaited(
+          runBestEffort(
+            () => widget.client.markSeen(widget.paneId),
+            context: 'mark seen',
+          ),
+        );
+      }
     } catch (e) {
       // Keep last known transcript content on read/poll errors, but surface
       // the failure so it isn't silently swallowed; the next tick, or the
@@ -1087,7 +1099,10 @@ class _AgentScreenState extends State<AgentScreen> {
     final agent = _agent;
     final displayName =
         agent?.sessionTitle ?? agent?.name ?? agent?.agent ?? widget.paneId;
-    final workspaceLabel = _workspaceLabel ?? agent?.workspaceId;
+    // '' is an hc agent outside any space.
+    final workspaceLabel = agent?.workspaceId == ''
+        ? l10n.herdNotInSpace
+        : _workspaceLabel ?? agent?.workspaceId;
     final agentType = agent?.agent ?? 'agent';
     final plain = stripAnsi(_text);
     final nativeHistory = _nativeHistory;

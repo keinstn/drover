@@ -8,6 +8,7 @@ import '../agents/agent_native_history.dart';
 import '../agents/agent_registry.dart';
 import '../app_theme.dart';
 import '../herdr/ansi_text.dart';
+import '../herdr/herdr_backend.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/herdr_version.dart';
 import '../herdr/pane_text.dart';
@@ -364,7 +365,11 @@ class _HerdScreenState extends State<HerdScreen> {
       }
       if (!bucket.workspaceLabelsFailed &&
           agents.any(
-            (agent) => !bucket.workspaceLabels.containsKey(agent.workspaceId),
+            // '' is an hc agent outside any space: never in the labels map,
+            // so counting it would re-list spaces on every poll.
+            (agent) =>
+                agent.workspaceId.isNotEmpty &&
+                !bucket.workspaceLabels.containsKey(agent.workspaceId),
           )) {
         unawaited(_loadWorkspaceLabels(host));
       }
@@ -494,7 +499,10 @@ class _HerdScreenState extends State<HerdScreen> {
     if (bucket.herdrVersionLoading || bucket.herdrVersion != null) return;
     bucket.herdrVersionLoading = true;
     try {
-      final version = parseHerdrVersion(await widget.clientFor(host).version());
+      final client = widget.clientFor(host);
+      // `hc --version` is not a herdr version; there is no gate to feed.
+      if (client.backend == HerdrBackend.hc) return;
+      final version = parseHerdrVersion(await client.version());
       if (version == null ||
           !mounted ||
           !identical(_byHost[host.hostId], bucket)) {
@@ -547,7 +555,14 @@ class _HerdScreenState extends State<HerdScreen> {
   }
 
   String _workspaceLabel(_HostHerd bucket, String workspaceId) =>
-      bucket.workspaceLabels[workspaceId] ?? workspaceId;
+      workspaceId.isEmpty
+      ? AppLocalizations.of(context)!.herdNotInSpace
+      : bucket.workspaceLabels[workspaceId] ?? workspaceId;
+
+  /// Whether [host] runs Herdr 2, which can't rename spaces or agents and has
+  /// no herdr version gate.
+  bool _isHc(HerdHostRef host) =>
+      widget.clientFor(host).backend == HerdrBackend.hc;
 
   String _agentDisplayName(AgentInfo agent) =>
       agent.sessionTitle ?? agent.name ?? agent.agent ?? agent.paneId;
@@ -629,6 +644,7 @@ class _HerdScreenState extends State<HerdScreen> {
   /// launch. Returns true (and shows a toast) when the launch should be
   /// blocked.
   Future<bool> _herdrTooOldToLaunch(HerdHostRef host) async {
+    if (_isHc(host)) return false;
     final bucket = _bucketFor(host.hostId);
     var version = bucket.herdrVersion;
     if (version == null) {
@@ -1217,6 +1233,15 @@ class _HerdScreenState extends State<HerdScreen> {
               ),
             ),
           ),
+          if (_isHc(host))
+            Text(
+              AppLocalizations.of(context)!.herdHerdr2Tag,
+              key: ValueKey('herdr2_tag_${host.hostId}'),
+              style: droverLabelStyle(
+                context,
+                color: DroverColors.of(context).tertiaryText,
+              ),
+            ),
         ],
       ),
     );
@@ -1290,7 +1315,9 @@ class _HerdScreenState extends State<HerdScreen> {
         children: [
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onLongPress: () => _renameWorkspace(host, entry.key),
+            onLongPress: _isHc(host)
+                ? null
+                : () => _renameWorkspace(host, entry.key),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
               child: Text(
@@ -1342,7 +1369,8 @@ class _HerdScreenState extends State<HerdScreen> {
                   now.difference(bucket.statusChangedAt[agent.paneId] ?? now),
                   l10n,
                 ),
-                onLongPress: bucket.stoppingPaneIds.contains(agent.paneId)
+                onLongPress:
+                    bucket.stoppingPaneIds.contains(agent.paneId) || _isHc(host)
                     ? null
                     : () => _renameAgent(host, agent),
                 onTap: bucket.stoppingPaneIds.contains(agent.paneId)
