@@ -195,6 +195,12 @@ credentials. The app still initializes Firebase Anonymous Authentication and
 App Check at startup. From the demo you can open the agent, answer its
 permission prompt by tapping "Yes", and send a follow-up message.
 
+To start an agent ("Launch agent"), tap the "Launch agent" (+) button at the
+bottom right of the Herd screen, choose an agent, pick the working directory
+(tap a folder under "Recent", or type a path) and tap "Launch". On a real host
+this runs `herdr agent start` over SSH on the user's own computer. In the demo
+the launch is simulated on the device, and the new agent opens on its own page.
+
 On the guideline about executing code: Drover does not download, generate or
 run code on the device. It displays and steers a process that is already
 running on a computer the user owns, over SSH, exactly as an SSH or terminal
