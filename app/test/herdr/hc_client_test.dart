@@ -357,6 +357,38 @@ void main() {
     });
   });
 
+  test(
+    'canTypeWithoutEnter is true exactly when sendPaneText types keys',
+    () async {
+      for (final text in [
+        'Rewrite it',
+        "Hi 2,./;'`[]=-\\",
+        '\x1b[Z',
+        '\x1b[I',
+        'why?',
+        'hi!',
+        'こんにちは',
+        'a\nb',
+      ]) {
+        final runner = FakeHcRunner((_) => {});
+        final client = clientFor(runner);
+        final typeable = client.canTypeWithoutEnter('hc:t3', text);
+        await client.sendPaneText('hc:t3', text);
+        await client.sendKeys('hc:t3', 'enter');
+        // Typed (or dropped) text leaves only keys calls; held text pastes.
+        expect(
+          runner.requests.any((r) => r.method == 'terminal.send'),
+          !typeable,
+          reason: text,
+        );
+      }
+      final client = clientFor(FakeHcRunner((_) => {}));
+      expect(client.canTypeWithoutEnter('hc:t3', 'Rewrite it'), isTrue);
+      expect(client.canTypeWithoutEnter('hc:t3', 'why?'), isFalse);
+      expect(client.canTypeWithoutEnter('hc:t3', 'こんにちは'), isFalse);
+    },
+  );
+
   group('sendPaneText', () {
     Future<List<Request>> send(String text) async {
       final runner = FakeHcRunner((_) => {});

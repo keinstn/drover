@@ -209,6 +209,10 @@ class CombinedHerdrClient implements HerdrClient {
       _for(paneId).sendPaneText(paneId, text);
 
   @override
+  bool canTypeWithoutEnter(String paneId, String text) =>
+      _for(paneId).canTypeWithoutEnter(paneId, text);
+
+  @override
   Future<void> closeAgent(String paneId) async =>
       _for(paneId).closeAgent(paneId);
 

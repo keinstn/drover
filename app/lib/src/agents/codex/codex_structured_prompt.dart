@@ -98,6 +98,7 @@ class CodexStructuredPromptCapability implements StructuredPromptCapability {
       readPane: (paneId) => client.readAgent(paneId),
       sendPaneText: client.sendPaneText,
       sendKeys: client.sendKeys,
+      canTypeWithoutEnter: client.canTypeWithoutEnter,
     );
     return submitter.submit(paneId: paneId, prompt: prompt, answers: answers);
   }

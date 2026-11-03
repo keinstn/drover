@@ -1,4 +1,6 @@
 import 'package:drover/src/agents/codex/codex_request_user_input_submitter.dart';
+import 'package:drover/src/herdr/command_runner.dart';
+import 'package:drover/src/herdr/hc_client.dart';
 import 'package:drover/src/transcript/native_transcript.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -33,14 +35,27 @@ class FakePane {
       events.where((e) => e != 'read').toList(growable: false);
 }
 
-RequestUserInputSubmitter submitterFor(FakePane pane) =>
-    RequestUserInputSubmitter(
-      readPane: pane.read,
-      sendPaneText: pane.sendText,
-      sendKeys: pane.sendKeys,
-      maxPolls: 3,
-      pollInterval: Duration.zero,
-    );
+/// Never called: only [HcClient.canTypeWithoutEnter] is used, which runs
+/// nothing.
+class _NoRunner implements CommandRunner {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
+}
+
+/// Herdr 2's real "is this typeable" rule.
+final hcCanType = HcClient(_NoRunner()).canTypeWithoutEnter;
+
+RequestUserInputSubmitter submitterFor(
+  FakePane pane, {
+  bool Function(String paneId, String text)? canType,
+}) => RequestUserInputSubmitter(
+  readPane: pane.read,
+  sendPaneText: pane.sendText,
+  sendKeys: pane.sendKeys,
+  canTypeWithoutEnter: canType ?? (_, _) => true,
+  maxPolls: 3,
+  pollInterval: Duration.zero,
+);
 
 // ---------------------------------------------------------------------------
 // Prompt fixtures
@@ -214,6 +229,38 @@ What priority?
   3. None of the above
 
 tab to add notes | enter to submit answer | esc to interrupt | ←/→ to navigate questions''';
+
+const twoQDialog1Row2 = '''
+Question 1/2 (2 unanswered)
+What priority?
+
+  1. High
+› 2. Low
+  3. None of the above
+
+tab to add notes | enter to submit answer | esc to interrupt | ←/→ to navigate questions''';
+
+const twoQDialog1NoneOfAbove = '''
+Question 1/2 (2 unanswered)
+What priority?
+
+  1. High
+  2. Low
+› 3. None of the above
+
+tab to add notes | enter to submit answer | esc to interrupt | ←/→ to navigate questions''';
+
+const twoQDialog1NotesOpen = '''
+Question 1/2 (2 unanswered)
+What priority?
+
+  1. High
+  2. Low
+› 3. None of the above
+
+Add notes
+
+tab or esc to clear notes | enter to submit answer | esc to interrupt | ←/→ to navigate questions''';
 
 const twoQDialog2Row1 = '''
 Question 2/2 (1 unanswered)
@@ -608,6 +655,137 @@ void main() {
         ]);
       },
     );
+
+    test(
+      'on a Herdr 2 pane, typeable text keeps the full checked sequence',
+      () async {
+        final pane = FakePane([
+          singleDialogRow1,
+          singleDialogRow2,
+          singleDialogNoneOfAbove,
+          notesEditorOpen,
+          notesWithText,
+          answeredSingle,
+        ]);
+
+        await submitterFor(pane, canType: hcCanType).submit(
+          paneId: 'hc:t3',
+          prompt: singlePrompt,
+          answers: const [
+            StructuredPromptAnswer(
+              selectedIndexes: [],
+              customText: 'Rewrite it',
+            ),
+          ],
+        );
+
+        expect(pane.events, [
+          'read',
+          'keys:down',
+          'read',
+          'keys:down',
+          'read',
+          'keys:tab',
+          'read', // confirm notes editor open
+          'text:Rewrite it',
+          'read', // confirm text visible
+          'keys:enter',
+          'read', // confirm dialog closed
+        ]);
+      },
+    );
+
+    for (final custom in ['why?', 'こんにちは']) {
+      test(
+        'on a Herdr 2 pane, untypeable "$custom" skips only the visible check',
+        () async {
+          final pane = FakePane([
+            singleDialogRow1,
+            singleDialogRow2,
+            singleDialogNoneOfAbove,
+            notesEditorOpen, // after Tab: notes editor open
+            answeredSingle, // after enter (hc pastes the text): closed
+          ]);
+
+          await submitterFor(pane, canType: hcCanType).submit(
+            paneId: 'hc:t3',
+            prompt: singlePrompt,
+            answers: [
+              StructuredPromptAnswer(selectedIndexes: [], customText: custom),
+            ],
+          );
+
+          expect(pane.events, [
+            'read',
+            'keys:down',
+            'read',
+            'keys:down',
+            'read',
+            'keys:tab',
+            'read', // confirm notes editor open
+            'text:$custom', // held by hc
+            'keys:enter', // no read in between: hc pastes text + Enter
+            'read', // confirm dialog closed
+          ]);
+        },
+      );
+    }
+
+    test('on a Herdr 2 pane, a pasted Q1 answer advances to Q2', () async {
+      final pane = FakePane([
+        twoQDialog1Row1,
+        twoQDialog1Row2,
+        twoQDialog1NoneOfAbove,
+        twoQDialog1NotesOpen, // after Tab
+        twoQDialog2Row1, // after enter: advanced to Q2
+        answeredTwo, // after Q2 enter
+      ]);
+
+      await submitterFor(pane, canType: hcCanType).submit(
+        paneId: 'hc:t3',
+        prompt: twoQuestionPrompt,
+        answers: const [
+          StructuredPromptAnswer(selectedIndexes: [], customText: 'なぜ?'),
+          StructuredPromptAnswer(selectedIndexes: [0]),
+        ],
+      );
+
+      expect(pane.events, [
+        'read',
+        'keys:down',
+        'read',
+        'keys:down',
+        'read',
+        'keys:tab',
+        'read', // confirm notes editor open
+        'text:なぜ?',
+        'keys:enter',
+        'read', // confirm Q2 shown
+        'keys:enter',
+        'read', // confirm dialog closed
+      ]);
+    });
+
+    test('on a Herdr 2 pane: nothing typed when Tab opens no editor', () async {
+      final pane = FakePane([
+        singleDialogRow1,
+        singleDialogRow2,
+        singleDialogNoneOfAbove,
+        singleDialogNoneOfAbove,
+      ]);
+
+      await expectLater(
+        submitterFor(pane, canType: hcCanType).submit(
+          paneId: 'hc:t3',
+          prompt: singlePrompt,
+          answers: const [
+            StructuredPromptAnswer(selectedIndexes: [], customText: 'why?'),
+          ],
+        ),
+        throwsA(isA<RequestUserInputSubmitError>()),
+      );
+      expect(pane.sends, ['keys:down', 'keys:down', 'keys:tab']);
+    });
   });
 
   group('wrapped question text normalization', () {

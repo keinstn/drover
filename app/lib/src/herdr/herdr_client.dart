@@ -307,6 +307,10 @@ class HerdrClient {
     await _runOk(['pane', 'send-text', paneId, text]);
   }
 
+  /// Whether [sendPaneText] puts [text] on screen before any Enter, so a
+  /// caller can check it there first. Always, on herdr 1.
+  bool canTypeWithoutEnter(String paneId, String text) => true;
+
   /// Stop the agent running in [paneId] by closing its pane.
   Future<void> closeAgent(String paneId) async {
     await _run(['pane', 'close', paneId]);
