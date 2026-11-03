@@ -17,6 +17,8 @@
 //   - A custom-text answer: move down options.length times to the "None of the
 //     above" row (confirm selected), Tab to open the notes editor (confirm
 //     `Add notes` + notes footer), send text (confirm text visible), Enter.
+//     Text the client can't type without Enter (Herdr 2: `!`, `?`,
+//     non-ASCII) is sent and pasted with that Enter, unchecked.
 //   - The dialog footer always contains "esc to interrupt" while the dialog is
 //     open; closure is detected by the chrome disappearing (footer gone), NOT
 //     by question-text absence (Codex scrollback repeats it).
@@ -40,14 +42,16 @@ class RequestUserInputSubmitError implements StructuredPromptSubmitError {
 }
 
 /// Submits a staged answer set for a Codex CLI [StructuredPrompt] by injecting
-/// keystrokes into the live TUI dialog. Depends only on three transport
-/// closures (satisfied by [HerdrClient.readAgent]/`sendPaneText`/`sendKeys`),
+/// keystrokes into the live TUI dialog. Depends only on transport closures
+/// (satisfied by [HerdrClient.readAgent]/`sendPaneText`/`sendKeys`/
+/// `canTypeWithoutEnter`),
 /// so it is unit-testable without a real host.
 class RequestUserInputSubmitter {
   RequestUserInputSubmitter({
     required this.readPane,
     required this.sendPaneText,
     required this.sendKeys,
+    required this.canTypeWithoutEnter,
     this.maxPolls = 5,
     this.pollInterval = const Duration(milliseconds: 150),
   });
@@ -55,6 +59,10 @@ class RequestUserInputSubmitter {
   final Future<String> Function(String paneId) readPane;
   final Future<void> Function(String paneId, String text) sendPaneText;
   final Future<void> Function(String paneId, String key) sendKeys;
+
+  /// Whether `sendPaneText` shows the text before Enter (false: it's held
+  /// and pasted with the next `enter`, as on Herdr 2 for `?` or non-ASCII).
+  final bool Function(String paneId, String text) canTypeWithoutEnter;
 
   /// How many times a confirmation re-reads the pane before giving up.
   final int maxPolls;
@@ -139,22 +147,25 @@ class RequestUserInputSubmitter {
 
         // Type the custom text, then confirm it is visibly present before
         // submitting — never send Enter against an unconfirmed editor state.
-        await sendPaneText(paneId, answer.customText!);
-        await _confirm(
-          paneId,
-          (text) =>
-              _dialogOpen(text) &&
-              _showsQuestionHeader(text, i, questions.length) &&
-              _showsQuestion(text, question) &&
-              text.contains(normalizePaneText(answer.customText!)),
-          'custom text was not visible in the notes editor '
-          'for question ${i + 1}',
-        );
-
-        await sendKeys(paneId, 'enter');
-      } else {
-        await sendKeys(paneId, 'enter');
+        // Text the client can only paste with Enter can't be seen first; the
+        // notes editor was confirmed open above, and the advance/close check
+        // below still applies.
+        final custom = answer.customText!;
+        await sendPaneText(paneId, custom);
+        if (canTypeWithoutEnter(paneId, custom)) {
+          await _confirm(
+            paneId,
+            (text) =>
+                _dialogOpen(text) &&
+                _showsQuestionHeader(text, i, questions.length) &&
+                _showsQuestion(text, question) &&
+                text.contains(normalizePaneText(custom)),
+            'custom text was not visible in the notes editor '
+            'for question ${i + 1}',
+          );
+        }
       }
+      await sendKeys(paneId, 'enter');
 
       if (isLast) {
         await _confirm(

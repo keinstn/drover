@@ -70,6 +70,12 @@ class _Part extends HcClient {
   Future<void> sendPaneText(String p, String t) =>
       _rec('sendPaneText($p,$t)', null);
   @override
+  bool canTypeWithoutEnter(String p, String t) {
+    log.add('canTypeWithoutEnter($p,$t)');
+    return true;
+  }
+
+  @override
   Future<void> closeAgent(String p) => _rec('closeAgent($p)', null);
   @override
   Future<void> markSeen(String p) => _rec('markSeen($p)', null);
@@ -145,6 +151,7 @@ void main() {
     await c.prompt(id, 'hi');
     await c.sendKeys(id, 'esc');
     await c.sendPaneText(id, 'x');
+    c.canTypeWithoutEnter(id, 'y');
     await c.closeAgent(id);
     await c.markSeen(id);
     await c.renameAgent(id, 'n');
@@ -160,6 +167,7 @@ void main() {
     'prompt($id,hi)',
     'sendKeys($id,esc)',
     'sendPaneText($id,x)',
+    'canTypeWithoutEnter($id,y)',
     'closeAgent($id)',
     'markSeen($id)',
     'renameAgent($id,n)',

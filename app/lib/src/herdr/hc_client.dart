@@ -321,6 +321,12 @@ class HcClient extends HerdrClient {
   Future<void> sendKeys(String paneId, String key) async {
     paneId = _raw(paneId);
     final pending = _pendingText.remove(paneId);
+    // ponytail: the held paste waits for a person to stop typing (~3 s) and
+    // only then picks its target, so someone typing in the Herdr desktop app
+    // at that moment can move focus first; and a `terminal.send` past
+    // SshCommandRunner's 15 s exec timeout reports failure though the paste
+    // still lands. Codex reports no OSC 7501, so hc neither sees it blocked
+    // nor waits for it to start working. Upgrade: the framed `attach` stream.
     if (pending != null && key == 'enter') {
       return _send(paneId, pending, force: true);
     }
@@ -347,9 +353,24 @@ class HcClient extends HerdrClient {
   Future<void> sendPaneText(String paneId, String text) async {
     paneId = _raw(paneId);
     _pendingText.remove(paneId);
-    if (text == '\x1b[Z') return _keys(paneId, ['shift+tab']);
+    final keys = _asKeys(text);
+    if (keys == null) {
+      _pendingText[paneId] = text;
+    } else if (keys.isNotEmpty) {
+      await _keys(paneId, keys);
+    }
+  }
+
+  /// True only when [sendPaneText] types [text] as keys; anything else is
+  /// held and pasted with the next `enter`.
+  @override
+  bool canTypeWithoutEnter(String paneId, String text) => _asKeys(text) != null;
+
+  /// [text] as hc key names, or null when it can't be typed.
+  static List<String>? _asKeys(String text) {
+    if (text == '\x1b[Z') return ['shift+tab'];
     // Focus in/out reports: nothing to forward on hc.
-    if (text == '\x1b[I' || text == '\x1b[O') return;
+    if (text == '\x1b[I' || text == '\x1b[O') return [];
     final keys = [
       for (final char in text.split(''))
         if (char == ' ')
@@ -361,11 +382,7 @@ class HcClient extends HerdrClient {
         else
           null,
     ];
-    if (!keys.contains(null)) {
-      if (keys.isNotEmpty) await _keys(paneId, keys.cast<String>());
-      return;
-    }
-    _pendingText[paneId] = text;
+    return keys.contains(null) ? null : keys.cast<String>();
   }
 
   @override

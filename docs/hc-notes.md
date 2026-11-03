@@ -124,9 +124,24 @@ writing the app's private document.
   short of a framed `terminal.attach` stream, which would also take over the
   terminal's size. `HcClient.sendPaneText` holds such text and pastes it
   (with Enter) on the `enter` that the structured-prompt submitters send
-  next; any other call on that pane drops it. So Codex custom answers, whose
-  submitter checks the typed text on screen before Enter, fail on Herdr 2
-  without sending anything.
+  next; any other call on that pane drops it.
+- Codex custom answers ("None of the above" + notes): the submitter asks
+  `canTypeWithoutEnter`. An answer hc can type as keys (ASCII letters,
+  digits, space, the punctuation above) keeps herdr 1's sequence on hc —
+  type, confirm it's on screen, Enter, confirm the dialog advanced/closed.
+  Only untypeable text (`!`, `?`, non-ASCII) skips the on-screen check: it
+  goes through `sendPaneText` (held), and the `enter` pastes it with Enter as
+  one forced `terminal.send`; the notes editor was confirmed open first and
+  the advance/close check still runs. Residual risks of that paste:
+  - `terminal.send` first waits for a person to stop typing on that terminal
+    (`HC_QUIET_MS`, 3 s). Someone typing in the Herdr desktop app at that
+    moment could move the dialog's focus before the paste lands.
+  - It runs under SshCommandRunner's 15 s exec timeout; a send that takes
+    longer reports failure even though the paste still lands.
+  - hc only waits for "started working" (`HC_STARTED_MS`, 5 s) on a terminal
+    that has reported OSC 7501; Codex never reports, so hc neither refuses it
+    as `blocked` nor waits — the send returns right after the Enter, and the
+    advance/close check keeps herdr 1's budget.
 - `HcClient.prompt` forces only digit-only text (dialog option answers);
   other text to a blocked agent is refused with `blocked`.
 - Agents drover launches carry `drover.launched=1`, so they stay listed
