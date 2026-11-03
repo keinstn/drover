@@ -17,8 +17,8 @@ import 'src/demo/demo_backend.dart';
 import 'src/demo/demo_content.dart';
 import 'src/demo/demo_screen.dart';
 import 'src/firebase/app_check.dart';
+import 'src/herdr/herdr_backend.dart';
 import 'src/herdr/herdr_client.dart';
-import 'src/herdr/host_platform.dart';
 import 'src/infra/best_effort.dart';
 import 'src/infra/host_connections.dart';
 import 'src/infra/host_store.dart';
@@ -287,11 +287,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     return HostConnection(
       config: host,
       runner: runner,
-      client: HerdrClient(
-        runner,
-        herdrBin: host.herdrBin,
-        platform: () => HostPlatform.detect(runner),
-      ),
+      client: buildHerdrClient(host, runner),
     );
   }
 
@@ -517,11 +513,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
   Future<PluginInfo?> _detectNotifyPlugin(HostConfig config) async {
     final runner = SshCommandRunner(config);
     try {
-      final client = HerdrClient(
-        runner,
-        herdrBin: config.herdrBin,
-        platform: () => HostPlatform.detect(runner),
-      );
+      final client = buildHerdrClient(config, runner);
       return await PluginAutoPairer(client).detectPlugin();
     } finally {
       await runner.dispose();
@@ -569,6 +561,8 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
   /// in flight.
   List<Future<StaleNotifyPlugin?>> _checkNotifyPlugins() {
     return _hosts.where((host) => host.hostId != null).map((config) async {
+      // Herdr 2 has no plugins, so there is nothing to probe on an hc host.
+      if (config.backend == HerdrBackend.hc) return null;
       try {
         final cached = _registry.get(config.hostId!);
         final plugin =
@@ -600,11 +594,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
   ) async {
     final runner = SshCommandRunner(config);
     try {
-      final client = HerdrClient(
-        runner,
-        herdrBin: config.herdrBin,
-        platform: () => HostPlatform.detect(runner),
-      );
+      final client = buildHerdrClient(config, runner);
       await PluginAutoPairer(client).pair(plugin: plugin, pairing: pairing);
     } finally {
       await runner.dispose();
@@ -724,14 +714,19 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
     );
   }
 
+  Future<bool> _probeHcOnly(HostConfig c) async {
+    final runner = SshCommandRunner(c);
+    try {
+      return await hostHasOnlyHc(runner);
+    } finally {
+      await runner.dispose();
+    }
+  }
+
   Future<String> _testConnection(HostConfig c) async {
     final runner = SshCommandRunner(c);
     try {
-      final client = HerdrClient(
-        runner,
-        herdrBin: c.herdrBin,
-        platform: () => HostPlatform.detect(runner),
-      );
+      final client = buildHerdrClient(c, runner);
       final agents = await client.listAgents();
       final l10n = AppLocalizations.of(_navKey.currentContext!)!;
       return l10n.testConnectionOk(agents.length);
@@ -791,8 +786,11 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
   void _openAddHost() {
     _navKey.currentState?.push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            HostSetupScreen(onSubmit: _applyConfig, onTest: _testConnection),
+        builder: (_) => HostSetupScreen(
+          onSubmit: _applyConfig,
+          onTest: _testConnection,
+          onProbeHcOnly: _probeHcOnly,
+        ),
       ),
     );
   }
@@ -934,6 +932,7 @@ class _DroverAppState extends State<DroverApp> with WidgetsBindingObserver {
           ? HostSetupScreen(
               onSubmit: _applyConfig,
               onTest: _testConnection,
+              onProbeHcOnly: _probeHcOnly,
               onEnterDemo: _enterDemo,
             )
           : HerdScreen(

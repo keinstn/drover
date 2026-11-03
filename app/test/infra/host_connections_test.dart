@@ -1,5 +1,9 @@
 import 'dart:async';
 
+import 'package:drover/src/demo/demo_herdr.dart' show StubCommandRunner;
+import 'package:drover/src/herdr/command_runner.dart';
+import 'package:drover/src/herdr/hc_client.dart';
+import 'package:drover/src/herdr/herdr_backend.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/infra/host_connections.dart';
 import 'package:drover/src/infra/ssh_command_runner.dart';
@@ -185,4 +189,89 @@ void main() {
       );
     });
   });
+
+  group('buildHerdrClient', () {
+    test('builds the client for the host backend', () {
+      final runner = StubCommandRunner((_) => _ok(''));
+      expect(buildHerdrClient(_config(), runner), isNot(isA<HcClient>()));
+      final hc = HostConfig.fromJson({..._config().toJson(), 'backend': 'hc'});
+      expect(buildHerdrClient(hc, runner).backend, HerdrBackend.hc);
+    });
+  });
+
+  group('hostHasOnlyHc', () {
+    // [path] answers the PATH probe, [local] the ~/.local/bin probe.
+    Future<bool> probe({
+      String path = '',
+      String local = '',
+      bool windows = false,
+    }) => hostHasOnlyHc(
+      StubCommandRunner((command) {
+        if (command == 'uname -s') {
+          return windows
+              ? CommandResult(exitCode: 1, stdout: '', stderr: '')
+              : _ok('Linux\n');
+        }
+        if (command == 'cmd.exe /c ver') {
+          return _ok('Microsoft Windows [Version 10.0]\n');
+        }
+        if (command.contains('.local/bin')) return _ok(local);
+        return _ok(path);
+      }),
+    );
+
+    test('true only when hc is at ~/.local/bin and herdr is nowhere', () async {
+      expect(await probe(local: 'hc\n'), isTrue);
+    });
+
+    test('an hc found only elsewhere on PATH does not count', () async {
+      expect(await probe(path: 'hc\n'), isFalse);
+    });
+
+    test('false when herdr is found anywhere', () async {
+      expect(await probe(path: 'herdr\n', local: 'hc\n'), isFalse);
+      expect(await probe(local: 'herdr\nhc\n'), isFalse);
+    });
+
+    test('false when neither is found', () async {
+      expect(await probe(), isFalse);
+    });
+
+    test('false on a Windows host', () async {
+      expect(await probe(local: 'hc\n', windows: true), isFalse);
+    });
+  });
+
+  group('isHerdrBinaryMissing', () {
+    test('matches the shell reporting herdr missing', () {
+      for (final message in [
+        'herdr agent list failed (exit 127): ',
+        'herdr agent list failed (exit 1): sh: herdr: not found',
+        'herdr agent list failed (exit 2): No such file or directory',
+      ]) {
+        expect(
+          isHerdrBinaryMissing(HerdrException('transport', message)),
+          isTrue,
+          reason: message,
+        );
+      }
+    });
+
+    test('ignores SSH failures and other errors', () {
+      expect(
+        isHerdrBinaryMissing(
+          HerdrException('transport', 'not found', cause: StateError('ssh')),
+        ),
+        isFalse,
+      );
+      expect(
+        isHerdrBinaryMissing(const HerdrException('pane_not_found', 'x')),
+        isFalse,
+      );
+      expect(isHerdrBinaryMissing(StateError('exit 127')), isFalse);
+    });
+  });
 }
+
+CommandResult _ok(String stdout) =>
+    CommandResult(exitCode: 0, stdout: stdout, stderr: '');

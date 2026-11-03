@@ -183,5 +183,17 @@
   "settingsDemo": "デモを試す",
   "settingsDemoSubtitle": "host なしで試せる台本付きのセッション",
   "settingsVersion": "バージョン",
-  "settingsVersionCopied": "バージョンをコピーしました"
+  "settingsVersionCopied": "バージョンをコピーしました",
+  "hostSetupBackendLabel": "Herdr のバージョン",
+  "hostSetupBackendHerdr1": "Herdr 1 (TUI)",
+  "hostSetupBackendHerdr2": "Herdr 2 (アプリ)",
+  "hostSetupHerdr2Note": "Herdr 2 ではエージェントは Herdr アプリのスペース内で動きます。先に Herdr アプリでスペースを作成してください。drover は既存のスペースにエージェントを起動します。エージェントは自分でステータスを報告する必要があります（Claude Code は対応済み）。Herdr 2 には plugin がないため、drover の通知 plugin は使えません。",
+  "hostSetupHcDetected": "この host には herdr がなく Herdr 2 (hc) があるため、Herdr 2 に切り替えました。",
+  "hostSetupHcBinLabel": "hc バイナリのパス",
+  "herdNotInSpace": "スペース外",
+  "herdHerdr2Tag": "Herdr 2",
+  "launchSectionSpace": "スペース",
+  "launchSelectSpace": "スペースを選択",
+  "launchNoSpaces": "スペースがありません。先に Herdr アプリでスペースを作成してから起動してください。",
+  "launchUnnamedSpace": "名前なしスペース ({id})"
 }

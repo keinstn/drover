@@ -279,5 +279,17 @@
   "settingsDemo": "试用演示",
   "settingsDemoSubtitle": "预设演示会话——无需主机",
   "settingsVersion": "版本",
-  "settingsVersionCopied": "已复制版本"
+  "settingsVersionCopied": "已复制版本",
+  "hostSetupBackendLabel": "Herdr 版本",
+  "hostSetupBackendHerdr1": "Herdr 1（TUI）",
+  "hostSetupBackendHerdr2": "Herdr 2（应用）",
+  "hostSetupHerdr2Note": "Herdr 2 在 Herdr 应用的空间中运行智能体。请先在 Herdr 应用中创建空间——drover 会将智能体启动到现有空间中。智能体需要自行报告状态（Claude Code 已支持）。Herdr 2 没有插件，因此无法使用 drover 的通知插件。",
+  "hostSetupHcDetected": "此主机上有 Herdr 2（hc）但没有 herdr，已切换到 Herdr 2。",
+  "hostSetupHcBinLabel": "hc 二进制文件路径",
+  "herdNotInSpace": "不在空间中",
+  "herdHerdr2Tag": "Herdr 2",
+  "launchSectionSpace": "空间",
+  "launchSelectSpace": "选择空间",
+  "launchNoSpaces": "还没有空间。请先在 Herdr 应用中创建空间，然后再在此启动。",
+  "launchUnnamedSpace": "未命名空间（{id}）"
 }

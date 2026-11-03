@@ -1,3 +1,4 @@
+import 'package:drover/src/herdr/herdr_backend.dart';
 import 'package:drover/src/models/host_config.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -34,6 +35,40 @@ void main() {
         'privateKeyPem': '-----BEGIN KEY-----',
       });
       expect(restored.hostKeyFingerprint, isNull);
+    });
+
+    test('round-trips the hc backend', () {
+      final config = HostConfig(
+        host: 'example.com',
+        user: 'alice',
+        privateKeyPem: 'pem',
+        backend: HerdrBackend.hc,
+        herdrBin: kDefaultHcBin,
+      );
+      final json = config.toJson();
+      expect(json['backend'], 'hc');
+      final restored = HostConfig.fromJson(json);
+      expect(restored.backend, HerdrBackend.hc);
+      expect(restored.herdrBin, kDefaultHcBin);
+      // The id/fingerprint helpers must not drop the backend.
+      expect(restored.withHostId('h').backend, HerdrBackend.hc);
+      expect(restored.withHostKeyFingerprint('f').backend, HerdrBackend.hc);
+    });
+
+    test('a map missing backend reads as herdr with the herdr bin', () {
+      final restored = HostConfig.fromJson({
+        'host': 'example.com',
+        'user': 'alice',
+        'privateKeyPem': 'pem',
+      });
+      expect(restored.backend, HerdrBackend.herdr);
+      expect(restored.herdrBin, kDefaultHerdrBin);
+    });
+
+    test('a backend change is a different connection', () {
+      final config = sample();
+      final hc = HostConfig.fromJson({...config.toJson(), 'backend': 'hc'});
+      expect(config.sameConnection(hc), isFalse);
     });
   });
 

@@ -1,6 +1,12 @@
+import '../herdr/herdr_backend.dart';
+
 /// Default path to the `herdr` binary on the remote host; a `~` is left
 /// unquoted when building commands so the remote shell expands it.
 const kDefaultHerdrBin = '~/.local/bin/herdr';
+
+/// The CLI path a host starts with for [backend].
+String defaultBinFor(HerdrBackend backend) =>
+    backend == HerdrBackend.hc ? kDefaultHcBin : kDefaultHerdrBin;
 
 class HostConfig {
   const HostConfig({
@@ -13,9 +19,11 @@ class HostConfig {
     this.herdrBin = kDefaultHerdrBin,
     this.hostId,
     this.hostKeyFingerprint,
+    this.backend = HerdrBackend.herdr,
   });
 
   factory HostConfig.fromJson(Map<String, dynamic> json) {
+    final backend = HerdrBackend.fromName(json['backend'] as String?);
     return HostConfig(
       name: json['name'] as String?,
       host: json['host'] as String,
@@ -23,9 +31,10 @@ class HostConfig {
       user: json['user'] as String,
       privateKeyPem: json['privateKeyPem'] as String,
       passphrase: json['passphrase'] as String?,
-      herdrBin: json['herdrBin'] as String? ?? kDefaultHerdrBin,
+      herdrBin: json['herdrBin'] as String? ?? defaultBinFor(backend),
       hostId: json['hostId'] as String?,
       hostKeyFingerprint: json['hostKeyFingerprint'] as String?,
+      backend: backend,
     );
   }
 
@@ -40,6 +49,9 @@ class HostConfig {
   final String? hostId;
   final String? hostKeyFingerprint;
 
+  /// Which herdr generation the host runs; picks the client drover builds.
+  final HerdrBackend backend;
+
   /// The label shown in host lists and the app bar: [name] when set,
   /// otherwise `user@host`.
   String get displayName {
@@ -49,7 +61,7 @@ class HostConfig {
   }
 
   /// Whether [other] describes the same connection: host, port, user,
-  /// privateKeyPem, passphrase, and herdrBin all match. Excludes [name]
+  /// privateKeyPem, passphrase, herdrBin, and backend all match. Excludes [name]
   /// (cosmetic), [hostId], and [hostKeyFingerprint] — the fingerprint is
   /// learned via TOFU pinning after the runner is built, so including it
   /// would force a reconnect right after every first-connect pin.
@@ -59,7 +71,8 @@ class HostConfig {
       user == other.user &&
       privateKeyPem == other.privateKeyPem &&
       passphrase == other.passphrase &&
-      herdrBin == other.herdrBin;
+      herdrBin == other.herdrBin &&
+      backend == other.backend;
 
   HostConfig withHostId(String? value) => HostConfig(
     name: name,
@@ -71,6 +84,7 @@ class HostConfig {
     herdrBin: herdrBin,
     hostId: value,
     hostKeyFingerprint: hostKeyFingerprint,
+    backend: backend,
   );
 
   HostConfig withHostKeyFingerprint(String? value) => HostConfig(
@@ -83,6 +97,7 @@ class HostConfig {
     herdrBin: herdrBin,
     hostId: hostId,
     hostKeyFingerprint: value,
+    backend: backend,
   );
 
   Map<String, dynamic> toJson() => {
@@ -95,5 +110,6 @@ class HostConfig {
     'herdrBin': herdrBin,
     'hostId': hostId,
     'hostKeyFingerprint': hostKeyFingerprint,
+    'backend': backend.name,
   };
 }

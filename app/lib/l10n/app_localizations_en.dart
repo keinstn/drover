@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -589,4 +588,45 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsVersionCopied => 'Version copied';
+
+  @override
+  String get hostSetupBackendLabel => 'Herdr version';
+
+  @override
+  String get hostSetupBackendHerdr1 => 'Herdr 1 (TUI)';
+
+  @override
+  String get hostSetupBackendHerdr2 => 'Herdr 2 (app)';
+
+  @override
+  String get hostSetupHerdr2Note =>
+      'Herdr 2 runs agents inside the Herdr app\'s spaces. Create a space in the Herdr app first — drover launches agents into an existing space. Agents must report their own status (Claude Code does). Herdr 2 has no plugins, so drover\'s notification plugin isn\'t available.';
+
+  @override
+  String get hostSetupHcDetected =>
+      'This host has Herdr 2 (hc) but not herdr, so drover switched to Herdr 2.';
+
+  @override
+  String get hostSetupHcBinLabel => 'hc binary path';
+
+  @override
+  String get herdNotInSpace => 'Not in a space';
+
+  @override
+  String get herdHerdr2Tag => 'Herdr 2';
+
+  @override
+  String get launchSectionSpace => 'Space';
+
+  @override
+  String get launchSelectSpace => 'Select space';
+
+  @override
+  String get launchNoSpaces =>
+      'No spaces yet. Create a space in the Herdr app first, then launch here.';
+
+  @override
+  String launchUnnamedSpace(String id) {
+    return 'Unnamed space ($id)';
+  }
 }

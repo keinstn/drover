@@ -1,5 +1,6 @@
 import 'package:drover/l10n/app_localizations.dart';
 import 'package:drover/src/app_theme.dart';
+import 'package:drover/src/herdr/herdr_backend.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/models/host_config.dart';
 import 'package:drover/src/models/plugin_info.dart';
@@ -13,6 +14,12 @@ const _samplePairing = PairingCode(
   code: 'PAIR-CODE-42',
   hostId: 'paired-host',
   completionUrl: 'https://example.com/completePairing',
+);
+
+/// How `HerdrClient` reports a missing herdr binary: the shell's exit 127.
+const _herdrMissing = HerdrException(
+  'transport',
+  'herdr agent list failed (exit 127): sh: 1: ~/.local/bin/herdr: not found',
 );
 
 const _samplePlugin = PluginInfo(
@@ -780,5 +787,249 @@ void main() {
         );
       },
     );
+  });
+
+  group('Herdr backend selector', () {
+    const pem =
+        '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----';
+
+    Future<void> pumpSetup(
+      WidgetTester tester, {
+      HostConfig? initial,
+      Future<String> Function(HostConfig)? onTest,
+      Future<bool> Function(HostConfig)? onProbeHcOnly,
+      Future<void> Function(HostConfig)? onSubmit,
+    }) async {
+      tester.view.physicalSize = const Size(800, 2000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: droverLightTheme,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HostSetupScreen(
+            initial: initial,
+            onSubmit: onSubmit ?? (_) async {},
+            onTest: onTest,
+            onProbeHcOnly: onProbeHcOnly,
+            onCreatePairingCode: initial == null
+                ? null
+                : (_) async => _samplePairing,
+          ),
+        ),
+      );
+    }
+
+    Future<void> fillRequired(WidgetTester tester) async {
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Host'),
+        'example.com',
+      );
+      await tester.enterText(find.widgetWithText(TextFormField, 'User'), 'dev');
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Private key PEM'),
+        pem,
+      );
+    }
+
+    testWidgets('defaults to Herdr 1 and swaps the default bin on switch', (
+      tester,
+    ) async {
+      await pumpSetup(tester);
+      expect(find.text('Herdr 1 (TUI)'), findsOneWidget);
+      expect(find.text('Herdr 2 (app)'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('host_setup_herdr2_note')),
+        findsNothing,
+      );
+
+      await tester.tap(find.text('Advanced'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextFormField, kDefaultHerdrBin), findsOne);
+
+      await tester.tap(find.text('Herdr 2 (app)'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextFormField, kDefaultHcBin), findsOne);
+      expect(find.text('hc binary path'), findsOneWidget);
+
+      await tester.tap(find.text('Herdr 1 (TUI)'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextFormField, kDefaultHerdrBin), findsOne);
+    });
+
+    testWidgets('switching always resets the bin to the new default', (
+      tester,
+    ) async {
+      await pumpSetup(tester);
+      await tester.tap(find.text('Advanced'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, kDefaultHerdrBin),
+        '/opt/herdr',
+      );
+      await tester.tap(find.text('Herdr 2 (app)'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextFormField, '/opt/herdr'), findsNothing);
+      expect(find.widgetWithText(TextFormField, kDefaultHcBin), findsOne);
+    });
+
+    testWidgets(
+      'Herdr 2 shows its own instructions, no plugin commands or pairing',
+      (tester) async {
+        await pumpSetup(
+          tester,
+          initial: const HostConfig(
+            host: 'example.com',
+            user: 'dev',
+            privateKeyPem: pem,
+            herdrBin: kDefaultHcBin,
+            backend: HerdrBackend.hc,
+          ),
+        );
+        expect(
+          find.byKey(const ValueKey('host_setup_herdr2_note')),
+          findsOneWidget,
+        );
+        expect(find.textContaining('space in the Herdr app'), findsOneWidget);
+        expect(find.textContaining('Claude Code'), findsOneWidget);
+        expect(find.textContaining('integration install'), findsNothing);
+        expect(find.textContaining('plugin install'), findsNothing);
+        expect(find.text('Create notification pairing code'), findsNothing);
+
+        // Pairing acts on the saved hc host, so an unsaved switch back to
+        // Herdr 1 must not offer it.
+        await tester.tap(find.text('Herdr 1 (TUI)'));
+        await tester.pumpAndSettle();
+        expect(find.text('Create notification pairing code'), findsNothing);
+        expect(
+          find.byKey(const ValueKey('host_setup_herdr2_note')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'Test connection on a new host with only hc switches to Herdr 2',
+      (tester) async {
+        HostConfig? tested;
+        HostConfig? saved;
+        await pumpSetup(
+          tester,
+          onProbeHcOnly: (_) async => true,
+          onTest: (config) async {
+            tested = config;
+            if (config.backend == HerdrBackend.herdr) {
+              throw _herdrMissing;
+            }
+            return 'OK';
+          },
+          onSubmit: (config) async => saved = config,
+        );
+        await fillRequired(tester);
+        await tester.tap(
+          find.widgetWithText(OutlinedButton, 'Test connection'),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const ValueKey('host_setup_hc_detected')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('host_setup_herdr2_note')),
+          findsOneWidget,
+        );
+        expect(tested!.backend, HerdrBackend.hc);
+        expect(tested!.herdrBin, kDefaultHcBin);
+        expect(find.text('OK'), findsOneWidget);
+
+        await tester.tap(find.widgetWithText(FilledButton, 'SAVE'));
+        await tester.pumpAndSettle();
+        expect(saved!.backend, HerdrBackend.hc);
+      },
+    );
+
+    testWidgets('a custom herdr path is never switched to Herdr 2', (
+      tester,
+    ) async {
+      HostConfig? tested;
+      var probed = false;
+      await pumpSetup(
+        tester,
+        onProbeHcOnly: (_) async => probed = true,
+        onTest: (config) async {
+          tested = config;
+          throw _herdrMissing;
+        },
+      );
+      await fillRequired(tester);
+      await tester.tap(find.text('Advanced'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, kDefaultHerdrBin),
+        '/opt/herdr',
+      );
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Test connection'));
+      await tester.pumpAndSettle();
+      expect(probed, isFalse);
+      expect(
+        find.byKey(const ValueKey('host_setup_hc_detected')),
+        findsNothing,
+      );
+      expect(tested!.backend, HerdrBackend.herdr);
+      expect(tested!.herdrBin, '/opt/herdr');
+    });
+
+    testWidgets('an SSH/auth failure never probes for hc', (tester) async {
+      var probed = false;
+      await pumpSetup(
+        tester,
+        onProbeHcOnly: (_) async => probed = true,
+        onTest: (_) async => throw HerdrException(
+          'transport',
+          'SSH authentication failed',
+          cause: StateError('auth'),
+        ),
+      );
+      await fillRequired(tester);
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Test connection'));
+      await tester.pumpAndSettle();
+      expect(probed, isFalse);
+      expect(
+        find.byKey(const ValueKey('host_setup_hc_detected')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('host_setup_herdr2_note')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('Test connection keeps Herdr 1 when the herdr test passes', (
+      tester,
+    ) async {
+      HostConfig? tested;
+      var probed = false;
+      await pumpSetup(
+        tester,
+        onProbeHcOnly: (_) async => probed = true,
+        onTest: (config) async {
+          tested = config;
+          return 'OK';
+        },
+      );
+      await fillRequired(tester);
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Test connection'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('host_setup_hc_detected')),
+        findsNothing,
+      );
+      expect(tested!.backend, HerdrBackend.herdr);
+      // A passing herdr 1 test costs no extra probe connection.
+      expect(probed, isFalse);
+    });
   });
 }

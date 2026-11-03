@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../app_theme.dart';
 import '../herdr/agent_name.dart';
+import '../herdr/hc_client.dart';
+import '../herdr/herdr_backend.dart';
 import '../herdr/herdr_client.dart';
 import '../models/agent_preset.dart';
 import '../models/workspace_info.dart';
@@ -50,10 +52,18 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   bool _busy = false;
   Object? _launchError;
 
+  /// Herdr 2 can only launch into a space that already exists in the app:
+  /// no new-workspace mode, no split, no `agent start`.
+  bool get _isHc => widget.client.backend == HerdrBackend.hc;
+
   @override
   void initState() {
     super.initState();
     _detectAgents();
+    if (_isHc) {
+      _mode = _WorkspaceMode.existing;
+      _loadWorkspaces();
+    }
   }
 
   @override
@@ -148,6 +158,17 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
       final name = _nameController.text.trim().isEmpty
           ? preset.bin
           : _nameController.text.trim();
+      if (_isHc) {
+        final paneId = await (widget.client as HcClient).runAgent(
+          argv: [preset.bin],
+          cwd: cwd,
+          spaceId: _selectedWorkspaceId!,
+          name: name,
+        );
+        if (!mounted) return;
+        Navigator.pop(context, paneId);
+        return;
+      }
       final workspace = _mode == _WorkspaceMode.newWorkspace
           ? await widget.client.createWorkspace(
               label: _workspaceNameController.text.trim(),
@@ -250,7 +271,7 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                 const SizedBox(height: 16),
                 _buildNameSection(),
                 const SizedBox(height: 16),
-                _buildWorkspaceSection(),
+                _isHc ? _buildSpaceSection() : _buildWorkspaceSection(),
                 if (_launchError != null) ...[
                   const SizedBox(height: 12),
                   ErrorMessageView(_launchError!),
@@ -610,6 +631,17 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
     );
   }
 
+  Widget _buildSpaceSection() {
+    final l10n = AppLocalizations.of(context)!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionLabel(l10n.launchSectionSpace),
+        _buildWorkspaceDropdown(),
+      ],
+    );
+  }
+
   Widget _buildWorkspaceDropdown() {
     final l10n = AppLocalizations.of(context)!;
     return FutureBuilder<List<WorkspaceInfo>>(
@@ -629,12 +661,13 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
                     onPressed: () => setState(_loadWorkspaces),
                     child: Text(l10n.commonRetry),
                   ),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      _mode = _WorkspaceMode.newWorkspace;
-                    }),
-                    child: Text(l10n.launchUseNewWorkspace),
-                  ),
+                  if (!_isHc)
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _mode = _WorkspaceMode.newWorkspace;
+                      }),
+                      child: Text(l10n.launchUseNewWorkspace),
+                    ),
                 ],
               ),
             ],
@@ -642,7 +675,12 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         }
         final workspaces = snapshot.data ?? [];
         if (workspaces.isEmpty) {
-          return Text(l10n.launchNoExistingWorkspaces);
+          return _isHc
+              ? Text(
+                  l10n.launchNoSpaces,
+                  key: const ValueKey('launch_no_spaces'),
+                )
+              : Text(l10n.launchNoExistingWorkspaces);
         }
         final labelCounts = <String, int>{};
         for (final workspace in workspaces) {
@@ -654,7 +692,9 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
         return DropdownButton<String>(
           key: const ValueKey('ws_dropdown'),
           isExpanded: true,
-          hint: Text(l10n.launchSelectWorkspace),
+          hint: Text(
+            _isHc ? l10n.launchSelectSpace : l10n.launchSelectWorkspace,
+          ),
           value: _selectedWorkspaceId,
           items: [
             for (final ws in workspaces)
@@ -678,7 +718,9 @@ class _LaunchAgentSheetState extends State<LaunchAgentSheet> {
   ) {
     final label = workspace.label.trim();
     if (label.isEmpty) {
-      return l10n.launchUnnamedWorkspace(workspace.workspaceId);
+      return _isHc
+          ? l10n.launchUnnamedSpace(workspace.workspaceId)
+          : l10n.launchUnnamedWorkspace(workspace.workspaceId);
     }
     if (labelCounts[label]! > 1) {
       return '$label (${workspace.workspaceId})';
