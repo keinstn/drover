@@ -4,8 +4,59 @@ Herdr 2 is the Herdr desktop app ([herdr-app](https://github.com/herdrdev/herdr-
 on top of [herdr-core](https://github.com/herdrdev/herdr-core), whose CLI is
 `hc`. It is a different product from herdr 1 (the TUI, `herdr` CLI — see
 `herdr-notes.md`): no workspaces/panes/agents verbs, no integrations, no
-plugins. A host picks one or the other in drover's host settings
-(`HostConfig.backend`); `HcClient` presents hc through `HerdrClient`'s API.
+plugins. `HcClient` presents hc through `HerdrClient`'s API.
+
+## One host, both backends
+
+`HostConfig.backendMode` picks what drover talks to on a host: `herdr`
+(herdr 1 only, a plain `HerdrClient`), `hc` (Herdr 2 only) or `auto`
+(default: both). `buildHerdrClient` wraps the hc-only and auto cases in a
+`CombinedHerdrClient`, which merges both backends' agent and workspace
+lists and routes every per-id call by the id's prefix. Host-level calls
+(plugins, SFTP, agent detection, `version`) go to herdr 1 when the host has
+it. `herdrBin` is herdr 1's CLI and `hcBin` is Herdr 2's. A host saved before
+`backendMode` existed with `backend: hc` loads as mode `hc`, its `herdrBin`
+moving to `hcBin`. Any other legacy host loads as `auto`.
+
+- Ids: every id `HcClient` hands out carries `hc:` (`hc:t16`, workspace
+  `hc:sp…`, tab `hc:tb…`), and it strips the prefix again on the way in.
+  An agent outside any space keeps workspace id `''`. herdr 1 ids
+  (`w2H:p1`) are unchanged; `backendOfId` tells them apart.
+- Core gate: `hc connect` starts a core when none is running, and auto mode
+  must never do that. Auto mode's `HcClient(requireRunningCore: true)` runs
+  `sh -c 'pgrep -x -U "$(id -u)" herdr-core … || { echo
+  drover-hc-not-running >&2; exit 3; }; exec <hcBin> connect'`, so the check
+  happens in the same exec as the connect. The marker becomes
+  `HerdrException('hc_not_running')`. A Windows host fails the gate without
+  running anything (`hc_unsupported_host`, treated like a missing binary),
+  because Herdr 2 on Windows is deferred. Explicit `hc`
+  mode is ungated.
+- Absent backends: a backend is *absent* when its binary is missing
+  (`isHerdrBinaryMissing`: exit 127, "not found", "No such file") or its
+  core isn't running. A missing binary is skipped for 5 minutes while the
+  other backend answers, then probed again. A core that isn't running is
+  re-probed on every poll, since the gate is cheap. Opening the Herdr app
+  shows its agents on the next poll, and the launch sheet offers Herdr 2.
+  An absent backend is never offered by `availableBackends`.
+- If every backend is absent, each poll probes again. hc's "not running" is
+  thrown in preference to herdr 1's missing binary: Herdr 2 is installed,
+  so the app being closed is the real cause. It renders as "the Herdr app
+  isn't running" (`AppErrorKind.hcNotRunning`). With no hc part, or both
+  binaries missing, herdr 1's error is thrown, so "herdr not found" still
+  shows, also on a Windows host.
+- Any other failure of one backend: the other backend's agents are still
+  returned. `listAgentsReportingErrors()` returns the failure with its
+  backend in `partialErrors`, as part of that call's result rather than
+  client state, so concurrent listings can't clobber it. The herd poll uses
+  it and shows each failure through `ErrorMessageView`, labelled "Herdr 1"
+  or "Herdr 2". If both fail, a real error is thrown in preference to an
+  absent one, and herdr 1's in preference to hc's.
+- The gate needs a procps-style `pgrep -x -U`. Without pgrep, or with a
+  BusyBox one that rejects `-U`, Auto treats hc as absent. Explicit Herdr 2
+  mode is the workaround. A core that exits between pgrep and connect gets
+  autostarted; the window is tiny but real.
+- `displayId` strips `hc:` for labels that fall back to an id. Routing always
+  keeps the prefix.
 
 Verified against hc 0.1.17 on 2026-11-03.
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:drover/l10n/app_localizations.dart';
+import 'package:drover/src/herdr/combined_client.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/app_theme.dart';
 import 'package:drover/src/demo/demo_herdr.dart' show askUserTranscriptJsonl;
@@ -137,9 +138,9 @@ class _FakeHcClient extends HcClient {
   @override
   Future<List<AgentInfo>> listAgents() async => const [
     AgentInfo(
-      paneId: 't1',
-      workspaceId: 's1',
-      tabId: 't1',
+      paneId: 'hc:t1',
+      workspaceId: 'hc:s1',
+      tabId: 'hc:tb1',
       agent: 'claude',
       name: 'Spaced',
       status: AgentStatus.idle,
@@ -147,9 +148,9 @@ class _FakeHcClient extends HcClient {
       focused: false,
     ),
     AgentInfo(
-      paneId: 't2',
+      paneId: 'hc:t2',
       workspaceId: '',
-      tabId: 't2',
+      tabId: 'hc:tb2',
       agent: 'claude',
       name: 'Loose',
       status: AgentStatus.idle,
@@ -161,12 +162,41 @@ class _FakeHcClient extends HcClient {
   @override
   Future<List<WorkspaceInfo>> listWorkspaces() async {
     listWorkspacesCalls++;
-    return const [WorkspaceInfo(workspaceId: 's1', label: 'Space One')];
+    return const [WorkspaceInfo(workspaceId: 'hc:s1', label: 'Space One')];
   }
 
   @override
   Future<String> readAgent(String target, {int lines = 120}) async => '';
 }
+
+/// A Herdr 2 part whose listing fails while herdr 1's answers.
+class _FailingHcClient extends _FakeHcClient {
+  @override
+  Future<List<AgentInfo>> listAgents() async =>
+      throw const HerdrException('transport', 'core crashed');
+}
+
+/// A Herdr 2 part with an agent in a space that has no label, and no name.
+class _UnlabeledSpaceHcClient extends _FakeHcClient {
+  @override
+  Future<List<AgentInfo>> listAgents() async => const [
+    AgentInfo(
+      paneId: 'hc:t7',
+      workspaceId: 'hc:s9',
+      tabId: 'hc:tb7',
+      agent: null,
+      status: AgentStatus.idle,
+      cwd: '/tmp/a',
+      focused: false,
+    ),
+  ];
+}
+
+/// herdr 1 ([_respond]'s agents) plus Herdr 2 ([hc]) on one host.
+CombinedHerdrClient _mixedClient(
+  _FakeHcClient hc, {
+  CommandResult Function(String) herdr = _respond,
+}) => CombinedHerdrClient(herdr: HerdrClient(FakeCommandRunner(herdr)), hc: hc);
 
 const _hostRef = HerdHostRef(
   hostId: 'host-1',
@@ -1948,7 +1978,7 @@ void main() {
       await tester.longPress(find.text('Space One'));
       await tester.pumpAndSettle();
       expect(find.text('Rename workspace'), findsNothing);
-      await tester.longPress(find.byKey(const ValueKey('agent-host-1-t2')));
+      await tester.longPress(find.byKey(const ValueKey('agent-host-1-hc:t2')));
       await tester.pumpAndSettle();
       expect(find.text('Rename agent'), findsNothing);
 
@@ -1969,6 +1999,135 @@ void main() {
 
       expect(find.byKey(const ValueKey('herdr2_tag_host-b')), findsOneWidget);
       expect(find.byKey(const ValueKey('herdr2_tag_host-a')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  group('host with both backends', () {
+    Future<void> pumpMixed(WidgetTester tester, HerdrClient client) async {
+      tester.view.physicalSize = const Size(800, 2000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(_herdApp(client: client));
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('renders both backends and tags only the Herdr 2 groups', (
+      tester,
+    ) async {
+      await pumpMixed(tester, _mixedClient(_FakeHcClient()));
+
+      expect(_inTile('Agent One'), findsOneWidget);
+      expect(_inTile('Spaced'), findsOneWidget);
+      expect(_inTile('Loose'), findsOneWidget);
+      expect(find.text('Project A'), findsOneWidget);
+      expect(find.text('Space One'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('herdr2_group_tag_hc:s1')),
+        findsOneWidget,
+      );
+      // The unspaced group is Herdr 2's too.
+      expect(find.byKey(const ValueKey('herdr2_group_tag_')), findsOneWidget);
+      expect(find.text('Herdr 2'), findsNWidgets(2));
+      expect(find.byKey(const ValueKey('herdr2_group_tag_wA')), findsNothing);
+      expect(find.byKey(const ValueKey('herdr2_tag_host-1')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('offers rename for the herdr 1 agent only', (tester) async {
+      await pumpMixed(tester, _mixedClient(_FakeHcClient()));
+
+      await tester.longPress(find.text('Space One'));
+      await tester.pumpAndSettle();
+      expect(find.text('Rename workspace'), findsNothing);
+
+      await tester.longPress(find.byKey(const ValueKey('agent-host-1-wA:p1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Rename agent'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Last: with no long-press handler, the hold falls through to a tap
+      // and opens the agent.
+      await tester.longPress(find.byKey(const ValueKey('agent-host-1-hc:t1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Rename agent'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a failing backend shows a warning; the other still renders', (
+      tester,
+    ) async {
+      await pumpMixed(tester, _mixedClient(_FailingHcClient()));
+
+      // Through the error-presentation path: a localized headline, with the
+      // raw stderr only behind Details.
+      expect(find.text('Herdr 2: Something went wrong.'), findsOneWidget);
+      expect(find.textContaining('core crashed'), findsNothing);
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('partial_error_host-1_hc')),
+          matching: find.text('Details'),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('core crashed'), findsOneWidget);
+      expect(_inTile('Agent One'), findsOneWidget);
+      expect(_inTile('Agent Three'), findsOneWidget);
+      expect(_inTile('Spaced'), findsNothing);
+      expect(find.byKey(const ValueKey('host_retry_host-1')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a fallback label for an hc id hides the hc: prefix', (
+      tester,
+    ) async {
+      await pumpMixed(tester, _mixedClient(_UnlabeledSpaceHcClient()));
+      // The space has no label and the agent no name: both fall back to ids.
+      expect(find.text('s9'), findsOneWidget);
+      expect(_inTile('t7'), findsOneWidget);
+      expect(find.textContaining('hc:'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('an old herdr 1 warns but doesn\'t block opening the sheet', (
+      tester,
+    ) async {
+      await pumpMixed(
+        tester,
+        _mixedClient(_FakeHcClient(), herdr: _respondOldHerdr),
+      );
+      expect(
+        find.byKey(const ValueKey('herdr_version_warning_host-1')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('launch_agent_fab')));
+      await tester.pumpAndSettle();
+      expect(find.byType(LaunchAgentSheet), findsOneWidget);
+      Navigator.of(tester.element(find.byType(LaunchAgentSheet))).pop();
+      await tester.pumpAndSettle();
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('no herdr 1 part: no version warning', (tester) async {
+      await pumpMixed(tester, CombinedHerdrClient(hc: _FakeHcClient()));
+      expect(_inTile('Spaced'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('herdr_version_warning_host-1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('herdr2_group_tag_hc:s1')),
+        findsNothing,
+      );
 
       await tester.pumpWidget(const SizedBox());
     });

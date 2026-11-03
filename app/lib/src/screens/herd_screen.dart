@@ -95,6 +95,10 @@ class HerdHostRef {
 class _HostHerd {
   List<AgentInfo> agents = [];
   Object? error;
+
+  /// Backends that failed in the last successful load while another
+  /// answered ([HerdrClient.listAgentsReportingErrors]).
+  List<(HerdrBackend, Object)> partialErrors = const [];
   bool loading = false;
 
   /// Consecutive failed loads; drives [herdPollBackoff].
@@ -330,11 +334,14 @@ class _HerdScreenState extends State<HerdScreen> {
     if (bucket.loading) return;
     bucket.loading = true;
     try {
-      final agents = await widget.clientFor(host).listAgents();
+      final (:agents, :partialErrors) = await widget
+          .clientFor(host)
+          .listAgentsReportingErrors();
       if (!mounted || !identical(_byHost[host.hostId], bucket)) return;
       _checkStatusTransitions(bucket, agents);
       setState(() {
         bucket.agents = agents;
+        bucket.partialErrors = partialErrors;
         bucket.error = null;
         bucket.failStreak = 0;
         bucket.nextPollAt = null;
@@ -377,6 +384,7 @@ class _HerdScreenState extends State<HerdScreen> {
       if (!mounted || !identical(_byHost[host.hostId], bucket)) return;
       setState(() {
         bucket.error = e;
+        bucket.partialErrors = const [];
         bucket.failStreak++;
         bucket.nextPollAt = DateTime.now().add(
           herdPollBackoff(bucket.failStreak, widget.pollInterval),
@@ -500,7 +508,8 @@ class _HerdScreenState extends State<HerdScreen> {
     bucket.herdrVersionLoading = true;
     try {
       final client = widget.clientFor(host);
-      // `hc --version` is not a herdr version; there is no gate to feed.
+      // No herdr 1 on the client: `hc --version` is not a herdr version, and
+      // a combined client's version() throws 'unsupported'. No gate either way.
       if (client.backend == HerdrBackend.hc) return;
       final version = parseHerdrVersion(await client.version());
       if (version == null ||
@@ -557,15 +566,21 @@ class _HerdScreenState extends State<HerdScreen> {
   String _workspaceLabel(_HostHerd bucket, String workspaceId) =>
       workspaceId.isEmpty
       ? AppLocalizations.of(context)!.herdNotInSpace
-      : bucket.workspaceLabels[workspaceId] ?? workspaceId;
+      : bucket.workspaceLabels[workspaceId] ?? displayId(workspaceId);
 
-  /// Whether [host] runs Herdr 2, which can't rename spaces or agents and has
-  /// no herdr version gate.
-  bool _isHc(HerdHostRef host) =>
+  /// Whether [host]'s client has no herdr 1 part (an hc-only host).
+  bool _isHcOnly(HerdHostRef host) =>
       widget.clientFor(host).backend == HerdrBackend.hc;
 
+  /// Herdr 2 can't rename spaces or agents; '' is its "Not in a space" group.
+  static bool _renameable(String id) =>
+      id.isNotEmpty && backendOfId(id) == HerdrBackend.herdr;
+
   String _agentDisplayName(AgentInfo agent) =>
-      agent.sessionTitle ?? agent.name ?? agent.agent ?? agent.paneId;
+      agent.sessionTitle ??
+      agent.name ??
+      agent.agent ??
+      displayId(agent.paneId);
 
   String _agentMetadata(AgentInfo agent) {
     final cwd = agent.foregroundCwd ?? agent.cwd;
@@ -631,9 +646,22 @@ class _HerdScreenState extends State<HerdScreen> {
       target = await _pickLaunchHost();
     }
     if (target == null || !mounted) return;
-    if (await _herdrTooOldToLaunch(target)) return;
+    final host = target;
+    final backends = await widget.clientFor(host).availableBackends();
+    // Only a herdr 1 launch is gated: before the sheet when herdr 1 is all
+    // there is, inside it when the user can still pick Herdr 2 instead.
+    final both = backends.length > 1;
+    if (backends.contains(HerdrBackend.herdr) &&
+        !both &&
+        await _herdrTooOldToLaunch(host)) {
+      return;
+    }
     if (!mounted) return;
-    await _openLaunchSheet(target);
+    await _openLaunchSheet(
+      host,
+      backends: backends,
+      herdrTooOld: both ? () => _herdrTooOldToLaunch(host) : null,
+    );
   }
 
   /// Authoritatively re-checks [host]'s herdr version right before opening
@@ -644,7 +672,6 @@ class _HerdScreenState extends State<HerdScreen> {
   /// launch. Returns true (and shows a toast) when the launch should be
   /// blocked.
   Future<bool> _herdrTooOldToLaunch(HerdHostRef host) async {
-    if (_isHc(host)) return false;
     final bucket = _bucketFor(host.hostId);
     var version = bucket.herdrVersion;
     if (version == null) {
@@ -707,7 +734,11 @@ class _HerdScreenState extends State<HerdScreen> {
     );
   }
 
-  Future<void> _openLaunchSheet(HerdHostRef host) async {
+  Future<void> _openLaunchSheet(
+    HerdHostRef host, {
+    required List<HerdrBackend> backends,
+    Future<bool> Function()? herdrTooOld,
+  }) async {
     final paneId = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -722,6 +753,8 @@ class _HerdScreenState extends State<HerdScreen> {
         child: LaunchAgentSheet(
           client: widget.clientFor(host),
           existingCwds: _distinctCwds(_bucketFor(host.hostId)),
+          backends: backends,
+          herdrTooOld: herdrTooOld,
         ),
       ),
     );
@@ -1183,6 +1216,21 @@ class _HerdScreenState extends State<HerdScreen> {
           onRetry: () => _retryHost(host),
           hostEverConnected: host.hostEverConnected,
         ),
+      // One backend failed while the other answered: its agents still show
+      // below, so this is a note, not an error state. The poll retries.
+      for (final (backend, e) in bucket.partialErrors)
+        Padding(
+          key: ValueKey('partial_error_${host.hostId}_${backend.name}'),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+          child: ErrorMessageView(
+            e,
+            label: switch (backend) {
+              HerdrBackend.herdr => l10n.herdHerdr1Tag,
+              HerdrBackend.hc => l10n.herdHerdr2Tag,
+            },
+            hostEverConnected: host.hostEverConnected,
+          ),
+        ),
       if (workspaceLabelsError != null)
         _errorRow(
           l10n,
@@ -1233,7 +1281,7 @@ class _HerdScreenState extends State<HerdScreen> {
               ),
             ),
           ),
-          if (_isHc(host))
+          if (_isHcOnly(host))
             Text(
               AppLocalizations.of(context)!.herdHerdr2Tag,
               key: ValueKey('herdr2_tag_${host.hostId}'),
@@ -1286,6 +1334,14 @@ class _HerdScreenState extends State<HerdScreen> {
   ) {
     final scheme = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
+    bool isHc(AgentInfo a) => backendOfId(a.paneId) == HerdrBackend.hc;
+    // Only a mixed list needs telling apart; an hc-only host is tagged in
+    // its host header instead.
+    final hcTag = isHc(entry.value.first) && !bucket.agents.every(isHc);
+    final labelStyle = droverLabelStyle(
+      context,
+      color: DroverColors.of(context).tertiaryText,
+    );
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
@@ -1315,20 +1371,29 @@ class _HerdScreenState extends State<HerdScreen> {
         children: [
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onLongPress: _isHc(host)
-                ? null
-                : () => _renameWorkspace(host, entry.key),
+            onLongPress: _renameable(entry.key)
+                ? () => _renameWorkspace(host, entry.key)
+                : null,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
-              child: Text(
-                // Not through `droverLabelText`: a workspace label is
-                // user-chosen and renameable, and the rename dialog pre-fills
-                // the original casing.
-                _workspaceLabel(bucket, entry.key),
-                style: droverLabelStyle(
-                  context,
-                  color: DroverColors.of(context).tertiaryText,
-                ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      // Not through `droverLabelText`: a workspace label is
+                      // user-chosen and renameable, and the rename dialog
+                      // pre-fills the original casing.
+                      _workspaceLabel(bucket, entry.key),
+                      style: labelStyle,
+                    ),
+                  ),
+                  if (hcTag)
+                    Text(
+                      l10n.herdHerdr2Tag,
+                      key: ValueKey('herdr2_group_tag_${entry.key}'),
+                      style: labelStyle,
+                    ),
+                ],
               ),
             ),
           ),
@@ -1370,7 +1435,8 @@ class _HerdScreenState extends State<HerdScreen> {
                   l10n,
                 ),
                 onLongPress:
-                    bucket.stoppingPaneIds.contains(agent.paneId) || _isHc(host)
+                    bucket.stoppingPaneIds.contains(agent.paneId) ||
+                        !_renameable(agent.paneId)
                     ? null
                     : () => _renameAgent(host, agent),
                 onTap: bucket.stoppingPaneIds.contains(agent.paneId)

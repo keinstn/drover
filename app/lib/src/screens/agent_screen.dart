@@ -18,6 +18,7 @@ import '../agents/agent_registry.dart';
 import '../agents/structured_prompt_helpers.dart';
 import '../app_theme.dart';
 import '../herdr/ansi_text.dart';
+import '../herdr/herdr_backend.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/pane_text.dart';
 import '../image/image_input.dart';
@@ -431,7 +432,7 @@ class _AgentScreenState extends State<AgentScreen> {
           .firstOrNull;
       setState(() {
         _workspaceLabel = workspace == null || workspace.label.isEmpty
-            ? workspaceId
+            ? displayId(workspaceId)
             : workspace.label;
         _workspaceLabelError = null;
       });
@@ -1098,11 +1099,15 @@ class _AgentScreenState extends State<AgentScreen> {
     final scheme = Theme.of(context).colorScheme;
     final agent = _agent;
     final displayName =
-        agent?.sessionTitle ?? agent?.name ?? agent?.agent ?? widget.paneId;
+        agent?.sessionTitle ??
+        agent?.name ??
+        agent?.agent ??
+        displayId(widget.paneId);
     // '' is an hc agent outside any space.
     final workspaceLabel = agent?.workspaceId == ''
         ? l10n.herdNotInSpace
-        : _workspaceLabel ?? agent?.workspaceId;
+        : _workspaceLabel ??
+              (agent == null ? null : displayId(agent.workspaceId));
     final agentType = agent?.agent ?? 'agent';
     final plain = stripAnsi(_text);
     final nativeHistory = _nativeHistory;

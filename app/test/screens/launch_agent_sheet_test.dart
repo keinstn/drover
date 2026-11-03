@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:drover/l10n/app_localizations.dart';
+import 'package:drover/src/herdr/combined_client.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/hc_client.dart';
+import 'package:drover/src/herdr/herdr_backend.dart';
 import 'package:drover/src/herdr/herdr_client.dart';
+import 'package:drover/src/models/agent_info.dart';
 import 'package:drover/src/models/agent_preset.dart';
 import 'package:drover/src/models/workspace_info.dart';
 import 'package:drover/src/models/remote_dir_entry.dart';
@@ -154,6 +159,9 @@ class _FakeHcClient extends HcClient {
   Future<List<WorkspaceInfo>> listWorkspaces() async => spaces;
 
   @override
+  Future<List<AgentInfo>> listAgents() async => const [];
+
+  @override
   Future<String> runAgent({
     required List<String> argv,
     required String cwd,
@@ -165,11 +173,29 @@ class _FakeHcClient extends HcClient {
   }
 }
 
+const _both = [HerdrBackend.herdr, HerdrBackend.hc];
+
+/// A Herdr 2 part whose listWorkspaces calls each wait on the next of
+/// [pending], in order.
+class _SequencedHcClient extends _FakeHcClient {
+  _SequencedHcClient() : super(const []);
+
+  final pending = <Completer<List<WorkspaceInfo>>>[];
+
+  @override
+  Future<List<WorkspaceInfo>> listWorkspaces() {
+    final c = Completer<List<WorkspaceInfo>>();
+    pending.add(c);
+    return c.future;
+  }
+}
+
 /// Pushes [LaunchAgentSheet] as a route and captures its pop value.
 class _Harness extends StatefulWidget {
-  const _Harness({required this.client});
+  const _Harness({required this.client, this.backends});
 
   final HerdrClient client;
+  final List<HerdrBackend>? backends;
 
   @override
   State<_Harness> createState() => _HarnessState();
@@ -190,6 +216,7 @@ class _HarnessState extends State<_Harness> {
               builder: (_) => LaunchAgentSheet(
                 client: widget.client,
                 existingCwds: const [],
+                backends: widget.backends,
               ),
             );
             setState(() {});
@@ -905,6 +932,8 @@ void main() {
       expect(find.byKey(const ValueKey('ws_mode_existing')), findsNothing);
       expect(find.byKey(const ValueKey('workspace_name_field')), findsNothing);
       expect(find.text('Select space'), findsOneWidget);
+      // One backend: no switch.
+      expect(find.byKey(const ValueKey('launch_backend_switch')), findsNothing);
 
       await tester.enterText(
         find.byKey(const ValueKey('cwd_field')),
@@ -955,6 +984,287 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const ValueKey('ws_mode_new')), findsNothing);
+    });
+  });
+
+  group('host with both backends', () {
+    CombinedHerdrClient combined(_FakeHcClient hc) => CombinedHerdrClient(
+      herdr: HerdrClient(
+        FakeCommandRunner(
+          (command) => command.contains("'agent' 'list'")
+              ? ok('{"id":"1","result":{"agents":[]}}')
+              : _response(command),
+        ),
+      ),
+      hc: hc,
+    );
+
+    testWidgets('offers a Herdr 1 / Herdr 2 switch, defaulting to herdr 1; '
+        'Herdr 2 launches through the hc part and is remembered', (
+      tester,
+    ) async {
+      final hc = _FakeHcClient(const [
+        WorkspaceInfo(workspaceId: 'hc:s1', label: 'Space One'),
+      ]);
+      final client = combined(hc);
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: _Harness(client: client, backends: _both),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('launch_backend_switch')), findsOne);
+      expect(find.text('Herdr 1'), findsOneWidget);
+      expect(find.text('Herdr 2'), findsOneWidget);
+      // herdr 1 by default: its workspace modes.
+      expect(find.byKey(const ValueKey('ws_mode_new')), findsOneWidget);
+      expect(find.text('SPACE'), findsNothing);
+
+      await tester.tap(find.text('Herdr 2'));
+      await tester.pumpAndSettle();
+      expect(find.text('SPACE'), findsOneWidget);
+      expect(find.byKey(const ValueKey('ws_mode_new')), findsNothing);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('cwd_field')),
+        '/tmp/proj',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('ws_dropdown')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Space One').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('launch_button')));
+      await tester.pumpAndSettle();
+
+      expect(hc.runs.single['spaceId'], 'hc:s1');
+      final state = tester.state<_HarnessState>(find.byType(_Harness));
+      expect(state.poppedValue, 'term-9');
+
+      // Reopened for the same client, the sheet starts on Herdr 2.
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(find.text('SPACE'), findsOneWidget);
+    });
+
+    Widget sheet(
+      HerdrClient client, {
+      List<HerdrBackend>? backends = _both,
+      Future<bool> Function()? herdrTooOld,
+    }) => MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(
+        body: LaunchAgentSheet(
+          client: client,
+          existingCwds: const [],
+          backends: backends,
+          herdrTooOld: herdrTooOld,
+        ),
+      ),
+    );
+
+    testWidgets('starts on the backends it was handed, without asking the '
+        'client again', (tester) async {
+      final runner = FakeCommandRunner(_response);
+      final client = CombinedHerdrClient(
+        herdr: HerdrClient(runner),
+        hc: _FakeHcClient(const [
+          WorkspaceInfo(workspaceId: 'hc:s1', label: 'Space One'),
+        ]),
+      );
+      await tester.pumpWidget(sheet(client, backends: [HerdrBackend.hc]));
+      // First frame: already the Herdr 2 UI, no herdr 1 flash.
+      expect(find.text('SPACE'), findsOneWidget);
+      expect(find.byKey(const ValueKey('ws_mode_new')), findsNothing);
+      expect(find.byKey(const ValueKey('launch_backend_switch')), findsNothing);
+      await tester.pumpAndSettle();
+      expect(
+        runner.commands.where((c) => c.contains("'agent' 'list'")),
+        isEmpty,
+        reason: 'availableBackends was not called again',
+      );
+    });
+
+    testWidgets('a remembered backend no longer offered falls back to the '
+        'first', (tester) async {
+      final client = combined(_FakeHcClient(const []));
+      await tester.pumpWidget(sheet(client));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Herdr 2')); // remembered
+      await tester.pumpAndSettle();
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(sheet(client, backends: [HerdrBackend.herdr]));
+      expect(find.byKey(const ValueKey('ws_mode_new')), findsOneWidget);
+      expect(find.text('SPACE'), findsNothing);
+    });
+
+    testWidgets('Launch is busy during the herdr 1 version gate: no second '
+        'tap, no backend switch; a blocked gate re-enables it', (tester) async {
+      final gate = Completer<bool>();
+      var gateCalls = 0;
+      final client = combined(_FakeHcClient(const []));
+      await tester.pumpWidget(
+        sheet(
+          client,
+          herdrTooOld: () {
+            gateCalls++;
+            return gate.future;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('cwd_field')),
+        '/tmp/proj',
+      );
+      await tester.ensureVisible(find.byKey(const ValueKey('launch_button')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('launch_button')));
+      await tester.pump();
+
+      FilledButton launch() =>
+          tester.widget(find.byKey(const ValueKey('launch_button')));
+      SegmentedButton<HerdrBackend> backendSwitch() =>
+          tester.widget(find.byKey(const ValueKey('launch_backend_switch')));
+      expect(launch().onPressed, isNull);
+      expect(backendSwitch().onSelectionChanged, isNull);
+      await tester.tap(
+        find.byKey(const ValueKey('launch_button')),
+        warnIfMissed: false,
+      );
+      await tester.pump();
+      expect(gateCalls, 1);
+
+      gate.complete(true);
+      await tester.pumpAndSettle();
+      expect(launch().onPressed, isNotNull);
+      expect(backendSwitch().onSelectionChanged, isNotNull);
+    });
+
+    testWidgets('a stale space list from before a backend switch is ignored', (
+      tester,
+    ) async {
+      final hc = _SequencedHcClient();
+      await tester.pumpWidget(sheet(combined(hc)));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('cwd_field')),
+        '/tmp/proj',
+      );
+      await tester.tap(find.text('Herdr 2')); // list A
+      await tester.pump();
+      await tester.tap(find.text('Herdr 1'));
+      await tester.pump();
+      await tester.tap(find.text('Herdr 2')); // list B
+      await tester.pump();
+      expect(hc.pending, hasLength(2));
+
+      hc.pending[1].complete(const [
+        WorkspaceInfo(workspaceId: 'hc:s1', label: 'Space One'),
+      ]);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('ws_dropdown')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Space One').last);
+      await tester.pumpAndSettle();
+
+      hc.pending[0].complete(const []);
+      await tester.pumpAndSettle();
+      expect(find.text('Space One'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const ValueKey('launch_button')))
+            .onPressed,
+        isNotNull,
+      );
+    });
+
+    testWidgets('fallback space labels hide the hc: prefix', (tester) async {
+      final client = combined(
+        _FakeHcClient(const [
+          WorkspaceInfo(workspaceId: 'hc:s3', label: ''),
+          WorkspaceInfo(workspaceId: 'hc:s4', label: 'Dup'),
+          WorkspaceInfo(workspaceId: 'hc:s5', label: 'Dup'),
+        ]),
+      );
+      await tester.pumpWidget(sheet(client, backends: [HerdrBackend.hc]));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('ws_dropdown')));
+      await tester.pumpAndSettle();
+      expect(find.text('Unnamed space (s3)'), findsWidgets);
+      expect(find.text('Dup (s4)'), findsWidgets);
+      expect(find.text('Dup (s5)'), findsWidgets);
+      expect(find.textContaining('hc:'), findsNothing);
+    });
+
+    testWidgets('a too-old herdr 1 blocks only the herdr 1 launch', (
+      tester,
+    ) async {
+      var gateCalls = 0;
+      final runner = FakeCommandRunner(
+        (command) => command.contains("'agent' 'list'")
+            ? ok('{"id":"1","result":{"agents":[]}}')
+            : _response(command),
+      );
+      final hc = _FakeHcClient(const [
+        WorkspaceInfo(workspaceId: 'hc:s1', label: 'Space One'),
+      ]);
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: LaunchAgentSheet(
+              client: CombinedHerdrClient(herdr: HerdrClient(runner), hc: hc),
+              existingCwds: const [],
+              backends: _both,
+              herdrTooOld: () async {
+                gateCalls++;
+                return true;
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('cwd_field')),
+        '/tmp/proj',
+      );
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const ValueKey('launch_button')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('launch_button')));
+      await tester.pumpAndSettle();
+      expect(gateCalls, 1);
+      expect(
+        runner.commands.where(
+          (c) =>
+              c.contains("'workspace' 'create'") ||
+              c.contains("'pane' 'split'") ||
+              c.contains("'agent' 'start'"),
+        ),
+        isEmpty,
+      );
+      expect(find.byType(LaunchAgentSheet), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Herdr 2'));
+      await tester.pump();
+      await tester.tap(find.text('Herdr 2'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('ws_dropdown')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Space One').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('launch_button')));
+      await tester.pumpAndSettle();
+      expect(hc.runs, hasLength(1));
     });
   });
 }

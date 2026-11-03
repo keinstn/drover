@@ -1,3 +1,4 @@
+import '../herdr/hc_client.dart';
 import '../herdr/herdr_client.dart';
 import '../herdr/herdr_version.dart';
 import 'ssh_command_runner.dart';
@@ -16,6 +17,9 @@ enum AppErrorKind {
 
   /// SSH reached the host, but herdr's background server isn't running there.
   herdrServerUnreachable,
+
+  /// Herdr 2 is installed but its core (the Herdr app) isn't running.
+  hcNotRunning,
 
   /// The host's herdr is older than drover's minimum supported version.
   herdrVersionUnsupported,
@@ -45,6 +49,7 @@ AppErrorKind classifyError(Object error) {
     if (error.code == 'server_not_running') {
       return AppErrorKind.herdrServerUnreachable;
     }
+    if (error.code == HcClient.kHcNotRunning) return AppErrorKind.hcNotRunning;
     final cause = error.cause;
     if (cause is SshHostKeyMismatchException) {
       return AppErrorKind.hostKeyMismatch;

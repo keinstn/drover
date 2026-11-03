@@ -185,6 +185,10 @@ class AppLocalizationsJa extends AppLocalizations {
       'ホストへの接続はできましたが、herdr が起動していません。ホストで herdr を起動してから、もう一度お試しください。';
 
   @override
+  String get errorHcNotRunning =>
+      'ホストへの接続はできましたが、Herdr アプリが起動していません。ホストで Herdr アプリを開いてから、もう一度お試しください。';
+
+  @override
   String herdrVersionTooOld(String found, String minimum) {
     return 'このホストの herdr $found は、drover が対応する最小バージョン $minimum を下回っています。エージェントを起動するには、ホスト側の herdr を更新してください。';
   }
@@ -572,24 +576,30 @@ class AppLocalizationsJa extends AppLocalizations {
   String get hostSetupBackendLabel => 'Herdr のバージョン';
 
   @override
-  String get hostSetupBackendHerdr1 => 'Herdr 1 (TUI)';
+  String get hostSetupBackendAuto => '自動';
 
   @override
-  String get hostSetupBackendHerdr2 => 'Herdr 2 (アプリ)';
+  String get hostSetupBackendAutoNote =>
+      '両方のエージェントを表示します。Herdr 2 は Herdr アプリの起動中のみ使います。';
+
+  @override
+  String get hostSetupBackendHerdr1 => 'Herdr 1';
+
+  @override
+  String get hostSetupBackendHerdr2 => 'Herdr 2';
 
   @override
   String get hostSetupHerdr2Note =>
       'Herdr 2 ではエージェントは Herdr アプリのスペース内で動きます。先に Herdr アプリでスペースを作成してください。drover は既存のスペースにエージェントを起動します。エージェントは自分でステータスを報告する必要があります（Claude Code は対応済み）。Herdr 2 には plugin がないため、drover の通知 plugin は使えません。';
 
   @override
-  String get hostSetupHcDetected =>
-      'この host には herdr がなく Herdr 2 (hc) があるため、Herdr 2 に切り替えました。';
-
-  @override
   String get hostSetupHcBinLabel => 'hc バイナリのパス';
 
   @override
   String get herdNotInSpace => 'スペース外';
+
+  @override
+  String get herdHerdr1Tag => 'Herdr 1';
 
   @override
   String get herdHerdr2Tag => 'Herdr 2';

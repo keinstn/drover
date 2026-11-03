@@ -4,10 +4,6 @@ import '../herdr/herdr_backend.dart';
 /// unquoted when building commands so the remote shell expands it.
 const kDefaultHerdrBin = '~/.local/bin/herdr';
 
-/// The CLI path a host starts with for [backend].
-String defaultBinFor(HerdrBackend backend) =>
-    backend == HerdrBackend.hc ? kDefaultHcBin : kDefaultHerdrBin;
-
 class HostConfig {
   const HostConfig({
     this.name,
@@ -19,11 +15,16 @@ class HostConfig {
     this.herdrBin = kDefaultHerdrBin,
     this.hostId,
     this.hostKeyFingerprint,
-    this.backend = HerdrBackend.herdr,
+    this.backendMode = HostBackendMode.auto,
+    this.hcBin = kDefaultHcBin,
   });
 
   factory HostConfig.fromJson(Map<String, dynamic> json) {
-    final backend = HerdrBackend.fromName(json['backend'] as String?);
+    final mode = HostBackendMode.values.asNameMap()[json['backendMode']];
+    // Before backendMode, a host ran one backend (`backend`) and `herdrBin`
+    // held that backend's CLI.
+    final legacyHc = mode == null && json['backend'] == HerdrBackend.hc.name;
+    final bin = json['herdrBin'] as String?;
     return HostConfig(
       name: json['name'] as String?,
       host: json['host'] as String,
@@ -31,10 +32,11 @@ class HostConfig {
       user: json['user'] as String,
       privateKeyPem: json['privateKeyPem'] as String,
       passphrase: json['passphrase'] as String?,
-      herdrBin: json['herdrBin'] as String? ?? defaultBinFor(backend),
+      herdrBin: (legacyHc ? null : bin) ?? kDefaultHerdrBin,
       hostId: json['hostId'] as String?,
       hostKeyFingerprint: json['hostKeyFingerprint'] as String?,
-      backend: backend,
+      backendMode: legacyHc ? HostBackendMode.hc : mode ?? HostBackendMode.auto,
+      hcBin: (legacyHc ? bin : json['hcBin'] as String?) ?? kDefaultHcBin,
     );
   }
 
@@ -45,12 +47,17 @@ class HostConfig {
   final String user;
   final String privateKeyPem;
   final String? passphrase;
+
+  /// herdr 1's CLI.
   final String herdrBin;
+
+  /// Herdr 2's CLI.
+  final String hcBin;
   final String? hostId;
   final String? hostKeyFingerprint;
 
-  /// Which herdr generation the host runs; picks the client drover builds.
-  final HerdrBackend backend;
+  /// Which backends drover talks to on this host.
+  final HostBackendMode backendMode;
 
   /// The label shown in host lists and the app bar: [name] when set,
   /// otherwise `user@host`.
@@ -61,7 +68,7 @@ class HostConfig {
   }
 
   /// Whether [other] describes the same connection: host, port, user,
-  /// privateKeyPem, passphrase, herdrBin, and backend all match. Excludes [name]
+  /// privateKeyPem, passphrase, herdrBin, hcBin, and backendMode all match. Excludes [name]
   /// (cosmetic), [hostId], and [hostKeyFingerprint] — the fingerprint is
   /// learned via TOFU pinning after the runner is built, so including it
   /// would force a reconnect right after every first-connect pin.
@@ -72,7 +79,8 @@ class HostConfig {
       privateKeyPem == other.privateKeyPem &&
       passphrase == other.passphrase &&
       herdrBin == other.herdrBin &&
-      backend == other.backend;
+      hcBin == other.hcBin &&
+      backendMode == other.backendMode;
 
   HostConfig withHostId(String? value) => HostConfig(
     name: name,
@@ -84,7 +92,8 @@ class HostConfig {
     herdrBin: herdrBin,
     hostId: value,
     hostKeyFingerprint: hostKeyFingerprint,
-    backend: backend,
+    backendMode: backendMode,
+    hcBin: hcBin,
   );
 
   HostConfig withHostKeyFingerprint(String? value) => HostConfig(
@@ -97,7 +106,8 @@ class HostConfig {
     herdrBin: herdrBin,
     hostId: hostId,
     hostKeyFingerprint: value,
-    backend: backend,
+    backendMode: backendMode,
+    hcBin: hcBin,
   );
 
   Map<String, dynamic> toJson() => {
@@ -110,6 +120,7 @@ class HostConfig {
     'herdrBin': herdrBin,
     'hostId': hostId,
     'hostKeyFingerprint': hostKeyFingerprint,
-    'backend': backend.name,
+    'backendMode': backendMode.name,
+    'hcBin': hcBin,
   };
 }

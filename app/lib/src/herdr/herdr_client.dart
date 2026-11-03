@@ -22,6 +22,17 @@ class HerdrException implements Exception {
   String toString() => 'HerdrException($code): $message';
 }
 
+/// Whether a failed herdr 1 or hc call means its binary itself is missing,
+/// as opposed to an SSH/auth/host-key/timeout failure. Those surface as a transport [HerdrException] with the runner's error as its
+/// [HerdrException.cause]; a missing binary is the shell's own non-zero exit
+/// (127, "not found", "No such file"), which [HerdrClient] and [HcClient]
+/// report with no cause.
+bool isHerdrBinaryMissing(Object error) =>
+    error is HerdrException &&
+    error.code == 'transport' &&
+    error.cause == null &&
+    RegExp(r'exit 127\b|not found|No such file').hasMatch(error.message);
+
 /// A newly-created workspace and its initial shell pane.
 class CreatedWorkspace {
   const CreatedWorkspace({required this.workspaceId, required this.paneId});
@@ -81,6 +92,22 @@ class HerdrClient {
 
   /// Which herdr generation this client drives. [HcClient] overrides it.
   HerdrBackend get backend => HerdrBackend.herdr;
+
+  /// The backends this client reaches on its host, in order herdr, hc.
+  Future<List<HerdrBackend>> availableBackends() async => [backend];
+
+  /// The single-backend client for [b], e.g. to call [HcClient.runAgent].
+  HerdrClient clientFor(HerdrBackend b) =>
+      b == backend ? this : throw StateError('no ${b.name} on this client');
+
+  /// [listAgents], plus each backend that failed while another answered.
+  /// Its own result, not client state, so concurrent listings can't clobber
+  /// it. A single backend has no partial failures.
+  Future<({List<AgentInfo> agents, List<(HerdrBackend, Object)> partialErrors})>
+  listAgentsReportingErrors() async => (
+    agents: await listAgents(),
+    partialErrors: const <(HerdrBackend, Object)>[],
+  );
 
   /// Records that the person is looking at [paneId] now. herdr 1 tracks this
   /// itself, so it is a no-op here; Herdr 2 writes the shared `herdr.seen`

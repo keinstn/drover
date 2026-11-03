@@ -12,6 +12,7 @@ import 'package:drover/src/herdr/herdr_client.dart';
 import 'package:drover/src/herdr/host_platform.dart';
 import 'package:drover/src/image/image_input.dart';
 import 'package:drover/src/models/agent_info.dart';
+import 'package:drover/src/models/workspace_info.dart';
 import 'package:drover/src/screens/agent_draft_store.dart';
 import 'package:drover/src/screens/agent_screen.dart';
 import 'package:drover/src/screens/structured_prompt_sheet.dart';
@@ -664,6 +665,30 @@ String _assistantJsonl(String text) =>
 /// carrying [text], then settles and lets the off-isolate code highlighter
 /// deliver its result. Fenced code is highlighted via [compute], which only
 /// runs under [WidgetTester.runAsync]; blocks render plain until it lands.
+/// A Herdr 2 agent whose space has no label, so its id is the fallback.
+class _UnlabeledHcSpaceClient extends HerdrClient {
+  _UnlabeledHcSpaceClient() : super(StubCommandRunner(workingResponse));
+
+  static const agent = AgentInfo(
+    paneId: 'hc:t1',
+    workspaceId: 'hc:s9',
+    tabId: 'hc:tb1',
+    agent: 'claude',
+    status: AgentStatus.working,
+    cwd: '/tmp/proj',
+    focused: false,
+  );
+
+  @override
+  Future<AgentInfo> getAgent(String target) async => agent;
+
+  @override
+  Future<List<AgentInfo>> listAgents() async => const [agent];
+
+  @override
+  Future<List<WorkspaceInfo>> listWorkspaces() async => const [];
+}
+
 /// Records [markSeen] calls (herdr 1's is a no-op; hc's writes a label).
 class _SeenRecordingClient extends HerdrClient {
   _SeenRecordingClient(super.runner);
@@ -928,6 +953,29 @@ CommandResult multiAgentResponse(String command) {
 }
 
 void main() {
+  testWidgets('an unlabeled Herdr 2 space shows its id without hc:', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: droverDarkTheme.copyWith(platform: defaultTargetPlatform),
+        home: AgentScreen(
+          client: _UnlabeledHcSpaceClient(),
+          paneId: 'hc:t1',
+          pollInterval: const Duration(hours: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('claude · s9'), findsOneWidget);
+    expect(find.textContaining('hc:'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   // Tests that don't inject their own store fall back to AgentDraftStore.shared,
   // and any draft a test types is persisted there on dispose. Reset the shared
   // draft for the common paneId before each test so that leak never carries a

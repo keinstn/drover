@@ -196,6 +196,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Connected to the host, but herdr isn\'t running on it. Start herdr on the host, then try again.';
 
   @override
+  String get errorHcNotRunning =>
+      'Connected to the host, but the Herdr app isn\'t running on it. Open the Herdr app on the host, then try again.';
+
+  @override
   String herdrVersionTooOld(String found, String minimum) {
     return 'herdr $found on this host is older than the minimum supported version $minimum. Update herdr on the host to start agents.';
   }
@@ -593,24 +597,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hostSetupBackendLabel => 'Herdr version';
 
   @override
-  String get hostSetupBackendHerdr1 => 'Herdr 1 (TUI)';
+  String get hostSetupBackendAuto => 'Auto';
 
   @override
-  String get hostSetupBackendHerdr2 => 'Herdr 2 (app)';
+  String get hostSetupBackendAutoNote =>
+      'drover shows agents from both, and uses Herdr 2 only while the Herdr app is running.';
+
+  @override
+  String get hostSetupBackendHerdr1 => 'Herdr 1';
+
+  @override
+  String get hostSetupBackendHerdr2 => 'Herdr 2';
 
   @override
   String get hostSetupHerdr2Note =>
       'Herdr 2 runs agents inside the Herdr app\'s spaces. Create a space in the Herdr app first — drover launches agents into an existing space. Agents must report their own status (Claude Code does). Herdr 2 has no plugins, so drover\'s notification plugin isn\'t available.';
 
   @override
-  String get hostSetupHcDetected =>
-      'This host has Herdr 2 (hc) but not herdr, so drover switched to Herdr 2.';
-
-  @override
   String get hostSetupHcBinLabel => 'hc binary path';
 
   @override
   String get herdNotInSpace => 'Not in a space';
+
+  @override
+  String get herdHerdr1Tag => 'Herdr 1';
 
   @override
   String get herdHerdr2Tag => 'Herdr 2';

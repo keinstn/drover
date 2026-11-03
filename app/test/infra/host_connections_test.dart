@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:drover/src/demo/demo_herdr.dart' show StubCommandRunner;
+import 'package:drover/src/herdr/combined_client.dart';
 import 'package:drover/src/herdr/command_runner.dart';
 import 'package:drover/src/herdr/hc_client.dart';
 import 'package:drover/src/herdr/herdr_backend.dart';
@@ -191,54 +192,50 @@ void main() {
   });
 
   group('buildHerdrClient', () {
-    test('builds the client for the host backend', () {
-      final runner = StubCommandRunner((_) => _ok(''));
-      expect(buildHerdrClient(_config(), runner), isNot(isA<HcClient>()));
-      final hc = HostConfig.fromJson({..._config().toJson(), 'backend': 'hc'});
-      expect(buildHerdrClient(hc, runner).backend, HerdrBackend.hc);
-    });
-  });
+    HostConfig mode(HostBackendMode m) =>
+        HostConfig.fromJson({..._config().toJson(), 'backendMode': m.name});
 
-  group('hostHasOnlyHc', () {
-    // [path] answers the PATH probe, [local] the ~/.local/bin probe.
-    Future<bool> probe({
-      String path = '',
-      String local = '',
-      bool windows = false,
-    }) => hostHasOnlyHc(
-      StubCommandRunner((command) {
-        if (command == 'uname -s') {
-          return windows
-              ? CommandResult(exitCode: 1, stdout: '', stderr: '')
-              : _ok('Linux\n');
-        }
-        if (command == 'cmd.exe /c ver') {
-          return _ok('Microsoft Windows [Version 10.0]\n');
-        }
-        if (command.contains('.local/bin')) return _ok(local);
-        return _ok(path);
-      }),
-    );
+    /// The `hc connect` exec line [config]'s client runs for one hc call.
+    Future<String> hcCommand(HostConfig config) async {
+      final runner = _HcRunner();
+      final client = buildHerdrClient(config, runner);
+      await client.clientFor(HerdrBackend.hc).readAgent('hc:t1');
+      return runner.commands.last;
+    }
 
-    test('true only when hc is at ~/.local/bin and herdr is nowhere', () async {
-      expect(await probe(local: 'hc\n'), isTrue);
+    test('mode herdr builds a plain herdr 1 client', () {
+      final client = buildHerdrClient(mode(HostBackendMode.herdr), _HcRunner());
+      expect(client, isNot(isA<CombinedHerdrClient>()));
+      expect(client.backend, HerdrBackend.herdr);
     });
 
-    test('an hc found only elsewhere on PATH does not count', () async {
-      expect(await probe(path: 'hc\n'), isFalse);
+    test('mode hc is hc only, ungated', () async {
+      final config = mode(HostBackendMode.hc);
+      final client = buildHerdrClient(config, _HcRunner());
+      expect(client, isA<CombinedHerdrClient>());
+      expect(client.backend, HerdrBackend.hc);
+      expect(() => client.clientFor(HerdrBackend.herdr), throwsStateError);
+      expect(await hcCommand(config), "~/.local/bin/hc 'connect'");
     });
 
-    test('false when herdr is found anywhere', () async {
-      expect(await probe(path: 'herdr\n', local: 'hc\n'), isFalse);
-      expect(await probe(local: 'herdr\nhc\n'), isFalse);
+    test('mode auto combines both, hc gated on a running core', () async {
+      final config = mode(HostBackendMode.auto);
+      final client = buildHerdrClient(config, _HcRunner());
+      expect(client, isA<CombinedHerdrClient>());
+      expect(client.backend, HerdrBackend.herdr);
+      expect(client.clientFor(HerdrBackend.hc), isA<HcClient>());
+      expect(await hcCommand(config), contains('pgrep -x -U'));
     });
 
-    test('false when neither is found', () async {
-      expect(await probe(), isFalse);
-    });
-
-    test('false on a Windows host', () async {
-      expect(await probe(local: 'hc\n', windows: true), isFalse);
+    test('auto hc uses hcBin, herdr 1 uses herdrBin', () async {
+      final config = HostConfig.fromJson({
+        ..._config().toJson(),
+        'herdrBin': '/opt/herdr',
+        'hcBin': '/opt/hc',
+      });
+      final client = buildHerdrClient(config, _HcRunner());
+      expect(client.clientFor(HerdrBackend.herdr).herdrBin, '/opt/herdr');
+      expect(await hcCommand(config), contains('exec /opt/hc connect'));
     });
   });
 
@@ -271,6 +268,18 @@ void main() {
       expect(isHerdrBinaryMissing(StateError('exit 127')), isFalse);
     });
   });
+}
+
+/// Answers `uname -s` as Linux and any `hc connect` with a `terminal.read`
+/// reply, recording every command.
+class _HcRunner extends StubCommandRunner {
+  _HcRunner() : super((c) => _ok(c == 'uname -s' ? 'Linux\n' : ''));
+
+  @override
+  Future<CommandResult> runWithStdin(String command, String stdin) async {
+    commands.add(command);
+    return _ok('{"jsonrpc":"2.0","id":1,"result":{"text":""}}\n');
+  }
 }
 
 CommandResult _ok(String stdout) =>

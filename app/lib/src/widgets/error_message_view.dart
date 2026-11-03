@@ -35,6 +35,8 @@ String errorHeadline(
           : l10n.errorHostConnection;
     case AppErrorKind.herdrServerUnreachable:
       return l10n.errorHerdrServerUnreachable;
+    case AppErrorKind.hcNotRunning:
+      return l10n.errorHcNotRunning;
     case AppErrorKind.herdrVersionUnsupported:
       final e = error as HerdrVersionUnsupportedException;
       return l10n.herdrVersionTooOld(e.found, e.minimum);
@@ -53,8 +55,14 @@ class ErrorMessageView extends StatefulWidget {
     this.error, {
     super.key,
     this.hostEverConnected = false,
+    this.label,
   });
   final Object error;
+
+  /// Prefixes the headline (`"Herdr 2: …"`), for an error beside content that
+  /// still works. With a label, an unknown error's raw text stays under
+  /// Details instead of becoming the headline.
+  final String? label;
 
   /// See [errorHeadline]'s parameter of the same name.
   final bool hostEverConnected;
@@ -70,11 +78,15 @@ class _ErrorMessageViewState extends State<ErrorMessageView> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
-    final headline = errorHeadline(
-      l10n,
-      widget.error,
-      hostEverConnected: widget.hostEverConnected,
-    );
+    final label = widget.label;
+    final headline =
+        label != null && classifyError(widget.error) == AppErrorKind.unknown
+        ? l10n.errorGeneric
+        : errorHeadline(
+            l10n,
+            widget.error,
+            hostEverConnected: widget.hostEverConnected,
+          );
     final detail = errorDetail(widget.error);
     // Only offer the expander when the detail adds something beyond the
     // headline (for unknown errors the headline already IS the detail).
@@ -83,7 +95,10 @@ class _ErrorMessageViewState extends State<ErrorMessageView> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(headline, style: TextStyle(color: theme.colorScheme.error)),
+        Text(
+          label == null ? headline : '$label: $headline',
+          style: TextStyle(color: theme.colorScheme.error),
+        ),
         if (hasExtraDetail) ...[
           TextButton(
             onPressed: () => setState(() => _showDetails = !_showDetails),

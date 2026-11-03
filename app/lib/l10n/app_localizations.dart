@@ -424,6 +424,12 @@ abstract class AppLocalizations {
   /// **'Connected to the host, but herdr isn\'t running on it. Start herdr on the host, then try again.'**
   String get errorHerdrServerUnreachable;
 
+  /// No description provided for @errorHcNotRunning.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected to the host, but the Herdr app isn\'t running on it. Open the Herdr app on the host, then try again.'**
+  String get errorHcNotRunning;
+
   /// No description provided for @herdrVersionTooOld.
   ///
   /// In en, this message translates to:
@@ -1144,16 +1150,28 @@ abstract class AppLocalizations {
   /// **'Herdr version'**
   String get hostSetupBackendLabel;
 
+  /// No description provided for @hostSetupBackendAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get hostSetupBackendAuto;
+
+  /// No description provided for @hostSetupBackendAutoNote.
+  ///
+  /// In en, this message translates to:
+  /// **'drover shows agents from both, and uses Herdr 2 only while the Herdr app is running.'**
+  String get hostSetupBackendAutoNote;
+
   /// No description provided for @hostSetupBackendHerdr1.
   ///
   /// In en, this message translates to:
-  /// **'Herdr 1 (TUI)'**
+  /// **'Herdr 1'**
   String get hostSetupBackendHerdr1;
 
   /// No description provided for @hostSetupBackendHerdr2.
   ///
   /// In en, this message translates to:
-  /// **'Herdr 2 (app)'**
+  /// **'Herdr 2'**
   String get hostSetupBackendHerdr2;
 
   /// No description provided for @hostSetupHerdr2Note.
@@ -1161,12 +1179,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Herdr 2 runs agents inside the Herdr app\'s spaces. Create a space in the Herdr app first — drover launches agents into an existing space. Agents must report their own status (Claude Code does). Herdr 2 has no plugins, so drover\'s notification plugin isn\'t available.'**
   String get hostSetupHerdr2Note;
-
-  /// No description provided for @hostSetupHcDetected.
-  ///
-  /// In en, this message translates to:
-  /// **'This host has Herdr 2 (hc) but not herdr, so drover switched to Herdr 2.'**
-  String get hostSetupHcDetected;
 
   /// No description provided for @hostSetupHcBinLabel.
   ///
@@ -1179,6 +1191,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not in a space'**
   String get herdNotInSpace;
+
+  /// No description provided for @herdHerdr1Tag.
+  ///
+  /// In en, this message translates to:
+  /// **'Herdr 1'**
+  String get herdHerdr1Tag;
 
   /// No description provided for @herdHerdr2Tag.
   ///

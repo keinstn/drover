@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../herdr/combined_client.dart';
 import '../herdr/command_runner.dart';
 import '../herdr/hc_client.dart';
 import '../herdr/herdr_backend.dart';
@@ -9,44 +10,34 @@ import '../models/host_config.dart';
 import 'best_effort.dart';
 import 'ssh_command_runner.dart';
 
-/// The client for [host]'s backend: [HcClient] for Herdr 2, else herdr 1's
-/// [HerdrClient]. Every client main.dart builds goes through here.
+export '../herdr/herdr_client.dart' show isHerdrBinaryMissing;
+
+/// The client for [host]'s [HostConfig.backendMode]. Every client main.dart
+/// builds goes through here.
+///
+/// Auto mode gates hc on a running core, so polling a host never starts
+/// herdr-core behind the user's back; explicit hc mode lets `hc` start it.
 HerdrClient buildHerdrClient(HostConfig host, CommandRunner runner) {
-  Future<HostPlatform> platform() => HostPlatform.detect(runner);
-  return host.backend == HerdrBackend.hc
-      ? HcClient(runner, herdrBin: host.herdrBin, platform: platform)
-      : HerdrClient(runner, herdrBin: host.herdrBin, platform: platform);
-}
-
-/// Whether a failed herdr 1 connection test means the `herdr` binary itself
-/// is missing, as opposed to an SSH/auth/host-key/timeout failure. Those
-/// surface as a transport [HerdrException] with the runner's error as its
-/// [HerdrException.cause]; a missing binary is the shell's own non-zero exit
-/// (127, "not found", "No such file"), which [HerdrClient] reports with no
-/// cause.
-bool isHerdrBinaryMissing(Object error) =>
-    error is HerdrException &&
-    error.code == 'transport' &&
-    error.cause == null &&
-    RegExp(r'exit 127\b|not found|No such file').hasMatch(error.message);
-
-/// Whether the host has Herdr 2's `hc` at its default `~/.local/bin/hc` (the
-/// bin a switch to Herdr 2 would use) and no herdr 1 `herdr` anywhere — on the
-/// login PATH or in `~/.local/bin`. Unix only: Herdr 2 on Windows hosts is
-/// deferred, so a Windows host is never reported hc-only.
-Future<bool> hostHasOnlyHc(CommandRunner runner) async {
-  final platform = await HostPlatform.detect(runner);
-  if (platform is! UnixHostPlatform) return false;
-  final onPath = await runner.run(
-    platform.detectAgentsCommand(const ['herdr']),
+  final herdr = HerdrClient(
+    runner,
+    herdrBin: host.herdrBin,
+    platform: () => HostPlatform.detect(runner),
   );
-  if (onPath.stdout.split('\n').any((l) => l.trim() == 'herdr')) return false;
-  final local = await runner.run(
-    "sh -c 'for b in herdr hc; do "
-    "[ -x \"\$HOME/.local/bin/\$b\" ] && echo \"\$b\"; done'",
+  HcClient hc({required bool gated}) => HcClient(
+    runner,
+    herdrBin: host.hcBin,
+    // One detection per host: share herdr 1's cached result.
+    platform: () => herdr.hostPlatform,
+    requireRunningCore: gated,
   );
-  final found = local.stdout.split('\n').map((l) => l.trim()).toSet();
-  return found.contains('hc') && !found.contains('herdr');
+  return switch (host.backendMode) {
+    HostBackendMode.herdr => herdr,
+    HostBackendMode.hc => CombinedHerdrClient(hc: hc(gated: false)),
+    HostBackendMode.auto => CombinedHerdrClient(
+      herdr: herdr,
+      hc: hc(gated: true),
+    ),
+  };
 }
 
 /// One live connection to one host: the config it was built from plus the
