@@ -121,7 +121,7 @@ a server. Notifications carry a fixed message and never any of your transcript.
 Your SSH key is stored in the iOS Keychain and never leaves your device.
 
 Drover is an independent project. It is not affiliated with, endorsed by, or
-sponsored by the Herdr project, Anthropic, OpenAI, or GitHub, and is not
+sponsored by the Herdr project, Anthropic, or GitHub, and is not
 certified by any of them.
 ```
 
@@ -164,7 +164,7 @@ Drover は、すでにあなたが持っているマシンのためのクライ�
 通知には固定の文面のみが入り、トランスクリプトの内容は一切含まれません。SSH の
 秘密鍵は iOS キーチェーンに保存され、端末の外に出ることはありません。
 
-Drover は独立したプロジェクトです。Herdr プロジェクト、Anthropic、OpenAI、
+Drover は独立したプロジェクトです。Herdr プロジェクト、Anthropic、
 GitHub のいずれとも関係がなく、公認・推薦・認定を受けたものではありません。
 ```
 
