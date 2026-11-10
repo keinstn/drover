@@ -22,7 +22,7 @@ jobs:
         with:
           channel: stable
           flutter-version-file: app/.fvmrc
-          cache: true
+          cache: false
 
       - name: Pub get
         run: flutter pub get
