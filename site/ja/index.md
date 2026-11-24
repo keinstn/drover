@@ -5,15 +5,14 @@ hero:
   name: Drover
   text: AI コーディングエージェントをスマートフォンから操作
   tagline: >-
-    自分のコンピュータで動くエージェントを、間にサーバーを挟まず
-    SSH 経由で監督・操作できます。
+    Drover は非推奨となり、今後メンテナンスされません。herdr-core（Herdr アプリ）をお使いの場合は、公式の Herdr モバイルアプリをご利用ください。インストール済みのアプリは SSH で引き続き動作しますが、プッシュ通知は 2026-12-01 に停止します。
   image:
     src: /screenshots/ja/01-hero-prompt.png
     alt: 許可を求めるプロンプトが、タップできるボタンとして表示された画面
   actions:
     - theme: brand
-      text: App Store でダウンロード
-      link: https://apps.apple.com/app/id6792428012
+      text: 公式 Herdr モバイルアプリへ
+      link: https://herdr.dev/mobile/
     - theme: alt
       text: GitHub で見る
       link: https://github.com/keinstn/drover
