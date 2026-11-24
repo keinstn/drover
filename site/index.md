@@ -5,15 +5,16 @@ hero:
   name: Drover
   text: Steer AI coding agents from your phone
   tagline: >-
-    Supervise and steer AI coding agents running on your own computer — over
-    SSH, with no server in between.
+    Drover is deprecated and no longer maintained. If you use herdr-core (the
+    Herdr app), use the official Herdr mobile app instead. Existing installs
+    keep working over SSH, but push notifications will stop on 2026-12-01.
   image:
     src: /screenshots/en/01-hero-prompt.png
     alt: A permission prompt rendered as tappable buttons
   actions:
     - theme: brand
-      text: Download on the App Store
-      link: https://apps.apple.com/app/id6792428012
+      text: Get the official Herdr mobile app
+      link: https://herdr.dev/mobile/
     - theme: alt
       text: View on GitHub
       link: https://github.com/keinstn/drover

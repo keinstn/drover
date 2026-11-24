@@ -5,14 +5,14 @@ hero:
   name: Drover
   text: 在手机上操控 AI 编程智能体
   tagline: >-
-    监督和操控运行在你自己电脑上的智能体——通过 SSH 直连，不经过任何服务器。
+    Drover 已弃用，不再维护。如果你使用 herdr-core（Herdr 应用），请改用官方 Herdr 移动应用。已安装的应用仍可通过 SSH 正常使用，但推送通知将于 2026-12-01 停止。
   image:
     src: /screenshots/zh/01-hero-prompt.png
     alt: 授权确认被渲染成可以直接点按的按钮
   actions:
     - theme: brand
-      text: 前往 App Store 下载
-      link: https://apps.apple.com/app/id6792428012
+      text: 前往官方 Herdr 移动应用
+      link: https://herdr.dev/mobile/
     - theme: alt
       text: 在 GitHub 上查看
       link: https://github.com/keinstn/drover

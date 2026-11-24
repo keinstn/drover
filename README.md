@@ -1,5 +1,11 @@
 # Drover
 
+> [!WARNING]
+> **Deprecated.** Drover is deprecated and no longer maintained. If you use
+> herdr-core (the Herdr app), use the official
+> [Herdr mobile app](https://herdr.dev/mobile/) instead. Existing installs keep
+> working over SSH, but push notifications will stop on 2026-12-01.
+
 Drive your [Herdr](https://herdr.dev) AI agents from your phone — a Flutter app
 (iOS/macOS) that turns Herdr-managed coding agents into something you can
 supervise and steer on the go.
