@@ -1,3 +1,48 @@
+## [1.2.0] - 2026-11-24
+
+### 🚀 Features
+
+- *(app)* Add a voice conversation mode to the agent page (#335)
+- *(app)* Move the conversation-mode entry into the composer's send slot (#336)
+- *(app)* Speak each conversation-mode reply as one utterance (#338)
+- *(app)* Show what a tap does on the conversation listening strip (#346)
+- *(app)* Show the pending tool call on the approval card (#351)
+- *(app)* Show agent status as a ring on the herd avatar (#352)
+- *(app)* Show a now strip with the current activity on the agent page (#354)
+- *(app)* Answer blocked agents from a needs-you inbox on the herd (#355)
+- *(app)* Draw the working ring as a comet arc on a faint track (#357)
+- *(app)* Show herdr's agent marks on the avatar (#359)
+- *(app)* Show agent status as a trailing indicator like herdr (#360)
+- *(app)* Pick the agent from icon tiles in the launch sheet (#361)
+- *(app)* Support Herdr 2 hosts via herdr-core (hc) (#364)
+- *(app)* Show herdr 1 and Herdr 2 agents together on one host (#365)
+- *(app)* Show Claude's native chat history on Herdr 2 hosts (#368)
+
+### 🐛 Bug Fixes
+
+- *(app)* Wait 4s of silence before ending a conversation-mode listen (#337)
+- *(app)* Keep the launch button label from truncating (#362)
+- *(app)* Shorten the Claude and Copilot agent tile labels (#363)
+- *(app)* Answer Codex custom questions on Herdr 2 hosts (#367)
+- *(app)* Make the demo host launchable so reviewers can start an agent (#370)
+
+### 💼 Other
+
+- Upgrade flutter to 3.47.9 (#347)
+
+### 📚 Documentation
+
+- *(site)* Remove the voice assistant from the privacy policy and pages (#330)
+- Record which agent CLIs report status on Herdr 2 (#366)
+- Add a Copilot status hook for Herdr 2 and fix the status table (#369)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(functions)* [**breaking**] Remove voice assistant and account deletion backend (#329)
+- Run ci-ios-deps manually only (#339)
+- *(deps)* Group firebase packages in dependabot updates (#348)
+- Add scheduled flutter upgrade workflow (#353)
+- *(deps)* Add a 7-day cooldown to dependabot updates (#358)
 ## [1.1.5] - 2026-10-25
 
 ### 🚀 Features
